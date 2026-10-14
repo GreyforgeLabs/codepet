@@ -1,0 +1,12 @@
+[package]
+name = "codepet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+codepet-core = { path = "../codepet-core" }
+
+[lints]
+workspace = true
