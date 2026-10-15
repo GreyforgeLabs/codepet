@@ -166,6 +166,14 @@
     }
    }
   },
+  "goldfish": {
+   "cells": {
+    "*/c09": {
+     "source": "b00",
+     "why": "c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated"
+    }
+   }
+  },
   "rabbit": {
    "sheets": {
     "s1/care": {

@@ -517,7 +517,12 @@
       ]
      }
     },
-    "overrides": {},
+    "overrides": {
+     "c09": {
+      "source": "b00",
+      "why": "c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated"
+     }
+    },
     "sheetScales": {}
    },
    {
@@ -543,7 +548,12 @@
       ]
      }
     },
-    "overrides": {},
+    "overrides": {
+     "c09": {
+      "source": "b00",
+      "why": "c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated"
+     }
+    },
     "sheetScales": {}
    },
    {
@@ -569,7 +579,12 @@
       ]
      }
     },
-    "overrides": {},
+    "overrides": {
+     "c09": {
+      "source": "b00",
+      "why": "c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated"
+     }
+    },
     "sheetScales": {}
    }
   ],
@@ -603,7 +618,7 @@
   "s1/c06.webp": "f46f6ba7ae91d66838b0780ce874e607a45f268863dbb96f75d73fa3dca438ee",
   "s1/c07.webp": "220fa0a8aaa855a16e25a480709c4423c3b808e6144fdfef2f05d714590b7dfc",
   "s1/c08.webp": "90080213cf9971dab068d545df1628547b229eee15fd1368502b0a32fbc984a0",
-  "s1/c09.webp": "9718bb4d1b5ed0527b57266de9e602f1106abe0e49912b7120162e7d1df99ef8",
+  "s1/c09.webp": "195112524cba53f96e1c1908537828aff8333efb5cbe25a022233577967f917f",
   "s1/c10.webp": "adfe4f3e6b30b62dc294948adf960505ee84c57a9cd209f1bf9bbf3e67c2691d",
   "s1/c11.webp": "aac96e84867007c7548d9655bf2f6f1be954fd992c80c4021731b3a6adf8dfe1",
   "s2/b00.webp": "08d5635901f2e662be8da819c9bc3635e349af911203286e3d7142017b078ee2",
@@ -627,7 +642,7 @@
   "s2/c06.webp": "520f7bcd76ed63fa0146002b3a56e9994f89ec8b0d75e828572a2ab4269e9716",
   "s2/c07.webp": "ca9ee1e078777a4e824300fab4ed3bc4393c52e1f08af06efb5e5b4f64c1c3aa",
   "s2/c08.webp": "750e7bf4ac033f221fd5e2d4167bbe290f7d5e271bcb659e7093203965e4dfc6",
-  "s2/c09.webp": "661e4be6226b6a94f6cdb3aef7de37e5980b805dbc48eb1b17f11d10e0dd2df2",
+  "s2/c09.webp": "08d5635901f2e662be8da819c9bc3635e349af911203286e3d7142017b078ee2",
   "s2/c10.webp": "298eae123d78935ecef872f36f802dfe8c5f799a399e1fee70a2f2307f8366ce",
   "s2/c11.webp": "bc5bb4b7a22d842d650fb2a3868d46e06bc6f5650fa093953aa060ff71ab3629",
   "s3/b00.webp": "3995008b4ba85cb4ebc5730b66fbb1bb0f7527aba8d1eca3b1da4d2451f83dd8",
@@ -651,7 +666,7 @@
   "s3/c06.webp": "658ce825909fee831f5e0dcc61466b3c91f546d9f8b729e5e187f85b122f0fab",
   "s3/c07.webp": "77c5e06deee285f0eabc2f5363b14996dd004d58415ed0eef6b20298b75e3e0d",
   "s3/c08.webp": "8b32700305e2f3253591176094bde07a06806df4b5ecd77d10a6cf8874a9b1f7",
-  "s3/c09.webp": "bc6de8187c7a40b58cb77c483370153a1022398ca6202d0659041eb1effbd366",
+  "s3/c09.webp": "3995008b4ba85cb4ebc5730b66fbb1bb0f7527aba8d1eca3b1da4d2451f83dd8",
   "s3/c10.webp": "cab5476029109bb4b2d10f9c5d5bd38dc5b81d432c0d646c9dced43fcd09261c",
   "s3/c11.webp": "f5a5c8aa061be07308d39d4af08811344f855f0e918f16bff76e7d848257c4e9",
   "thumb-s1.webp": "194542340cbbe2b8e245de56593a0197723447d68f38731b6ca92748c6b352a2",

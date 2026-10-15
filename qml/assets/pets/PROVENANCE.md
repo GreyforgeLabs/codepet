@@ -231,6 +231,12 @@ Goldfish, the dreamy bubble navigator. Stages: Bubblet / Ripple Rover / Veiltail
 | `stage3-base.png` | `#FF00FF` | `b734f4459d3e4d607fc97080cbf35688aba8c25915dab0562cdc01fbc761aeda` |
 | `stage3-care.png` | `#FF00FF` | `3775825eaaeea9cb52bc207e1d64ff179c84d16166cd12c4a5a83366c08c26a6` |
 
+Extraction overrides (`tools/petart/overrides.json`):
+
+- stage 1 `c09`: source="b00". c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated
+- stage 2 `c09`: source="b00". c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated
+- stage 3 `c09`: source="b00". c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated
+
 ## rabbit
 
 Rabbit, the alert garden scout. Stages: Garden Kit / Meadow Scout / Warren Sentinel (names from provenance.json).

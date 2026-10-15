@@ -7,8 +7,9 @@ WebP with alpha at 192x192 (thumbnails 96x96), non-empty alpha inside a 2 px mar
 ground contact within 6 px of groundY for floor species' standing frames, pairwise
 different locomotion frames, finite durations, aquatic water blocks (per stage too), hopper
 airborne frames exposed on the species locomotion block, per-stage hit boxes no larger than
-1.35x the stage's alpha union, stage minLevels and default names equal to the Rust core, and
-the provenance and docs coverage.
+1.35x the stage's alpha union, stage minLevels and default names equal to the Rust core,
+open-eyed sleep frames for species that rest with their eyes open, and the provenance and
+docs coverage.
 
 Strict by default: all 15 species must be extracted (`placeholder: false`). With
 CODEPET_ALLOW_PARTIAL_ART=1, species still awaiting source sheets are skipped with a
@@ -288,6 +289,16 @@ for idx, sid in enumerate(CORE_IDS):
             fail(f"{pre} hopper species must expose a non-empty locomotion.airborneFrames")
         elif sorted(loco["airborneFrames"]) != sorted(airborne):
             fail(f"{pre} locomotion.airborneFrames {loco['airborneFrames']} != states.locomotion.airborneFrames {sorted(airborne)}")
+    # A species whose sleep hint says it rests with its eyes open settles and sleeps only on
+    # the reviewed open-eyed poses (b00 idle, b07 asleep) or cells rendered from them: the
+    # goldfish c09 "settle to sleep" cell draws closed eyes and is remapped to b00.
+    if "eyes open" in str(man.get("careHints", {}).get("sleep", "")):
+        for st in (1, 2, 3):
+            open_eyed = {files.get(f"s{st}/{f}") for f in ("b00.webp", "b07.webp")} - {None}
+            for name in ("sleep_enter", "sleep"):
+                for f in states.get(name, {}).get("frames", []):
+                    if files.get(f"s{st}/{f}") not in open_eyed:
+                        fail(f"{pre} s{st} {name} frame {f} is not an open-eyed pose (b00/b07)")
     loco_frames = states.get("locomotion", {}).get("frames", [])
     airborne_files = {loco_frames[i] for i in airborne if 0 <= i < len(loco_frames)}
     pixels = {}
