@@ -1,6 +1,6 @@
 # License and upstream provenance
 
-Original CodePet code is licensed under MIT (see LICENSE). No visual assets are vendored.
+Original CodePet code is licensed under MIT (see LICENSE). No third-party visual assets are vendored. Original ginger-cat pose frames and care props are MIT licensed; see [asset provenance](../qml/assets/PROVENANCE.md) and the reproduced license. No upstream sounds or catalog assets are included.
 
 ## Rust dependencies
 

@@ -6,11 +6,17 @@ completes sleep, or starts work from an animation, timer, care action or level.
 Only the mock provider is available. The shared UI prominently labels simulation;
 no commands run and no project files are read or changed by mock execution.
 
+See [overlay capabilities and live validation](../docs/desktop-overlay.md) and
+[Quickshell host controls](omarchy/README.md) for the primary desktop entry.
+
 ## Components
 
 - `shared/Panel.qml`: care, meters, task controls, saved progression and recent results
-- `shared/PetCare.qml`: original geometric pet artwork, food/water bowls, pet menu,
-  bathroom tree, bed, explicit care controls and interruptible care routine
+- `shared/DesktopPet.qml`: transparent floor-local pet scene, hover meters, compact
+  care menu, transient props and one bounded cosmetic scheduler
+- `shared/PetSprite.qml`: passive original vector ginger-cat poses (see asset provenance)
+- `shared/PetCare.qml`: explicit care controller and keyboard-accessible task-window
+  controls, including interruptible care routine
 - `shared/ProgressionPanel.qml`: isolated demo/real XP, levels, four mastery tracks
   and a textual level-up notice. Advanced guided templates remain previews only
 - `shared/TaskForm.qml`: bounded draft, small guided simulation, providers,
@@ -20,6 +26,9 @@ no commands run and no project files are read or changed by mock execution.
 - `shared/TaskTimeline.qml`: bounded, explicitly loaded durable task-state events
 - `shared/WellbeingMeter.qml`, `shared/StatusBadge.qml`: textual values and states
 - `standalone/Main.qml`, `standalone/PreviewHost.qml`: pure-QML fixed-fixture preview
+- `omarchy/shell.qml`: transparent non-focusable layer-shell entry and independent
+  explicit-open task/review window (live compositor validation outstanding)
+- `standalone/OverlayPreview.qml`: fixture-only scene preview in a normal window
 - `omarchy/HostAdapter.qml`: Quickshell transport, one `codepet rpc` process/request
 - `tests/`: headless UI/transport harnesses, not product runtime code
 
