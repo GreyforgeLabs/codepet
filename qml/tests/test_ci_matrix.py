@@ -45,6 +45,11 @@ class CiMatrix(unittest.TestCase):
         self.assertTrue(list(TESTS.glob("*.mjs")))
         self.assertIn("node --test qml/tests/*.mjs", "\n".join(run_lines()))
 
+    def test_art_library_checks_run(self):
+        lines = "\n".join(run_lines())
+        for script in ("verify.py", "test_verify.py"):
+            self.assertRegex(lines, r"python3 -I docs/art-library/" + re.escape(script) + r"\b", script)
+
     def test_lint_still_runs(self):
         self.assertIn("pyside6-qmllint -I qml qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml",
                       "\n".join(run_lines()))
