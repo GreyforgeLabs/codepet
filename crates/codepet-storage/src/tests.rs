@@ -1417,11 +1417,37 @@ fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
             store.start(&next, revision, &token, sup()),
             Err(StorageError::Busy)
         ));
+        // The care routine in ready() filled every meter, which would cap (and so hide) any
+        // refund. Lower each meter below full so a gain on abandonment is visible, and
+        // compare the meters immediately before and after the discard.
+        env.raw()
+            .execute(
+                "UPDATE pet_state SET hunger = 6000, thirst = 6100, mental_health = 6200,
+                 hygiene = 6300 WHERE id = 1",
+                [],
+            )
+            .unwrap();
+        let before_discard = meters(&store);
+        assert_eq!(before_discard.hunger, 6000);
         let discarded = store.discard(&id, &review.digest).unwrap();
         assert_eq!(discarded.state, State::Discarded);
+        assert_eq!(
+            meters(&store),
+            before_discard,
+            "abandonment must neither refund nor reward any care meter"
+        );
         // History keeps marking the review as repaired abandonment metadata.
         assert!(discarded.review.unwrap().metadata_repaired);
         assert!(store.snapshot().unwrap().active_task.is_none());
+        // Restore the fixture's full bars (Start requires them; care would also supersede
+        // the pending preflight) so the rest of the test checks Start's debit as before.
+        env.raw()
+            .execute(
+                "UPDATE pet_state SET hunger = 10000, thirst = 10000, mental_health = 10000,
+                 hygiene = 10000 WHERE id = 1",
+                [],
+            )
+            .unwrap();
         store.start(&next, revision, &token, sup()).unwrap();
         // The care routine filled hunger; Start debits one care step. Abandonment
         // grants neither a care reward nor demo XP.
