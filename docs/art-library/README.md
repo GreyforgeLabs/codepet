@@ -50,4 +50,8 @@ From the repository root, with Python 3:
 
     python3 docs/art-library/verify.py
 
-This checks manifest structure, relative file paths, PNG headers/dimensions, sizes and SHA-256. It does not certify pixel-level visual quality or animation readiness.
+This checks manifest structure, relative file paths, PNG headers/dimensions, sizes and SHA-256. Every check is an explicit comparison, not an `assert`, so it still runs under `python3 -O` or `PYTHONOPTIMIZE`; any mismatch is listed and the script exits 1. It does not certify pixel-level visual quality or animation readiness.
+
+The regression test corrupts a temporary copy of the catalog and expects failure in plain, `-O`, `-OO` and `PYTHONOPTIMIZE` runs:
+
+    python3 -I docs/art-library/test_verify.py
