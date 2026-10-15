@@ -1,0 +1,942 @@
+{
+ "assetRevision": "wp6-fixture",
+ "order": [
+  "cat",
+  "goldfish",
+  "ghost"
+ ],
+ "schemaVersion": 1,
+ "species": {
+  "cat": {
+   "assetRevision": "wp6-fixture",
+   "careHints": {},
+   "careLabels": {
+    "bathroom": "Litter screen",
+    "food": "Kibble",
+    "play": "Yarn tuft",
+    "sleep": "Loaf nap",
+    "wash": "Groom",
+    "water": "Fresh water"
+   },
+   "defaultName": "Ginger",
+   "displayName": "Cat",
+   "geometry": {
+    "groundY": 184,
+    "hitBox": [
+     30,
+     60,
+     112,
+     124
+    ],
+    "roams": true,
+    "viewBox": [
+     0,
+     0,
+     192,
+     192
+    ]
+   },
+   "habitat": "floor",
+   "id": "cat",
+   "license": "MIT",
+   "locomotion": {
+    "airborneFrames": [],
+    "pauseTicks": [
+     40,
+     110
+    ],
+    "pxPerTick": 4,
+    "style": "walk"
+   },
+   "personality": "the curious desk inspector",
+   "placeholder": false,
+   "schemaVersion": 1,
+   "stages": [
+    {
+     "key": "young",
+     "minLevel": 1,
+     "name": "Pounce Kit",
+     "stage": 1
+    },
+    {
+     "key": "grown",
+     "minLevel": 2,
+     "name": "Desk Prowler",
+     "stage": 2
+    },
+    {
+     "key": "mature",
+     "minLevel": 4,
+     "name": "Maned Inspector",
+     "stage": 3
+    }
+   ],
+   "states": {
+    "bathroom": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "b03.webp",
+      "c08.webp",
+      "c08.webp",
+      "b00.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "celebrate": {
+     "fallback": "idle",
+     "frameMs": 400,
+     "frames": [
+      "c11.webp",
+      "b04.webp",
+      "c11.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 60,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "error": {
+     "fallback": "idle",
+     "frameMs": 1000,
+     "frames": [
+      "b06.webp"
+     ],
+     "interrupt": "higher",
+     "loop": true,
+     "mirror": false,
+     "priority": 100,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "food": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c00.webp",
+      "c01.webp",
+      "c00.webp",
+      "c01.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "idle": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "b00.webp",
+      "b00.webp",
+      "b01.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 0,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "locomotion": {
+     "fallback": "idle",
+     "frameMs": 200,
+     "frames": [
+      "b08.webp",
+      "b09.webp",
+      "b10.webp",
+      "b11.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 20,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "needs_care": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b05.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 50,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "play": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c04.webp",
+      "c05.webp",
+      "c04.webp",
+      "c05.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "sleep": {
+     "fallback": null,
+     "frameMs": 1000,
+     "frames": [
+      "b07.webp"
+     ],
+     "interrupt": "higher",
+     "loop": true,
+     "mirror": true,
+     "priority": 85,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "sleep_enter": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "c09.webp",
+      "b07.webp"
+     ],
+     "interrupt": "none",
+     "loop": false,
+     "mirror": true,
+     "priority": 90,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "sleep_exit": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "c10.webp",
+      "b00.webp"
+     ],
+     "interrupt": "none",
+     "loop": false,
+     "mirror": true,
+     "priority": 90,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "waiting": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b02.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 35,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "wash": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b00.webp",
+      "c06.webp",
+      "c07.webp",
+      "c06.webp",
+      "c07.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "water": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c02.webp",
+      "c03.webp",
+      "c02.webp",
+      "c03.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "working": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b04.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 40,
+     "reducedFrame": 0,
+     "repeats": 1
+    }
+   },
+   "thumbnailPattern": "thumb-s{stage}.webp"
+  },
+  "ghost": {
+   "assetRevision": "wp6-fixture",
+   "careHints": {},
+   "careLabels": {
+    "bathroom": "Litter screen",
+    "food": "Kibble",
+    "play": "Yarn tuft",
+    "sleep": "Loaf nap",
+    "wash": "Groom",
+    "water": "Fresh water"
+   },
+   "defaultName": "Boo",
+   "displayName": "Ghost",
+   "geometry": {
+    "groundY": 184,
+    "hitBox": [
+     30,
+     60,
+     112,
+     124
+    ],
+    "roams": true,
+    "viewBox": [
+     0,
+     0,
+     192,
+     192
+    ]
+   },
+   "habitat": "floor",
+   "id": "ghost",
+   "license": "MIT",
+   "locomotion": {
+    "airborneFrames": [],
+    "pauseTicks": [
+     40,
+     110
+    ],
+    "pxPerTick": 4,
+    "style": "walk"
+   },
+   "personality": "a missing pack",
+   "placeholder": false,
+   "schemaVersion": 1,
+   "stages": [
+    {
+     "key": "young",
+     "minLevel": 1,
+     "name": "Pounce Kit",
+     "stage": 1
+    },
+    {
+     "key": "grown",
+     "minLevel": 2,
+     "name": "Desk Prowler",
+     "stage": 2
+    },
+    {
+     "key": "mature",
+     "minLevel": 4,
+     "name": "Maned Inspector",
+     "stage": 3
+    }
+   ],
+   "states": {
+    "bathroom": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "b03.webp",
+      "c08.webp",
+      "c08.webp",
+      "b00.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "celebrate": {
+     "fallback": "idle",
+     "frameMs": 400,
+     "frames": [
+      "c11.webp",
+      "b04.webp",
+      "c11.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 60,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "error": {
+     "fallback": "idle",
+     "frameMs": 1000,
+     "frames": [
+      "b06.webp"
+     ],
+     "interrupt": "higher",
+     "loop": true,
+     "mirror": false,
+     "priority": 100,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "food": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c00.webp",
+      "c01.webp",
+      "c00.webp",
+      "c01.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "idle": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "b00.webp",
+      "b00.webp",
+      "b01.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 0,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "locomotion": {
+     "fallback": "idle",
+     "frameMs": 200,
+     "frames": [
+      "b08.webp",
+      "b09.webp",
+      "b10.webp",
+      "b11.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 20,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "needs_care": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b05.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 50,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "play": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c04.webp",
+      "c05.webp",
+      "c04.webp",
+      "c05.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "sleep": {
+     "fallback": null,
+     "frameMs": 1000,
+     "frames": [
+      "b07.webp"
+     ],
+     "interrupt": "higher",
+     "loop": true,
+     "mirror": true,
+     "priority": 85,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "sleep_enter": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "c09.webp",
+      "b07.webp"
+     ],
+     "interrupt": "none",
+     "loop": false,
+     "mirror": true,
+     "priority": 90,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "sleep_exit": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "c10.webp",
+      "b00.webp"
+     ],
+     "interrupt": "none",
+     "loop": false,
+     "mirror": true,
+     "priority": 90,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "waiting": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b02.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 35,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "wash": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b00.webp",
+      "c06.webp",
+      "c07.webp",
+      "c06.webp",
+      "c07.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "water": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c02.webp",
+      "c03.webp",
+      "c02.webp",
+      "c03.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": true,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "working": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b04.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": true,
+     "priority": 40,
+     "reducedFrame": 0,
+     "repeats": 1
+    }
+   },
+   "thumbnailPattern": "thumb-s{stage}.webp"
+  },
+  "goldfish": {
+   "assetRevision": "wp6-fixture",
+   "careHints": {
+    "water": "Fish don't drink from bowls; this refreshes the tank water."
+   },
+   "careLabels": {
+    "bathroom": "Filter clean",
+    "food": "Surface pellets",
+    "play": "Plant arch",
+    "sleep": "Plant hover",
+    "wash": "Tank clean",
+    "water": "Water refresh"
+   },
+   "defaultName": "Bubbles",
+   "displayName": "Goldfish",
+   "geometry": {
+    "groundY": 184,
+    "hitBox": [
+     24,
+     40,
+     144,
+     144
+    ],
+    "roams": false,
+    "viewBox": [
+     0,
+     0,
+     192,
+     192
+    ],
+    "water": {
+     "outer": [
+      24,
+      40,
+      144,
+      144
+     ],
+     "swimBounds": [
+      40,
+      72,
+      112,
+      96
+     ],
+     "waterLineY": 56
+    }
+   },
+   "habitat": "aquatic",
+   "id": "goldfish",
+   "license": "MIT",
+   "locomotion": {
+    "airborneFrames": [],
+    "pauseTicks": [
+     30,
+     75
+    ],
+    "pxPerTick": 0,
+    "style": "swim_in_habitat"
+   },
+   "personality": "the dreamy bubble navigator",
+   "placeholder": false,
+   "schemaVersion": 1,
+   "stages": [
+    {
+     "key": "young",
+     "minLevel": 1,
+     "name": "Fry",
+     "stage": 1
+    },
+    {
+     "key": "grown",
+     "minLevel": 2,
+     "name": "Goldfish",
+     "stage": 2
+    },
+    {
+     "key": "mature",
+     "minLevel": 4,
+     "name": "Fantail",
+     "stage": 3
+    }
+   ],
+   "states": {
+    "bathroom": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "b03.webp",
+      "c08.webp",
+      "c08.webp",
+      "b00.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": false,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "celebrate": {
+     "fallback": "idle",
+     "frameMs": 400,
+     "frames": [
+      "c11.webp",
+      "b04.webp",
+      "c11.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": false,
+     "priority": 60,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "error": {
+     "fallback": "idle",
+     "frameMs": 1000,
+     "frames": [
+      "b06.webp"
+     ],
+     "interrupt": "higher",
+     "loop": true,
+     "mirror": false,
+     "priority": 100,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "food": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c00.webp",
+      "c01.webp",
+      "c00.webp",
+      "c01.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": false,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "idle": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "b00.webp",
+      "b00.webp",
+      "b01.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": false,
+     "priority": 0,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "locomotion": {
+     "fallback": "idle",
+     "frameMs": 200,
+     "frames": [
+      "b08.webp",
+      "b09.webp",
+      "b10.webp",
+      "b11.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": false,
+     "priority": 20,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "needs_care": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b05.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": false,
+     "priority": 50,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "play": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c04.webp",
+      "c05.webp",
+      "c04.webp",
+      "c05.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": false,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "sleep": {
+     "fallback": null,
+     "frameMs": 1000,
+     "frames": [
+      "b07.webp"
+     ],
+     "interrupt": "higher",
+     "loop": true,
+     "mirror": false,
+     "priority": 85,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "sleep_enter": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "c09.webp",
+      "b07.webp"
+     ],
+     "interrupt": "none",
+     "loop": false,
+     "mirror": false,
+     "priority": 90,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "sleep_exit": {
+     "fallback": null,
+     "frameMs": 600,
+     "frames": [
+      "c10.webp",
+      "b00.webp"
+     ],
+     "interrupt": "none",
+     "loop": false,
+     "mirror": false,
+     "priority": 90,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "waiting": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b02.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": false,
+     "priority": 35,
+     "reducedFrame": 0,
+     "repeats": 1
+    },
+    "wash": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b00.webp",
+      "c06.webp",
+      "c07.webp",
+      "c06.webp",
+      "c07.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": false,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "water": {
+     "fallback": null,
+     "frameMs": 400,
+     "frames": [
+      "b03.webp",
+      "c02.webp",
+      "c03.webp",
+      "c02.webp",
+      "c03.webp",
+      "b04.webp"
+     ],
+     "interrupt": "higher",
+     "loop": false,
+     "mirror": false,
+     "priority": 70,
+     "reducedFrame": 1,
+     "repeats": 1
+    },
+    "working": {
+     "fallback": "idle",
+     "frameMs": 800,
+     "frames": [
+      "b04.webp",
+      "b00.webp"
+     ],
+     "interrupt": "any",
+     "loop": true,
+     "mirror": false,
+     "priority": 40,
+     "reducedFrame": 0,
+     "repeats": 1
+    }
+   },
+   "thumbnailPattern": "thumb-s{stage}.webp"
+  }
+ },
+ "stateNames": [
+  "idle",
+  "locomotion",
+  "food",
+  "water",
+  "play",
+  "wash",
+  "bathroom",
+  "sleep_enter",
+  "sleep",
+  "sleep_exit",
+  "celebrate",
+  "working",
+  "waiting",
+  "needs_care",
+  "error"
+ ]
+}
