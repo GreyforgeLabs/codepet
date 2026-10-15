@@ -44,7 +44,7 @@ Only the 15 preferred versions are committed: cat v1 uses the previously deliver
 
 Before runtime integration: inspect each pose and anatomy, crop with custom bounds where needed, normalize scale and anchors, composite against light/dark backgrounds, remove edge artifacts, register fixed props, create missing transition frames, validate loops/timing and 96px rendering, then pack a versioned atlas with explicit frame metadata. Do not assume a uniform 4×3 crop is safe.
 
-Specific issues include spider limb/eyelid review, owl wing bounds, crowded iguana/rabbit/penguin edges, goldfish jar registration, and axolotl vignette/gill review. Several subjects have maximum alpha 254 and require opacity/compositing review.
+Specific issues include spider limb/eyelid review, owl wing bounds, crowded iguana/rabbit/penguin edges, goldfish jar registration, and axolotl vignette/gill review. Five subjects (cat, dog, capybara, red-panda and axolotl) have maximum alpha 254 and no fully opaque pixels, so every subject pixel is at most 99.6% opaque; they require opacity/compositing review. Each of their manifest QA notes says so.
 
 ## Integrity check
 

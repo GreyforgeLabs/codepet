@@ -167,6 +167,13 @@ def verify(root, check_alpha=False):
             bool(asset.get("provenance")) and bool(asset.get("visual_qa_notes")),
             f"{label}: provenance and visual_qa_notes are required",
         )
+        extrema = (asset.get("alpha") or {}).get("extrema")
+        if isinstance(extrema, list) and len(extrema) == 2 and extrema[1] != 255:
+            notes = " ".join(str(n) for n in asset.get("visual_qa_notes") or []).lower()
+            checks.require(
+                f"maximum alpha {extrema[1]}" in notes,
+                f"{label}: QA notes must disclose maximum alpha {extrema[1]}",
+            )
         checks.require(
             asset.get("model") == GENERATION_MODEL,
             f"{label}: model must be {GENERATION_MODEL!r}",

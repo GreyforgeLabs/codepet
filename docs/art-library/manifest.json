@@ -84,7 +84,8 @@
         "All twelve requested poses visible; convincing ginger kitten identity, blink and wink readable.",
         "Left walk contact/passing very similar; smooth loop not verified.",
         "True alpha established via pixel inspection; view_image displays hidden brown RGB.",
-        "Catalog selects the already-delivered poses-alpha.png edit; no claim that it improves the original."
+        "Catalog selects the already-delivered poses-alpha.png edit; no claim that it improves the original.",
+        "Maximum alpha 254 with no fully opaque pixels: every subject pixel is at most 99.6% opaque, so compositing and opacity need review before runtime use."
       ],
       "runtime_ready": false
     },
@@ -145,7 +146,8 @@
       "visual_qa_notes": [
         "Twelve complete poses; front/left/right/back, expressive blink/wink, sleep and distinct walking gestures.",
         "Front idle and joy similar; scale and gait alignment still need atlas preparation.",
-        "True alpha established; hidden brown RGB is displayed by inspection renderer."
+        "True alpha established; hidden brown RGB is displayed by inspection renderer.",
+        "Maximum alpha 254 with no fully opaque pixels: every subject pixel is at most 99.6% opaque, so compositing and opacity need review before runtime use."
       ],
       "runtime_ready": false
     },
@@ -206,7 +208,8 @@
       "visual_qa_notes": [
         "Twelve complete poses, correct small ears/blunt snout/no visible tail, expressive wink and sleep.",
         "Left walking pair has only modest leg difference; likely needs more tween poses.",
-        "True alpha established; hidden brown RGB appears in inspection renderer."
+        "True alpha established; hidden brown RGB appears in inspection renderer.",
+        "Maximum alpha 254 with no fully opaque pixels: every subject pixel is at most 99.6% opaque, so compositing and opacity need review before runtime use."
       ],
       "runtime_ready": false
     },
@@ -878,7 +881,8 @@
       "visual_qa_notes": [
         "Movement tail silhouette varies intentionally; custom crop and anchor review needed",
         "RGB preview displays brown matte although actual alpha is zero across most background",
-        "Semi-transparent subjects: maximum alpha 254"
+        "Semi-transparent subjects: maximum alpha 254",
+        "Maximum alpha 254 with no fully opaque pixels: every subject pixel is at most 99.6% opaque, so compositing and opacity need review before runtime use."
       ],
       "runtime_ready": false
     },
@@ -947,7 +951,8 @@
         "Transparency extraction improved: sampled outer/gutter pixels are exactly alpha zero, but full per-cell gutter validation remains",
         "Aquatic vignettes and bubbles need custom crop/overlap review",
         "Gill count and occluded limbs require per-pose anatomical review",
-        "Maximum subject alpha 254"
+        "Maximum subject alpha 254",
+        "Maximum alpha 254 with no fully opaque pixels: every subject pixel is at most 99.6% opaque, so compositing and opacity need review before runtime use."
       ],
       "runtime_ready": false
     }

@@ -211,6 +211,16 @@ class VerifyCorruptionTest(unittest.TestCase):
         self.edit_manifest(rename)
         self.assert_fails_in_every_mode("visual_qa_notes are required")
 
+    def test_undisclosed_alpha_ceiling_fails_under_optimization(self):
+        def strip_note(manifest):
+            dog = next(a for a in manifest["assets"] if a["species"] == "dog")
+            dog["visual_qa_notes"] = [
+                n for n in dog["visual_qa_notes"] if "maximum alpha" not in n.lower()
+            ]
+
+        self.edit_manifest(strip_note)
+        self.assert_fails_in_every_mode("QA notes must disclose maximum alpha 254")
+
     def test_unknown_argument_is_rejected(self):
         result = self.run_verify(["-I"], {}, ["--skip-hashes"])
         self.assertEqual(result.returncode, 2)
