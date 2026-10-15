@@ -1,0 +1,594 @@
+{
+ "schemaVersion": 1,
+ "id": "spider",
+ "displayName": "Spider",
+ "defaultName": "Lace",
+ "personality": "the careful silk architect",
+ "habitat": "floor",
+ "assetRevision": "0.2.0",
+ "license": "MIT",
+ "provenance": "../PROVENANCE.md#spider",
+ "careLabels": {
+  "food": "Food pellet",
+  "water": "Dew bead",
+  "play": "Silk pluck",
+  "wash": "Leg groom",
+  "bathroom": "Silk alcove",
+  "sleep": "Silk retreat"
+ },
+ "careHints": {},
+ "stages": [
+  {
+   "stage": 1,
+   "key": "young",
+   "name": "Silkling",
+   "minLevel": 1
+  },
+  {
+   "stage": 2,
+   "key": "grown",
+   "name": "Threadstrider",
+   "minLevel": 2
+  },
+  {
+   "stage": 3,
+   "key": "mature",
+   "name": "Starweaver",
+   "minLevel": 4
+  }
+ ],
+ "stageNamesSource": "provenance.json",
+ "placeholder": false,
+ "geometry": {
+  "viewBox": [
+   0,
+   0,
+   192,
+   192
+  ],
+  "canvas": 192,
+  "pivot": [
+   96,
+   184
+  ],
+  "groundY": 184,
+  "hitBox": [
+   2,
+   36,
+   184,
+   148
+  ],
+  "stageHitBoxes": {
+   "1": [
+    24,
+    85,
+    152,
+    99
+   ],
+   "2": [
+    13,
+    67,
+    170,
+    117
+   ],
+   "3": [
+    2,
+    36,
+    184,
+    148
+   ]
+  },
+  "safeBounds": [
+   2,
+   2,
+   188,
+   188
+  ],
+  "propAnchor": [
+   178,
+   176
+  ],
+  "badgeAnchor": [
+   178,
+   42
+  ],
+  "roams": true
+ },
+ "locomotion": {
+  "style": "tetrapod",
+  "pxPerTick": 4,
+  "pauseTicks": [
+   50,
+   150
+  ]
+ },
+ "states": {
+  "idle": {
+   "frames": [
+    "b00.webp",
+    "b00.webp",
+    "b01.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 0,
+   "interrupt": "any",
+   "fallback": null,
+   "airborneFrames": []
+  },
+  "locomotion": {
+   "frames": [
+    "b08.webp",
+    "b09.webp",
+    "b10.webp",
+    "b11.webp"
+   ],
+   "frameMs": 200,
+   "mode": "while_moving",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 20,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "food": {
+   "frames": [
+    "b03.webp",
+    "c00.webp",
+    "c01.webp",
+    "c00.webp",
+    "c01.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "water": {
+   "frames": [
+    "b03.webp",
+    "c02.webp",
+    "c03.webp",
+    "c02.webp",
+    "c03.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "play": {
+   "frames": [
+    "b03.webp",
+    "c04.webp",
+    "c05.webp",
+    "c04.webp",
+    "c05.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "wash": {
+   "frames": [
+    "b00.webp",
+    "c06.webp",
+    "c07.webp",
+    "c06.webp",
+    "c07.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "bathroom": {
+   "frames": [
+    "b03.webp",
+    "c08.webp",
+    "c08.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "sleep_enter": {
+   "frames": [
+    "c09.webp",
+    "b07.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "sleep": {
+   "frames": [
+    "b07.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 85,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "breathing": {
+    "maxScale": 0.02,
+    "maxUpdatesPerSecond": 1,
+    "reducedMotion": false
+   }
+  },
+  "sleep_exit": {
+   "frames": [
+    "c10.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "celebrate": {
+   "frames": [
+    "c11.webp",
+    "b04.webp",
+    "c11.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 60,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": [],
+   "totalMs": 1600
+  },
+  "working": {
+   "frames": [
+    "b04.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 40,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "waiting": {
+   "frames": [
+    "b02.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 35,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "needs_care": {
+   "frames": [
+    "b05.webp"
+   ],
+   "frameMs": 800,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 50,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "error": {
+   "frames": [
+    "b06.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 100,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": []
+  }
+ },
+ "framePattern": "s{stage}/{frame}",
+ "thumbnailPattern": "thumb-s{stage}.webp",
+ "source": {
+  "dir": "spider",
+  "sheets": [
+   {
+    "stage": 1,
+    "kind": "base",
+    "file": "stage1-base.png",
+    "sha256": "2fba4811a528fb6579e3f1c888e10e55464a4ab020c832f29882ef78f7f140d9",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 1,
+    "kind": "care",
+    "file": "stage1-care.png",
+    "sha256": "05cf1a18f0c2cf5d0b9ed7cdddfef0c122429c3acbf1241526d048b9dc2041ba",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 2,
+    "kind": "base",
+    "file": "stage2-base.png",
+    "sha256": "a3d9bf0ea5f60a7f4de4eb7d2abe76cc6fc65a3531243d9fd33501957440fa38",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 2,
+    "kind": "care",
+    "file": "stage2-care.png",
+    "sha256": "1117a9ff33f409c4f5e8479eb36a917453d7f5c0feebb369a93c1a38e58c772e",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 3,
+    "kind": "base",
+    "file": "stage3-base.png",
+    "sha256": "1822f452d9142e5206a03502d2f946fcecf11d83b5097c88c9aa1a730ce42ea4",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 3,
+    "kind": "care",
+    "file": "stage3-care.png",
+    "sha256": "3046df503beaaa95cc9c3bd8d70656d3cf1c08f2c0869ecffe5fbb97e1f94eab",
+    "chromaHex": "#00FF00"
+   }
+  ],
+  "extraction": [
+   {
+    "stage": 1,
+    "fitScale": 0.513812,
+    "stageFactor": 0.82,
+    "scale": 0.421326,
+    "key": {
+     "base": {
+      "bg_strength": 244.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       5.0
+      ]
+     },
+     "care": {
+      "bg_strength": 242.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       7.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 2,
+    "fitScale": 0.508197,
+    "stageFactor": 0.92,
+    "scale": 0.467541,
+    "key": {
+     "base": {
+      "bg_strength": 241.0,
+      "bg_rgb": [
+       3.0,
+       248.0,
+       8.0
+      ]
+     },
+     "care": {
+      "bg_strength": 239.0,
+      "bg_rgb": [
+       2.0,
+       249.0,
+       10.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 3,
+    "fitScale": 0.516667,
+    "stageFactor": 1.0,
+    "scale": 0.516667,
+    "key": {
+     "base": {
+      "bg_strength": 227.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       22.0
+      ]
+     },
+     "care": {
+      "bg_strength": 224.0,
+      "bg_rgb": [
+       2.0,
+       249.0,
+       25.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   }
+  ],
+  "tool": "tools/petart/extract.py",
+  "reference": {
+   "file": "ref-pr7.png",
+   "sha256": "fc38743423bf6b44385eb4dd7f2227de5222119edf8d5e2185695af3b871f410",
+   "source": "origin/art/generated-source-library:docs/art-library/source/spider/v1/spider-source.png (PR #7)"
+  },
+  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+ },
+ "files": {
+  "s1/b00.webp": "4b6d802a0a21927bf0a241041b7ff617d9e9090c9b9de6d77cd845b0026be5c4",
+  "s1/b01.webp": "b52f78d856b75b9e9f318951227c1546f827ab35af9bac2de89a935cc71639da",
+  "s1/b02.webp": "9e449f11dc535a9d8b588062eacf5ca14a7f6d95d679c30b9efcdf6bb5196b63",
+  "s1/b03.webp": "2aa5370d214ff2af809d759818a8dc67e758a828f1b1bc7254c47a85153f01ca",
+  "s1/b04.webp": "22031d4aabafb680104eaeaca06369ddf1b1e3431e0ca7b8428f48550ba4704c",
+  "s1/b05.webp": "bc43debd338fd28763c8f02e00ed0cfcc248be5efe6aec57d233c67a5f4285cd",
+  "s1/b06.webp": "082a70d23734e34e4add1c6b1b5644f52da60fbc97f3b366a92415da1af24cba",
+  "s1/b07.webp": "b7d2ffa12fedd6b0a054a08d1cc626a2c28cc9387b17f711bcc26f5b35cab156",
+  "s1/b08.webp": "4ce254eba1e63b8560dcada56ec579bcd689ada3b1ba3317a601130078c7fb6f",
+  "s1/b09.webp": "bbc1220b0470b19b991d633fd391e92e1d05007d2f51ae574cf7bbb50dd8e8f2",
+  "s1/b10.webp": "ef009b55d85bbf82dc1cd076bf6d6160f28cfbe6c49f3acc84214938c4c150ca",
+  "s1/b11.webp": "fd8fa4b72b55924aeb1d6090f7149ec1c418f0fde858153fea6fa982608f2cdd",
+  "s1/c00.webp": "ed5072609f0b3593e7694060f1a888c0e921a4abb0614a5b7e3afd5cefb646a1",
+  "s1/c01.webp": "03283424a82367ec8612d6b95aad3f9b01ad121d2b74d666a19fe3727a0e4537",
+  "s1/c02.webp": "876331e2d1541bae383c7256fbc8a3bc21a1ce6a2f4033e7a5a352a6d223a8eb",
+  "s1/c03.webp": "51dbe083f4035ec8304fdaede4b8f30e783b0af96278d9dd51ed04cab6fde6bf",
+  "s1/c04.webp": "531135804cf4ccdfbeb5af0e4611f51e0d22b2050d2acf28a5eb3ad7acc51278",
+  "s1/c05.webp": "39be898e46e88d58515c43ee985719707ceb568f79391d337c21f705f4af135d",
+  "s1/c06.webp": "2c90922c2b2be225d453a6163bb2b6a7d5e600287c2802b12501ec4327da6a99",
+  "s1/c07.webp": "25f7aafe7a06b8e6b6bf7de09e6bd7c83594279a4cac2d86b4607b92fa40d490",
+  "s1/c08.webp": "c0730c6afbedb57fb7b09ec4422f2b5126a3f833b4875b964437ef02ea2c11aa",
+  "s1/c09.webp": "87990d4d325cac596a41bf47e621e5ab1bc5cd950563a82484284fa09a21946c",
+  "s1/c10.webp": "bafa6c9832f5754358f6683f704f1f4ce6e4c96756d3722adde80fb777a3c099",
+  "s1/c11.webp": "9d77726316fa6f830a367dac675e9e06b038407c4b9b82e55b237c26b2852272",
+  "s2/b00.webp": "7b170364e44d6ea57c95050cdf76c308c365742bbdbcd2287cc68f44cc908271",
+  "s2/b01.webp": "b2210c09c93a7d71f8fbafe3502da140a92fd25b59fdd607002484b1a41444ee",
+  "s2/b02.webp": "c6b8e32cfdf5663b9f70b803d5ea378b177ceffec8bc52231432dcdbe4f6d4e9",
+  "s2/b03.webp": "7a56ded4b4038e1d678fea8cc5802f55ff4e84946474b6b050f18116a9af9df1",
+  "s2/b04.webp": "766c239da5ee0583dd378cb486f16d5f7674a18aac9ac4b5132c089fa01ebf36",
+  "s2/b05.webp": "104f6456bc8afeb5b5f4cc74d0892b3e24e3fa82c136803ac37be34c3d02db9f",
+  "s2/b06.webp": "879367162d7550d6560931aac6bc6da61f837f22c274229c5f47349c37e4cb1b",
+  "s2/b07.webp": "b89cef5cea61e74cd0a796f26fd9bc8b9032c86cc2992f0b2633caf8ec3c415c",
+  "s2/b08.webp": "49fe7b5b56cd473d6955c5f59d43f554a736393970e250a167ece7dcca7500b1",
+  "s2/b09.webp": "e3cfc6e52231ba99d7d8d441021be29a21158984996846b0e773974452cf9b41",
+  "s2/b10.webp": "2e77f94dcac296b4ae4cfe9e27edaeab2ab598a0bb5632b96445b3a2b3f53b1f",
+  "s2/b11.webp": "8b95a33d41e2a4e5a1bda52ebb3fd85cb1256f76057d071f092e88cb8c6d794e",
+  "s2/c00.webp": "f00e1e75488117f7f5c4ba306b65c07e0f4575ab9ca21ec95db673f1069b5d78",
+  "s2/c01.webp": "f51f545f7a4ccb22a7df3a1183c372285bcc08b2a9afe1666dd060ee9cc4a4e2",
+  "s2/c02.webp": "4d264774199a0e0fa4c5b61f99e03c35301191880bb8778db0d29dfb5b42b1fe",
+  "s2/c03.webp": "9ac98aaf35b42a0e8213657ec8f1c1cba997a10d90024de83a49d87cb98bcca5",
+  "s2/c04.webp": "7813d1f8a278d7cc9b1143578f2b3abd016dffc06549f9e016ab7aee22bcff31",
+  "s2/c05.webp": "29f5b3f3e005c5a1c24a96e5b0cf3062231424eabae52257bd3ea4928cfbb8bb",
+  "s2/c06.webp": "c29086ecb6ff6ab548883c3cd5efb4ba1086274218cdf95730a135bffc28ec09",
+  "s2/c07.webp": "969a4c8a233bed6803f6648476c8df26ee13612ac30e7f716f0901b1ebf8cefc",
+  "s2/c08.webp": "7ca7f4999315ad012f1d519ac6682202e0317d89a83fecdeb0c1253b2c4644e5",
+  "s2/c09.webp": "20549eaeab41b21d54aba5a1212f3d02b742c67804181dd8f185bba4b5dc5814",
+  "s2/c10.webp": "9d9eaca61d6a6633356fb08532cd4bd9d238a3184673a9d53d47dc340a8e9f47",
+  "s2/c11.webp": "a98308d26b2dd56ab8e2d7dcd733db9ea623f2c5e9b25f856cd3d9fa88a9732b",
+  "s3/b00.webp": "a1b0f1a6f4051ec8ab1fd96ba9e384b05977505b4edc25cd20d029c46abed699",
+  "s3/b01.webp": "fed078b0237f7e2e50817a6fb1ddf3869ee221fea069b76ea881f1bc28bfaebd",
+  "s3/b02.webp": "524ea3cddc822b4474c09f40857cef384137c04a5d1ecec4ed0b0f42746d3f41",
+  "s3/b03.webp": "0bfccb7f78b722c96515a27dbcadc844158768efeeec9429e9ef7ece4ec903dd",
+  "s3/b04.webp": "ed7e7227aff20b20efc186ac743f0d6cc1d03d6a520fe7c24f233c0903522875",
+  "s3/b05.webp": "195aff47aa008deca328bc84749a9fe3352f253aea51629743a520aab810424a",
+  "s3/b06.webp": "b805766ce513249c96976edf64be757e64e01d3de1ff33f7963eddfb7998a297",
+  "s3/b07.webp": "a53534206d153d5096e053b7b71cb2a2077fc2c8e09ea61595b7a2fd68c8198f",
+  "s3/b08.webp": "a366a921d508126d748209eb9a93db2d480fa70af33d4a30cb5dcf6d9b6f4141",
+  "s3/b09.webp": "cd174c346af42b1b8d287b8b8f81e31664e29394b646442132385c895998e302",
+  "s3/b10.webp": "9da9a11d82dc4cb8da5ca1734f3fdfb3ccd6c19f3ced1d7b7f595a22067dd5e8",
+  "s3/b11.webp": "7ace9e2fd51335f118a3ca8710c1d8e173c9f3caf691189cbe048f39429088b7",
+  "s3/c00.webp": "49edb57d7d6d60b568f36b586b44fc5a3521f4037707ac3a86067c9b15946c95",
+  "s3/c01.webp": "8699fb22b3e1ec9090cc71e083805abaa02768d76f00564971c561a07bd00ed8",
+  "s3/c02.webp": "5e75af665c13d796b9d7ea5566475ea47223b3176f587aa22e5a33e40fcd1bc2",
+  "s3/c03.webp": "2849a94ef4b8ae0256b85c0615ab294c1e0bacceea5d2259595dac9d85f6dd1e",
+  "s3/c04.webp": "5303824e277862c863349327c07262683d826ed2dffd7f9a9779ef0299c8a0fc",
+  "s3/c05.webp": "4e01cbe1e3fc7fccc32094eebab45c7c64f2dd40e63682d26761a98fb9515875",
+  "s3/c06.webp": "0d4ccd2d00b79f592d42487f2de653dbc503cff2c346fb751b5cd47f78fced1c",
+  "s3/c07.webp": "63c09377cf4defc62118aa8d8de5a898ae69b50d0ed56aaf92fde68b5dfbcfbb",
+  "s3/c08.webp": "e4f41be24740cc793f5ab6bce7015e061d0009bddde30d495663b15b7ecafd23",
+  "s3/c09.webp": "de537e35640b43e1681012e3d4f11b1c4fb75247ac89f758f465c16d3fac9204",
+  "s3/c10.webp": "a112e76a73eabe1475c9f96f978983317af22d1fde385265a0f7133ca2c0b4d9",
+  "s3/c11.webp": "e01d64c7ea895fcb1718872cb7fe4eb2df964f00534d5b7ac8ea60a362c423b3",
+  "thumb-s1.webp": "d63f31eb345e66f31a93909666bdd3bb467027cd45cf52b32816925e7de74c6e",
+  "thumb-s2.webp": "80d4e37d19c2da949a5d64ebbd00e3192aaadc2f86617db0e35b2739d9a45adf",
+  "thumb-s3.webp": "9e776d9e27849a4d367ea767dfdb2dc67c9ea0dc7741d4917d7ad291d6de8afc"
+ }
+}
