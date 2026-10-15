@@ -8,8 +8,10 @@ ground contact within 6 px of groundY for floor species' standing frames, pairwi
 different locomotion frames, finite durations, aquatic water blocks (per stage too), hopper
 airborne frames exposed on the species locomotion block, per-stage hit boxes no larger than
 1.35x the stage's alpha union, stage minLevels and default names equal to the Rust core,
-open-eyed sleep frames for species that rest with their eyes open, and the provenance and
-docs coverage.
+open-eyed sleep frames for species that rest with their eyes open, recorded anchors (pivot on
+groundY for floor species, prop and badge anchors in the canvas, swim bounds inside their
+water box and below its water line, globally and per stage), and the provenance and docs
+coverage.
 
 Strict by default: all 15 species must be extracted (`placeholder: false`). With
 CODEPET_ALLOW_PARTIAL_ART=1, species still awaiting source sheets are skipped with a
@@ -102,6 +104,22 @@ def alpha_info(size, rgba):
 
 
 # ----------------------------------------------------------------- core constants
+
+def in_canvas_point(p):
+    return (isinstance(p, list) and len(p) == 2 and all(isinstance(v, int) for v in p)
+            and 0 <= p[0] <= CANVAS and 0 <= p[1] <= CANVAS)
+
+
+def in_canvas_rect(b):
+    return (isinstance(b, list) and len(b) == 4 and all(isinstance(v, int) for v in b)
+            and b[0] >= 0 and b[1] >= 0 and b[2] > 0 and b[3] > 0
+            and b[0] + b[2] <= CANVAS and b[1] + b[3] <= CANVAS)
+
+
+def rect_within(inner, outer):
+    return (inner[0] >= outer[0] and inner[1] >= outer[1]
+            and inner[0] + inner[2] <= outer[0] + outer[2] and inner[1] + inner[3] <= outer[1] + outer[3])
+
 
 def rust_list(src, name):
     m = re.search(name + r"\s*:\s*\[[^\]]*\]\s*=\s*\[(.*?)\];", src, re.S)
@@ -214,12 +232,32 @@ for idx, sid in enumerate(CORE_IDS):
         if not (isinstance(b, list) and len(b) == 4 and b[0] >= 0 and b[1] >= 0 and b[2] > 0 and b[3] > 0
                 and b[0] + b[2] <= CANVAS and b[1] + b[3] <= CANVAS):
             fail(f"{pre} geometry.{name} must be [x,y,w,h] inside the canvas")
+    # Recorded anchors (informational in v0.2: no renderer reads them yet) stay sane.
+    pivot = geo.get("pivot")
+    if not in_canvas_point(pivot):
+        fail(f"{pre} geometry.pivot must be an [x,y] point inside the canvas")
+    elif habitat == "floor" and pivot[1] != GROUND_Y:
+        fail(f"{pre} floor geometry.pivot {pivot} must sit on groundY {GROUND_Y}")
+    for name in ("propAnchor", "badgeAnchor"):
+        if not in_canvas_point(geo.get(name)):
+            fail(f"{pre} geometry.{name} must be an [x,y] point inside the canvas")
     if habitat == "aquatic":
         water = geo.get("water")
         if not isinstance(water, dict) or not all(k in water for k in ("outer", "waterLineY", "swimBounds")):
             fail(f"{pre} aquatic manifest needs a water block")
         elif not (water["outer"][1] < water["waterLineY"] < water["outer"][1] + water["outer"][3]):
             fail(f"{pre} waterLineY must fall inside water.outer")
+        else:
+            blocks = [("water", water)] + [(f"water.byStage.{k}", v) for k, v in
+                                           sorted((water.get("byStage") or {}).items())]
+            for name, wb in blocks:
+                sb, outer, line = wb.get("swimBounds"), wb.get("outer"), wb.get("waterLineY")
+                if not (in_canvas_rect(sb) and in_canvas_rect(outer) and isinstance(line, int)):
+                    fail(f"{pre} {name} needs swimBounds and outer rectangles inside the canvas")
+                elif not rect_within(sb, outer):
+                    fail(f"{pre} {name}.swimBounds {sb} must lie inside its outer box {outer}")
+                elif sb[1] <= line:
+                    fail(f"{pre} {name}.swimBounds {sb} must start below its waterLineY {line}")
         if geo.get("roams") is not False:
             fail(f"{pre} aquatic species must not roam")
     elif geo.get("roams") is not True:

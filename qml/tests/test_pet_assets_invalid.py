@@ -140,6 +140,37 @@ class InvalidPacks(unittest.TestCase):
         self.write_manifest("goldfish", man)
         self.assertRejected("goldfish: aquatic manifest needs a water block")
 
+    def test_anchor_outside_the_canvas_or_off_the_ground(self):
+        man = self.manifest("cat")
+        man["geometry"]["pivot"] = [96, 170]
+        self.write_manifest("cat", man)
+        self.assertRejected("cat: floor geometry.pivot [96, 170] must sit on groundY 184")
+        man["geometry"]["pivot"] = [96, 184]
+        man["geometry"]["propAnchor"] = [200, 176]
+        self.write_manifest("cat", man)
+        self.assertRejected("cat: geometry.propAnchor must be an [x,y] point inside the canvas")
+
+    def test_swim_bounds_outside_the_water(self):
+        man = self.manifest("goldfish")
+        water = man["geometry"]["water"]
+        line = water["byStage"]["2"]["waterLineY"]
+        water["byStage"]["2"]["swimBounds"][1] = line - 1
+        self.write_manifest("goldfish", man)
+        self.assertRejected("goldfish: water.byStage.2.swimBounds")
+        self.assertRejected(f"must start below its waterLineY {line}")
+        man = self.manifest("axolotl")
+        sb = man["geometry"]["water"]["swimBounds"]
+        sb[0] = 0
+        self.write_manifest("axolotl", man)
+        self.assertRejected("axolotl: water.swimBounds")
+        self.assertRejected("must lie inside its outer box")
+
+    def test_closed_eyed_sleep_frame_for_an_eyes_open_sleeper(self):
+        man = self.manifest("goldfish")
+        man["states"]["sleep"]["frames"] = ["c11.webp"]
+        self.write_manifest("goldfish", man)
+        self.assertRejected("goldfish: s1 sleep frame c11.webp is not an open-eyed pose")
+
     def test_missing_and_unreferenced_files(self):
         (self.pets / "rabbit/s2/c05.webp").unlink()
         self.assertRejected("rabbit: unreferenced or missing files on disk")

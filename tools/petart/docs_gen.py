@@ -213,4 +213,9 @@ def pets_md(manifests):
     w("- Aquatic habitats grow with the stage: `geometry.water.byStage` and "
       "`geometry.stageHitBoxes` give per-stage boxes; `geometry.water.outer` and `hitBox` are "
       "the union over all stages. Renderers should hit-test with the current stage's box.")
+    w("- `geometry.pivot`, `propAnchor`, `badgeAnchor` and `water.swimBounds` (global and per "
+      "stage) are recorded for later renderers; no v0.2 code reads them. "
+      "`qml/tests/test_pet_assets.py` only checks that they are sane: the pivot on `groundY` for "
+      "floor species, the anchors inside the canvas, and the swim bounds inside their water box "
+      "and below its water line.")
     return "\n".join(out).rstrip() + "\n"
