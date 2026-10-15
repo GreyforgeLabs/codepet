@@ -417,3 +417,29 @@ test('hoppers move only on the airborne frames the shipped registry lists', () =
     const F2 = loadLibrary('../shared/PetCatalog.js', { PetRegistry: { REGISTRY: reg({ pxFrames: [1] }, undefined) } });
     assert.deepEqual([...F2.locomotion('x').airborneFrames], [1]);
 });
+
+test('hitRect follows the stage: young pets do not capture clicks around them', () => {
+    const REAL = JSON.parse(read('../assets/pets/registry.json'));
+    const R = loadLibrary('../shared/PetCatalog.js', { PetRegistry: { REGISTRY: REAL } });
+    const scaled = (b, size) => ({ x: b[0] * size / 192, y: b[1] * size / 192, width: b[2] * size / 192, height: b[3] * size / 192 });
+    const near = (a, b) => ['x', 'y', 'width', 'height'].every((k) => Math.abs(a[k] - b[k]) < 1e-9);
+    for (const id of REAL.order) {
+        const g = REAL.species[id].geometry;
+        for (const stage of [1, 2, 3]) {
+            const box = g.stageHitBoxes[String(stage)];
+            assert.ok(near(plain(R.hitRect(id, 192, false, stage)), scaled(box, 192)), `${id} s${stage}`);
+            assert.ok(near(plain(R.hitRect(id, 112, false, stage)), scaled(box, 112)), `${id} s${stage} at 112`);
+        }
+        // The young box is inside the all-stage union and smaller than it.
+        const s1 = g.stageHitBoxes['1'];
+        assert.ok(s1[2] * s1[3] < g.hitBox[2] * g.hitBox[3], `${id}: young box is smaller`);
+    }
+    // A stage-1 cat: the mask is the young box, not the union [9,12,177,172].
+    assert.ok(near(plain(R.hitRect('cat', 192, false, 1)), scaled([26, 45, 146, 139], 192)));
+    // Mirroring still mirrors the stage box about the canvas centre.
+    const m = plain(R.hitRect('cat', 192, true, 1));
+    assert.equal(m.x, 192 - (26 + 146));
+    // Without a stage (older callers) the union box is used; out-of-range stages clamp.
+    assert.ok(near(plain(R.hitRect('cat', 192, false)), scaled(REAL.species.cat.geometry.hitBox, 192)));
+    assert.ok(near(plain(R.hitRect('cat', 192, false, 9)), scaled(REAL.species.cat.geometry.stageHitBoxes['3'], 192)));
+});

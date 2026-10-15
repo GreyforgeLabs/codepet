@@ -236,10 +236,17 @@ function geometry(id) {
         ? g.viewBox.slice() : [0, 0, CANVAS, CANVAS]
     var aquatic = isAquatic(id)
     var water = aquatic && g.water && validBox(g.water.outer) ? g.water : null
+    var stageBoxes = {}
+    if (g.stageHitBoxes && typeof g.stageHitBoxes === "object")
+        for (var k in g.stageHitBoxes)
+            if (validBox(g.stageHitBoxes[k])) stageBoxes[String(k)] = g.stageHitBoxes[k].slice()
     return {
         viewBox: vb,
         groundY: typeof g.groundY === "number" ? g.groundY : GROUND_Y,
         hitBox: validBox(g.hitBox) ? g.hitBox.slice() : [vb[0], vb[1], vb[2], vb[3]],
+        // Per-stage boxes: young stages are drawn smaller (0.82/0.92), so the union
+        // `hitBox` would capture clicks over transparent pixels around them.
+        stageHitBoxes: stageBoxes,
         roams: aquatic ? false : g.roams !== false,
         water: water
     }
@@ -275,14 +282,18 @@ function locomotion(id) {
     }
 }
 
-// Clickable rectangle in display pixels for a pet drawn at `size`×`size`. Aquatic
-// species use the habitat (`water.outer`). Image.mirror flips the whole frame about
-// its centre, so a mirrored frame mirrors the box's x about the viewBox centre.
-function hitRect(id, size, facingLeft) {
+// Clickable rectangle in display pixels for a pet drawn at `size`×`size` at `stage`.
+// The stage's own box (`geometry.stageHitBoxes[stage]`, which for aquatic species is
+// the habitat as drawn at that stage) is used when present; otherwise aquatic species
+// use the habitat (`water.outer`) and floor species the all-stage `hitBox`.
+// Image.mirror flips the whole frame about its centre, so a mirrored frame mirrors the
+// box's x about the viewBox centre.
+function hitRect(id, size, facingLeft, stage) {
     var px = Math.max(0, Number(size) || 0)
     if (!isSpecies(id)) return { x: 0, y: 0, width: px, height: px }
     var g = geometry(id)
-    var box = g.water ? g.water.outer : g.hitBox
+    var own = stage !== undefined ? g.stageHitBoxes[String(clampStage(id, stage))] : undefined
+    var box = own ? own : g.water ? g.water.outer : g.hitBox
     var vb = g.viewBox
     var sx = px / vb[2], sy = px / vb[3]
     var x = box[0] - vb[0]

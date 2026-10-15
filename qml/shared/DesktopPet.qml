@@ -99,7 +99,7 @@ Item {
         return sleeping ? "RESTING · no work starts automatically" : controller.readinessText
     }
 
-    readonly property var hitBox: PetCatalog.hitRect(baseState === "memorial" ? "" : petId, petSize, displayMirrored)
+    readonly property var hitBox: PetCatalog.hitRect(baseState === "memorial" ? "" : petId, petSize, displayMirrored, stage)
     readonly property rect petHit: active ? Qt.rect(pet.x + hitBox.x, pet.y + hitBox.y, hitBox.width, hitBox.height) : Qt.rect(0, 0, 0, 0)
     readonly property rect menuHit: active && selected ? Qt.rect(menu.x, menu.y, menu.width, menu.height) : Qt.rect(0, 0, 0, 0)
     // Props are drawn inside the frames now; kept so the host mask contract is unchanged.

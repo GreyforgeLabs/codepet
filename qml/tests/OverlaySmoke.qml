@@ -384,6 +384,18 @@ Item {
                 for (i = 0; i < 8; i++) { var x0 = pet.petX; pet.cosmeticTick(); hops.push(pet.petX - x0) }
                 test.check(hops.join(",") === "0,0,4,0,0,0,4,0", "a hopper moves only on its airborne frames: " + hops.join(","))
                 pet.stopMoving()
+                // Stage-aware input mask: a young pet uses its own (smaller) box.
+                hopReg.species.cat.geometry.stageHitBoxes = {"1": [50, 90, 80, 94], "2": [40, 76, 100, 108], "3": [30, 60, 112, 124]}
+                PetCatalog.install(hopReg, test.base)
+                pet.petX = 200; pet.facingLeft = false
+                fake.snapshot = test.snap({life: test.lifeWith({appearance: "goldfish"})})
+                fake.snapshot = test.snap({life: test.lifeWith({stage: 1})})
+                test.check(test.near(pet.petHit.x, 200 + 50 * test.hitScale) && test.near(pet.petHit.y, pet.floorY + 90 * test.hitScale)
+                           && test.near(pet.petHit.width, 80 * test.hitScale) && test.near(pet.petHit.height, 94 * test.hitScale),
+                           "a stage-1 pet's petHit is the scaled stage-1 box")
+                fake.snapshot = test.snap({life: test.lifeWith({stage: 3})})
+                test.check(test.near(pet.petHit.width, 112 * test.hitScale) && test.near(pet.petHit.height, 124 * test.hitScale),
+                           "growing to stage 3 switches to the stage-3 box")
                 PetCatalog.install(FixtureRegistry.REGISTRY, test.base)
                 fake.snapshot = test.snap({life: test.lifeWith({appearance: "goldfish"})})
                 fake.snapshot = test.snap({})
