@@ -11,7 +11,7 @@ Direct dependencies, with versions from `Cargo.lock` and licenses read from each
 | Crate | Version | Used by | License |
 | --- | --- | --- | --- |
 | serde (with serde_derive) | 1.0.229 | protocol, storage | MIT OR Apache-2.0 |
-| serde_json | 1.0.151 | protocol, storage, CLI | MIT OR Apache-2.0 |
+| serde_json | 1.0.151 | protocol, storage, CLI; core tests only (dev-dependency) | MIT OR Apache-2.0 |
 | rusqlite (feature `bundled`) | 0.39.0 | storage | MIT |
 | libsqlite3-sys (via rusqlite) | 0.37.0 | storage | MIT |
 | SQLite amalgamation bundled in libsqlite3-sys | 3.51.3 | storage | Public domain ("The author disclaims copyright to this source code") |
