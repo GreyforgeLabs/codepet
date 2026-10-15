@@ -146,18 +146,36 @@ BarWidget {
 
     readonly property var launcherVerbs: ["show", "hide", "toggle", "tasks", "care", "companion", "life", "refresh"]
     // Desktop overlay verbs go through the codepet-overlay launcher as a detached argv,
-    // never through a shell string and never as a child of this shell. A test state home
-    // is passed with env(1) as more argv words: in Quickshell 0.3.1 an execDetached
-    // context object written as a JS literal launches nothing (verified offscreen).
+    // never through a shell string and never as a child of this shell. The configured
+    // binary (CODEPET_BIN) and a test state home are passed with env(1) as more argv
+    // words: in Quickshell 0.3.1 an execDetached context object written as a JS literal
+    // launches nothing (verified offscreen).
     function launch(verb) {
         if (root.launcherVerbs.indexOf(verb) < 0) return false
         var argv = [root.paths.launcher, verb]
-        if (root.paths.testState) {
+        if (root.paths.launcherEnv.length > 0) {
             if (root.paths.launcher.indexOf("=") >= 0) return false
-            argv = ["/usr/bin/env", "XDG_STATE_HOME=" + root.paths.childEnv.XDG_STATE_HOME].concat(argv)
+            argv = ["/usr/bin/env"].concat(root.paths.launcherEnv, argv)
         }
         Quickshell.execDetached(argv)
         return true
+    }
+
+    // Zero-process install probe for the launcher (read once; re-read on a click that
+    // needs it). Without it, right and middle click open the popup, which explains.
+    property bool launcherPresent: true
+    FileView {
+        id: launcherProbe
+        path: root.paths.launcher
+        printErrors: false
+        onLoaded: root.launcherPresent = true
+        onLoadFailed: root.launcherPresent = false
+    }
+    function launchOrExplain(verb) {
+        if (root.launcherPresent) return root.launch(verb)
+        launcherProbe.reload()
+        if (!root.menu) root.openPopup()
+        return false
     }
 
     // ------------------------------------------------------------- popup
@@ -359,8 +377,8 @@ BarWidget {
             hoverGrace.restart()
         }
         onClicked: mouse => {
-            if (mouse.button === Qt.RightButton) root.launch("toggle")
-            else if (mouse.button === Qt.MiddleButton) root.launch("tasks")
+            if (mouse.button === Qt.RightButton) root.launchOrExplain("toggle")
+            else if (mouse.button === Qt.MiddleButton) root.launchOrExplain("tasks")
             else if (root.menu) root.close()
             else root.openPopup()
         }

@@ -479,15 +479,39 @@ ColumnLayout {
                 }
                 RowLayout {
                     Button {
+                        id: retireConfirmButton
                         objectName: "life.retireConfirm"
                         text: "Retire " + root.name
                         enabled: root.retireNameMatches && root.retireBlock === "" && !root.hostBusy
                         onClicked: root.confirmRetire()
+                        // Button labels default to AutoText and the name is user text: force plain text.
+                        contentItem: Text {
+                            text: retireConfirmButton.text
+                            textFormat: Text.PlainText
+                            font: retireConfirmButton.font
+                            color: retireConfirmButton.palette.buttonText
+                            opacity: retireConfirmButton.enabled ? 1 : 0.5
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
                     }
                     Button {
+                        id: retireCancelButton
                         objectName: "life.retireCancel"
                         text: "Keep " + root.name
                         onClicked: root.cancelRetire()
+                        // Button labels default to AutoText and the name is user text: force plain text.
+                        contentItem: Text {
+                            text: retireCancelButton.text
+                            textFormat: Text.PlainText
+                            font: retireCancelButton.font
+                            color: retireCancelButton.palette.buttonText
+                            opacity: retireCancelButton.enabled ? 1 : 0.5
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
                     }
                 }
             }

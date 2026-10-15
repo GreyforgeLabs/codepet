@@ -251,12 +251,24 @@ GroupBox {
             wrapMode: Text.WordWrap
         }
         Button {
+            id: adoptButton
             objectName: "adoption.adopt"
             text: "Adopt " + (root.name !== "" ? root.name : "a companion") + " (starts at level 1)"
             enabled: root.canAdopt
             Accessible.description: root.blockReason !== "" ? root.blockReason
                 : LifeText.modeLabel(root.mode) + ", " + LifeText.paceLabel(root.pace) + " pace"
             onClicked: root.adopt()
+            // Button labels default to AutoText and the name is user text: force plain text.
+            contentItem: Text {
+                text: adoptButton.text
+                textFormat: Text.PlainText
+                font: adoptButton.font
+                color: adoptButton.palette.buttonText
+                opacity: adoptButton.enabled ? 1 : 0.5
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
         }
         Label {
             objectName: "adoption.notice"

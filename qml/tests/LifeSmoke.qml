@@ -191,6 +191,7 @@ Window {
                 top.check(top.w("adoption.name").text === "Ginger", "name defaults to the cat's default name")
                 top.check(!top.w("adoption.adopt").enabled, "adopt disabled before the acknowledgement")
                 top.check(top.w("adoption.adopt").text === "Adopt Ginger (starts at level 1)", "adopt button names the companion and level 1")
+                top.check(top.w("adoption.adopt").contentItem.textFormat === Text.PlainText, "adopt button renders the typed name as plain text")
                 adoption.chooseSpecies("dog")
                 top.check(top.w("adoption.name").text === "Biscuit", "picking a species updates the default name")
                 top.w("adoption.ack").checked = true
@@ -276,6 +277,9 @@ Window {
                 top.check(top.w("life.retireOpen").enabled && !top.w("life.retireConfirm").visible, "retire starts closed (step one)")
                 top.w("life.retireOpen").clicked()
                 top.check(life.retireStep === 1 && top.w("life.retireConfirm").visible, "Retire… opens the typed-name step")
+                top.check(top.w("life.retireConfirm").contentItem.textFormat === Text.PlainText
+                          && top.w("life.retireCancel").contentItem.textFormat === Text.PlainText,
+                          "retire and keep buttons render the name as plain text")
                 top.check(!top.w("life.retireConfirm").enabled, "confirm disabled before typing the name")
                 top.w("life.retireName").text = "ginger"
                 top.check(!top.w("life.retireConfirm").enabled, "a wrong-case name does not confirm")

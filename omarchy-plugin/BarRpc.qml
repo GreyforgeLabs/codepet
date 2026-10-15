@@ -3,7 +3,11 @@ import Quickshell.Io
 import "CodePetBar.js" as Model
 
 // Minimal `codepet rpc` transport for the bar: one argv-only Process per request (never
-// a shell), one request in flight, a 15 s watchdog, and frames bounded to 64 KiB.
+// a shell), one request in flight, a 15 s watchdog, and request frames bounded to 64 KiB.
+// A response line is checked against 64 KiB once it is complete; the watchdog bounds a
+// line that never ends. A child whose answer was refused here (oversize or not the
+// protocol) or that timed out is sent SIGTERM, then SIGKILL if it is still running when
+// the watchdog fires again, and no new request starts until it has exited.
 // Only the allowlisted read/care methods may be sent (CodePetBar.ALLOWED_METHODS);
 // every task.* method is refused here, so no mock supervisor can ever become a child
 // of the Omarchy shell. A hot reload that kills a request mid-flight only rolls the
@@ -63,8 +67,10 @@ Item {
         return true
     }
 
-    function finish(job, resp) {
-        if (rpc.current === job) {
+    // keepBusy: the child is still running after a refused answer or a timeout, so the
+    // slot stays taken (and the watchdog armed) until it exits.
+    function finish(job, resp, keepBusy) {
+        if (rpc.current === job && !keepBusy) {
             rpc.current = null
             rpc.busy = false
             rpcWatchdog.stop()
@@ -84,9 +90,17 @@ Item {
         onTriggered: {
             var job = rpc.current
             if (!job) return
-            job.answer(rpc.clientError(job.requestId, "CLIENT_TIMEOUT", "codepet rpc did not answer in time."))
-            if (job.running) job.signal(15)
-            else Qt.callLater(job.settle)
+            if (job.answered) {
+                // Already answered (refused or timed out) and sent SIGTERM; still running.
+                if (job.running) job.signal(9)
+                else Qt.callLater(job.settle)
+                return
+            }
+            job.answer(rpc.clientError(job.requestId, "CLIENT_TIMEOUT", "codepet rpc did not answer in time."), true)
+            if (job.running) {
+                job.signal(15)
+                rpcWatchdog.restart()
+            } else Qt.callLater(job.settle)
         }
     }
 
@@ -123,25 +137,31 @@ Item {
             }
             onRunningChanged: if (!running) Qt.callLater(proc.settle)
 
-            function answer(resp) {
+            function answer(resp, keepBusy) {
                 if (answered) return
                 answered = true
-                rpc.finish(proc, resp)
+                rpc.finish(proc, resp, keepBusy === true)
+            }
+            // A refused answer: report it now, end the child (the real binary has already
+            // written its one frame) and keep the slot until it has exited.
+            function reject(code, message) {
+                answer(rpc.clientError(requestId, code, message), true)
+                if (running) signal(15)
             }
             function handleLine(line) {
                 if (answered) return
                 if (Model.utf8Bytes(line) > rpc.maxFrameBytes) {
-                    answer(rpc.clientError(requestId, "OUTPUT_LIMIT", "Response frame exceeded 64 KiB."))
+                    reject("OUTPUT_LIMIT", "Response frame exceeded 64 KiB.")
                     return
                 }
                 var resp
                 try { resp = JSON.parse(line) } catch (e) {
-                    answer(rpc.clientError(requestId, "PROTOCOL_MISMATCH", "Response was not JSON."))
+                    reject("PROTOCOL_MISMATCH", "Response was not JSON.")
                     return
                 }
                 if (!resp || typeof resp !== "object" || resp.v !== 1 || typeof resp.ok !== "boolean"
                         || (resp.id !== requestId && !(resp.ok === false && resp.id === null))) {
-                    answer(rpc.clientError(requestId, "PROTOCOL_MISMATCH", "Unexpected response envelope."))
+                    reject("PROTOCOL_MISMATCH", "Unexpected response envelope.")
                     return
                 }
                 answer(resp)
@@ -160,6 +180,12 @@ Item {
                     }
                 } else if (didStart) {
                     rpc.notInstalled = false
+                }
+                if (rpc.current === proc) {
+                    // A refused or timed-out child has now exited: free the slot.
+                    rpc.current = null
+                    rpc.busy = false
+                    rpcWatchdog.stop()
                 }
                 proc.destroy()
             }

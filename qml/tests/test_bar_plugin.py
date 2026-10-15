@@ -231,12 +231,17 @@ class SourceContract(unittest.TestCase):
         launch = function_bodies(self.qml["BarWidget.qml"])["launch"]
         self.assertIn("var argv = [root.paths.launcher, verb]", launch)
         self.assertIn("root.launcherVerbs.indexOf(verb) < 0", launch)
-        self.assertIn('argv = ["/usr/bin/env", "XDG_STATE_HOME=" + root.paths.childEnv.XDG_STATE_HOME].concat(argv)', launch)
+        self.assertIn('argv = ["/usr/bin/env"].concat(root.paths.launcherEnv, argv)', launch)
+        self.assertIn('if (root.paths.launcher.indexOf("=") >= 0) return false', launch)
 
     def test_mouse_buttons(self):
         bw = self.qml["BarWidget.qml"]
-        self.assertIn('if (mouse.button === Qt.RightButton) root.launch("toggle")', bw)
-        self.assertIn('else if (mouse.button === Qt.MiddleButton) root.launch("tasks")', bw)
+        self.assertIn('if (mouse.button === Qt.RightButton) root.launchOrExplain("toggle")', bw)
+        self.assertIn('else if (mouse.button === Qt.MiddleButton) root.launchOrExplain("tasks")', bw)
+        # Without the launcher a click opens the popup (which says so) instead of nothing.
+        explain = function_bodies(bw)["launchOrExplain"]
+        self.assertIn("if (root.launcherPresent) return root.launch(verb)", explain)
+        self.assertIn("root.openPopup()", explain)
         self.assertIn("else root.openPopup()", bw)
 
     def test_state_home_reaches_files_rpc_and_launcher(self):
@@ -245,7 +250,7 @@ class SourceContract(unittest.TestCase):
         self.assertIn("path: root.paths.barState", bw)
         self.assertIn("stateDir: root.paths.stateDir", bw)
         self.assertIn("childEnv: root.paths.childEnv", bw)
-        self.assertIn("root.paths.childEnv.XDG_STATE_HOME", function_bodies(bw)["launch"])
+        self.assertIn("root.paths.launcherEnv", function_bodies(bw)["launch"])
         self.assertIn('XDG_STATE_HOME: Quickshell.env("XDG_STATE_HOME")', bw)
         self.assertIn("card.widget.paths.testState", self.qml["BarPopup.qml"])
         self.assertIn('"Test state: "', self.qml["BarPopup.qml"])
@@ -414,7 +419,15 @@ print(json.dumps({{"v": 1, "id": req["id"], "ok": True, "result": result}}), flu
 FAKE_LAUNCHER = r'''#!{python} -I
 import json, os, sys
 with open(os.path.join(os.environ["HOME"], "launch.log"), "a") as log:
-    log.write(json.dumps({{"argv": sys.argv[1:], "state_home": os.environ.get("XDG_STATE_HOME", "")}}) + "\n")
+    log.write(json.dumps({{"argv": sys.argv[1:], "state_home": os.environ.get("XDG_STATE_HOME", ""),
+                          "bin": os.environ.get("CODEPET_BIN")}}) + "\n")
+'''
+
+# A wrong `binary` setting: prints a non-protocol line, then would wait for a minute.
+GARBLED_CODEPET = r'''#!/bin/sh
+echo "$$" >> "$HOME/garbled.pids"
+echo garbage
+exec sleep 60
 '''
 
 HARNESS = r'''import QtQuick
@@ -731,8 +744,35 @@ class QuickshellPluginLoad(unittest.TestCase):
         # (`qs ipc call` would read "show" as its own subcommand, so another verb is used.)
         self.call("launch", "companion")
         self.assertTrue(self.wait_for(lambda: len(self.launch_log()) >= 1))
-        self.assertEqual(self.launch_log()[0], {"argv": ["companion"], "state_home": str(qa)})
+        self.assertEqual(self.launch_log()[0], {"argv": ["companion"], "state_home": str(qa), "bin": None})
         self.assertFalse((self.home / ".local/state/codepet").exists(), "the default state home is untouched")
+
+    def test_binary_setting_reaches_the_launcher(self):
+        alt = "/opt/elsewhere/codepet"
+        self.start(shell_entry={"binary": alt}, state=bar_state(version=7))
+        self.call("launch", "companion")
+        self.assertTrue(self.wait_for(lambda: len(self.launch_log()) >= 1))
+        self.assertEqual(self.launch_log()[0]["argv"], ["companion"])
+        self.assertEqual(self.launch_log()[0]["bin"], alt)
+
+    def test_a_refused_answer_ends_the_child_before_the_slot_frees(self):
+        garbled = self.make_tmp_state_home().parent / "garbled-codepet"
+        garbled.write_text(GARBLED_CODEPET)
+        garbled.chmod(0o700)
+        self.start(shell_entry={"binary": str(garbled)}, state=bar_state(version=7))
+        pids = self.home / "garbled.pids"
+        self.assertTrue(self.wait_for(lambda: pids.exists() and pids.read_text().strip() != ""), self.output())
+        pid = int(pids.read_text().split()[0])
+
+        def alive():
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return False
+            return Path(f"/proc/{pid}").exists() and "Z" not in Path(f"/proc/{pid}/stat").read_text().split()[2]
+        self.assertTrue(self.wait_for(lambda: not alive(), 5), "the refused child is signalled, not left running")
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"], 5), "the slot frees once it exits")
+        self.assertEqual(len(pids.read_text().split()), 1, "no second child started next to the first")
 
     def make_tmp_state_home(self):
         holder = tempfile.TemporaryDirectory()

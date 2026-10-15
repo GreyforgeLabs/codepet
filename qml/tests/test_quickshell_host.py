@@ -241,7 +241,22 @@ def block(text, opener):
 
 
 class HostContractV02(unittest.TestCase):
-    """SPEC-v0.2 §13 host entry and §12 host-contract additions (source contracts)."""
+    """v0.2 host entry and host-contract additions (source contracts; docs/omarchy-plugin.md)."""
+
+    def test_buttons_that_show_a_name_render_plain_text(self):
+        # Button labels default to AutoText: a pet named "<b>Rex</b>" or "<img src=...>" would
+        # render as rich text (and fetch the image). Any button whose label includes a
+        # name must replace its contentItem with a PlainText Text.
+        found = 0
+        for path in sorted((QML / "shared").glob("*.qml")):
+            text = path.read_text()
+            for m in re.finditer(r'\b(?:Button|RadioButton|CheckBox) \{', text):
+                blk = block(text[m.start():], m.group(0))
+                label = re.search(r'(?m)^\s*text: (.*)$', blk)
+                if label and re.search(r'\b(?:root|life|snap)\.name\b', label.group(1)):
+                    found += 1
+                    self.assertIn('textFormat: Text.PlainText', blk, f'{path.name}: {label.group(1)}')
+        self.assertGreaterEqual(found, 3)
 
     def test_ipc_functions_are_typed_and_complete(self):
         ipc = block(CODE, 'IpcHandler {')

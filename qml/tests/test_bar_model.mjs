@@ -152,6 +152,7 @@ test('paths: defaults, XDG overrides, and a test stateHome for both files and ch
     assert.equal(p.shellConfig, '/home/u/.config/omarchy/shell.json');
     assert.equal(p.testState, false);
     assert.deepEqual(plain(p.childEnv), {});
+    assert.deepEqual(plain(p.launcherEnv), []);
 
     const x = M.paths(M.config({}), { HOME: '/home/u', XDG_STATE_HOME: '/s', XDG_DATA_HOME: '/d', XDG_CONFIG_HOME: '/c' });
     assert.equal(x.barState, '/s/codepet/bar-state.json');
@@ -165,6 +166,11 @@ test('paths: defaults, XDG overrides, and a test stateHome for both files and ch
     assert.equal(t.binary, '/opt/codepet');
     assert.equal(t.testState, true);
     assert.deepEqual(plain(t.childEnv), { XDG_STATE_HOME: '/home/u/qa' });
+    assert.deepEqual(plain(t.launcherEnv), ['CODEPET_BIN=/opt/codepet', 'XDG_STATE_HOME=/home/u/qa'],
+        'the configured binary and a test state home reach the desktop-pet launcher');
+    const b = M.paths(M.config({ binary: '/opt/codepet' }), { HOME: '/home/u' });
+    assert.deepEqual(plain(b.launcherEnv), ['CODEPET_BIN=/opt/codepet']);
+    assert.deepEqual(plain(b.childEnv), {});
 });
 
 test('no path ever points inside the plugin folder', () => {
