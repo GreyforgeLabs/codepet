@@ -14,8 +14,17 @@ Item {
     property var timeline: null
     property int requestsBefore: 0
     property int savedFrame: 0
-    PreviewHost { id: host }
+    property int lifeRequests: 0
+    PreviewHost { id: host; onLifeRequested: top.lifeRequests += 1 }
     Panel { id: panel; width: 700; host: host }
+    // A host without openLife(): the See Life button must stay hidden there.
+    QtObject {
+        id: bareHost
+        property var snapshot: host.snapshot
+        property bool busy: false
+        function request(method, params, callback) {}
+    }
+    PetCare { id: bareCare; visible: false; width: 400; host: bareHost; showSprite: false }
     function find(obj, name) {
         if (!obj) return null
         if (obj.objectName === name) return obj
@@ -63,7 +72,10 @@ Item {
                           "care labels come from the catalog for the v0.1 pet")
                 top.check(top.find(top.care, "petCare.footer").text
                           === "Needs only change during active time while CodePet is on your bar. See Life.", "footer explains active time")
-                top.check(!top.find(top.care, "petCare.seeLife").visible, "See Life is hidden when the host cannot open it")
+                top.check(top.find(top.care, "petCare.seeLife").visible, "See Life shows when the host can open it")
+                top.find(top.care, "petCare.seeLife").clicked()
+                top.check(top.lifeRequests === 1, "See Life asks the host to open the life view")
+                top.check(!top.find(bareCare, "petCare.seeLife").visible, "See Life is hidden when the host cannot open it")
                 top.check(!host.snapshot.care.ready_to_work, "full bars plus bathroom due is not ready")
                 top.fixture("sleep_due")
                 top.check(!top.form.readyToWork && top.care.canSleep, "sleep due blocks Start and offers bed")
