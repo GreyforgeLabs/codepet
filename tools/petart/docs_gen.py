@@ -4,6 +4,8 @@ Both are derived from the committed manifests only (never from the source sheets
 `extract.py --index` gives identical output with or without the sheets present.
 """
 
+import json
+
 import roster
 
 ROUTE = ("GPT Image 2 (OpenAI image generation), run through the operator's ChatGPT "
@@ -75,9 +77,14 @@ def provenance_md(manifests, src_root=None):
         notes = []
         for st in src.get("extraction", []):
             for sheet, o in sorted(st.get("sheetScales", {}).items()):
-                notes.append(f"- `{sheet}` sheet scale {o.get('scale')}: {o.get('why', '')}".rstrip())
+                desc = ", ".join(f"{k}={json.dumps(v)}" for k, v in sorted(o.items()) if k != "why")
+                notes.append(f"- `{sheet}` sheet: {desc}. {o.get('why', '')}".rstrip())
+            if st.get("keying"):
+                o = st["keying"]
+                desc = ", ".join(f"{k}={json.dumps(v)}" for k, v in sorted(o.items()) if k != "why")
+                notes.append(f"- stage {st['stage']} keying (all sheets): {desc}. {o.get('why', '')}".rstrip())
             for cell, o in sorted(st.get("overrides", {}).items()):
-                desc = ", ".join(f"{k}={v}" for k, v in sorted(o.items()) if k != "why")
+                desc = ", ".join(f"{k}={json.dumps(v)}" for k, v in sorted(o.items()) if k != "why")
                 notes.append(f"- stage {st['stage']} `{cell}`: {desc}. {o.get('why', '')}".rstrip())
         if notes:
             w("Extraction overrides (`tools/petart/overrides.json`):")
@@ -153,6 +160,12 @@ def pets_md(manifests):
         t = roster.STATES[name]
         w(f"| {name} | {', '.join(t['frames'])} | {t['frameMs']} | {t['mode']} | {t['reducedFrame']} |")
     w("")
+    custom = [(sid, name, fr) for sid in roster.ORDER
+              for name, fr in roster.SPECIES[sid]["stateFrames"].items()]
+    if custom:
+        w("Per-species frame lists (same timing and mode): "
+          + "; ".join(f"`{sid}` {name} = {', '.join(fr)}" for sid, name, fr in custom) + ".")
+        w("")
     w("Base sheet cells: " + "; ".join(f"b{i:02d} {n}" for i, n in enumerate(roster.BASE_CELLS)) + ".")
     w("")
     w("Care sheet cells: " + "; ".join(f"c{i:02d} {n}" for i, n in enumerate(roster.CARE_CELLS)) + ".")
@@ -176,8 +189,10 @@ def pets_md(manifests):
     w("Sources default to `~/Media/codepet-art/v0.2` (`--src` or `CODEPET_ART_SRC` to override). "
       "`*.reject-*.png` files are ignored; a species is ready only when all six sheets exist and "
       "match the sha256 values in its `provenance.json`. Fixes for individual cells (remap to "
-      "another cell, horizontal flip, nudge, fit exclusion) go in `tools/petart/overrides.json` "
-      "with a reason; the reasons are copied into `PROVENANCE.md`.")
+      "another cell, horizontal flip, nudge, per-cell scale, fit exclusion, grounded hopper "
+      "frame, source-sheet erase), per-sheet fixes (size scale, keying options, component "
+      "reassignment) and species-wide keying options go in `tools/petart/overrides.json` with "
+      "a reason; the reasons are copied into `PROVENANCE.md`.")
     w("")
     w("## Limits")
     w("")
@@ -193,5 +208,9 @@ def pets_md(manifests):
       "its base sheet; such sheets carry a measured `sheets` scale override (listed in "
       "`PROVENANCE.md`). Remaining size differences between poses come from the sheets.")
     w("- Hopper species (rabbit, frog, owl) keep the sheet's lift on locomotion frames; those "
-      "frames are listed in `states.locomotion.airborneFrames` and exempt from the ground check.")
+      "frames are listed in `locomotion.airborneFrames` (and `states.locomotion.airborneFrames`) "
+      "and exempt from the ground check.")
+    w("- Aquatic habitats grow with the stage: `geometry.water.byStage` and "
+      "`geometry.stageHitBoxes` give per-stage boxes; `geometry.water.outer` and `hitBox` are "
+      "the union over all stages. Renderers should hit-test with the current stage's box.")
     return "\n".join(out).rstrip() + "\n"
