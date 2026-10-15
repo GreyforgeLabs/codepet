@@ -69,6 +69,32 @@ ColumnLayout {
             parts.push("Recovery metadata restored for " + repaired + " task(s); use Resolve recovery to abandon without a reward.")
         return parts.length > 0 ? parts.join(" ") : "No interrupted tasks found."
     }
+    // True when the active task's review cannot be echoed back to task.discard: no
+    // review, or a digest an older build left empty or over the protocol's 128-byte
+    // limit (task.discard would fail with INVALID_PARAMS). "Check interrupted tasks"
+    // replaces such digests; this mirrors the protocol bound only, never decides.
+    function reviewDigestUnusable(task) {
+        if (!task || !task.review)
+            return true
+        var digest = task.review.digest
+        if (typeof digest !== "string" || digest.length === 0)
+            return true
+        var bytes = 0
+        for (var i = 0; i < digest.length; i++) {
+            var unit = digest.charCodeAt(i)
+            if (unit < 0x80)
+                bytes += 1
+            else if (unit < 0x800)
+                bytes += 2
+            else if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < digest.length
+                     && digest.charCodeAt(i + 1) >= 0xDC00 && digest.charCodeAt(i + 1) <= 0xDFFF) {
+                bytes += 4
+                i += 1
+            } else
+                bytes += 3
+        }
+        return bytes > 128
+    }
     function openReview(taskId) {
         root.view = "review"
         taskReview.load(taskId)
@@ -171,8 +197,9 @@ ColumnLayout {
                 Label {
                     objectName: "panel.recoveryMetadataHint"
                     Layout.fillWidth: true
-                    visible: root.activeTask !== null && root.activeTask.state === "recovery_required" && !root.activeTask.review
-                    text: "The saved review metadata is missing, so this task cannot be abandoned yet. Use \"Check interrupted tasks\" to restore it; nothing is resumed."
+                    visible: root.activeTask !== null && root.activeTask.state === "recovery_required"
+                        && root.reviewDigestUnusable(root.activeTask)
+                    text: "The saved review metadata is missing or damaged, so this task cannot be abandoned yet. Use \"Check interrupted tasks\" to restore it; nothing is resumed."
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                 }

@@ -128,6 +128,31 @@ Item {
                 top.check(panel.activeTask !== null && panel.activeTask.state === "recovery_required", "recovery_required fixture loaded")
                 top.check(top.find(panel, "panel.resolveRecovery").visible, "Resolve recovery button shown")
                 top.check(!top.find(panel, "panel.recoveryMetadataHint").visible, "no missing-metadata hint when the review is present")
+                // A non-null but malformed digest (left by an older build) still needs the hint:
+                // task.discard would reject it with INVALID_PARAMS.
+                var hint = top.find(panel, "panel.recoveryMetadataHint")
+                var saved = host.snapshot
+                var damaged = JSON.parse(JSON.stringify(saved))
+                damaged.active_task.review.digest = ""
+                host.snapshot = damaged
+                top.check(hint.visible && hint.text.indexOf("Check interrupted tasks") !== -1, "empty digest shows the recovery hint")
+                damaged = JSON.parse(JSON.stringify(saved))
+                damaged.active_task.review.digest = "f".repeat(200)
+                host.snapshot = damaged
+                top.check(hint.visible, "oversized digest shows the recovery hint")
+                damaged = JSON.parse(JSON.stringify(saved))
+                damaged.active_task.review = null
+                host.snapshot = damaged
+                top.check(hint.visible, "missing review shows the recovery hint")
+                host.snapshot = saved
+                top.check(!hint.visible, "hint clears once the saved review is usable again")
+                var digestTask = function (d) { return { "review": { "digest": d } } }
+                top.check(!panel.reviewDigestUnusable(digestTask("a".repeat(128))), "128-byte digest is within the protocol limit")
+                top.check(panel.reviewDigestUnusable(digestTask("a".repeat(129))), "129-byte digest exceeds the protocol limit")
+                top.check(panel.reviewDigestUnusable(digestTask("\u4e2d".repeat(43))), "limit counts UTF-8 bytes (43 CJK = 129 bytes)")
+                top.check(!panel.reviewDigestUnusable(digestTask("\u4e2d".repeat(42))), "42 CJK = 126 bytes is usable")
+                top.check(panel.reviewDigestUnusable(digestTask(null)) && panel.reviewDigestUnusable({ "review": null }),
+                          "non-string digest or null review is unusable")
                 top.check(panel.recoverNotice({ "changed": [], "repaired": [] }) === "No interrupted tasks found.", "empty recovery result")
                 top.check(panel.recoverNotice({ "changed": [], "repaired": ["preview-recovery"] }).indexOf("Recovery metadata restored") === 0,
                           "a metadata-only repair is reported, not 'no interrupted tasks found'")
