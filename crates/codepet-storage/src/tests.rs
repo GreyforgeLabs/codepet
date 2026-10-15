@@ -1296,6 +1296,124 @@ fn recover_flags_tampered_verification_column() {
 }
 
 #[test]
+fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
+    for missing in ["review_digest", "review_verification", "both"] {
+        let env = Env::new();
+        let mut store = env.open();
+        let (id, original_digest) =
+            reviewed(&mut store, &env, Category::Hunger, Verification::Failed);
+        let columns = match missing {
+            "both" => "review_digest = NULL, review_verification = NULL",
+            "review_digest" => "review_digest = NULL",
+            _ => "review_verification = NULL",
+        };
+        env.raw()
+            .execute(&format!("UPDATE tasks SET {columns} WHERE id = ?1"), [&id])
+            .unwrap();
+
+        let recovered = store.recover().unwrap();
+        assert_eq!(recovered.changed[0].to, State::RecoveryRequired);
+        let review = recovered
+            .active_task
+            .unwrap()
+            .review
+            .expect("recovery must expose the digest needed for explicit abandonment");
+        assert_eq!(review.digest.len(), 64);
+        assert!(review.digest.bytes().all(|b| b.is_ascii_hexdigit()));
+        if missing == "review_verification" {
+            assert_eq!(review.digest, original_digest);
+        } else {
+            assert_ne!(review.digest, original_digest);
+        }
+        assert_eq!(
+            review.verification,
+            if missing == "review_digest" {
+                Verification::Failed
+            } else {
+                Verification::NotVerified
+            }
+        );
+        // The replacement metadata is durable and is never treated as a new sealed result.
+        drop(store);
+        let mut store = env.open();
+        assert!(store.recover().unwrap().changed.is_empty());
+        let task = store.review(&id).unwrap();
+        assert_eq!(task.state, State::RecoveryRequired);
+        assert_eq!(task.review.as_ref().unwrap().digest, review.digest);
+        assert_eq!(task.review.as_ref().unwrap().artifact, ARTIFACT);
+        assert!(matches!(
+            accept(
+                &mut store,
+                &id,
+                &review.digest,
+                "no-reward",
+                Some("acknowledged")
+            ),
+            Err(StorageError::InvalidState(_))
+        ));
+        assert!(matches!(
+            store.discard(&id, "wrong-digest"),
+            Err(StorageError::ReviewChanged)
+        ));
+        let (next, revision, token) = ready(&mut store, &env, Category::Thirst);
+        assert!(matches!(
+            store.start(&next, revision, &token, sup()),
+            Err(StorageError::Busy)
+        ));
+        assert_eq!(
+            store.discard(&id, &review.digest).unwrap().state,
+            State::Discarded
+        );
+        assert!(store.snapshot().unwrap().active_task.is_none());
+        store.start(&next, revision, &token, sup()).unwrap();
+        assert_eq!(meters(&store).hunger, 7000);
+        assert_eq!(env.count("SELECT count(*) FROM rewards"), 0);
+        assert_eq!(env.count("SELECT count(*) FROM acceptances"), 0);
+    }
+}
+
+#[test]
+fn recover_repairs_already_stranded_recovery_metadata() {
+    let env = Env::new();
+    let mut store = env.open();
+    let (id, _) = reviewed(&mut store, &env, Category::Hunger, Verification::Failed);
+    // A previous build may already have recovered the damaged task without providing
+    // the metadata needed to abandon it. Re-running recovery must also repair that case.
+    env.raw()
+        .execute(
+            "UPDATE tasks SET state = 'recovery_required', review_digest = NULL,
+                review_verification = NULL WHERE id = ?1",
+            [&id],
+        )
+        .unwrap();
+    let seq = store.last_seq().unwrap();
+    let recovered = store.recover().unwrap();
+    assert!(recovered.changed.is_empty());
+    assert_eq!(store.last_seq().unwrap(), seq);
+    let active = recovered.active_task.unwrap();
+    assert_eq!(active.state, State::RecoveryRequired);
+    let review = active.review.unwrap();
+    assert_eq!(review.verification, Verification::NotVerified);
+    assert_eq!(
+        store.review(&id).unwrap().review.unwrap().artifact,
+        ARTIFACT
+    );
+    assert!(matches!(
+        accept(
+            &mut store,
+            &id,
+            &review.digest,
+            "still-blocked",
+            Some("acknowledged")
+        ),
+        Err(StorageError::InvalidState(_))
+    ));
+    store.discard(&id, &review.digest).unwrap();
+    assert!(store.snapshot().unwrap().active_task.is_none());
+    assert_eq!(env.count("SELECT count(*) FROM rewards"), 0);
+}
+
+#[test]
 fn every_state_change_appends_an_event() {
     let env = Env::new();
     let mut store = env.open();

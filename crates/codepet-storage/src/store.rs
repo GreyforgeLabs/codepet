@@ -913,23 +913,45 @@ impl Store {
 
     /// Explicit recovery. Never resumes work: active phases whose supervisor is confirmed
     /// dead (PID + start time mismatch) become `interrupted`; a `review_ready` task whose
-    /// recomputed digest differs becomes `recovery_required`.
+    /// recomputed digest differs becomes `recovery_required`. Missing review metadata is
+    /// replaced only with abandonment metadata, never a valid sealed review: a fresh opaque
+    /// digest and `not_verified` let the user explicitly discard the blocked task.
     pub fn recover(&mut self) -> Result<RecoverResult> {
         let now = self.now();
         let tx = self.write()?;
         let tasks = load_tasks(
             &tx,
             "state IN ('preparing','running','waiting_for_user','verifying','cancelling',
-                'review_ready') ORDER BY created_at_ms, rowid",
+                'review_ready','recovery_required') ORDER BY created_at_ms, rowid",
             &[],
         )?;
         let mut changed = Vec::new();
         for t in &tasks {
             let to = if t.state == State::ReviewReady {
                 (!review_intact(&tx, t)?).then_some(State::RecoveryRequired)
+            } else if t.state == State::RecoveryRequired {
+                None
             } else {
                 (!t.supervisor.is_some_and(|s| s.is_alive())).then_some(State::Interrupted)
             };
+            if (t.state == State::RecoveryRequired || to == Some(State::RecoveryRequired))
+                && (t.review_digest.is_none() || t.review_verification.is_none())
+            {
+                // Keep existing metadata and artifact bytes. A missing digest cannot
+                // authorize any action, so issue a durable abandonment identity instead
+                // of dropping the exact-digest requirement. RecoveryRequired still
+                // forbids acceptance, even if a missing check used to be `passed`.
+                let digest = match &t.review_digest {
+                    Some(digest) => digest.clone(),
+                    None => sys::hex(&sys::random_bytes::<32>()?),
+                };
+                tx.execute(
+                    "UPDATE tasks SET review_digest = COALESCE(review_digest, ?1),
+                        review_verification = COALESCE(review_verification, 'not_verified'),
+                        updated_at_ms = ?2 WHERE id = ?3",
+                    params![digest, now, t.id],
+                )?;
+            }
             if let Some(to) = to {
                 transition(&tx, t, to, now)?;
                 changed.push(RecoveryChange {
