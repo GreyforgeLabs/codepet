@@ -51,6 +51,41 @@ fn changed_draft_invalidates_start() {
     assert_eq!(e.update(id, 1, draft()), Err(Error::StaleRevision));
 }
 #[test]
+fn changed_settings_invalidate_all_preflights() {
+    let mut e = Engine::default();
+    let first = e.create(draft()).unwrap();
+    let second = e.create(draft()).unwrap();
+    let first_token = e.preflight(first).unwrap();
+    let second_token = e.preflight(second).unwrap();
+    e.set_settings(Settings {
+        timeout_seconds: 7200,
+        ..Settings::default()
+    })
+    .unwrap();
+    assert_eq!(e.start(first, first_token), Err(Error::InvalidToken));
+    assert_eq!(e.start(second, second_token), Err(Error::InvalidToken));
+    assert_eq!(e.active_job(), None);
+    assert_eq!(e.task(first).unwrap().state, State::Draft);
+    let fresh = e.preflight(first).unwrap();
+    e.start(first, fresh).unwrap();
+}
+
+#[test]
+fn rejected_settings_preserve_preflight_and_settings() {
+    let mut e = Engine::default();
+    let id = e.create(draft()).unwrap();
+    let token = e.preflight(id).unwrap();
+    assert_eq!(
+        e.set_settings(Settings {
+            timeout_seconds: 0,
+            ..Settings::default()
+        }),
+        Err(Error::InvalidSettings)
+    );
+    assert_eq!(e.settings(), &Settings::default());
+    e.start(id, token).unwrap();
+}
+#[test]
 fn superseded_preflight_is_invalid() {
     let mut e = Engine::default();
     let id = e.create(draft()).unwrap();
