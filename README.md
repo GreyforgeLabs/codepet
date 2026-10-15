@@ -12,6 +12,22 @@ The default presentation is a small, transparent desktop pet, with short cosmeti
 
 Read [overlay support and live checks](docs/desktop-overlay.md) before running. No autostart, desktop settings, lock-screen hook or user-machine installation is performed by this change.
 
+## v0.2.0 (private testing prerelease)
+
+Fifteen companions with three stages each, a humane permadeath lifecycle (opt-out, armed only
+after the rules are acknowledged) and the Omarchy bar plugin `greyforge.codepet`. See the
+[changelog](CHANGELOG.md), [lifecycle rules](docs/lifecycle.md), [decisions](docs/decisions/0001-v0.2-lifecycle.md),
+[companions](docs/pets.md) and [bar plugin](docs/omarchy-plugin.md).
+
+- Install or update for the current user: `packaging/omarchy/install.sh` (`--dry-run` lists every
+  staged file and changes nothing; `--no-plugin` skips the bar plugin). It never touches
+  `$XDG_STATE_HOME/codepet`; the first `codepet state` migrates the database and keeps a backup.
+- Remove: `packaging/omarchy/uninstall.sh` (moves the plugin and runtime to `~/.cache/codepet`;
+  keeps the pet's data and the commands).
+- Measure: `tools/measure-overlay.sh PID...` (PSS, CPU, wakeups; read-only).
+- Live desktop results are recorded in [validation](docs/validation.md); anything not yet run
+  there is marked untested.
+
 ## What works today
 
 - Rust workspace with four crates: `codepet-core` (pure rules and the older in-memory model), `codepet-protocol` (versioned, bounded JSON envelopes), `codepet-storage` (SQLite state) and the `codepet` CLI

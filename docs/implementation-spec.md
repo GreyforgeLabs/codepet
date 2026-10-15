@@ -80,6 +80,12 @@ The selected coding provider can require its own account, subscription, API key,
 
 Automatic bug discovery; issue trackers; pull requests; commits or pushes to the user's repository; multiple agents; task queues; recurring chores; terminal-wide session monitoring; screen or clipboard surveillance; system package removal; privileged commands; automatic dependency installation; unrestricted provider MCP servers; remote filesystem targets; cloud sync; plugin marketplace; social features; complex pet breeding or death mechanics.
 
+> **Superseded in v0.2.0 (2026-10-15).** Death mechanics are no longer excluded: v0.2 adds
+> an opt-out permadeath lifecycle (with a gentle mode, explicit arming, attended-time-only
+> neglect, frozen grace and a memorial). See [lifecycle.md](lifecycle.md) for the rules and
+> [decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md) for the decisions.
+> Breeding, multiple simultaneous pets and every other item above remain excluded.
+
 A task may run tests and edit project code. It must not run `sudo`, administer the machine, delete caches across the home directory, or treat an entire filesystem as a cleanup target. Dependency downloads and updates require the precise workflow in §10; hygiene is not permission to “clean my computer.”
 
 ## 4. Care categories and reward rules
@@ -117,6 +123,14 @@ All meters represent **well-being**, from 0 to 100: larger is better. UI labels 
 **REW-06:** A rollback changes the original reward to reversed and removes the granted increment, clamped at zero, in the same transaction recording successful rollback. Do not rewrite subsequent rewards. Explain that meter decay and later rewards can make the resulting balance different from the pre-task balance.
 
 ### 4.1 Decay and pauses
+
+> **Superseded in v0.2.0 (2026-10-15).** The "floor 20, no pet death" rule and the
+> UI-computed decay below describe the earlier target. v0.2 lives decay only during
+> attended time recorded by the bar plugin and settled by Rust, hunger and thirst can lead
+> to a critical period and, for armed permadeath lives, to a permanent end; gentle lives
+> faint instead. See [lifecycle.md](lifecycle.md) and
+> [decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md). The bullets below
+> are kept for history.
 
 - Decay is disabled by default. Offer an optional “Gentle decay while open” setting
 - Default enabled rates: hunger 1 point/hour, thirst 1/hour, mental health 0.5/hour, hygiene 0.5/hour

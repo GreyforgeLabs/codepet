@@ -47,7 +47,9 @@ jobs:
         run: |
           node --version
           node --test qml/tests/*.mjs
-      - name: CI matrix covers every test
-        run: python3 qml/tests/test_ci_matrix.py
+      - name: CI matrix covers every test; release docs present
+        run: |
+          python3 qml/tests/test_ci_matrix.py
+          python3 qml/tests/test_release_docs.py
       - name: Portable QML lint
         run: pyside6-qmllint -I qml qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml

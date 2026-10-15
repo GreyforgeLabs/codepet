@@ -1,3 +1,67 @@
+# v0.2.0 validation: release branch after review fixes, greyarch, 2026-10-15
+
+Branch `release/v0.2.0` with WP-5 (pet art) merged and the confirmed review findings fixed
+in separate `Fix review finding:` commits. Local workstation (Arch Linux, kernel
+7.2.5-3-omarchy, AMD Ryzen 5 3600): rustc/cargo 1.98.1, PySide6 6.11.2 / Qt 6.11.2,
+Quickshell 0.3.1, Node 26.8.1. Cargo ran one build at a time in a 4 GiB memory-capped scope
+with `-j 2 --offline`.
+
+## Automated gates (this run)
+
+- `cargo fmt --all --check`: passed
+- `cargo test --workspace --locked`: 338 passed, 0 failed, 0 ignored (codepet unit 5, care 10,
+  cli 10, crash 9, lifecycle 10, presence 6, rpc 17; codepet-core 54; codepet-protocol 55;
+  codepet-storage 162)
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed
+- `codepet mock-demo` and `codepet --version` (`codepet 0.2.0`): passed
+- Offscreen QML smokes (`qml/tests/run_qml.py`), all 0 failures: CareFlowSmoke 42 checks,
+  CareSmoke 34, ChooserSmoke 44, FilteredDraftSmoke 8, LifeSmoke 239, OverlaySmoke 107,
+  PetSpriteSmoke 21, PreviewSmoke 182, TimelineSmoke 11
+- `test_overlay_windows.py` (7 checks), `test_quickshell_host.py` (38 tests, plus the
+  real-RPC harness with `CODEPET_TEST_BIN`), `test_bar_plugin.py` (27 tests, plus
+  `omarchy plugin validate` on a staged copy), `test_sprite_assets.py` (36 legacy SVGs),
+  `test_pet_assets.py` (15 of 15 packs, strict), `test_pet_assets_invalid.py` (10 broken-pack
+  cases rejected), `test_pet_distinctness.py` (max cross-species idle IoU 0.793),
+  `test_install_scripts.py` (11 tests; temporary HOME with stub tools), `copy_lint.py`
+  (0 findings), `test_ci_matrix.py`, `test_release_docs.py`: passed. Skipped here only:
+  `shellcheck` (not installed).
+- `node --test qml/tests/*.mjs`: 135 passed
+- Qt 6 `qmllint -I qml` on `qml/shared`, `qml/standalone` and every `*Smoke.qml`: no output
+- `python3 tools/petart/extract.py --check` (needs the source sheets; local only): the
+  committed frames are byte-identical to a fresh extraction
+
+Offscreen and isolated-Quickshell runs prove QML loading and the request/file contracts.
+They are not Wayland, compositor, input, focus or resource validation.
+
+## Contact-sheet review (spec §17.4 row 5)
+
+Contact sheets come from `tools/petart/extract.py --contact` (light and dark backgrounds).
+No human review is recorded in this run; each wave stays **untested** until someone checks
+it and records the result here.
+
+| Wave | Species | gait | care poses | stage readability | fish in water | not recolors | Result |
+|---|---|---|---|---|---|---|---|
+| Wave 1 | cat, dog, capybara, penguin, robot | – | – | – | n/a | – | untested |
+| Wave 2 | iguana, spider, snake, goldfish, rabbit | – | – | – | – | – | untested |
+| Wave 3 | turtle, frog, owl, red_panda, axolotl | – | – | – | – | – | untested |
+
+## Live QA on greyarch (spec §17.9)
+
+Not run in this pass (the release step installs and runs it). Each item is pass, fail or
+untested; nothing below has been observed on the live desktop yet.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | install.sh: plugin listed in `right`, no plugin QML errors in the shell log, bar shows Ginger with ◦ | untested |
+| 2 | popup care commits and the badge updates via bar-state.json; zero idle execs over 10 minutes (strace); right click starts exactly one overlay; click-through and no focus theft | untested |
+| 3 | separate test state home: presence ticks, stops on idle/lock/fullscreen/pause; warning → critical → death → memorial → adoption (playtest); stateHome restored to "" | untested |
+| 4 | evolution through accepted mock tasks: one celebration only, none after restart | untested |
+| 5 | all 15 looks at every stage at bar and overlay sizes (only while the operator is hands-off) | untested |
+| 6 | `tools/measure-overlay.sh`: PSS, CPU and wakeups for the overlay `qs` and the shell, plugin off and on, idle and active, smallest and largest pack; first-switch latency (not measured by the tool) | untested |
+| 7 | monitor hotplug and fractional scale | untested |
+
+---
+
 # Integration validation: PRs #1-#4 plus review fixes, greyarch, 2026-10-15
 
 Branch `integrate/v0.2`, based on `origin/main` `6a5f654`. PRs merged in order with real
