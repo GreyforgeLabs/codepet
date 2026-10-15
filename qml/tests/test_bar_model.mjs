@@ -37,8 +37,12 @@ const REGISTRY = {
 
 function need(n, state, extra = {}) {
     const action = { hunger: 'food', thirst: 'water', mental_health: 'play', hygiene: 'wash' }[n];
-    return { need: n, action, state, until_critical_ms: null, until_end_ms: null, ...extra };
+    return { need: n, action, state, until_warning_ms: null, until_critical_ms: null, until_end_ms: null, ...extra };
 }
+
+// A real `codepet rpc` export (armed steady permadeath life, full meters). The storage test
+// `the_ui_fixture_has_exactly_the_exported_shape` keeps it identical in shape to Rust's output.
+const RUST_EXPORT = JSON.parse(readFileSync(new URL('./fixtures/bar-state.v1.json', import.meta.url), 'utf8'));
 
 function barState(over = {}) {
     const base = {
@@ -301,6 +305,35 @@ test('the predicted badge escalates from uncredited attended time, never past !!
     assert.equal(esc.glyph, '!!');
     assert.equal(esc.predicted, true);
     assert.equal(esc.committedStatus, 'warning');
+});
+
+test('the predicted ! fires from the real Rust bar-state shape (no hand-added fields)', () => {
+    const st = M.parse(JSON.stringify(RUST_EXPORT));
+    assert.ok(st, 'the real export parses');
+    const keys = (o) => Object.keys(o).sort();
+    for (const n of st.needs)
+        assert.deepEqual(keys(n), ['action', 'need', 'state', 'until_critical_ms', 'until_end_ms', 'until_warning_ms']);
+    // The hand-written fixtures in this file use exactly the exported need fields.
+    for (const n of barState().needs) assert.deepEqual(keys(n), keys(st.needs[0]));
+    assert.deepEqual(keys(barState()), keys(st));
+    const thirst = st.needs.find((n) => n.need === 'thirst');
+    assert.ok(thirst.until_warning_ms > 0 && thirst.until_warning_ms < thirst.until_critical_ms);
+    const before = M.summarize(st, cfg('status'), { attendedSinceMs: thirst.until_warning_ms - 60000 });
+    assert.equal(before.glyph, '');
+    assert.equal(before.predicted, false);
+    const warn = M.summarize(st, cfg('status'), { attendedSinceMs: thirst.until_warning_ms });
+    assert.equal(warn.glyph, '!', 'a predicted warning badge from the real file');
+    assert.equal(warn.predicted, true);
+    assert.equal(warn.label, 'Ginger · ≈ water!');
+    const crit = M.summarize(st, cfg('status'), { attendedSinceMs: thirst.until_critical_ms });
+    assert.equal(crit.glyph, '!!');
+    assert.equal(crit.predicted, true);
+    // Non-lethal needs (mood, hygiene) are predicted too, never past a warning.
+    const nonLethal = { ...st, needs: st.needs.filter((n) => n.need === 'mental_health' || n.need === 'hygiene') };
+    const mood = nonLethal.needs.find((n) => n.need === 'mental_health');
+    assert.equal(M.predict(nonLethal, mood.until_warning_ms - 1).severity, 'none');
+    assert.deepEqual(plain(M.predict(nonLethal, mood.until_warning_ms)), { severity: 'warning', need: 'mental_health', action: 'play' });
+    assert.equal(M.predict(nonLethal, 1e12).severity, 'warning');
 });
 
 test('no prediction when time is frozen', () => {

@@ -45,6 +45,9 @@ struct BarNeed {
     need: String,
     action: String,
     state: String,
+    /// Active time until the need turns low, so the bar leader can predict a warning
+    /// (including the non-lethal mood and hygiene needs) between settling commands.
+    until_warning_ms: Option<i64>,
     until_critical_ms: Option<i64>,
     until_end_ms: Option<i64>,
 }
@@ -181,6 +184,7 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
                 need: n.need.clone(),
                 action: n.action.clone(),
                 state: n.state.clone(),
+                until_warning_ms: n.until_warning_ms,
                 until_critical_ms: n.until_critical_ms,
                 until_end_ms: n.until_end_ms,
             })

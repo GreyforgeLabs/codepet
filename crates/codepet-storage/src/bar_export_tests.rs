@@ -69,6 +69,7 @@ fn export_writes_the_contract_shape_with_mode_0600() {
             "need",
             "action",
             "state",
+            "until_warning_ms",
             "until_critical_ms",
             "until_end_ms"
         ])
@@ -286,4 +287,72 @@ fn export_never_settles() {
     let after: Vec<String> = tables.iter().map(|t| env.dump(t)).collect();
     assert_eq!(before, after);
     assert_eq!(read_bar(&env)["meters"]["thirst"], 10000);
+}
+
+/// The key set of every object in `v`, recursively; arrays contribute their first element
+/// and `null` contributes nothing (an `Option` that happens to be empty).
+fn shape(v: &Value, at: &str, out: &mut BTreeSet<String>) {
+    match v {
+        Value::Object(map) => {
+            for (k, child) in map {
+                let path = format!("{at}.{k}");
+                out.insert(path.clone());
+                shape(child, &path, out);
+            }
+        }
+        Value::Array(items) => {
+            if let Some(first) = items.first() {
+                shape(first, &format!("{at}[]"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn need_windows_carry_until_warning_for_the_bar_prediction() {
+    // The bar leader predicts a warning from until_warning_ms between settling commands;
+    // without it a non-lethal need was never predicted and a lethal one jumped to critical.
+    let env = Env::with_boot();
+    let (store, _id) = armed(&env);
+    let snap = store.snapshot().unwrap();
+    assert!(store.export_bar_state().unwrap());
+    let v = read_bar(&env);
+    let needs = v["needs"].as_array().unwrap();
+    assert_eq!(needs.len(), snap.lifecycle.needs.len());
+    for (bar, view) in needs.iter().zip(&snap.lifecycle.needs) {
+        assert_eq!(bar["need"], view.need.as_str());
+        assert_eq!(bar["until_warning_ms"].as_i64(), view.until_warning_ms, "{}", view.need);
+        assert_eq!(bar["until_critical_ms"].as_i64(), view.until_critical_ms, "{}", view.need);
+    }
+    // Every need (mood and hygiene included) has a warning window from full meters.
+    assert!(needs.iter().all(|n| n["until_warning_ms"].as_i64().unwrap_or(0) > 0));
+}
+
+#[test]
+fn the_ui_fixture_has_exactly_the_exported_shape() {
+    // qml/tests/fixtures/bar-state.v1.json feeds the bar model tests; it must not carry
+    // fields the Rust export lacks (or miss ones it has).
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../qml/tests/fixtures/bar-state.v1.json"
+    ))
+    .unwrap();
+    let env = Env::with_boot();
+    let (store, _id) = armed(&env);
+    assert!(store.export_bar_state().unwrap());
+    let real = read_bar(&env);
+    let (mut a, mut b) = (BTreeSet::new(), BTreeSet::new());
+    shape(&real, "", &mut a);
+    shape(&fixture, "", &mut b);
+    // Options that are null in a fresh export (critical, task, sleep start, latest name)
+    // may be filled in the fixture; everything the export emits must be in the fixture.
+    let missing: Vec<_> = a.difference(&b).collect();
+    assert!(missing.is_empty(), "fixture lacks {missing:?}");
+    let extra: Vec<_> = b
+        .difference(&a)
+        .filter(|k| {
+            !k.starts_with(".critical.") && !k.starts_with(".task.") && !k.starts_with(".unseen_events[].")
+        })
+        .collect();
+    assert!(extra.is_empty(), "fixture has fields Rust never emits: {extra:?}");
 }

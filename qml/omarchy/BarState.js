@@ -145,7 +145,8 @@ function validNeeds(n) {
         var e = n[i]
         if (!isObject(e) || METERS.indexOf(e.need) < 0 || !isToken(e.action) || !isToken(e.state))
             return false
-        if ((e.until_critical_ms !== undefined && e.until_critical_ms !== null && !isMs(e.until_critical_ms))
+        if ((e.until_warning_ms !== undefined && e.until_warning_ms !== null && !isMs(e.until_warning_ms))
+                || (e.until_critical_ms !== undefined && e.until_critical_ms !== null && !isMs(e.until_critical_ms))
                 || (e.until_end_ms !== undefined && e.until_end_ms !== null && !isMs(e.until_end_ms)))
             return false
     }
@@ -285,6 +286,8 @@ function merge(snap, bar) {
                     if (bar.needs[b].need !== row.need)
                         continue
                     row.state = bar.needs[b].state
+                    if (bar.needs[b].until_warning_ms !== undefined)
+                        row.until_warning_ms = bar.needs[b].until_warning_ms
                     if (bar.needs[b].until_critical_ms !== undefined)
                         row.until_critical_ms = bar.needs[b].until_critical_ms
                     if (bar.needs[b].until_end_ms !== undefined)

@@ -327,7 +327,7 @@ function bar(over) {
            stage: 2, level: 2, xp: 120, next_stage_xp: 400, status: 'warning', mode: 'permadeath',
            armed: true, pace: 'steady', paused: false, fainted: false, death_pending: false},
     meters: {hunger: 6100, thirst: 2800, mental_health: 8000, hygiene: 9000},
-    needs: [{need: 'thirst', action: 'water', state: 'low', until_critical_ms: 15840000,
+    needs: [{need: 'thirst', action: 'water', state: 'low', until_warning_ms: 0, until_critical_ms: 15840000,
              until_end_ms: 37440000}],
     critical: null,
     care: {sleeping: false, sleep_remaining_ms: 120000, sleep_started_at_ms: null, sleep_due: false,
@@ -351,7 +351,7 @@ function snap() {
     lifecycle: {ruleset: 'lifecycle-v1', frozen_reason: 'none',
       needs: [{need: 'hunger', action: 'food', lethal: true, meter: 7000, state: 'ok'},
               {need: 'thirst', action: 'water', lethal: true, meter: 7000, state: 'ok',
-               until_critical_ms: 1, until_end_ms: 2}],
+               until_warning_ms: 5, until_critical_ms: 1, until_end_ms: 2}],
       critical: null},
     active_task: {task_id: 't-1', revision: 2, state: 'preparing', category: 'hunger',
                   instructions_excerpt: 'kept'},
@@ -436,6 +436,8 @@ assert.deepEqual(m.unseen_events, [{seq: 88, kind: 'evolved', stage: 2}]);
 assert.equal(m.lifecycle.needs[1].state, 'low');
 assert.equal(m.lifecycle.needs[1].meter, 2800);
 assert.equal(m.lifecycle.needs[1].until_critical_ms, 15840000);
+assert.equal(m.lifecycle.needs[1].until_warning_ms, 0, 'the warning window is refreshed from the file too');
+assert.equal(parse(text(bar({needs: [{need: 'thirst', action: 'water', state: 'low', until_warning_ms: 'soon'}]}))), null);
 assert.equal(m.lifecycle.needs[0].meter, 6100);
 assert.equal(m.lifecycle.needs[0].state, 'ok');
 assert.equal(m.lifecycle.frozen_reason, 'none');

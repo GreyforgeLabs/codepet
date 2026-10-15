@@ -86,7 +86,7 @@ within about 1 hour 50 minutes of active time. Task: running (simulation)."
 
 **Predicted badge (leader only).** `bar-state.json` changes only on a settling command, so the
 leader compares the attended time it committed since `generated_at_ms` with the Rust-computed
-windows in the file (`until_critical_ms`, and `until_warning_ms` when present; a remaining nap
+windows in the file (each need's `until_warning_ms` and `until_critical_ms`; a remaining nap
 is subtracted first). The badge shows the more severe of committed and predicted, capped at
 `!!`. Predicted text is marked `≈`. A prediction never shows an ending, `+` or `✿`. Other
 screens show the committed state only.

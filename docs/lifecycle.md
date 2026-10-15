@@ -198,7 +198,7 @@ Acceptance receipts add `life_id`, `level_before`, `level_after`, `evolved_to` a
 
 - schema `codepet.bar.v1`, `state_version`, app version and ruleset;
 - the companion's look, stage, level and status;
-- the meters, the need windows and the critical period;
+- the meters, the need windows (`until_warning_ms`, `until_critical_ms` and `until_end_ms` per need, in active time) and the critical period;
 - the care summary, with at most 8 readiness reasons of at most 160 bytes each;
 - the slot task's state and category only;
 - `presence` (`wanted`, `life_id`, tick and idle timeout), the unseen evolutions and the memorial count with the latest name.

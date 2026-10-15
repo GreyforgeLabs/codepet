@@ -1,0 +1,86 @@
+{
+  "schema": "codepet.bar.v1",
+  "state_version": 3,
+  "generated_at_ms": 1792050825996,
+  "app_version": "0.2.0",
+  "ruleset": "lifecycle-v1",
+  "life": {
+    "life_id": "life-09bc6376ade4bca696b6b41e",
+    "ordinal": 1,
+    "name": "Ginger",
+    "appearance": "cat",
+    "stage": 1,
+    "level": 1,
+    "xp": 0,
+    "next_stage_xp": 80,
+    "status": "healthy",
+    "mode": "permadeath",
+    "armed": true,
+    "pace": "steady",
+    "paused": false,
+    "fainted": false,
+    "death_pending": false
+  },
+  "meters": {
+    "hunger": 10000,
+    "thirst": 10000,
+    "mental_health": 10000,
+    "hygiene": 10000
+  },
+  "needs": [
+    {
+      "need": "hunger",
+      "action": "food",
+      "state": "ok",
+      "until_warning_ms": 28800000,
+      "until_critical_ms": 46800000,
+      "until_end_ms": 68400000
+    },
+    {
+      "need": "thirst",
+      "action": "water",
+      "state": "ok",
+      "until_warning_ms": 23760000,
+      "until_critical_ms": 39600000,
+      "until_end_ms": 61200000
+    },
+    {
+      "need": "mental_health",
+      "action": "play",
+      "state": "ok",
+      "until_warning_ms": 45600000,
+      "until_critical_ms": null,
+      "until_end_ms": null
+    },
+    {
+      "need": "hygiene",
+      "action": "wash",
+      "state": "ok",
+      "until_warning_ms": 54000000,
+      "until_critical_ms": null,
+      "until_end_ms": null
+    }
+  ],
+  "critical": null,
+  "care": {
+    "sleeping": false,
+    "sleep_remaining_ms": 120000,
+    "sleep_started_at_ms": null,
+    "sleep_due": false,
+    "bathroom_due": false,
+    "ready_to_work": true,
+    "readiness_reasons": []
+  },
+  "task": null,
+  "presence": {
+    "wanted": true,
+    "life_id": "life-09bc6376ade4bca696b6b41e",
+    "tick_ms": 60000,
+    "idle_timeout_s": 180
+  },
+  "unseen_events": [],
+  "memorial": {
+    "count": 0,
+    "latest_name": null
+  }
+}
