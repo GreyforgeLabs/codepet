@@ -267,6 +267,19 @@ test('roster mirrors the core species order and default names', () => {
     assert.equal(L.careLabel('cat', 'food', registry), 'Food');
 });
 
+test('fallback roster matches the generated registry (bar and overlay name stages alike)', () => {
+    const reg = JSON.parse(readFileSync(new URL('../assets/pets/registry.json', import.meta.url), 'utf8'));
+    assert.deepEqual(plain(L.speciesIds()), reg.order);
+    for (const s of L.ROSTER) {
+        const r = reg.species[s.id];
+        for (const k of ['displayName', 'defaultName', 'personality', 'habitat'])
+            assert.equal(s[k], r[k], `${s.id}.${k}`);
+        assert.deepEqual(plain(s.stages), r.stages.map((x) => x.name), `${s.id} stage names`);
+        for (const st of [1, 2, 3])
+            assert.equal(L.stageName(s.id, st), L.stageName(s.id, st, reg), `${s.id} stage ${st} with and without the registry`);
+    }
+});
+
 test('headline and next-stage text', () => {
     const life = { name: 'Ginger', appearance: 'cat', species: 'cat', level: 2, stage: 2, xp: 120, next_stage: { stage: 3, min_level: 4, xp: 400 } };
     assert.equal(L.lifeHeadline(life), 'Ginger · Level 2 · Desk Prowler');

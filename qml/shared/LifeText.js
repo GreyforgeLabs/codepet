@@ -86,11 +86,11 @@ var ROSTER = [
     { id: "frog", displayName: "Frog", defaultName: "Hopper", personality: "the spring-loaded optimist", habitat: "floor",
       stages: ["Puddle Sprout", "Lily Leaper", "Marsh Monarch"] },
     { id: "owl", displayName: "Owl", defaultName: "Quill", personality: "the thoughtful night librarian", habitat: "floor",
-      stages: ["Owlet", "Librarian", "Great Scholar"] },
+      stages: ["Hootling", "Quill Fledgling", "Grand Night Librarian"] },
     { id: "red_panda", displayName: "Red panda", defaultName: "Maple", personality: "the bashful explorer", habitat: "floor",
-      stages: ["Cub", "Explorer", "Mountain Elder"] },
+      stages: ["Ember Cub", "Ringtail Scout", "Autumn Sage"] },
     { id: "axolotl", displayName: "Axolotl", defaultName: "Lotus", personality: "the cheerful tank gardener", habitat: "aquatic",
-      stages: ["Larva", "Axolotl", "Grand Gardener"] }
+      stages: ["Gillbud", "Tankstrider", "Crowngill"] }
 ]
 
 // Words and phrases the life copy never uses (spec §17.3; qml/tests/copy_lint.py enforces the
