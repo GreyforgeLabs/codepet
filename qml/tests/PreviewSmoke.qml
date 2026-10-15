@@ -142,6 +142,13 @@ Item {
             case 20:
                 top.check(host.lastError.indexOf("PREVIEW_ONLY") === 0, "preview abandon refused (would send task.discard)")
                 top.check(top.meters() === top.initialMeters, "meters unchanged after abandon")
+                var shown = top.review.task
+                top.review.task = { "task_id": "preview-repaired", "state": "discarded",
+                    "review": { "digest": "0".repeat(64), "verification": "failed", "metadata_repaired": true,
+                                "artifact": "", "simulated": false }, "receipt": null }
+                top.check(top.review.verificationText().indexOf("not a sealed review") !== -1,
+                          "repaired review metadata is never shown as a sealed result, even after discard")
+                top.review.task = shown
                 panel.view = "home"
                 top.form.loadDraftById("preview-draft", function (ok) {
                     top.check(ok, "task.get loaded the draft")

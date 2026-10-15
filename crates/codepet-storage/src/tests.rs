@@ -304,7 +304,7 @@ fn snapshot_json_shape_matches_contract() {
     assert_eq!(
         task["review"],
         serde_json::json!({"digest": digest, "verification": "not_verified",
-            "simulated": true, "artifact_bytes": ARTIFACT.len()})
+            "metadata_repaired": false, "simulated": true, "artifact_bytes": ARTIFACT.len()})
     );
     assert!(task["receipt"].is_null());
     assert_eq!(v["recent"].as_array().unwrap().len(), 1);
@@ -331,7 +331,7 @@ fn snapshot_json_shape_matches_contract() {
     assert_eq!(
         full["review"],
         serde_json::json!({"digest": digest, "verification": "not_verified",
-            "artifact": ARTIFACT, "simulated": true})
+            "metadata_repaired": false, "artifact": ARTIFACT, "simulated": true})
     );
 
     let out = accept(&mut store, &id, &digest, "req-1", Some("useful")).unwrap();
@@ -1323,19 +1323,29 @@ fn recover_flags_tampered_verification_column() {
 
 #[test]
 fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
-    for missing in ["review_digest", "review_verification", "both"] {
+    for missing in [
+        "review_digest",
+        "review_verification",
+        "both",
+        "both_and_check",
+    ] {
         let env = Env::new();
         let mut store = env.open();
         let (id, original_digest) =
             reviewed(&mut store, &env, Category::Hunger, Verification::Failed);
         let columns = match missing {
-            "both" => "review_digest = NULL, review_verification = NULL",
+            "both" | "both_and_check" => "review_digest = NULL, review_verification = NULL",
             "review_digest" => "review_digest = NULL",
             _ => "review_verification = NULL",
         };
         env.raw()
             .execute(&format!("UPDATE tasks SET {columns} WHERE id = ?1"), [&id])
             .unwrap();
+        if missing == "both_and_check" {
+            env.raw()
+                .execute("DELETE FROM checks WHERE task_id = ?1", [&id])
+                .unwrap();
+        }
 
         let recovered = store.recover().unwrap();
         assert_eq!(recovered.changed[0].to, State::RecoveryRequired);
@@ -1351,12 +1361,31 @@ fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
         } else {
             assert_ne!(review.digest, original_digest);
         }
+        // The recorded check still says `failed`; only a task with no check at all is
+        // reported as not verified. Nothing is invented as a pass.
         assert_eq!(
             review.verification,
-            if missing == "review_digest" {
-                Verification::Failed
-            } else {
+            if missing == "both_and_check" {
                 Verification::NotVerified
+            } else {
+                Verification::Failed
+            }
+        );
+        assert!(review.metadata_repaired);
+        let source: String = env
+            .raw()
+            .query_row(
+                "SELECT verification_source FROM review_repairs WHERE task_id = ?1",
+                [&id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            source,
+            match missing {
+                "review_digest" => "stored",
+                "both_and_check" => "default",
+                _ => "checks",
             }
         );
         // The replacement metadata is durable and is never treated as a new sealed result.
@@ -1386,10 +1415,10 @@ fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
             store.start(&next, revision, &token, sup()),
             Err(StorageError::Busy)
         ));
-        assert_eq!(
-            store.discard(&id, &review.digest).unwrap().state,
-            State::Discarded
-        );
+        let discarded = store.discard(&id, &review.digest).unwrap();
+        assert_eq!(discarded.state, State::Discarded);
+        // History keeps marking the review as repaired abandonment metadata.
+        assert!(discarded.review.unwrap().metadata_repaired);
         assert!(store.snapshot().unwrap().active_task.is_none());
         store.start(&next, revision, &token, sup()).unwrap();
         // The care routine filled hunger; Start debits one care step. Abandonment
@@ -1479,11 +1508,22 @@ fn recover_repairs_already_stranded_recovery_metadata() {
     let seq = store.last_seq().unwrap();
     let recovered = store.recover().unwrap();
     assert!(recovered.changed.is_empty());
-    assert_eq!(store.last_seq().unwrap(), seq);
+    // The repair is a mutation, so it appends one same-state event.
+    assert_eq!(store.last_seq().unwrap(), seq + 1);
+    let page = store.events_after(seq, None).unwrap();
+    assert_eq!(page.events.len(), 1);
+    assert_eq!(page.events[0].task_id, id);
+    assert_eq!(page.events[0].data.from, Some(State::RecoveryRequired));
+    assert_eq!(page.events[0].data.state, State::RecoveryRequired);
+    // Running recovery again finds nothing left to repair.
+    assert!(store.recover().unwrap().changed.is_empty());
+    assert_eq!(store.last_seq().unwrap(), seq + 1);
     let active = recovered.active_task.unwrap();
     assert_eq!(active.state, State::RecoveryRequired);
     let review = active.review.unwrap();
-    assert_eq!(review.verification, Verification::NotVerified);
+    // Restored from the recorded failed check, never shown as "no checks ran".
+    assert_eq!(review.verification, Verification::Failed);
+    assert!(review.metadata_repaired);
     assert_eq!(
         store.review(&id).unwrap().review.unwrap().artifact,
         ARTIFACT

@@ -54,6 +54,8 @@ ColumnLayout {
         return n
     }
     function verificationText() {
+        if (root.review && root.review.metadata_repaired === true)
+            return "Verification: unavailable. Recovery restored this review's damaged metadata only so the task could be abandoned; it is not a sealed review."
         if (root.task && root.task.state === "recovery_required")
             return "Verification: unavailable. The saved review cannot be trusted; only abandonment is allowed."
         if (root.verification === "passed")

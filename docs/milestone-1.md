@@ -144,7 +144,12 @@ No other third-party crates. Builds are offline against the cached registry.
   A stored digest that is not exactly 64 lowercase hex characters (for example empty or
   oversized, which `task.discard` could never echo back) counts as missing. Existing
   artifact bytes and any usable digest are preserved, and every replacement first records
-  the previous column values in the `review_repairs` audit table (schema v3). This also repairs tasks already stuck
+  the previous column values in the `review_repairs` audit table (schema v3). A missing
+  verification is restored from the task's recorded check (`checks.status`) when one
+  exists, and only otherwise becomes `not_verified`. Repaired reviews carry
+  `metadata_repaired: true` in `review` briefs and summaries, permanently, so history and
+  the UI never present them as sealed results. A repair that leaves the state unchanged
+  appends a same-state `task_events` row (`from` = `state` = `recovery_required`). This also repairs tasks already stuck
   in `recovery_required`. The replacement metadata never enables acceptance; the user must
   explicitly abandon with the exact returned digest to release the slot without a reward.
 - Fault points: `CODEPET_FAULT=<name>` is honored only in debug builds
@@ -209,7 +214,7 @@ Task brief (lists: `state.get`, `history.list`, `task.recover`):
   "mock": {"outcome": "artifact", "step_ms": 0},
   "instructions_excerpt": "…", "instructions_bytes": 30, "instructions_sha256": "hex",
   "created_at_ms": 0, "updated_at_ms": 0,
-  "review": {"digest": "hex", "verification": "not_verified", "simulated": true, "artifact_bytes": 412},
+  "review": {"digest": "hex", "verification": "not_verified", "metadata_repaired": false, "simulated": true, "artifact_bytes": 412},
   "receipt": null
 }
 ```
@@ -225,7 +230,7 @@ Task summary (`task.get`, `task.review` and the mutations below):
   "folder": "/abs/path", "scope": ["src"], "instructions": "…",
   "mock": {"outcome": "artifact", "step_ms": 0},
   "created_at_ms": 0, "updated_at_ms": 0,
-  "review": {"digest": "hex", "verification": "not_verified", "artifact": "…", "simulated": true},
+  "review": {"digest": "hex", "verification": "not_verified", "metadata_repaired": false, "artifact": "…", "simulated": true},
   "receipt": null
 }
 ```

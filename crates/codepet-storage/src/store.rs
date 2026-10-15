@@ -1085,7 +1085,9 @@ impl Store {
     /// recomputed digest differs becomes `recovery_required`. Missing or malformed review
     /// metadata is replaced only with abandonment metadata, never a valid sealed review: a
     /// fresh opaque digest and `not_verified` let the user explicitly discard the blocked
-    /// task. Every replacement records the previous column values in `review_repairs`.
+    /// task; a missing verification is restored from the recorded check when one exists.
+    /// Every replacement records the previous column values in `review_repairs`, marks the
+    /// review `metadata_repaired`, and appends a `task_events` row.
     pub fn recover(&mut self) -> Result<RecoverResult> {
         let (tx, at) = self.write()?;
         let tasks = load_tasks(
@@ -1116,9 +1118,14 @@ impl Store {
                     Some(digest) => digest.to_owned(),
                     None => sys::hex(&sys::random_bytes::<32>()?),
                 };
+                // A missing verification column is restored from the recorded check when
+                // one exists, so a failed check is never later shown as "no checks ran".
                 let (verification, source) = match t.review_verification {
                     Some(v) => (v, "stored"),
-                    None => (Verification::NotVerified, "default"),
+                    None => match recorded_check(&tx, &t.id)? {
+                        Some(v) => (v, "checks"),
+                        None => (Verification::NotVerified, "default"),
+                    },
                 };
                 tx.execute(
                     "INSERT INTO review_repairs (task_id, previous_digest, previous_verification,
@@ -1132,6 +1139,11 @@ impl Store {
                         updated_at_ms = ?3 WHERE id = ?4",
                     params![digest, verification.as_str(), at.wall, t.id],
                 )?;
+                if to.is_none() {
+                    // No state change will append an event, so record the repair as a
+                    // same-state event: history shows that this task's review changed.
+                    append_event(&tx, &t.id, Some(t.state), t.state, t.revision, at.wall)?;
+                }
             }
             if let Some(to) = to {
                 transition(&tx, t, to, &at)?;
@@ -1421,6 +1433,28 @@ fn review_digest(
     sha256_hex(manifest.as_bytes())
 }
 
+/// The most recently recorded check status for a task, if any.
+fn recorded_check(c: &Connection, task_id: &str) -> Result<Option<Verification>> {
+    c.query_row(
+        "SELECT status FROM checks WHERE task_id = ?1 ORDER BY id DESC LIMIT 1",
+        [task_id],
+        get0::<String>,
+    )
+    .optional()?
+    .map(|s| parse(&s, Verification::parse))
+    .transpose()
+}
+
+/// True when explicit recovery replaced this task's review metadata. Such metadata only
+/// identifies the task for abandonment; it is never a sealed review.
+fn review_repaired(c: &Connection, task_id: &str) -> Result<bool> {
+    Ok(c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM review_repairs WHERE task_id = ?1)",
+        [task_id],
+        get0,
+    )?)
+}
+
 /// True for the only digest shape storage ever issues: 64 lowercase hex characters
 /// (SHA-256 manifests and random abandonment identities alike).
 fn is_digest(d: &str) -> bool {
@@ -1658,6 +1692,7 @@ fn brief(c: &Connection, t: &TaskRow) -> Result<TaskBrief> {
             Some(ReviewBrief {
                 digest: digest.clone(),
                 verification,
+                metadata_repaired: review_repaired(c, &t.id)?,
                 simulated: t.review_simulated,
                 artifact_bytes: bytes.and_then(|b| usize::try_from(b).ok()).unwrap_or(0),
             })
@@ -1694,6 +1729,7 @@ fn summary(c: &Connection, t: &TaskRow) -> Result<TaskSummary> {
             Some(ReviewView {
                 digest: digest.clone(),
                 verification,
+                metadata_repaired: review_repaired(c, &t.id)?,
                 // A missing artifact row is reported as empty; recovery flags the mismatch.
                 artifact: artifact.unwrap_or_default(),
                 simulated: t.review_simulated,

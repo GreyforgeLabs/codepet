@@ -75,6 +75,9 @@ pub struct ReviewView {
     pub digest: String,
     #[serde(with = "verification_str")]
     pub verification: Verification,
+    /// Recovery replaced missing or malformed review metadata so the task can be abandoned.
+    /// Such a review was never sealed this way and can never be accepted.
+    pub metadata_repaired: bool,
     pub artifact: String,
     pub simulated: bool,
 }
@@ -150,6 +153,8 @@ pub struct ReviewBrief {
     pub digest: String,
     #[serde(with = "verification_str")]
     pub verification: Verification,
+    /// See `ReviewView::metadata_repaired`.
+    pub metadata_repaired: bool,
     pub simulated: bool,
     pub artifact_bytes: usize,
 }
@@ -276,7 +281,8 @@ pub struct RecoverResult {
 pub struct EventData {
     #[serde(with = "state_str")]
     pub state: State,
-    /// Previous state; `null` for task creation. Equal to `state` for a draft update.
+    /// Previous state; `null` for task creation. Equal to `state` for a draft update or
+    /// for a recovery repair of review metadata that left the state unchanged.
     #[serde(serialize_with = "opt_state_str::serialize")]
     pub from: Option<State>,
     pub revision: i64,

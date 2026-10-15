@@ -39,6 +39,7 @@ QtObject {
             s.review = {
                 "digest": "preview0000000000000000000000000000000000000000000000000000000000",
                 "verification": verification,
+                "metadata_repaired": false,
                 "artifact": "PREVIEW FIXTURE ARTIFACT\n<b>Markup stays literal</b>\nNo command ran; this text is static.",
                 "simulated": true
             }
@@ -55,6 +56,7 @@ QtObject {
             "instructions_sha256": "(preview: not computed)",
             "created_at_ms": s.created_at_ms, "updated_at_ms": s.updated_at_ms,
             "review": s.review ? { "digest": s.review.digest, "verification": s.review.verification,
+                                   "metadata_repaired": s.review.metadata_repaired,
                                    "simulated": s.review.simulated, "artifact_bytes": s.review.artifact.length } : null,
             "receipt": s.receipt
         }
