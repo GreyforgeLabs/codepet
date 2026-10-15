@@ -218,6 +218,7 @@ fn snapshot_json_shape_matches_contract() {
         keys(&v),
         set(&[
             "schema_version",
+            "state_version",
             "protocol_version",
             "last_seq",
             "meters",
@@ -227,7 +228,11 @@ fn snapshot_json_shape_matches_contract() {
             "settings",
             "active_task",
             "recent",
-            "providers"
+            "providers",
+            "life",
+            "lifecycle",
+            "unseen_events",
+            "memorial"
         ])
     );
     assert_eq!(
@@ -337,12 +342,15 @@ fn snapshot_json_shape_matches_contract() {
     let out = accept(&mut store, &id, &digest, "req-1", Some("useful")).unwrap();
     let a = serde_json::to_value(&out).unwrap();
     assert_eq!(keys(&a), set(&["receipt", "duplicate"]));
+    let life_id = store.snapshot().unwrap().life.unwrap().life_id;
     assert_eq!(
         a["receipt"],
         serde_json::json!({"task_id": id, "category": "mental_health",
             "amount_hundredths": 0, "demo_xp": 20, "real_xp": 0,
             "progression_track": "learning_specification", "verification": "not_verified",
-            "override_reason": "useful", "request_id": "req-1", "accepted_at_ms": T0})
+            "override_reason": "useful", "request_id": "req-1", "accepted_at_ms": T0,
+            "life_id": life_id, "level_before": 1, "level_after": 1, "evolved_to": [],
+            "xp_withheld": null})
     );
     let v = serde_json::to_value(store.snapshot().unwrap()).unwrap();
     assert!(v["active_task"].is_null());
@@ -1743,13 +1751,13 @@ fn newer_schema_is_refused_untouched() {
     env.paths.prepare().unwrap();
     {
         let c = env.raw();
-        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 4;")
+        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 5;")
             .unwrap();
     }
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(4))
+        Err(StorageError::SchemaUnsupported(5))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     assert_eq!(fs::read_dir(&env.paths.state_dir).unwrap().count(), 1);
@@ -1804,8 +1812,8 @@ fn corrupt_database_is_refused_untouched() {
 
 #[test]
 fn migration_backs_up_older_versions_first() {
-    fn v4(tx: &rusqlite::Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
-        tx.execute_batch("CREATE TABLE extra (x INTEGER)")
+    fn v5(tx: &rusqlite::Transaction<'_>, _at: &care::TimeMark) -> Result<()> {
+        Ok(tx.execute_batch("CREATE TABLE extra (x INTEGER)")?)
     }
     let env = Env::new();
     let id = {
@@ -1819,35 +1827,36 @@ fn migration_backs_up_older_versions_first() {
         schema::MIGRATIONS[0],
         schema::MIGRATIONS[1],
         schema::MIGRATIONS[2],
-        v4,
+        schema::MIGRATIONS[3],
+        v5,
     ];
     env.clock.set(T0 + 42);
     let store = Store::open_with(&env.paths, env.clock.clone(), migrations).unwrap();
     assert_eq!(store.task(&id).unwrap().task_id, id);
     drop(store);
-    assert_eq!(env.count("PRAGMA user_version"), 4);
+    assert_eq!(env.count("PRAGMA user_version"), 5);
     assert_eq!(env.count("SELECT count(*) FROM extra"), 0);
     let backup = env
         .paths
         .state_dir
-        .join(format!("codepet.sqlite3.bak-v3-{}", T0 + 42));
+        .join(format!("codepet.sqlite3.bak-v4-{}", T0 + 42));
     assert_eq!(mode(&backup), 0o600);
     let b = Connection::open(&backup).unwrap();
     let v: i64 = b
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(v, 3);
+    assert_eq!(v, 4);
     let n: i64 = b
         .query_row("SELECT count(*) FROM tasks WHERE id = ?1", [&id], |r| {
             r.get(0)
         })
         .unwrap();
     assert_eq!(n, 1);
-    // This build (v3) now refuses the upgraded file without touching it.
+    // This build (v4) now refuses the upgraded file without touching it.
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(4))
+        Err(StorageError::SchemaUnsupported(5))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     // Reopening at the same version neither migrates nor backs up again.
@@ -2424,3 +2433,161 @@ fn json_prefix_matches_serde_encoding() {
 
 #[path = "care_tests.rs"]
 mod care_cases;
+
+// ---- shared lifecycle helpers (used by the v0.2 test modules below) ----------------------
+
+/// Boot clock identity used by lifecycle tests.
+const BOOT: &str = "boot-a";
+
+impl Env {
+    /// An environment whose clock also has a CLOCK_BOOTTIME pair, so presence settles.
+    fn with_boot() -> Self {
+        let env = Self::new();
+        env.clock.set_steady(BOOT, 1_000_000);
+        env
+    }
+    fn presence_path(&self) -> PathBuf {
+        self.paths.presence_path()
+    }
+    /// Writes a valid `presence.json` (mode 0600) claiming `attended_ms` for `session`.
+    fn write_presence(&self, session: &str, life_id: &str, attended_ms: i64) {
+        let now = self.clock.now_ms();
+        let ticks = (attended_ms + 59_999) / 60_000;
+        let doc = serde_json::json!({
+            "v": 1, "session": session, "life_id": life_id,
+            "started_wall_ms": now - attended_ms, "updated_wall_ms": now,
+            "attended_ms": attended_ms, "ticks": ticks
+        });
+        self.write_presence_raw(&doc.to_string());
+    }
+    fn write_presence_raw(&self, text: &str) {
+        let path = self.presence_path();
+        let _ = fs::remove_file(&path);
+        fs::write(&path, text).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    /// Time passes for the wall and boot clocks together.
+    fn pass(&self, ms: i64) {
+        self.clock.advance(ms);
+    }
+    fn rejections(&self) -> i64 {
+        self.count("SELECT presence_rejections FROM meta")
+    }
+    /// One table's rows, as text, in rowid order.
+    fn dump(&self, table: &str) -> String {
+        let c = self.raw();
+        let mut stmt = c
+            .prepare(&format!("SELECT * FROM {table} ORDER BY rowid"))
+            .unwrap();
+        let cols = stmt.column_count();
+        let rows = stmt
+            .query_map([], |r| {
+                let mut out = Vec::new();
+                for i in 0..cols {
+                    let v: rusqlite::types::Value = r.get(i)?;
+                    out.push(format!("{v:?}"));
+                }
+                Ok(out.join("|"))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        rows.join("\n")
+    }
+}
+
+/// The living companion's id.
+fn life_id(store: &Store) -> String {
+    store
+        .snapshot()
+        .unwrap()
+        .life
+        .expect("a living companion")
+        .life_id
+}
+
+/// Arms the living companion with `mode` (acknowledging the rules).
+fn arm(store: &mut Store, mode: codepet_core::lifecycle::Mode) -> LifeOutcome {
+    let id = life_id(store);
+    store
+        .set_rules(&sys::uuid_v4().unwrap(), &id, mode, true)
+        .unwrap()
+}
+
+#[path = "bar_export_tests.rs"]
+mod bar_export_cases;
+#[path = "life_tests.rs"]
+mod life_cases;
+#[path = "lifecycle_tests.rs"]
+mod lifecycle_cases;
+#[path = "migration_v4_tests.rs"]
+mod migration_v4_cases;
+#[path = "presence_tests.rs"]
+mod presence_cases;
+
+/// An armed (permadeath) companion with full meters, on a clock with a boot pair.
+fn armed(env: &Env) -> (Store, String) {
+    let mut store = env.open();
+    store.care(&sys::uuid_v4().unwrap(), "routine").unwrap();
+    arm(&mut store, codepet_core::lifecycle::Mode::Permadeath);
+    let id = life_id(&store);
+    (store, id)
+}
+
+/// Drives a new task into `state` (any slot state) through the public API, plus raw
+/// artifact tampering for `recovery_required`. Returns the task id.
+fn task_in_state(store: &mut Store, env: &Env, state: State) -> String {
+    let s = sup();
+    let id = started(store, env, Category::Thirst, s);
+    let step = |store: &mut Store, from, to| {
+        assert!(matches!(
+            store.supervisor_step(&id, s, from, to).unwrap(),
+            Step::Advanced { .. }
+        ));
+    };
+    match state {
+        State::Preparing => {}
+        State::Running => step(store, State::Preparing, State::Running),
+        State::WaitingForUser => {
+            step(store, State::Preparing, State::Running);
+            step(store, State::Running, State::WaitingForUser);
+        }
+        State::Verifying => {
+            step(store, State::Preparing, State::Running);
+            step(store, State::Running, State::Verifying);
+        }
+        State::Cancelling => {
+            step(store, State::Preparing, State::Running);
+            store.cancel(&id).unwrap();
+        }
+        State::ReviewReady | State::RecoveryRequired => {
+            step(store, State::Preparing, State::Running);
+            step(store, State::Running, State::Verifying);
+            store
+                .seal_review(&id, s, ARTIFACT, Verification::NotVerified, true)
+                .unwrap();
+            if state == State::RecoveryRequired {
+                env.raw()
+                    .execute(
+                        "UPDATE artifacts SET content = 'tampered' WHERE task_id = ?1",
+                        [&id],
+                    )
+                    .unwrap();
+                store.recover().unwrap();
+            }
+        }
+        other => panic!("{other:?} is not a slot state"),
+    }
+    assert_eq!(store.task(&id).unwrap().state, state);
+    id
+}
+
+const SLOT_STATE_LIST: [State; 7] = [
+    State::Preparing,
+    State::Running,
+    State::WaitingForUser,
+    State::Verifying,
+    State::ReviewReady,
+    State::Cancelling,
+    State::RecoveryRequired,
+];

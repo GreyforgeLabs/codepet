@@ -1,9 +1,16 @@
 //! Schema migrations keyed by SQLite `user_version`. `MIGRATIONS[i]` upgrades `i` → `i + 1`.
+use crate::care::TimeMark;
+use crate::life;
+use codepet_core::evolution::{level_for_xp, stages_crossed};
+use codepet_core::lifecycle::{Vitals, RULESET_V1, RULES_V1};
+use codepet_core::species::SPECIES_IDS;
 use codepet_core::{Settings, METER_START};
-use rusqlite::{params, Transaction};
+use rusqlite::{params, OptionalExtension, Transaction};
 
-pub(crate) type Migration = fn(&Transaction<'_>, i64) -> rusqlite::Result<()>;
-pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3];
+/// One migration step. `at` is the single time sample `Store::migrate` takes before the
+/// transaction; v1–v3 use only `at.wall`, exactly where they used `now` before v0.2.
+pub(crate) type Migration = fn(&Transaction<'_>, &TimeMark) -> crate::Result<()>;
+pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3, v4];
 
 /// Slot-occupying states; must equal `State::occupies_slot` (checked by a test).
 pub(crate) const SLOT_STATES: &str = "('preparing','running','waiting_for_user','verifying',\
@@ -135,7 +142,8 @@ CREATE TABLE request_results (
 );
 ";
 
-fn v1(tx: &Transaction<'_>, now: i64) -> rusqlite::Result<()> {
+fn v1(tx: &Transaction<'_>, at: &TimeMark) -> crate::Result<()> {
+    let now = at.wall;
     tx.execute_batch(V1)?;
     let s = Settings::default();
     tx.execute(
@@ -162,8 +170,8 @@ fn v1(tx: &Transaction<'_>, now: i64) -> rusqlite::Result<()> {
 
 /// Additive migration: old meters, rewards, artifacts, request receipts and tasks are
 /// intentionally untouched. Existing tasks have no debit row and are never backcharged.
-fn v2(tx: &Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
-    tx.execute_batch(r"
+fn v2(tx: &Transaction<'_>, _at: &TimeMark) -> crate::Result<()> {
+    Ok(tx.execute_batch(r"
 CREATE TABLE pet_care (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
@@ -197,15 +205,15 @@ CREATE TABLE demo_xp_rewards (
     granted_at_ms INTEGER NOT NULL
 );
 UPDATE preflight_tokens SET status = 'invalidated' WHERE status = 'pending';
-")
+")?)
 }
 
 /// Additive migration: an audit row for every review-metadata repair made by explicit
 /// recovery. The replaced column values are kept verbatim, so repairing a damaged review
 /// never destroys historical data, and the row marks the repaired metadata as abandonment
 /// metadata rather than a sealed review.
-fn v3(tx: &Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
-    tx.execute_batch(
+fn v3(tx: &Transaction<'_>, _at: &TimeMark) -> crate::Result<()> {
+    Ok(tx.execute_batch(
         r"
 CREATE TABLE review_repairs (
     id INTEGER PRIMARY KEY,
@@ -219,5 +227,258 @@ CREATE TABLE review_repairs (
 );
 CREATE INDEX review_repairs_task ON review_repairs(task_id);
 ",
+    )?)
+}
+
+/// The `species IN (...)` list for CHECK clauses, expanded from core's roster.
+fn species_sql() -> String {
+    let quoted: Vec<String> = SPECIES_IDS.iter().map(|s| format!("'{s}'")).collect();
+    quoted.join(",")
+}
+
+/// Lifecycle tables (spec §7). Terminal lives and their journal are immutable history:
+/// triggers refuse to delete either and refuse every change to a dead or retired life.
+fn v4_sql() -> String {
+    let species = species_sql();
+    format!(
+        r"
+CREATE TABLE meta (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  state_version INTEGER NOT NULL CHECK (state_version >= 1),
+  presence_rejections INTEGER NOT NULL DEFAULT 0 CHECK (presence_rejections >= 0)
+);
+CREATE TABLE rulesets (
+  id TEXT PRIMARY KEY NOT NULL CHECK (id IN ('lifecycle-v1')),
+  rules_json TEXT NOT NULL CHECK (length(CAST(rules_json AS BLOB)) <= 4096),
+  rules_sha256 TEXT NOT NULL CHECK (length(rules_sha256) = 64),
+  installed_at_ms INTEGER NOT NULL
+);
+CREATE TABLE lives (
+  life_id TEXT PRIMARY KEY NOT NULL CHECK (length(life_id) = 29 AND life_id GLOB 'life-*'),
+  ordinal INTEGER NOT NULL UNIQUE CHECK (ordinal >= 1),
+  name TEXT NOT NULL CHECK (length(CAST(name AS BLOB)) BETWEEN 1 AND 96),
+  species TEXT NOT NULL CHECK (species IN ({species})),
+  appearance TEXT NOT NULL CHECK (appearance IN ({species})),
+  origin TEXT NOT NULL CHECK (origin IN ('migrated','first_run','adopted')),
+  status TEXT NOT NULL CHECK (status IN ('healthy','warning','critical','dead','retired')),
+  mode TEXT NOT NULL CHECK (mode IN ('permadeath','gentle')),
+  armed INTEGER NOT NULL DEFAULT 0 CHECK (armed IN (0,1)),
+  armed_at_ms INTEGER,
+  pace TEXT NOT NULL CHECK (pace IN ('steady','playtest')),
+  ruleset TEXT NOT NULL REFERENCES rulesets(id),
+  decay_hunger INTEGER NOT NULL CHECK (decay_hunger BETWEEN 0 AND 25000),
+  decay_thirst INTEGER NOT NULL CHECK (decay_thirst BETWEEN 0 AND 25000),
+  decay_mental_health INTEGER NOT NULL CHECK (decay_mental_health BETWEEN 0 AND 25000),
+  decay_hygiene INTEGER NOT NULL CHECK (decay_hygiene BETWEEN 0 AND 25000),
+  full_hold_ms INTEGER NOT NULL CHECK (full_hold_ms BETWEEN 60000 AND 14400000),
+  warning_at INTEGER NOT NULL CHECK (warning_at BETWEEN 1000 AND 5000),
+  critical_after_ms INTEGER NOT NULL CHECK (critical_after_ms BETWEEN 300000 AND 86400000),
+  grace_ms INTEGER NOT NULL CHECK (grace_ms BETWEEN 900000 AND 172800000 AND grace_ms >= critical_after_ms),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  adopted_at_ms INTEGER NOT NULL,
+  adoption_request_id TEXT,
+  ended_at_ms INTEGER,
+  end_cause TEXT CHECK (end_cause IN ('neglect:hunger','neglect:thirst','retired')),
+  final_summary TEXT CHECK (final_summary IS NULL OR (json_valid(final_summary) AND length(CAST(final_summary AS BLOB)) <= 2048)),
+  CHECK ((status IN ('dead','retired')) = (ended_at_ms IS NOT NULL)),
+  CHECK ((status IN ('dead','retired')) = (end_cause IS NOT NULL)),
+  CHECK ((status IN ('dead','retired')) = (final_summary IS NOT NULL)),
+  CHECK (status != 'dead' OR end_cause LIKE 'neglect:%'),
+  CHECK (status != 'retired' OR end_cause = 'retired'),
+  CHECK ((armed = 1) = (armed_at_ms IS NOT NULL))
+);
+CREATE UNIQUE INDEX lives_one_living ON lives((1)) WHERE status IN ('healthy','warning','critical');
+CREATE TRIGGER lives_terminal_immutable BEFORE UPDATE ON lives WHEN OLD.status IN ('dead','retired')
+BEGIN SELECT RAISE(ABORT, 'terminal life is immutable'); END;
+CREATE TRIGGER lives_never_deleted BEFORE DELETE ON lives
+BEGIN SELECT RAISE(ABORT, 'lives are history'); END;
+CREATE TRIGGER lives_identity_immutable BEFORE UPDATE ON lives
+WHEN NEW.life_id IS NOT OLD.life_id OR NEW.ordinal IS NOT OLD.ordinal
+  OR NEW.species IS NOT OLD.species OR NEW.origin IS NOT OLD.origin
+  OR NEW.pace IS NOT OLD.pace OR NEW.ruleset IS NOT OLD.ruleset
+  OR NEW.adopted_at_ms IS NOT OLD.adopted_at_ms
+  OR NEW.adoption_request_id IS NOT OLD.adoption_request_id
+  OR (OLD.armed = 1 AND (NEW.armed IS NOT OLD.armed OR NEW.armed_at_ms IS NOT OLD.armed_at_ms))
+BEGIN SELECT RAISE(ABORT, 'life identity, pace and ruleset are immutable'); END;
+
+CREATE TABLE life_vitals (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  life_id TEXT REFERENCES lives(life_id),
+  hold_hunger INTEGER NOT NULL DEFAULT 0 CHECK (hold_hunger >= 0),
+  hold_thirst INTEGER NOT NULL DEFAULT 0 CHECK (hold_thirst >= 0),
+  hold_mental_health INTEGER NOT NULL DEFAULT 0 CHECK (hold_mental_health >= 0),
+  hold_hygiene INTEGER NOT NULL DEFAULT 0 CHECK (hold_hygiene >= 0),
+  carry_hunger INTEGER NOT NULL DEFAULT 0 CHECK (carry_hunger BETWEEN 0 AND 3599999),
+  carry_thirst INTEGER NOT NULL DEFAULT 0 CHECK (carry_thirst BETWEEN 0 AND 3599999),
+  carry_mental_health INTEGER NOT NULL DEFAULT 0 CHECK (carry_mental_health BETWEEN 0 AND 3599999),
+  carry_hygiene INTEGER NOT NULL DEFAULT 0 CHECK (carry_hygiene BETWEEN 0 AND 3599999),
+  neglect_hunger_ms INTEGER NOT NULL DEFAULT 0 CHECK (neglect_hunger_ms >= 0),
+  neglect_thirst_ms INTEGER NOT NULL DEFAULT 0 CHECK (neglect_thirst_ms >= 0),
+  critical_need TEXT CHECK (critical_need IN ('hunger','thirst')),
+  critical_grace_ms INTEGER,
+  critical_elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK (critical_elapsed_ms >= 0),
+  critical_since_ms INTEGER,
+  fainted INTEGER NOT NULL DEFAULT 0 CHECK (fainted IN (0,1)),
+  death_pending INTEGER NOT NULL DEFAULT 0 CHECK (death_pending IN (0,1)),
+  attended_total_ms INTEGER NOT NULL DEFAULT 0 CHECK (attended_total_ms >= 0),
+  CHECK ((critical_need IS NULL) = (critical_grace_ms IS NULL)),
+  CHECK ((critical_need IS NULL) = (critical_since_ms IS NULL)),
+  CHECK (death_pending = 0 OR critical_need IS NOT NULL)
+);
+CREATE TABLE presence_clock (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  last_boot TEXT, last_steady_ms INTEGER, last_wall_ms INTEGER
+);
+CREATE TABLE presence_sessions (
+  session_id TEXT PRIMARY KEY NOT NULL CHECK (length(session_id) BETWEEN 10 AND 62),
+  consumed_ms INTEGER NOT NULL CHECK (consumed_ms >= 0),
+  credited_ms INTEGER NOT NULL DEFAULT 0 CHECK (credited_ms >= 0),
+  discarded_ms INTEGER NOT NULL DEFAULT 0 CHECK (discarded_ms >= 0),
+  first_seen_at_ms INTEGER NOT NULL,
+  last_settled_at_ms INTEGER NOT NULL
+);
+CREATE TRIGGER presence_sessions_never_deleted BEFORE DELETE ON presence_sessions
+BEGIN SELECT RAISE(ABORT, 'the presence ledger is never pruned'); END;
+CREATE TABLE life_events (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  life_id TEXT NOT NULL REFERENCES lives(life_id),
+  kind TEXT NOT NULL CHECK (kind IN ('born','armed','mode_changed','configured','health_changed',
+    'evolved','appearance_changed','paused','resumed','critical','recovered','fainted',
+    'death_pending','died','retired')),
+  dedup_key TEXT,
+  data TEXT NOT NULL DEFAULT '{{}}' CHECK (json_valid(data) AND length(CAST(data AS BLOB)) <= 1024),
+  task_id TEXT REFERENCES tasks(id),
+  request_id TEXT,
+  at_ms INTEGER NOT NULL,
+  seen_at_ms INTEGER,
+  UNIQUE (life_id, kind, dedup_key)
+);
+CREATE UNIQUE INDEX life_events_one_terminal ON life_events(life_id) WHERE kind IN ('died','retired');
+CREATE INDEX life_events_unseen ON life_events(life_id, seen_at_ms) WHERE kind = 'evolved';
+CREATE TRIGGER life_events_no_delete BEFORE DELETE ON life_events
+BEGIN SELECT RAISE(ABORT, 'life events are history'); END;
+CREATE TRIGGER life_events_only_seen_mutable BEFORE UPDATE ON life_events
+WHEN NEW.seq IS NOT OLD.seq OR NEW.life_id IS NOT OLD.life_id OR NEW.kind IS NOT OLD.kind
+  OR NEW.dedup_key IS NOT OLD.dedup_key OR NEW.data IS NOT OLD.data OR NEW.task_id IS NOT OLD.task_id
+  OR NEW.request_id IS NOT OLD.request_id
+  OR NEW.at_ms IS NOT OLD.at_ms OR (OLD.seen_at_ms IS NOT NULL AND NEW.seen_at_ms IS NOT OLD.seen_at_ms)
+BEGIN SELECT RAISE(ABORT, 'only seen_at_ms may be set, once'); END;
+
+ALTER TABLE tasks ADD COLUMN life_id TEXT REFERENCES lives(life_id);
+ALTER TABLE demo_xp_rewards ADD COLUMN life_id TEXT REFERENCES lives(life_id);
+CREATE INDEX demo_xp_rewards_life ON demo_xp_rewards(life_id);
+UPDATE preflight_tokens SET status = 'invalidated' WHERE status = 'pending';
+"
     )
+}
+
+/// Additive lifecycle migration (spec §7, numbered v4 because v3 is `review_repairs`).
+/// No existing row is deleted and no meter changes. Life #1 ("Ginger") is created
+/// **unarmed**: no decay, neglect or countdown until the rules are explicitly
+/// acknowledged, so an upgrade can never cost a pet. Every historic task and demo-XP row
+/// is attached to it, so its XP and level equal the old account totals.
+fn v4(tx: &Transaction<'_>, at: &TimeMark) -> crate::Result<()> {
+    let now = at.wall;
+    tx.execute_batch(&v4_sql())?;
+    // 1. Version counter and the canonical ruleset.
+    tx.execute("INSERT INTO meta (id, state_version) VALUES (1, 1)", [])?;
+    tx.execute(
+        "INSERT INTO rulesets (id, rules_json, rules_sha256, installed_at_ms)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![
+            RULESET_V1,
+            life::lifecycle_rules_json(),
+            life::lifecycle_rules_sha256(),
+            now
+        ],
+    )?;
+    // 2–3. Life #1.
+    let life1 = life::new_life_id()?;
+    let history: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM tasks) OR EXISTS(SELECT 1 FROM demo_xp_rewards)",
+        [],
+        |r| r.get(0),
+    )?;
+    let origin = if history { "migrated" } else { "first_run" };
+    let meters: [u16; 4] = tx.query_row(
+        "SELECT hunger, thirst, mental_health, hygiene FROM pet_state WHERE id = 1",
+        [],
+        |r| Ok([r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?]),
+    )?;
+    let r = &RULES_V1.steady;
+    let status = if meters.iter().any(|&m| m <= r.warning_at) {
+        "warning"
+    } else {
+        "healthy"
+    };
+    tx.execute(
+        "INSERT INTO lives (life_id, ordinal, name, species, appearance, origin, status, mode,
+            armed, armed_at_ms, pace, ruleset, decay_hunger, decay_thirst, decay_mental_health,
+            decay_hygiene, full_hold_ms, warning_at, critical_after_ms, grace_ms, adopted_at_ms)
+         VALUES (?1, 1, 'Ginger', 'cat', 'cat', ?2, ?3, 'permadeath', 0, NULL, 'steady', ?4,
+            ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        params![
+            life1,
+            origin,
+            status,
+            RULESET_V1,
+            r.decay_per_hour[0],
+            r.decay_per_hour[1],
+            r.decay_per_hour[2],
+            r.decay_per_hour[3],
+            r.full_hold_ms,
+            r.warning_at,
+            r.critical_after_ms,
+            r.grace_ms,
+            now
+        ],
+    )?;
+    // 4. Vitals: every full meter starts a satiety hold; nothing is backdated.
+    let v = Vitals::from_meters(meters, r);
+    tx.execute(
+        "INSERT INTO life_vitals (id, life_id, hold_hunger, hold_thirst, hold_mental_health,
+            hold_hygiene) VALUES (1, ?1, ?2, ?3, ?4, ?5)",
+        params![
+            life1,
+            v.hold_ms[0],
+            v.hold_ms[1],
+            v.hold_ms[2],
+            v.hold_ms[3]
+        ],
+    )?;
+    // 5. All historic work belongs to life #1.
+    tx.execute("UPDATE tasks SET life_id = ?1", [&life1])?;
+    tx.execute("UPDATE demo_xp_rewards SET life_id = ?1", [&life1])?;
+    // 6. Presence recorded before the migration is never charged.
+    tx.execute(
+        "INSERT INTO presence_clock (id, last_boot, last_steady_ms, last_wall_ms)
+         VALUES (1, ?1, ?2, ?3)",
+        params![at.boot, at.steady, now],
+    )?;
+    // 7. Journal: born, plus already reached stages as seen history (never celebrated).
+    tx.execute(
+        "INSERT INTO life_events (life_id, kind, dedup_key, data, at_ms)
+         VALUES (?1, 'born', NULL, ?2, ?3)",
+        params![
+            life1,
+            serde_json::json!({ "origin": origin }).to_string(),
+            now
+        ],
+    )?;
+    let xp: Option<i64> = tx
+        .query_row("SELECT SUM(amount) FROM demo_xp_rewards", [], |r| r.get(0))
+        .optional()?
+        .flatten();
+    let xp = u32::try_from(xp.unwrap_or(0)).map_err(|_| crate::StorageError::Corrupt)?;
+    for stage in stages_crossed(0, xp, r) {
+        let data = serde_json::json!({
+            "from": stage - 1, "to": stage, "xp": xp, "level": level_for_xp(xp, r)
+        });
+        tx.execute(
+            "INSERT INTO life_events (life_id, kind, dedup_key, data, task_id, at_ms, seen_at_ms)
+             VALUES (?1, 'evolved', ?2, ?3, NULL, ?4, ?4)",
+            params![life1, format!("stage:{stage}"), data.to_string(), now],
+        )?;
+    }
+    Ok(())
 }

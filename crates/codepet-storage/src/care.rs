@@ -1,7 +1,9 @@
 //! Explicit pet care, bounded rest settlement, and isolated simulation progression.
 //! No timer, worker, provider launch, or project access exists in this module.
 use crate::model::{CareView, MasteryView, MetersView, ProgressionView, XpView};
-use crate::{Clock, Result, StorageError};
+use crate::{life, lifecycle_store, Clock, Result, StorageError};
+use codepet_core::evolution::{level_for_xp, next_level_xp};
+use codepet_core::lifecycle::RULES_V1;
 use codepet_core::{Category, State};
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -154,6 +156,9 @@ pub(crate) fn view(c: &Connection, meters: MetersView) -> Result<CareView> {
             })
         },
     )?;
+    if let Some(reason) = lifecycle_reason(c)? {
+        v.readiness_reasons.push(reason);
+    }
     if v.sleeping {
         v.readiness_reasons
             .push("Resting: finish the nap before starting work".into());
@@ -191,7 +196,50 @@ pub(crate) fn view(c: &Connection, meters: MetersView) -> Result<CareView> {
     Ok(v)
 }
 
+/// The lifecycle gate, in order: no living companion → a pending end → a critical need.
+/// Plain text only; durations and deaths are never predicted here.
+fn lifecycle_reason(c: &Connection) -> Result<Option<String>> {
+    let Some(life) = life::active_life(c)? else {
+        return Ok(Some("Adopt a companion to start work".into()));
+    };
+    let vitals = lifecycle_store::load(c)?;
+    if vitals.death_pending {
+        return Ok(Some(format!(
+            "{} needs care as soon as the current task is finished",
+            life.name
+        )));
+    }
+    if let Some(critical) = vitals.vitals.critical {
+        return Ok(Some(format!(
+            "{} urgently needs {}; care before starting work",
+            life.name,
+            life::action_for(critical.need)
+        )));
+    }
+    Ok(None)
+}
+
+/// Start and preflight refuse without a living, settled companion (spec §6).
+pub(crate) fn ensure_lifecycle_ready(c: &Connection) -> Result<()> {
+    if life::active_life(c)?.is_none() {
+        return Err(StorageError::NoActivePet);
+    }
+    let vitals = lifecycle_store::load(c)?;
+    if vitals.death_pending {
+        return Err(StorageError::InvalidState(
+            "the companion needs care once the current task is finished",
+        ));
+    }
+    if vitals.vitals.critical.is_some() {
+        return Err(StorageError::InvalidState(
+            "the companion urgently needs care; care before starting work",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn ensure_ready(c: &Connection, meters: MetersView) -> Result<()> {
+    ensure_lifecycle_ready(c)?;
     let v = view(c, meters)?;
     let why = if v.sleeping {
         "pet is sleeping; finish its nap before starting work"
@@ -235,7 +283,8 @@ pub(crate) fn debit(c: &Connection, task_id: &str, now: i64) -> Result<()> {
         "UPDATE pet_care SET revision = revision + 1 WHERE id = 1",
         [],
     )?;
-    Ok(())
+    // Bind the task to the living companion and end every satiety hold.
+    lifecycle_store::on_debit(c, task_id, now)
 }
 
 /// Running and verification are actual supervised execution phases. Waiting, preparation,
@@ -346,6 +395,8 @@ pub(crate) fn transition(
             hygiene = MIN(hygiene + 1000, 10000), updated_at_ms = ?1 WHERE id = 1",
             [at.wall],
         )?;
+        // A meter restored to full gets its satiety hold back.
+        lifecycle_store::on_refund(c, task_id, at.wall)?;
         c.execute(
             "UPDATE pet_care SET work_sessions = MAX(work_sessions - 1, 0),
             starts_since_bathroom = MAX(starts_since_bathroom - 1, 0) WHERE id = 1",
@@ -416,12 +467,14 @@ fn xp_view(mastery: MasteryView) -> XpView {
         .saturating_add(mastery.quality_performance)
         .saturating_add(mastery.learning_specification)
         .saturating_add(mastery.cleanup);
-    let thresholds = [0, 80, 200, 400, 700];
-    let level = thresholds.iter().filter(|&&t| xp >= t).count() as u8;
+    // The shared lifecycle-v1 curve [0, 80, 200, 400, 700]; output is byte-identical to
+    // the v0.1 inline thresholds (tested).
+    let rules = &RULES_V1.steady;
+    let level = level_for_xp(xp, rules);
     XpView {
         lifetime_xp: xp,
         level,
-        next_level_xp: thresholds.get(usize::from(level)).copied(),
+        next_level_xp: next_level_xp(level, rules),
         mastery,
     }
 }
