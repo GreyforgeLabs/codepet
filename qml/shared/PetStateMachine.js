@@ -220,7 +220,7 @@ function statusLine(snap) {
     var critical = lc && lc.critical ? lc.critical : null
     var words = critical ? NEED_WORDS[critical.need] : null
     if (life.death_pending)
-        return name + " urgently needs care. Care opens again once the current task is finished; your work is kept."
+        return name + "'s grace time has run out. They will pass away when the current task is finished; your work is kept."
     if (life.fainted)
         return name + " fainted from " + (words ? words.from : "low needs") + ". "
             + (words ? words.action : "Care") + " will revive them; work waits until then."

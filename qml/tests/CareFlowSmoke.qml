@@ -245,6 +245,9 @@ Item {
                 flow.careClicked("food")
                 flow.perform("pet.sleep", {}, "sleep")
                 top.check(!flow.canCare && !flow.canSleep && slow.calls.length === before, "a pending life refuses care and sleep")
+                top.check(flow.readinessText.indexOf("grace time has run out") >= 0 && flow.readinessText.indexOf("Care opens") < 0
+                          && flow.readinessText.indexOf("needs care") < 0,
+                          "a pending end never promises that care can still help: " + flow.readinessText)
                 PetCatalog.install()
                 top.part2Done = true
                 top.finish()

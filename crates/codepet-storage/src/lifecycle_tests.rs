@@ -309,6 +309,29 @@ fn death_pending_in_every_slot_state_preserves_the_job_and_blocks_start() {
 }
 
 #[test]
+fn pending_death_copy_never_promises_that_care_can_still_help() {
+    // Care is refused while the end is pending and the life ends when the slot frees, so the
+    // readiness reason and the Start refusal must not suggest that caring afterwards saves it.
+    let env = Env::with_boot();
+    let (mut store, _id) = armed(&env);
+    let _task = task_in_state(&mut store, &env, State::Running);
+    inject_critical(&env, "thirst", true);
+    let s = store.snapshot().unwrap();
+    let name = s.life.as_ref().unwrap().name.clone();
+    assert_eq!(
+        s.care.readiness_reasons[0],
+        format!("New work waits until the current task is closed; {name}'s grace time has run out.")
+    );
+    for reason in &s.care.readiness_reasons {
+        assert!(!reason.contains("needs care"), "{reason}");
+    }
+    let draft = store.create_task(&env.input(Category::Hunger)).unwrap();
+    let text = store.preflight(&draft.task_id, 1).unwrap_err().to_string();
+    assert!(text.contains("grace time has run out"), "{text}");
+    assert!(!text.contains("needs care"), "{text}");
+}
+
+#[test]
 fn accept_then_finalize_in_the_same_transaction() {
     let env = Env::with_boot();
     let (mut store, id) = armed(&env);

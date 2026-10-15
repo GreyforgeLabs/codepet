@@ -204,8 +204,10 @@ fn lifecycle_reason(c: &Connection) -> Result<Option<String>> {
     };
     let vitals = lifecycle_store::load(c)?;
     if vitals.death_pending {
+        // Care cannot change the outcome now (it is refused while the end is pending), so the
+        // copy must not promise a recovery; it matches LifeText.pendingText.
         return Ok(Some(format!(
-            "{} needs care as soon as the current task is finished",
+            "New work waits until the current task is closed; {}'s grace time has run out.",
             life.name
         )));
     }
@@ -227,7 +229,7 @@ pub(crate) fn ensure_lifecycle_ready(c: &Connection) -> Result<()> {
     let vitals = lifecycle_store::load(c)?;
     if vitals.death_pending {
         return Err(StorageError::InvalidState(
-            "the companion needs care once the current task is finished",
+            "new work waits until the current task is closed; the companion's grace time has run out",
         ));
     }
     if vitals.vitals.critical.is_some() {

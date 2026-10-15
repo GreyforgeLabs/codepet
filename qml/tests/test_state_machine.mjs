@@ -339,7 +339,9 @@ test('statusLine copy follows the calm templates and never predicts a death', ()
     assert.equal(SM.statusLine({ life: life({ status: 'critical', fainted: true, mode: 'gentle' }),
                                  lifecycle: { critical: { need: 'thirst' } } }),
         'Ginger fainted from thirst. Water will revive them; work waits until then.');
-    assert.match(SM.statusLine({ life: life({ status: 'critical', death_pending: true }) }), /urgently needs care.*work is kept/);
+    assert.equal(SM.statusLine({ life: life({ status: 'critical', death_pending: true }) }),
+        "Ginger's grace time has run out. They will pass away when the current task is finished; your work is kept.",
+        'a pending end never promises that care can still help');
     assert.equal(SM.statusLine({ life: life({ paused: true }) }), "Paused: time isn't counting (on a break).");
     assert.equal(SM.statusLine({ life: life({ armed: false }) }), "Paused: time isn't counting (not set up).");
     assert.equal(SM.formatActive(60000), 'about 1 min of active time');

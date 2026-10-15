@@ -66,7 +66,7 @@ ColumnLayout {
         && ["preparing", "running", "waiting_for_user", "verifying", "cancelling", "recovery_required"].indexOf(taskState) === -1
     readonly property int remainingMs: care ? Math.max(0, care.sleep_remaining_ms - (sleeping ? Math.max(0, countdownNow - countdownStarted) : 0)) : 0
     readonly property string readinessText: snap !== null && !lifeCanCare
-        ? (life ? "Care opens again once the current task is finished." : "Adopt a companion to start work")
+        ? (life ? "New work waits until the current task is closed; " + (life.name || "your companion") + "'s grace time has run out." : "Adopt a companion to start work")
         : !care ? "Refresh to load care and readiness"
         : care.ready_to_work ? "Ready to work"
         : (care.readiness_reasons || []).join(" · ") || "Not ready. Refresh the saved state."
