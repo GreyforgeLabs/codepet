@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "greyforge.codepet",
+  "name": "CodePet",
+  "version": "0.2.0",
+  "author": "Greyforge Labs",
+  "license": "MIT",
+  "description": "Your CodePet companion on the bar: needs, level and evolution at a glance, quick care, and the desktop pet. Mock tasks only.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "CodePet",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": { "label": "name", "presence": true, "overlayOnLoad": false, "binary": "", "stateHome": "" },
+    "schema": [
+      { "key": "label", "type": "enum", "label": "Bar label", "options": ["name", "status", "none"], "defaultValue": "name", "description": "name shows the companion's name; status adds the most urgent need." },
+      { "key": "presence", "type": "boolean", "label": "Count active time", "defaultValue": true, "description": "Needs change only during active time while this widget is on your bar and you are at the computer." },
+      { "key": "overlayOnLoad", "type": "boolean", "label": "Show the desktop pet when the bar loads", "defaultValue": false }
+    ]
+  }
+}
