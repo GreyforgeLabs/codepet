@@ -22,14 +22,19 @@ fn armed(env: &Env) -> String {
 #[test]
 fn cli_commands_settle_presence_capped_by_boot_time_exactly_once() {
     let env = Env::new();
-    let life = armed(&env);
+    env.care_routine();
+    // The backend measures the cap from the arming command's own settle stamp, which lies
+    // inside `env.arm()`; start the bound before it so the bound is never the smaller one.
+    let before_arming = Instant::now();
+    env.arm();
+    let life = env.life_id();
     let now = SystemClock.now_ms();
     // A claim of 2 h while only seconds of boot time have passed since the last settling
-    // command (the arming): credit is capped at that boot time plus one tick.
-    let since_arming = Instant::now();
+    // command (the arming): credit is capped at that boot time plus one tick. The slack
+    // covers clock granularity; the test only needs 2 h to be capped near one minute.
     env.write_presence("bar-cli-0001", &life, now - 3 * HOUR, now, 2 * HOUR);
     let s = env.state();
-    let bound = 60_000 + i64::try_from(since_arming.elapsed().as_millis()).unwrap() + 20;
+    let bound = 60_000 + i64::try_from(before_arming.elapsed().as_millis()).unwrap() + 250;
     let credited = attended(&s);
     assert!(
         (MIN..=bound).contains(&credited),
