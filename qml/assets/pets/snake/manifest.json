@@ -525,7 +525,7 @@
    "sha256": "171417ab4dc3d9c32064c1e7c4f7569f19497232b04cf8082298cf95e202bb1a",
    "source": "git origin/art/generated-source-library:docs/art-library/source/snake/v1/snake-source.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "4915caaca3a6f02daeb919a42e4987549d2bdf047e51d8f08ca66c95f9ff6993",

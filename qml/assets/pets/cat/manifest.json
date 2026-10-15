@@ -512,7 +512,7 @@
    "sha256": "d95d3008ace07f3aa1db0007376094f1e2719c407ce1ebee599d25bbf16aedc4",
    "source": "git show origin/art/generated-source-library:docs/art-library/source/cat/v1/poses-alpha.png (GreyforgeLabs/codepet PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "6729777dcd44d23b264fe200b5115962aa8e8dbb62c63bfd1c675fe9d3a179c3",

@@ -539,7 +539,7 @@
    "sha256": "9a0a63d9afdc6416ed79d75c3c3c49f3f2d5f31dc819c3fe29b59ec1830c6cf2",
    "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/frog/v1/source-sheet.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "ee83739d1fade61761e23dfbd79672d428a049ce1c920d22b645efb1b31801e2",

@@ -8,9 +8,11 @@ import json
 
 import roster
 
-ROUTE = ("GPT Image 2 (OpenAI image generation), run through the operator's ChatGPT "
-         "subscription by the local Codex CLI image tool, with each sheet anchored on the "
-         "species' PR #7 source sheet (`docs/art-library/source/…`, merged in v0.2.0)")
+ROUTE = ("GPT Image 2 (OpenAI image generation) via the Codex CLI image tool on the project "
+         "owner's ChatGPT plan, with each sheet anchored on the species' PR #7 source sheet "
+         "(`docs/art-library/source/…`, merged in v0.2.0)")
+ASSET = "codepet-art-sources-v0.2.tar"
+ASSET_URL = "https://github.com/GreyforgeLabs/codepet/releases/download/v0.2.1/" + ASSET
 
 LICENCE = ("Distributed under the repository MIT licence (`qml/assets/pets/LICENSE`) by the "
            "project owner. The frames are AI-generated with OpenAI image generation; no "
@@ -38,9 +40,10 @@ def provenance_md(manifests, src_root=None):
       "fringe erode, connected-component cell split, one scale per species and stage, stage "
       "factors 0.82 / 0.92 / 1.0, ground line y = 184). Extraction is deterministic; "
       "`extract.py --check` rebuilds and byte-compares.")
-    w("- **Source sheets are not in Git** (about 200 MB). They are to be attached to the v0.2.0 "
-      "release as `codepet-art-sources-v0.2.tar`; every sheet's sha256 is listed below and in "
-      "each `manifest.json` (`source.sheets`).")
+    w(f"- **Source sheets are not in Git** (about 200 MB). They are the release asset "
+      f"[`{ASSET}`]({ASSET_URL}) of v0.2.1 (its sha256 is in that release's `SHA256SUMS`); "
+      "every sheet's sha256 is listed below and in each `manifest.json` (`source.sheets`). "
+      "Reproduction steps: `docs/pets.md`.")
     w("- **PR #7 library:** the 15 PR #7 sheets in `docs/art-library/` are the style anchors "
       "the v0.2 sheets were generated from (each species' reference hash is listed below). "
       "No PR #7 pixels are shipped directly.")
@@ -61,9 +64,9 @@ def provenance_md(manifests, src_root=None):
               "neutral placeholder until `extract.py --species " + sid + "` runs.")
             w("")
             continue
-        w(f"- Source directory: `{src.get('dir')}/` (planned release asset `codepet-art-sources-v0.2.tar`)")
+        w(f"- Source directory: `v0.2/{src.get('dir')}/` in the release asset `{ASSET}`")
         if src.get("generator"):
-            w(f"- Generator (as recorded): {src['generator']}")
+            w(f"- Generator: {src['generator']}")
         ref = src.get("reference")
         if ref:
             w(f"- Style anchor: `{ref.get('file')}` sha256 `{ref.get('sha256')}`"
@@ -195,7 +198,22 @@ def pets_md(manifests):
     w("python3 qml/tests/test_pet_distinctness.py")
     w("```")
     w("")
-    w("Sources default to `~/Media/codepet-art/v0.2` (`--src` or `CODEPET_ART_SRC` to override). "
+    w("### Reproducing the frames")
+    w("")
+    w(f"The source sheets are the v0.2.1 release asset [`{ASSET}`]({ASSET_URL}). "
+      "From the repository root:")
+    w("")
+    w("```")
+    w(f"# download {ASSET} and SHA256SUMS from the v0.2.1 release, then:")
+    w("sha256sum -c SHA256SUMS --ignore-missing")
+    w(f"tar tf {ASSET} | head          # every path starts with v0.2/")
+    w(f"mkdir -p art-src && tar xf {ASSET} -C art-src")
+    w("python3 tools/petart/extract.py --check       # rebuild every frame and byte-compare")
+    w("```")
+    w("")
+    w("Sources default to `art-src/v0.2` in the repository (Git ignores `art-src/`; `--src` or "
+      "`CODEPET_ART_SRC` to override); QA output goes to `target/petart-run` "
+      "(`CODEPET_RUN_DIR`). "
       "`*.reject-*.png` files are ignored; a species is ready only when all six sheets exist and "
       "match the sha256 values in its `provenance.json`. Fixes for individual cells (remap to "
       "another cell, horizontal flip, nudge, per-cell scale, fit exclusion, grounded hopper "

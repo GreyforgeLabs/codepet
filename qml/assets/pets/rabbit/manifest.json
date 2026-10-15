@@ -551,7 +551,7 @@
    "sha256": "771c404f28bc2caa253b035e4f3efea70cb60008307921a902278d4cd0dd31b8",
    "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/rabbit/v1/rabbit-source.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "f98b14e4eb08bc114dc40fcf58ca1e8f6224eedc5aa3cd02fa1da683bd50fc1a",

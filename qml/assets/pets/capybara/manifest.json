@@ -538,7 +538,7 @@
    "sha256": "4fc3f93146bac3e940628b923a2f075223998cfd60e2c593822eb7f76c0a8b7a",
    "source": "git show origin/art/generated-source-library:docs/art-library/source/capybara/v1/poses.png (GreyforgeLabs/codepet PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "6c726ca5d0362d8b82075c66d9e8fcb2b02e6bdab5430a879fd17e171e0dd6b1",

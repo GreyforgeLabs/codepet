@@ -544,7 +544,7 @@
    "sha256": "4fd8f2293ad1e4815c578a84fed0a4dbe3eeb0cd40627bca25c60ab167bde2ff",
    "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/red-panda/v1/source-sheet.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "2f4ab7e32935095243637efb3997a21ec62d2057714df21b4de29a97033d75d9",

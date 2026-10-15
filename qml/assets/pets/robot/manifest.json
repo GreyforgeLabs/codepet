@@ -555,7 +555,7 @@
    "sha256": "b7b8ca3b201cd2da76d2c58cd599ec6a9426dda5b2b735c38cc53b01d4d241de",
    "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/robot/v1/poses.png"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "2ec20a172b324aa35a9fcc675069668f805358370f3070b6518abdd49c907247",

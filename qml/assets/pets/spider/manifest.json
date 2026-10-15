@@ -538,7 +538,7 @@
    "sha256": "fc38743423bf6b44385eb4dd7f2227de5222119edf8d5e2185695af3b871f410",
    "source": "origin/art/generated-source-library:docs/art-library/source/spider/v1/spider-source.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "88e32f0e4c283b9cdad316ca289c7d19af247dbb83a16111f88db00ed63d370c",

@@ -172,7 +172,7 @@ lic = (PETS / "LICENSE").read_text() if (PETS / "LICENSE").is_file() else ""
 if "MIT License" not in lic:
     fail("qml/assets/pets/LICENSE must be the MIT licence")
 provenance = (PETS / "PROVENANCE.md").read_text() if (PETS / "PROVENANCE.md").is_file() else ""
-for phrase in ("GPT Image 2", "ChatGPT subscription", "Codex CLI", "PR #7", "MIT", "not been legally reviewed"):
+for phrase in ("GPT Image 2", "ChatGPT plan", "Codex CLI", "PR #7", "MIT", "not been legally reviewed"):
     if phrase not in provenance:
         fail(f"PROVENANCE.md must state {phrase!r}")
 docs = DOCS.read_text() if DOCS.is_file() else ""

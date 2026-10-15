@@ -118,7 +118,19 @@ CODEPET_ALLOW_PARTIAL_ART=1 python3 qml/tests/test_pet_assets.py
 python3 qml/tests/test_pet_distinctness.py
 ```
 
-Sources default to `~/Media/codepet-art/v0.2` (`--src` or `CODEPET_ART_SRC` to override). `*.reject-*.png` files are ignored; a species is ready only when all six sheets exist and match the sha256 values in its `provenance.json`. Fixes for individual cells (remap to another cell, horizontal flip, nudge, per-cell scale, fit exclusion, grounded hopper frame, source-sheet erase), per-sheet fixes (size scale, keying options, component reassignment) and species-wide keying options go in `tools/petart/overrides.json` with a reason; the reasons are copied into `PROVENANCE.md`.
+### Reproducing the frames
+
+The source sheets are the v0.2.1 release asset [`codepet-art-sources-v0.2.tar`](https://github.com/GreyforgeLabs/codepet/releases/download/v0.2.1/codepet-art-sources-v0.2.tar). From the repository root:
+
+```
+# download codepet-art-sources-v0.2.tar and SHA256SUMS from the v0.2.1 release, then:
+sha256sum -c SHA256SUMS --ignore-missing
+tar tf codepet-art-sources-v0.2.tar | head          # every path starts with v0.2/
+mkdir -p art-src && tar xf codepet-art-sources-v0.2.tar -C art-src
+python3 tools/petart/extract.py --check       # rebuild every frame and byte-compare
+```
+
+Sources default to `art-src/v0.2` in the repository (Git ignores `art-src/`; `--src` or `CODEPET_ART_SRC` to override); QA output goes to `target/petart-run` (`CODEPET_RUN_DIR`). `*.reject-*.png` files are ignored; a species is ready only when all six sheets exist and match the sha256 values in its `provenance.json`. Fixes for individual cells (remap to another cell, horizontal flip, nudge, per-cell scale, fit exclusion, grounded hopper frame, source-sheet erase), per-sheet fixes (size scale, keying options, component reassignment) and species-wide keying options go in `tools/petart/overrides.json` with a reason; the reasons are copied into `PROVENANCE.md`.
 
 ## Limits
 

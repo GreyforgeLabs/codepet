@@ -1,4 +1,5 @@
 /target/
+/art-src/
 *.swp
 .DS_Store
 .env
