@@ -1,6 +1,16 @@
 # CodePet
 
-A manually controlled coding companion, built toward **Linux portability with Omarchy integration by default**. Rust owns task policy and state; Qt Quick/QML supplies the lightweight UI. This repository is at **milestone 1: durable mock execution**. It is not an installed desktop pet or a functioning coding agent: the only provider is a mock that runs no command.
+A manually controlled coding companion, built toward **Linux portability with Omarchy integration by default**. Rust owns task policy and state; Qt Quick/QML supplies the lightweight UI. This repository is at **milestone 1: durable mock execution**. The overlay-first Quickshell entry is now available for live validation; it is not installed or desktop-certified. The only provider is a mock that runs no command.
+
+## Desktop companion
+
+The default presentation is a small, transparent desktop pet, with short cosmetic walks and long pauses. Hover for well-being bars; click for compact care controls. Food, water, tree and bed appear only for the interaction. Task and review controls open in a separate focusable window after an explicit action. Cosmetic movement never starts a task.
+
+- Omarchy/Quickshell: `quickshell -p qml/omarchy/shell.qml` (put the built `codepet` CLI on PATH first)
+- Portable scene preview: `PYTHONPATH=/path/to/PySide6 QT_QUICK_CONTROLS_STYLE=Basic python qml/tests/run_qml.py qml/standalone/OverlayPreview.qml` (the smoke runner exits after 20 seconds)
+- The portable preview is a normal fixture window, not a Wayland/X11 overlay implementation
+
+Read [overlay support and live checks](docs/desktop-overlay.md) before running. No autostart, desktop settings, lock-screen hook or user-machine installation is performed by this change.
 
 ## What works today
 
@@ -36,7 +46,7 @@ printf '%s\n' '{"v":1,"id":"r1","method":"state.get","params":{}}' | cargo run -
 - Apply, rollback, diffs, `task.logs`; artifact paging (artifacts are capped at 24 KiB of JSON for now)
 - Decay settlement (settings are stored only), retention and history deletion
 - Job socket and event streaming; the Qt C++ standalone launcher
-- The Quickshell adapter has been tested headlessly against the real `codepet rpc` (one manual loop), but never in a live Omarchy panel; no Omarchy plugin registration, bar widget, packaging, assets or sprite animation
+- The Quickshell adapter has been tested headlessly against the real `codepet rpc` (one manual loop), but never in a live Omarchy panel; no Omarchy plugin registration or packaging; the new transparent overlay shell and original vector sprite poses still require live compositor validation
 - Runtime or visual testing on a live Omarchy, Wayland or X11 session or other distributions
 - CPU, memory or binary-size measurements; resource budgets remain design targets
 
@@ -56,4 +66,4 @@ The desired architecture has **no permanently resident Rust daemon**: short expl
 - [Licenses and upstream status](docs/licenses.md)
 - [QML UI](qml/README.md)
 
-`docs/source-manifest.sha256` records the original import and is now stale: on 2026-10-14, 9 of its entries no longer match (milestone 1 changed the Cargo files, README, core, CLI and QML README) and 2 listed QML files were removed (see [qml/README.md](qml/README.md)). It is kept unchanged as the import record. No upstream code or sprites are vendored. Preserve this distinction until upstream commits, assets and licenses are audited.
+`docs/source-manifest.sha256` records the original import and is now stale: on 2026-10-14, 9 of its entries no longer match (milestone 1 changed the Cargo files, README, core, CLI and QML README) and 2 listed QML files were removed (see [qml/README.md](qml/README.md)). It is kept unchanged as the import record. No upstream code or sprites are vendored. The original vector cat assets have their own provenance record under `qml/assets/`. Preserve this distinction until upstream commits, assets and licenses are audited.

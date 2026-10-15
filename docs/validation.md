@@ -172,3 +172,32 @@ Core tests cover unchanged startup, stale/replaced/cross-engine/cross-job tokens
 - GitHub Actions workflow is prepared, but no hosted CI run is claimed
 
 The spec copy was compared byte-for-byte with the latest source specification at this milestone. This report describes this scaffold, not the full target specification's acceptance matrix.
+
+## Overlay-first UI revision (2026-10-15)
+
+Based on care PR #3 head `1f18e5e78c2f316804eb5205b95071da4160e3dd`;
+no Rust, protocol, storage or provider code changed in this revision.
+
+Fresh validation in the cloud workspace (not inherited earlier results):
+
+- Official Rust 1.85.0: `cargo fmt --all --check` passed
+- `cargo test --workspace --locked`: all 174 tests passed, unfiltered
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed
+- `cargo run --locked -p codepet -- mock-demo`: passed, no commands/projects touched
+- PySide/Qt 6.8.3 offscreen: existing Preview/Care/CareFlow/FilteredDraft smoke
+  suites passed (73 checks); OverlaySmoke passed 18 checks
+- Independent task-window lifecycle test passed 7 checks
+- Six host source/pure-JavaScript policy tests passed (monitor selection, clipping,
+  focus/exclusive-zone/mask declarations, explicit suppression/restore and lifetime)
+- All 36 original SVG pose/prop assets parsed successfully; passive renderer check passed
+- Portable QML qmllint clean; `git diff --check` passed
+- Offscreen idle/menu renders visually inspected; original sprite/prop contact
+  sheets and actual QML renderer inspected
+
+New CI workflow runs pinned Qt 6.8.3 offscreen suites, lifecycle/policy/assets and
+portable QML lint. These tests do not import a real Quickshell runtime. Host APIs
+were source-reviewed against official 0.3.1 docs/source. Quickshell runtime,
+compositor input pass-through/focus, monitor hotplug, trusted lock/suspend/fullscreen
+hooks, accessibility integration and CPU/PSS/power measurements were **not run**.
+No live desktop compatibility claim follows from offscreen tests. See
+[the explicit live checklist](desktop-overlay.md#live-validation-checklist-not-performed-in-the-cloud).

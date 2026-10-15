@@ -18,6 +18,7 @@ ColumnLayout {
     id: root
     required property var host
     property string view: "home"
+    property bool showPetCare: true
     property string notice: ""
     readonly property var snap: host && host.snapshot ? host.snapshot : null
     readonly property var activeTask: snap && snap.active_task ? snap.active_task : null
@@ -101,6 +102,7 @@ ColumnLayout {
         }
         PetCare {
             objectName: "panel.petCare"
+            visible: root.showPetCare
             Layout.fillWidth: true
             host: root.host
         }

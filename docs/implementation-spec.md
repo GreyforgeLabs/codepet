@@ -1,6 +1,12 @@
 # CodePet implementation specification
 
-Version: 1.0 · Status: implementation-ready design, not implemented or benchmarked · Target: supported Linux desktops; Omarchy integration by default
+Version: 1.1 · Status: implementation-ready design, not implemented or benchmarked · Target: supported Linux desktops; Omarchy integration by default
+
+## Current product direction (2026-10-15)
+
+This revision supersedes the earlier bar/panel-only and no-roaming direction: the primary interface is a transparent desktop pet with a tight input region, short cosmetic walks, long pauses, hover/selection meters and transient care props. A separate focusable task/review window opens only through explicit user action. Ordinary portable Qt preview windows are not a claim of Wayland overlay support. See [desktop-overlay.md](desktop-overlay.md) for implemented capability boundaries and live validation gates.
+
+The implemented care/progression contract in [care-progression.md](care-progression.md) also supersedes the older category meter rewards below: care fills bars, full bars and completed required rest gate Start, explicit eligible mock acceptance grants isolated demo XP, and real providers remain disabled. No cosmetic timer, low meter, care interaction or wake event starts coding.
 
 ## 1. Product decision
 
@@ -111,9 +117,15 @@ All meters represent **well-being**, from 0 to 100: larger is better. UI labels 
 
 ## 5. User interaction and UI
 
-### 5.1 Bar and panel
+### 5.1 Transparent desktop pet and explicit task window
 
-In Omarchy, the bar shows a small sprite and an optional task-status dot. Clicking opens a lightweight panel. On other desktops, a standalone Qt Quick window presents the same pet and controls without requiring panel integration. The shared panel contains four meters, task status, **New task**, **Pause decay**, settings, and recent results. Keep roaming and climbing out of version one; they create unnecessary CPU and integration work. Permit a small idle animation, disabled by reduced-motion or power-saving mode.
+Omarchy uses a transparent Quickshell PanelWindow on one selected screen, with no reserved space and no keyboard focus. A union of only visible pet/menu/prop bounds forms the input region; empty desktop space passes clicks through. Choose the top layer deliberately, not the lock-screen overlay layer. Move artwork inside the surface; do not repeatedly reposition a desktop window or capture the full screen's input.
+
+The pet makes small screen-local floor walks, then pauses. Clamp pet and controls on screen/scale changes and select a remaining monitor when its screen disappears. Animation is cosmetic, bounded to at most 6 FPS, paused when hidden or reduced-motion is selected. Explicit hide and trusted lock/suspend/fullscreen suppression remove both surface and props. Do not instantiate a session locker as a lock detector; unsupported integrations must be documented without guarantees.
+
+Show meters on hover/selection and a compact care menu on click. Bowls, tree and bed are transient. Task entry, review and keyboard navigation live in an independent window that opens only explicitly, sharing one transport and Rust-owned state. Closing it must not kill the existing per-job supervisor. No frame or solid scene background surrounds the desktop pet.
+
+Other Linux desktops require capability-specific hosts. A portable fixture preview is useful but does not satisfy global placement, click-through or always-on-top guarantees on Wayland or X11.
 
 Status mapping:
 
