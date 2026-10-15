@@ -372,3 +372,29 @@ test('care retry keys are reused only briefly after an unconfirmed press', () =>
     const barSrc = readFileSync(new URL('../../omarchy-plugin/CodePetBar.js', import.meta.url), 'utf8');
     assert.match(barSrc, new RegExp('var RETRY_WINDOW_MS = ' + SM.CARE_RETRY_WINDOW_MS + '\\b'));
 });
+
+test('PetCare timers never launch a request (spec §1), directly or through a function', () => {
+    const src = read('../shared/PetCare.qml').replace(/\/\/[^\n]*/g, '');
+    const blockAfter = (text, start) => {
+        const i = text.indexOf('{', start);
+        let depth = 0;
+        for (let j = i; j < text.length; j++) {
+            if (text[j] === '{') depth++;
+            else if (text[j] === '}' && --depth === 0) return text.slice(i, j + 1);
+        }
+        throw new Error('unbalanced');
+    };
+    const fns = {};
+    for (const m of src.matchAll(/\bfunction\s+(\w+)\s*\(/g)) fns[m[1]] = blockAfter(src, m.index + m[0].length);
+    const timers = [...src.matchAll(/\bTimer\s*\{/g)].map((m) => blockAfter(src, m.index));
+    assert.ok(timers.length >= 4);
+    const bad = /request\(|perform\(|startRoutine\(|careClicked\(/;
+    for (const t of timers) {
+        assert.doesNotMatch(t, bad, t);
+        for (const [, name] of t.matchAll(/root\.(\w+)\(/g)) assert.doesNotMatch(fns[name] || '', bad, `${name} from a timer`);
+    }
+    // The routine is one request: storage's atomic pet.care {action: "routine"}.
+    assert.match(fns.startRoutine, /perform\("pet\.care", \{action: "routine"\}, "routine"/);
+    assert.equal((fns.startRoutine.match(/perform\(/g) || []).length, 1);
+    assert.match(src, /onTriggered: root\.playRoutineStep\(\)/);
+});

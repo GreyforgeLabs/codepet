@@ -18,6 +18,7 @@ Item {
     property bool part2Done: false
     property string firstKey: ""
     property int mark: 0
+    property int mark1: 0
     function finish() {
         if (!part1Done || !part2Done) return
         console.log("DONE failures=" + top.failures)
@@ -28,6 +29,7 @@ Item {
         property bool busy: false
         property string lastError: ""
         property int actions: 0
+        property var careActions: []
         property var methods: []
         property var snapshot: ({meters: {hunger: 7000, thirst: 7000, mental_health: 7000, hygiene: 7000},
             care: {revision: 1, sleeping: false, sleep_due: false, sleep_remaining_ms: 120000, bathroom_due: false,
@@ -39,9 +41,11 @@ Item {
                 var result = host.snapshot
                 if (method === "pet.care") {
                     host.actions += 1
+                    host.careActions = host.careActions.concat([params.action])
                     var saved = JSON.parse(JSON.stringify(host.snapshot))
-                    var key = {food: "hunger", water: "thirst", play: "mental_health", wash: "hygiene"}[params.action]
-                    saved.meters[key] = 10000
+                    var keys = params.action === "routine" ? ["hunger", "thirst", "mental_health", "hygiene"]
+                        : [{food: "hunger", water: "thirst", play: "mental_health", wash: "hygiene"}[params.action]]
+                    for (var i = 0; i < keys.length; i++) saved.meters[keys[i]] = 10000
                     saved.care.revision += 1
                     host.snapshot = saved
                     result = {request_id: requestId, action: params.action, changed: true, meters: saved.meters, care: saved.care}
@@ -60,34 +64,44 @@ Item {
         interval: 200; repeat: true; running: true
         onTriggered: {
             top.step += 1
+            // The routine is one user click and one authoritative request; storage fills
+            // every bar atomically. The per-step choreography afterwards sends nothing
+            // (spec §1: no RPC launched in response to a timer).
             if (top.step === 1) care.startRoutine()
             if (top.step === 3) {
-                top.check(host.actions === 1 && host.snapshot.meters.hunger === 10000, "routine awaits confirmed first care action")
+                top.check(host.actions === 1 && host.careActions[0] === "routine", "the routine is one pet.care {action: routine} request")
+                top.check(host.snapshot.meters.hunger === 10000 && host.snapshot.meters.hygiene === 10000,
+                          "storage fills every bar in that one request")
                 top.check(care.careTrail.length === 1, "confirmed care appears in separate bounded activity trail")
                 top.check(!host.snapshot.care.ready_to_work && care.readinessText === "Needs care", "care feedback never computes readiness locally")
+                top.check(care.routineRunning && care.reactionSeq === 1 && care.lastReaction === "food",
+                          "the choreography starts only after the confirmed response")
+                top.mark1 = host.methods.length
+            }
+            if (top.step === 12) {
+                top.check(host.methods.length === top.mark1 && host.actions === 1,
+                          "the step-by-step choreography never sends a request")
+                top.check(care.reactionSeq >= 2, "later steps play cosmetically")
                 care.stopRoutine()
+                top.check(!care.routineRunning, "Stop ends the choreography; confirmed care is kept")
             }
             if (top.step === 14) {
-                top.check(host.actions === 1 && !care.routineRunning, "Stop prevents later routine actions while retaining confirmed care")
+                host.snapshot = (function () { var x = JSON.parse(JSON.stringify(host.snapshot)); x.meters.thirst = 7000; return x })()
                 care.startRoutine()
-            }
-            if (top.step === 16) {
-                top.check(host.actions === 2 && host.snapshot.meters.thirst === 10000, "new routine skips already full bar")
                 care.visible = false
             }
             if (top.step === 28) {
-                top.check(host.actions === 2 && !care.routineRunning, "hiding cancels remaining routine interactions")
+                top.check(host.actions === 2 && host.careActions[1] === "routine" && !care.routineRunning,
+                          "hiding stops the choreography and nothing is re-sent")
                 top.check(host.methods.indexOf("task.start") === -1, "care routine never starts work")
                 care.visible = true
+                host.snapshot = (function () { var x = JSON.parse(JSON.stringify(host.snapshot)); x.meters.hygiene = 7000; return x })()
+                host.busy = true // A deliberately slow unrelated Refresh.
                 care.startRoutine()
             }
-            if (top.step === 30) {
-                host.busy = true // A deliberately slow unrelated Refresh during the pause.
-            }
             if (top.step === 41) {
-                top.check(host.actions === 3 && host.snapshot.meters.hygiene === 7000, "busy request never silently consumes the next care step")
-                top.check(!care.routineRunning, "busy between actions does not strand a running routine")
-                top.check(care.feedback.indexOf("busy") >= 0, "busy stop is visibly explained with a recovery action")
+                top.check(host.actions === 2 && host.snapshot.meters.hygiene === 7000, "busy request never silently consumes a routine")
+                top.check(!care.routineRunning, "a refused routine never strands a running routine")
                 host.busy = false
                 top.part1Done = true
                 top.finish()
@@ -124,7 +138,9 @@ Item {
                     callback({ok: false, error: {code: "INVALID_STATE", message: "Not now."}})
                 } else if (method === "pet.care") {
                     var saved = JSON.parse(JSON.stringify(slow.snapshot))
-                    saved.meters[{food: "hunger", water: "thirst", play: "mental_health", wash: "hygiene"}[params.action]] = 10000
+                    var keys = params.action === "routine" ? ["hunger", "thirst", "mental_health", "hygiene"]
+                        : [{food: "hunger", water: "thirst", play: "mental_health", wash: "hygiene"}[params.action]]
+                    for (var i = 0; i < keys.length; i++) saved.meters[keys[i]] = 10000
                     saved.care.revision += 1
                     slow.snapshot = saved
                     callback({ok: true, result: {request_id: requestId, action: params.action, changed: true, meters: saved.meters, care: saved.care}})
@@ -230,13 +246,18 @@ Item {
                 break
             case 14:
                 slow.snapshot = (function () { var x = top.lifeSnap({}); x.meters = {hunger: 10000, thirst: 10000, mental_health: 10000, hygiene: 9000}; return x })()
+                top.mark = slow.count("pet.care")
                 flow.startRoutine()
                 break
             case 15:
-                top.check(flow.routineRunning && slow.presentationLocks === 1, "the lock is held across the routine's pause")
+                top.check(flow.routineRunning && slow.presentationLocks === 1, "the lock is held across the routine's choreography")
+                var routines = slow.calls.filter(function (c) { return c.method === "pet.care" && c.params.action === "routine" })
+                top.check(routines.length >= 1 && slow.count("pet.care") === top.mark + 1, "one routine request per click")
+                top.mark = slow.calls.length
                 break
-            case 30: // after the 1.6 s pause between routine steps
+            case 30: // after the cosmetic step
                 top.check(!flow.routineRunning && slow.presentationLocks === 0, "a completed routine releases its lock")
+                top.check(slow.calls.length === top.mark, "the choreography sent nothing")
                 slow.snapshot = (function () { var x = top.lifeSnap({}); x.life = null; return x })()
                 top.check(!flow.canCare && !flow.canSleep && flow.readinessText === "Adopt a companion to start work",
                           "no life: care and sleep are unavailable")

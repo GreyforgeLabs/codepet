@@ -6,8 +6,9 @@ import QtQuick.Window
 import "PetCatalog.js" as PetCatalog
 import "PetStateMachine.js" as PetStateMachine
 
-// Every stat comes from a Rust snapshot. Timers only paint a pose/countdown or
-// finish a user-started care sequence; they never start work or grant readiness.
+// Every stat comes from a Rust snapshot. Timers only paint a pose/countdown or advance
+// the cosmetic routine choreography; they never send a request, start work or grant
+// readiness (spec §1: no RPC launched in response to a timer).
 // Care choreography: while a request is pending the sprite holds the care state's
 // first (approach) frame; the reaction plays only after the authoritative response
 // (reactionSeq increments for confirmed care only; failureSeq for any failure).
@@ -105,12 +106,14 @@ ColumnLayout {
         var labels = {food: "Food offered. Nourishment restored.", water: "Fresh water. Hydration restored.",
             play: "A little play and encouragement. Mood restored.", wash: "Paws washed. Hygiene restored.",
             bathroom: "Bathroom break complete. Paws washed.", sleep: "Tucked into bed for a two-minute nap.",
+            routine: "Care routine confirmed. Every bar is full.",
             wake: "Sleep state checked. Your saved rest credit is preserved."}
         return labels[action] || "Care recorded."
     }
+    // Returns true when the request was sent.
     function perform(method, params, action, continuation) {
         if (root.hostBusy || !root.care || root.pendingAction !== "" || !root.lifeCanCare)
-            return
+            return false
         var signature = method + JSON.stringify(params)
         var now = Date.now()
         // One key per press; reused only for a retry soon after an unconfirmed response.
@@ -130,7 +133,7 @@ ColumnLayout {
                 root.retryKey = ""
                 root.retryExpiresAt = 0
                 root.lastError = ""
-                root.reaction = action
+                root.reaction = action === "routine" ? "" : action
                 if (PetStateMachine.isCareAction(action)) {
                     root.lastReaction = action
                     root.reactionSeq += 1
@@ -165,6 +168,7 @@ ColumnLayout {
                     continuation(response.ok && refresh.ok)
             })
         }, key)
+        return true
     }
     function careClicked(action) {
         if (root.canCare)
@@ -177,51 +181,64 @@ ColumnLayout {
         routineNext.stop()
         root.releaseLock()
     }
-    function startRoutine() {
-        if (!root.canCare)
-            return
+    // The steps a routine fills, for the choreography only; storage decides what changes.
+    function routinePlan() {
         var steps = []
         if (root.meters.hunger < 10000) steps.push("food")
         if (root.meters.thirst < 10000) steps.push("water")
         if (root.meters.mental_health < 10000) steps.push("play")
         if (root.care.bathroom_due) steps.push("bathroom")
         else if (root.meters.hygiene < 10000) steps.push("wash")
+        return steps
+    }
+    // One user click, one request: `pet.care {action: "routine"}` applies every needed
+    // care atomically in storage (as the bar popup's Routine does). Only after that
+    // authoritative response does the per-step choreography play, cosmetically.
+    function startRoutine() {
+        if (!root.canCare)
+            return
+        var steps = root.routinePlan()
         if (steps.length === 0) {
             root.feedback = "All four bars are full. Care grants no XP."
             return
         }
         root.routineGeneration += 1
+        var generation = root.routineGeneration
         root.routineRunning = true
-        root.routineSteps = steps
+        root.routineSteps = []
         root.takeLock()
-        root.nextCare()
+        var sent = root.perform("pet.care", {action: "routine"}, "routine", function (ok) {
+            if (generation !== root.routineGeneration)
+                return // stopped or hidden meanwhile; confirmed care is kept
+            if (!ok) {
+                root.stopRoutine()
+                return
+            }
+            root.routineSteps = steps
+            root.playRoutineStep()
+        })
+        if (!sent)
+            root.stopRoutine()
     }
-    function nextCare() {
-        if (!root.routineRunning || !root.presentationActive)
+    // Cosmetic only: shows the next confirmed step's reaction. Never sends a request.
+    function playRoutineStep() {
+        if (!root.routineRunning)
             return
-        if (root.hostBusy) {
-            root.stopRoutine()
-            root.feedback = "Routine stopped while another request was busy. Confirmed care is kept; start the routine again for remaining bars."
-            return
-        }
-        if (root.sleeping) {
-            root.stopRoutine()
-            root.feedback = "Routine stopped because the pet is now asleep."
-            return
-        }
-        if (root.routineSteps.length === 0) {
+        if (!root.presentationActive || root.routineSteps.length === 0) {
             root.routineRunning = false
+            root.routineSteps = []
             root.releaseLock()
             root.feedback = "Care routine complete. Check readiness before choosing a task."
             return
         }
         var action = root.routineSteps[0]
         root.routineSteps = root.routineSteps.slice(1)
-        var generation = root.routineGeneration
-        root.perform("pet.care", {action: action}, action, function (ok) {
-            if (ok && root.routineRunning && generation === root.routineGeneration)
-                routineNext.restart()
-        })
+        root.reaction = action
+        root.lastReaction = action
+        root.reactionSeq += 1
+        reactionEnd.interval = 1400
+        reactionEnd.restart()
+        routineNext.restart()
     }
 
     Timer {
@@ -241,8 +258,9 @@ ColumnLayout {
     }
     Timer {
         id: routineNext
-        interval: 1600 // Deliberate pause lets the user stop between interactions.
-        onTriggered: root.nextCare()
+        objectName: "petCare.routineNext"
+        interval: 1600 // Paces the cosmetic per-step choreography; it never sends a request.
+        onTriggered: root.playRoutineStep()
     }
     Timer {
         objectName: "petCare.countdownTimer"

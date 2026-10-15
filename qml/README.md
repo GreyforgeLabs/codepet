@@ -53,9 +53,11 @@ Existing task/transport contracts are retained. `snapshot.care` provides readine
 bathroom/rest counters and sleep status; `snapshot.progression` separates `demo`
 and `real` lifetime XP, levels and mastery. See `docs/milestone-1.md` for RPC shapes.
 Care mutations are `pet.care {action: food|water|play|wash|bathroom|routine}`,
-`pet.sleep {}` and `pet.wake {}`. The UI care routine deliberately sends only needed
-individual actions with a pause between confirmations; Stop or hiding cancels
-remaining actions. The atomic backend `routine` is also available to other hosts.
+`pet.sleep {}` and `pet.wake {}`. The UI care routine is one click and one request,
+the atomic backend `pet.care {action: "routine"}` (as the bar popup sends): storage fills
+every needed bar in one transaction. Only after that confirmed response does the overlay
+play each step's reaction, cosmetically; no timer ever sends a request (spec §1), and
+Stop or hiding only ends the choreography.
 Each confirmed care/sleep action is followed by an explicit state refresh.
 
 The Start button and its handler require the authoritative `ready_to_work`, a
@@ -149,8 +151,9 @@ Results:
 - `CareSmoke.qml`: 26 checks, 0 failures; actionable care/readiness, sleeping/bathroom
   gates, stale-care preflight invalidation, no RPC from countdown, hidden/reduced/
   quiet animation pause, actual timeline events and isolated demo progression
-- `CareFlowSmoke.qml`: 10 checks, 0 failures; confirmed sequential care, Stop between
-  actions, skip full bars, stop when hidden/busy, no stranded routine and no task launch
+- `CareFlowSmoke.qml`: the routine is one atomic request with a cosmetic choreography
+  (no request from its timer), Stop/hide end the choreography, a busy host refuses it,
+  no stranded routine and no task launch; pending/failure/retry-key choreography
 - `FilteredDraftSmoke.qml`: 3 checks, 0 failures; saved filtered instructions are
   reviewed with visible disclosure, not stale unsanitized local text
 - Qt6 `qmllint`: no output on shared/standalone components and these smoke tests
