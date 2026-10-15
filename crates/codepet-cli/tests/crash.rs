@@ -1,7 +1,8 @@
 //! Crash injection through `CODEPET_FAULT` (debug builds only). Each fault aborts the real
 //! process; the next process must see a consistent durable state.
 mod common;
-use common::Env;
+use codepet_storage::{Clock, SystemClock};
+use common::{Env, Timeline, MIN};
 use serde_json::{json, Value};
 
 fn assert_aborted_silently(r: &common::Reply) {
@@ -158,4 +159,129 @@ fn abort_before_review_commit_rolls_back_the_review() {
         ["draft", "preparing", "running", "verifying"]
     );
     recover_interrupts(&env, &id, "verifying");
+}
+
+#[test]
+fn abort_before_adoption_commit_adopts_nothing_and_retry_adopts_once() {
+    let env = Env::new();
+    env.retire();
+    let before = env.state();
+    let params = json!({"species": "capybara", "mode": "permadeath", "acknowledge_rules": true});
+    let r = env.call_with(
+        "adopt-1",
+        "pet.adopt",
+        params.clone(),
+        Some("adopt_before_commit"),
+    );
+    assert_aborted_silently(&r);
+    let after = env.state();
+    assert_eq!(after["life"], Value::Null);
+    assert_eq!(after["memorial"], before["memorial"]);
+    assert_eq!(after["meters"], before["meters"]);
+    assert_eq!(env.bar_state().unwrap()["life"], Value::Null);
+
+    let adopted = env.ok_with("adopt-1", "pet.adopt", params.clone());
+    assert_eq!(adopted["changed"], true);
+    assert_eq!(adopted["life"]["ordinal"], 2);
+    assert_eq!(adopted["life"]["name"], "Yuzu");
+    assert_eq!(env.ok_with("adopt-1", "pet.adopt", params), adopted);
+    assert_eq!(env.state()["life"]["life_id"], adopted["life"]["life_id"]);
+    assert_eq!(env.bar_state().unwrap()["life"]["name"], "Yuzu");
+}
+
+#[test]
+fn abort_before_evolution_commit_grants_no_xp_and_no_event() {
+    let env = Env::new();
+    for n in 0..3 {
+        let (id, digest) = env.reviewed("hunger", "artifact");
+        env.ok(
+            "task.accept_artifact",
+            json!({"task_id": id, "review_digest": digest, "acknowledged": true,
+                "override_reason": format!("reviewed {n}")}),
+        );
+    }
+    env.elapsed_nap();
+    let (id, digest) = env.reviewed("thirst", "artifact");
+    let params = json!({"task_id": id, "review_digest": digest, "acknowledged": true,
+        "override_reason": "mock reviewed"});
+    let r = env.call_with(
+        "acc-4",
+        "task.accept_artifact",
+        params.clone(),
+        Some("evolve_before_commit"),
+    );
+    assert_aborted_silently(&r);
+    let s = env.state();
+    assert_eq!(s["life"]["xp"], 60);
+    assert_eq!(s["life"]["stage"], 1);
+    assert_eq!(s["unseen_events"], json!([]));
+    assert_eq!(env.task(&id)["state"], "review_ready");
+
+    let first = env.ok_with("acc-4", "task.accept_artifact", params.clone());
+    assert_eq!(first["receipt"]["evolved_to"], json!([2]));
+    assert_eq!(env.ok_with("acc-4", "task.accept_artifact", params), first);
+    let s = env.state();
+    assert_eq!(s["life"]["xp"], 80);
+    assert_eq!(s["life"]["stage"], 2);
+    assert_eq!(s["unseen_events"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        env.bar_state().unwrap()["unseen_events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn abort_before_presence_commit_charges_once_on_the_next_command() {
+    let env = Env::new();
+    env.care_routine();
+    env.arm();
+    let life = env.life_id();
+    let now = SystemClock.now_ms();
+    env.write_presence("bar-crash-0001", &life, now - 10 * MIN, now, MIN);
+    let r = env.call_with(
+        "s-1",
+        "state.get",
+        json!({}),
+        Some("presence_before_commit"),
+    );
+    assert_aborted_silently(&r);
+    let attended = |s: &Value| s["lifecycle"]["attended_total_ms"].as_i64().unwrap();
+    assert_eq!(
+        attended(&env.state()),
+        MIN,
+        "applied exactly once after the abort"
+    );
+    assert_eq!(attended(&env.state()), MIN);
+}
+
+#[test]
+fn abort_before_death_commit_keeps_the_life_and_retry_ends_it_once() {
+    let env = Env::new();
+    env.retire();
+    env.adopt("rabbit", "permadeath", "playtest");
+    env.care_routine();
+    let mut t = Timeline::new(&env, "bar-crash-death");
+    // Playtest: critical at 33 attended minutes, grace 18 minutes.
+    assert_eq!(t.settle_to(&env, 33 * MIN)["life"]["status"], "critical");
+    let s = t.settle_to(&env, 51 * MIN - 1);
+    assert_eq!(s["lifecycle"]["critical"]["remaining_ms"], 1);
+    t.attend_for_cli(&env, 51 * MIN);
+    let r = env.call_with("s-1", "state.get", json!({}), Some("death_before_commit"));
+    assert_aborted_silently(&r);
+    assert_eq!(
+        env.bar_state().unwrap()["life"]["name"],
+        "Clover",
+        "the aborted end published nothing"
+    );
+
+    let s = env.state();
+    assert_eq!(s["life"], Value::Null);
+    assert_eq!(s["memorial"]["count"], 2);
+    assert_eq!(s["memorial"]["latest"]["name"], "Clover");
+    assert_eq!(s["memorial"]["latest"]["end_cause"], "neglect:thirst");
+    assert_eq!(env.state()["memorial"]["count"], 2, "one end only");
+    assert_eq!(env.bar_state().unwrap()["life"], Value::Null);
 }

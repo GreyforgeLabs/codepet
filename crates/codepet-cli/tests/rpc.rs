@@ -210,6 +210,10 @@ fn cancellation_from_another_process_stops_the_supervisor() {
     let out = common::wait_output(child);
     assert!(out.status.success(), "{out:?}");
     assert!(rest.is_empty(), "exactly one response frame: {rest:?}");
+    // The supervisor published its confirmation: no task holds the bar's slot.
+    let bar = env.bar_state().unwrap();
+    assert_eq!(bar["task"], Value::Null);
+    assert_eq!(bar["meters"]["mental_health"], 10000);
 
     let t = env.task(&id);
     assert_eq!(t["state"], "cancelled");
@@ -709,4 +713,252 @@ fn sensitive_task_text_is_redacted_before_mock_artifact_and_receipt_persistence(
     assert!(!state.contains("do-not-store-me"));
     assert!(!state.contains("hide-this-token"));
     assert_eq!(env.task(id)["receipt"], first["receipt"]);
+}
+
+#[test]
+fn lifecycle_requests_are_validated_before_storage_opens() {
+    let env = Env::new();
+    let life = "life-0123456789abcdef01234567";
+    let cases: Vec<(&str, Value)> = vec![
+        ("pet.select", json!({})),
+        ("pet.select", json!({"life_id": life})),
+        ("pet.select", json!({"life_id": life, "pet_id": "dragon"})),
+        (
+            "pet.select",
+            json!({"life_id": life, "pet_id": "cat", "x": 1}),
+        ),
+        ("pet.select", json!({"life_id": "", "pet_id": "cat"})),
+        ("pet.adopt", json!({"species": "cat", "mode": "permadeath"})),
+        (
+            "pet.adopt",
+            json!({"species": "unicorn", "mode": "permadeath", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.adopt",
+            json!({"species": "cat", "mode": "hardcore", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.adopt",
+            json!({"species": "cat", "mode": "gentle", "pace": "fast", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.adopt",
+            json!({"species": "cat", "mode": "gentle", "name": "   ", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.adopt",
+            json!({"species": "cat", "mode": "gentle", "name": "x".repeat(257),
+                "acknowledge_rules": true}),
+        ),
+        (
+            "pet.adopt",
+            json!({"species": "cat", "mode": "gentle", "acknowledge_rules": "yes"}),
+        ),
+        ("pet.rules", json!({"life_id": life, "mode": "permadeath"})),
+        (
+            "pet.rules",
+            json!({"life_id": life, "mode": "standard", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.configure_life",
+            json!({"life_id": life, "expected_revision": 1}),
+        ),
+        (
+            "pet.configure_life",
+            json!({"life_id": life, "expected_revision": -1, "grace_hours": 8}),
+        ),
+        (
+            "pet.configure_life",
+            json!({"life_id": life, "expected_revision": 1, "grace_hours": 70000}),
+        ),
+        (
+            "pet.configure_life",
+            json!({"life_id": life, "expected_revision": 1, "decay_percent": 10}),
+        ),
+        ("pet.retire", json!({"life_id": life})),
+        ("pet.retire", json!({"life_id": life, "confirm_name": ""})),
+        (
+            "pet.events_seen",
+            json!({"life_id": life, "through_seq": -1}),
+        ),
+        ("pet.events_seen", json!({"life_id": life})),
+        ("pet.memorial", json!({"limit": 0})),
+        ("pet.memorial", json!({"limit": 21})),
+        ("pet.memorial", json!({"before_ordinal": -1})),
+        ("lifecycle.rules", json!({"x": 1})),
+    ];
+    for (method, params) in cases {
+        assert_eq!(
+            env.err(method, params.clone()),
+            "INVALID_PARAMS",
+            "{method} {params}"
+        );
+    }
+    assert!(!env.xdg().exists(), "refused requests created no state");
+    // The static ruleset needs no state either.
+    env.ok("lifecycle.rules", json!({}));
+    assert!(!env.xdg().exists());
+}
+
+#[test]
+fn every_successful_mutation_publishes_and_nothing_else_does() {
+    let env = Env::new();
+    let version = |env: &Env| env.bar_state().unwrap()["state_version"].as_i64().unwrap();
+    // First contact: the store is created and state.get publishes version 1.
+    let s = env.state();
+    assert_eq!(version(&env), s["state_version"].as_i64().unwrap());
+    let life = s["life"]["life_id"].clone();
+
+    let mutations: Vec<(&str, Value)> = vec![
+        ("pet.care", json!({"action": "routine"})),
+        ("pet.pause", json!({"paused": true})),
+        ("pet.pause", json!({"paused": false})),
+        (
+            "pet.rules",
+            json!({"life_id": life, "mode": "permadeath", "acknowledge_rules": true}),
+        ),
+        ("pet.select", json!({"life_id": life, "pet_id": "owl"})),
+        (
+            "pet.configure_life",
+            json!({"life_id": life, "expected_revision": 3, "grace_hours": 7}),
+        ),
+        (
+            "pet.events_seen",
+            json!({"life_id": life, "through_seq": 0}),
+        ),
+        (
+            "settings.update",
+            json!({"expected_revision": 1, "decay_enabled": false,
+                "decay_per_hour": [0, 0, 0, 0], "timeout_seconds": 600}),
+        ),
+        ("task.create", env.draft("hunger", 0, "artifact")),
+        ("task.recover", json!({})),
+    ];
+    for (method, params) in mutations {
+        let before = version(&env);
+        let result = env.ok(method, params);
+        let after = version(&env);
+        assert!(after > before, "{method} published ({before} -> {after})");
+        assert_eq!(
+            after,
+            env.state()["state_version"].as_i64().unwrap(),
+            "{method}: the file matches committed state"
+        );
+        if method == "pet.select" {
+            assert_eq!(result["life"]["appearance"], "owl");
+            assert_eq!(env.bar_state().unwrap()["life"]["appearance"], "owl");
+        }
+    }
+
+    // Failures and read-only methods never write the file.
+    let bytes = std::fs::read(env.bar_state_path()).unwrap();
+    let failures: Vec<(&str, Value)> = vec![
+        (
+            "pet.select",
+            json!({"life_id": "life-000000000000000000000000", "pet_id": "dog"}),
+        ),
+        (
+            "pet.adopt",
+            json!({"species": "dog", "mode": "permadeath", "acknowledge_rules": true}),
+        ),
+        ("task.cancel", json!({"task_id": "nope"})),
+        (
+            "settings.update",
+            json!({"expected_revision": 1, "decay_enabled": false,
+                "decay_per_hour": [0, 0, 0, 0], "timeout_seconds": 600}),
+        ),
+    ];
+    for (method, params) in failures {
+        env.err(method, params);
+        assert_eq!(
+            std::fs::read(env.bar_state_path()).unwrap(),
+            bytes,
+            "{method}"
+        );
+    }
+    std::fs::remove_file(env.bar_state_path()).unwrap();
+    for (method, params) in [
+        ("hello", json!({})),
+        ("providers.inspect", json!({})),
+        ("events.subscribe", json!({"after_seq": 0})),
+        ("history.list", json!({})),
+        ("pet.memorial", json!({})),
+        ("lifecycle.rules", json!({})),
+    ] {
+        env.ok(method, params);
+        assert!(env.bar_state().is_none(), "{method} is read-only");
+    }
+    // The next state.get republishes the deleted file.
+    let s = env.state();
+    assert_eq!(version(&env), s["state_version"].as_i64().unwrap());
+}
+
+#[test]
+fn the_supervisor_publishes_every_step() {
+    let env = Env::new();
+    env.care_routine();
+    let id = env.create("hygiene", 600, "artifact");
+    let token = env.preflight(&id, 1);
+    let mut child = env.command(&["rpc"], None).spawn().unwrap();
+    let frame = json!({"v": 1, "id": "start-1", "method": "task.start",
+        "params": Env::start_params(&id, 1, &token)});
+    let mut stdin = child.stdin.take().unwrap();
+    writeln!(stdin, "{frame}").unwrap();
+    drop(stdin);
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    // Published before the start response was written.
+    assert_eq!(env.bar_state().unwrap()["task"]["state"], "preparing");
+    let mut seen = vec!["preparing".to_owned()];
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while child.try_wait().unwrap().is_none() {
+        assert!(std::time::Instant::now() < deadline, "supervisor finished");
+        if let Some(state) = env.bar_state().unwrap()["task"]["state"].as_str() {
+            if seen.last().map(String::as_str) != Some(state) {
+                seen.push(state.to_owned());
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let out = common::wait_output(child);
+    assert!(out.status.success(), "{out:?}");
+    let bar = env.bar_state().unwrap();
+    assert_eq!(
+        bar["task"],
+        json!({"state": "review_ready", "category": "hygiene"})
+    );
+    if seen.last().map(String::as_str) != Some("review_ready") {
+        seen.push("review_ready".to_owned());
+    }
+    assert_eq!(seen, ["preparing", "running", "verifying", "review_ready"]);
+    // Bar-safe: no instructions, folder or artifact text.
+    let text = std::fs::read_to_string(env.bar_state_path()).unwrap();
+    assert!(!text.contains("SIMULATED") && !text.contains("project-never-created"));
+    assert!(!text.contains("Explain the mock"));
+}
+
+#[test]
+fn a_failed_publish_never_changes_the_response() {
+    let env = Env::new();
+    env.state();
+    std::fs::remove_file(env.bar_state_path()).unwrap();
+    std::fs::create_dir(env.bar_state_path()).unwrap();
+    let r = env.call_with("care-1", "pet.care", json!({"action": "routine"}), None);
+    assert_eq!(r.status.code(), Some(0), "{r:?}");
+    assert_eq!(r.response()["ok"], true);
+    assert_eq!(r.response()["result"]["changed"], true);
+    assert_eq!(r.stderr.lines().count(), 1, "{r:?}");
+    assert!(r
+        .stderr
+        .starts_with("codepet: bar-state.json not updated: "));
+    // The change committed even though the file could not be published.
+    assert_eq!(env.meter("thirst"), 10_000);
+    std::fs::remove_dir(env.bar_state_path()).unwrap();
+    let s = env.state();
+    assert_eq!(
+        env.bar_state().unwrap()["state_version"],
+        s["state_version"],
+        "the next command catches up"
+    );
 }

@@ -7,13 +7,17 @@ mod supervisor;
 
 use std::io::Write;
 
-const HELP: &str = "CodePet (milestone 1: durable mock execution)
+const HELP: &str = "CodePet: a desktop companion with durable mock execution
   codepet providers   Show provider support (mock only)
   codepet state       Print the state.get snapshot as JSON
   codepet rpc         Answer one protocol request frame read from stdin
   codepet mock-demo   Explicitly run an in-memory simulation
+  codepet --version   Print the version
 No daemon, real provider, project IO, timers or background polling. Only an explicit
 task.start runs a per-job mock supervisor, which spawns no process.";
+
+/// `codepet --version`; printed without opening storage.
+const VERSION: &str = concat!("codepet ", env!("CARGO_PKG_VERSION"));
 
 const PROVIDERS: &str = "Mock: available (simulation only)
 Codex: unsupported
@@ -29,6 +33,10 @@ fn main() {
             println!("{HELP}");
             0
         }
+        (Some(Some("--version")), 1) => {
+            println!("{VERSION}");
+            0
+        }
         (Some(Some("providers")), 1) => {
             println!("{PROVIDERS}");
             0
@@ -39,9 +47,12 @@ fn main() {
         }
         (Some(Some("rpc")), 1) => rpc::run(),
         (Some(Some("state")), 1) => state(),
-        (Some(Some(c @ ("--help" | "help" | "providers" | "mock-demo" | "rpc" | "state"))), _) => {
-            usage(&format!("{c} takes no arguments"))
-        }
+        (
+            Some(Some(
+                c @ ("--help" | "help" | "--version" | "providers" | "mock-demo" | "rpc" | "state"),
+            )),
+            _,
+        ) => usage(&format!("{c} takes no arguments")),
         (Some(Some(other)), _) => usage(&format!("Unsupported command: {other}")),
         (Some(None), _) => usage("Unsupported command"),
     };

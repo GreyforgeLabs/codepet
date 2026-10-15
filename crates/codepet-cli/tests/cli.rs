@@ -9,7 +9,13 @@ fn no_arguments_do_not_start_a_task() {
     let text = String::from_utf8(output.stdout).unwrap();
     assert!(text.contains("No daemon"));
     assert!(!text.contains("seq="));
-    for args in [&["--help"][..], &["help"], &["providers"], &["mock-demo"]] {
+    for args in [
+        &["--help"][..],
+        &["help"],
+        &["--version"],
+        &["providers"],
+        &["mock-demo"],
+    ] {
         assert!(env.run(args).status.success(), "{args:?}");
     }
     assert!(
@@ -50,6 +56,7 @@ fn usage_errors_exit_2_without_output_or_state() {
         &["rpc", "extra"][..],
         &["state", "--json"],
         &["providers", "x"],
+        &["--version", "--json"],
     ] {
         let output = env.run(args);
         assert_eq!(output.status.code(), Some(2), "{args:?}");
@@ -90,4 +97,63 @@ fn state_command_fails_closed_on_relative_xdg() {
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).unwrap();
     assert!(err.starts_with("STORAGE_UNAVAILABLE"), "{err}");
+}
+#[test]
+fn version_prints_without_opening_storage() {
+    let env = Env::new();
+    let output = env.run(&["--version"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "codepet 0.2.0\n");
+    assert!(output.stderr.is_empty());
+    assert!(!env.xdg().exists());
+    let help = String::from_utf8(env.run(&["--help"]).stdout).unwrap();
+    assert!(!help.contains("milestone"), "{help}");
+    assert!(help.contains("--version"), "{help}");
+}
+#[test]
+fn state_command_publishes_the_bar_state() {
+    use std::os::unix::fs::PermissionsExt;
+    let env = Env::new();
+    let output = env.run(&["state"]);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let s: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let bar = env
+        .bar_state()
+        .expect("codepet state publishes bar-state.json");
+    assert_eq!(bar["schema"], "codepet.bar.v1");
+    assert_eq!(bar["app_version"], "0.2.0");
+    assert_eq!(bar["ruleset"], "lifecycle-v1");
+    assert_eq!(bar["state_version"], s["state_version"]);
+    assert_eq!(bar["life"]["life_id"], s["life"]["life_id"]);
+    assert_eq!(bar["life"]["name"], "Ginger");
+    assert_eq!(bar["meters"], s["meters"]);
+    let meta = std::fs::metadata(env.bar_state_path()).unwrap();
+    assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+    assert!(meta.len() <= 16 * 1024);
+}
+#[test]
+fn state_command_reports_a_failed_publish_on_one_line_only() {
+    let env = Env::new();
+    assert!(env.run(&["state"]).status.success());
+    std::fs::remove_file(env.bar_state_path()).unwrap();
+    // A directory in the file's place cannot be replaced by the rename.
+    std::fs::create_dir(env.bar_state_path()).unwrap();
+    let output = env.run(&["state"]);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let s: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(s["life"]["name"], "Ginger");
+    let err = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(err.lines().count(), 1, "{err}");
+    assert!(
+        err.starts_with("codepet: bar-state.json not updated: "),
+        "{err}"
+    );
+    assert!(env.bar_state_path().is_dir());
+    let leftovers: Vec<_> = std::fs::read_dir(env.state_dir())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| n.contains(".tmp-"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
 }
