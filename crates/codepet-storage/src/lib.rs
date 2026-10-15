@@ -46,6 +46,10 @@ pub const MAX_EVENTS_PAGE: u32 = 100;
 pub const MAX_HISTORY_PAGE: u32 = 50;
 pub const RECENT_TASKS: u32 = 10;
 pub const MAX_REQUEST_ID_BYTES: usize = 128;
+/// Idempotency receipts kept for `pet.care`, `pet.sleep` and `pet.wake`: the most recent
+/// ones, pruned in the transaction that adds a new one. Acceptance receipts are never
+/// pruned. A retry of a care request older than this window runs as a new action.
+pub const MAX_CARE_RECEIPTS: i64 = 256;
 /// Names accepted by `CODEPET_FAULT` in debug builds.
 pub const FAULT_POINTS: [&str; 5] = [
     "accept_before_commit",

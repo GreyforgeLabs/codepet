@@ -760,3 +760,44 @@ fn system_clock_measures_execution_without_suspended_time() {
     // (allowing for /proc/uptime's 10 ms resolution).
     assert!(monotonic > 0 && monotonic <= boottime + 20);
 }
+
+#[test]
+fn care_receipts_are_bounded_but_acceptance_receipts_are_kept() {
+    let env = Env::new();
+    let mut s = env.open();
+    let (id, digest) = reviewed(&mut s, &env, Category::Hygiene, Verification::NotVerified);
+    accept(&mut s, &id, &digest, "keep-accept", Some("ok")).unwrap();
+    let care_rows = "SELECT count(*) FROM request_results
+        WHERE method IN ('pet.care','pet.sleep','pet.wake')";
+    let before = env.count(care_rows);
+    assert!(before > 0 && before < MAX_CARE_RECEIPTS);
+    let clicks = MAX_CARE_RECEIPTS + 20;
+    for i in 0..clicks {
+        let action = ["food", "water", "play", "wash"][usize::try_from(i % 4).unwrap()];
+        s.care(&format!("click-{i}"), action).unwrap();
+    }
+    s.sleep("nap-click").unwrap();
+    s.wake("wake-click").unwrap();
+    assert_eq!(env.count(care_rows), MAX_CARE_RECEIPTS);
+    // The newest receipts still replay exactly; the acceptance receipt is untouched.
+    let newest = format!("click-{}", clicks - 1);
+    assert_eq!(
+        env.count(&format!(
+            "SELECT count(*) FROM request_results WHERE request_id = '{newest}'"
+        )),
+        1
+    );
+    let replay = s.wake("wake-click").unwrap();
+    assert_eq!(replay.action, "wake");
+    assert_eq!(env.count(care_rows), MAX_CARE_RECEIPTS);
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE request_id = 'click-0'"),
+        0
+    );
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE method = 'task.accept_artifact'"),
+        1
+    );
+    let duplicate = accept(&mut s, &id, &digest, "keep-accept", Some("ok")).unwrap();
+    assert_eq!(duplicate.receipt.demo_xp, DEMO_XP);
+}

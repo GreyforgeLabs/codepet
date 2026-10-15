@@ -11,9 +11,9 @@ use crate::schema::{Migration, MIGRATIONS, SLOT_STATES};
 use crate::sys::{self, sha256_hex, Supervisor};
 use crate::{
     fault, Clock, Result, StatePaths, StorageError, DB_FILE, MAX_ARTIFACT_JSON_BYTES,
-    MAX_DRAFT_JSON_BYTES, MAX_EVENTS_PAGE, MAX_EXCERPT_JSON_BYTES, MAX_HISTORY_PAGE,
-    MAX_HISTORY_PAGE_JSON_BYTES, MAX_MOCK_STEP_MS, MAX_OVERRIDE_REASON_BYTES, MAX_REQUEST_ID_BYTES,
-    RECENT_TASKS, SCHEMA_VERSION, TOKEN_TTL_MS,
+    MAX_CARE_RECEIPTS, MAX_DRAFT_JSON_BYTES, MAX_EVENTS_PAGE, MAX_EXCERPT_JSON_BYTES,
+    MAX_HISTORY_PAGE, MAX_HISTORY_PAGE_JSON_BYTES, MAX_MOCK_STEP_MS, MAX_OVERRIDE_REASON_BYTES,
+    MAX_REQUEST_ID_BYTES, RECENT_TASKS, SCHEMA_VERSION, TOKEN_TTL_MS,
 };
 use codepet_core::{
     Category, Draft, Provider, Settings, State, Verification, MAX_TASKS, PROTOCOL_VERSION,
@@ -910,6 +910,15 @@ impl Store {
             "INSERT INTO request_results (request_id, method, params_sha256, response,
             created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![request_id, method, params_sha256, response, at.wall],
+        )?;
+        // Ordinary clicks must not grow the database without bound: keep only the most
+        // recent care receipts (insertion order), never acceptance receipts.
+        tx.execute(
+            "DELETE FROM request_results WHERE method IN ('pet.care','pet.sleep','pet.wake')
+             AND rowid NOT IN (SELECT rowid FROM request_results
+                WHERE method IN ('pet.care','pet.sleep','pet.wake')
+                ORDER BY rowid DESC LIMIT ?1)",
+            [MAX_CARE_RECEIPTS],
         )?;
         tx.commit()?;
         Ok(result)

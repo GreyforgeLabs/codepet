@@ -38,8 +38,11 @@ All use the existing v1 JSON envelope. New methods:
 
 The envelope request ID is the idempotency key. Reusing it with the same action returns
 the original receipt; reusing it for a different mutation is refused. A later deliberate
-action needs a new ID. The response includes the action, whether it changed state, meters
-and care state. `state.get` additionally returns `care` and `progression` snapshots.
+action needs a new ID. Care receipts (`pet.care`, `pet.sleep`, `pet.wake`) are bounded:
+each new one prunes all but the most recent 256 in the same transaction, so ordinary
+clicks cannot grow the database without limit. A retry of a request older than that
+window runs as a new action. Acceptance receipts are never pruned. The response includes
+the action, whether it changed state, meters and care state. `state.get` additionally returns `care` and `progression` snapshots.
 
 Sleep is explicit and timestamp-backed; it can finish while the application is closed.
 Closing an awake pet does not put it to bed. Early wake preserves remaining sleep credit
