@@ -90,8 +90,11 @@ ID/method, never instructions, reasons or full payloads.
   quiet-mode preferences or integrate compositor lock signals
 
 The timeline uses `events.subscribe {after_seq, limit:50}` only on a user click.
-It displays actual saved `task.state` transitions, validates event shapes, bounds
-its list to 100 entries and marks omitted/malformed content. It does **not** invent
+The first load shows the latest 50 saved events (ending at the snapshot's
+`last_seq`), so current work is visible without paging through old history;
+"Load older" pages earlier events on an explicit click and "Load more" fetches
+newer ones. It displays actual saved `task.state` transitions, validates event
+shapes, bounds its list to 100 entries and marks omitted/malformed content. It does **not** invent
 file reads, edits, tests, commands or completion percentages. Refresh is explicit;
 there is no process polling and no live provider-operation stream in this milestone.
 

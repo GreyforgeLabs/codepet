@@ -19,7 +19,7 @@ jobs:
         run: python3 -m pip install PySide6==6.8.3
       - name: Portable QML and lifecycle checks
         run: |
-          for test in PreviewSmoke CareSmoke CareFlowSmoke FilteredDraftSmoke OverlaySmoke; do
+          for test in PreviewSmoke CareSmoke CareFlowSmoke FilteredDraftSmoke OverlaySmoke TimelineSmoke; do
             python3 qml/tests/run_qml.py "qml/tests/$test.qml"
           done
           python3 qml/tests/test_overlay_windows.py
