@@ -72,9 +72,31 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_vocabularies_are_shared() {
+        assert_eq!(
+            codepet_protocol::PET_IDS,
+            codepet_core::species::SPECIES_IDS,
+            "protocol pet ids equal core species ids, in order"
+        );
+        for mode in codepet_protocol::LIFE_MODES {
+            let parsed = codepet_core::lifecycle::Mode::parse(mode).expect(mode);
+            assert_eq!(parsed.as_str(), mode);
+        }
+        for pace in codepet_protocol::LIFE_PACES {
+            let parsed = codepet_core::lifecycle::Pace::parse(pace).expect(pace);
+            assert_eq!(parsed.as_str(), pace);
+        }
+        assert_eq!(
+            codepet_protocol::MAX_MEMORIAL_LIMIT,
+            codepet_storage::MAX_MEMORIAL_PAGE
+        );
+    }
+
+    #[test]
     fn every_storage_error_maps_to_a_protocol_code() {
         let cases: Vec<(StorageError, ErrorCode, bool)> = vec![
             (StorageError::Busy, ErrorCode::Busy, true),
+            (StorageError::NoActivePet, ErrorCode::NoActivePet, false),
             (
                 StorageError::InvalidState("x"),
                 ErrorCode::InvalidState,
