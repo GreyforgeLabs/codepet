@@ -19,7 +19,7 @@ Extracted: **15 of 15** species. Pending species carry `placeholder: true` and r
 | `goldfish` | Goldfish | Bubbles | the dreamy bubble navigator | aquatic | Bubblet / Ripple Rover / Veiltail Navigator | swim_in_habitat, 0 px/tick |
 | `rabbit` | Rabbit | Clover | the alert garden scout | floor | Garden Kit / Meadow Scout / Warren Sentinel | hop, 8 px/tick |
 | `turtle` | Turtle | Atlas | the steadfast planner | floor | Pebble / Trailshell / Mossback Sage | diagonal_steps, 1.5 px/tick |
-| `frog` | Frog | Hopper | the spring-loaded optimist | floor | Puddle Sprout / Lily Leaper / Marsh Monarch | leap, 10 px/tick |
+| `frog` | Frog | Hopper | the spring-loaded optimist | floor | Puddle Sprout / Lily Leaper / Marsh Monarch | leap, 5 px/tick |
 | `owl` | Owl | Quill | the thoughtful night librarian | floor | Hootling / Quill Fledgling / Grand Night Librarian | hop, 3 px/tick |
 | `red_panda` | Red panda | Maple | the bashful explorer | floor | Ember Cub / Ringtail Scout / Autumn Sage | amble, 3.5 px/tick |
 | `axolotl` | Axolotl | Lotus | the cheerful tank gardener | aquatic | Gillbud / Tankstrider / Crowngill | bottom_walk_glide, 0 px/tick |
@@ -92,6 +92,8 @@ Frames are files in `<id>/s<stage>/`: `bNN` from the base sheet, `cNN` from the 
 | needs_care | b05 | 800 | hold | 0 |
 | error | b06 | 1000 | hold | 0 |
 
+Per-species frame lists (same timing and mode): `dog` working = b04; `dog` waiting = b02.
+
 Base sheet cells: b00 idle front; b01 idle blink; b02 curious look; b03 side profile (right); b04 happy/focused; b05 droopy needs-care; b06 confused; b07 asleep; b08 move 1; b09 move 2; b10 move 3; b11 move 4.
 
 Care sheet cells: c00 eat 1; c01 eat 2; c02 drink 1; c03 drink 2; c04 play 1; c05 play 2; c06 wash 1; c07 wash 2; c08 privacy prop; c09 settle to sleep; c10 waking stretch; c11 celebrate.
@@ -110,7 +112,7 @@ CODEPET_ALLOW_PARTIAL_ART=1 python3 qml/tests/test_pet_assets.py
 python3 qml/tests/test_pet_distinctness.py
 ```
 
-Sources default to `~/Media/codepet-art/v0.2` (`--src` or `CODEPET_ART_SRC` to override). `*.reject-*.png` files are ignored; a species is ready only when all six sheets exist and match the sha256 values in its `provenance.json`. Fixes for individual cells (remap to another cell, horizontal flip, nudge, fit exclusion) go in `tools/petart/overrides.json` with a reason; the reasons are copied into `PROVENANCE.md`.
+Sources default to `~/Media/codepet-art/v0.2` (`--src` or `CODEPET_ART_SRC` to override). `*.reject-*.png` files are ignored; a species is ready only when all six sheets exist and match the sha256 values in its `provenance.json`. Fixes for individual cells (remap to another cell, horizontal flip, nudge, per-cell scale, fit exclusion, grounded hopper frame, source-sheet erase), per-sheet fixes (size scale, keying options, component reassignment) and species-wide keying options go in `tools/petart/overrides.json` with a reason; the reasons are copied into `PROVENANCE.md`.
 
 ## Limits
 
@@ -119,4 +121,5 @@ Sources default to `~/Media/codepet-art/v0.2` (`--src` or `CODEPET_ART_SRC` to o
 - Thin details thinner than one source pixel against the key (single whiskers) may be dropped by the despill and fringe erode.
 - Floor poses are centred on the alpha centroid of their lowest 30 %; a pose too lopsided to centre that way (a leap, a long tail) is slid sideways just enough to stay inside the 2 px margin, so its feet may sit off-centre.
 - The generator sometimes draws a stage's care sheet at a different character size than its base sheet; such sheets carry a measured `sheets` scale override (listed in `PROVENANCE.md`). Remaining size differences between poses come from the sheets.
-- Hopper species (rabbit, frog, owl) keep the sheet's lift on locomotion frames; those frames are listed in `states.locomotion.airborneFrames` and exempt from the ground check.
+- Hopper species (rabbit, frog, owl) keep the sheet's lift on locomotion frames; those frames are listed in `locomotion.airborneFrames` (and `states.locomotion.airborneFrames`) and exempt from the ground check.
+- Aquatic habitats grow with the stage: `geometry.water.byStage` and `geometry.stageHitBoxes` give per-stage boxes; `geometry.water.outer` and `hitBox` are the union over all stages. Renderers should hit-test with the current stage's box.

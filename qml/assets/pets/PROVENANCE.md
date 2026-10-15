@@ -46,6 +46,22 @@ Dog, the enthusiastic teammate. Stages: Sunpup / Rambler / Hearthguard (names fr
 | `stage3-base.png` | `#00FF00` | `993b778fbbf22a48f1f11914cf56b2319912e22b934ecec0d873e24da0304487` |
 | `stage3-care.png` | `#00FF00` | `2f23fed24ae0b09e3d6f2dbda313c9473390d43d34e7406936f140e71e62bf0e` |
 
+Extraction overrides (`tools/petart/overrides.json`):
+
+- stage 1 keying (all sheets): clear_share=0.45, pocket_share=0.3, spill_gamut=true. golden fur edges blend with the green key into a yellow-olive fringe; cap fringe green at the sheet own fur gamut
+- stage 1 `b07`: flip=true. asleep pose faces left; frames face right (A4)
+- stage 2 keying (all sheets): clear_share=0.45, pocket_share=0.3, spill_gamut=true. golden fur edges blend with the green key into a yellow-olive fringe; cap fringe green at the sheet own fur gamut
+- stage 2 `b07`: flip=true. asleep pose faces left; frames face right (A4)
+- stage 3 keying (all sheets): clear_share=0.45, pocket_share=0.3, spill_gamut=true. golden fur edges blend with the green key into a yellow-olive fringe; cap fringe green at the sheet own fur gamut
+- stage 3 `b07`: flip=true. asleep pose faces left; frames face right (A4)
+- stage 3 `c00`: flip=true. stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)
+- stage 3 `c01`: flip=true. stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)
+- stage 3 `c02`: flip=true. stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)
+- stage 3 `c03`: flip=true. stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)
+- stage 3 `c04`: flip=true. stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)
+- stage 3 `c05`: flip=true. stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)
+- stage 3 `c09`: flip=true. stage-3 settle pose faces left; match the flipped asleep frame b07
+
 ## capybara
 
 Capybara, the unhurried team lead. Stages: Puddle Pup / Reed Wader / Yuzu Sage (names from provenance.json).
@@ -65,7 +81,11 @@ Capybara, the unhurried team lead. Stages: Puddle Pup / Reed Wader / Yuzu Sage (
 
 Extraction overrides (`tools/petart/overrides.json`):
 
-- `s1/care` sheet scale 1.3: The stage-1 care sheet draws the pup about 0.76x the size of its base sheet (b02 vs c07 standing heights); normalised to the idle size.
+- `s1/care` sheet: despill="full", scale=1.3. magenta key specks trapped between reed tips of the c08 privacy screen; capybara and its props have no magenta paint, so the whole sheet may be despilled
+- stage 1 `b07`: flip=true. asleep pose faces left; match c09 and the A4 right-facing convention
+- stage 2 `b07`: flip=true. asleep pose faces left; match c09 and the A4 right-facing convention
+- stage 3 `b07`: flip=true. asleep pose faces left; match c09 and the A4 right-facing convention
+- stage 3 `c11`: fit_exclude=true, scale=1.2. generator drew the yuzu-toss cell ~0.8x of the base size (body ~105 vs ~135 px for b04); fit_exclude so the enlarged cell does not shrink the stage
 
 ## penguin
 
@@ -86,8 +106,8 @@ Penguin, the earnest little courier. Stages: Snowpuff / Floe Courier / Aurora Em
 
 Extraction overrides (`tools/petart/overrides.json`):
 
-- `s2/care` sheet scale 0.78: The stage-2 care sheet draws the penguin about 1.28x larger than its base sheet (standing heights of b00 vs upright care poses); normalised so care frames match the idle size.
-- `s3/care` sheet scale 0.8: The stage-3 care sheet draws the penguin about 1.25x larger than its base sheet; normalised to the idle size.
+- `s2/care` sheet: scale=0.78. The stage-2 care sheet draws the penguin about 1.28x larger than its base sheet (standing heights of b00 vs upright care poses); normalised so care frames match the idle size.
+- `s3/care` sheet: scale=0.8. The stage-3 care sheet draws the penguin about 1.25x larger than its base sheet; normalised to the idle size.
 
 ## robot
 
@@ -108,8 +128,12 @@ Robot, the meticulous helper. Stages: Sparkbit / Gearwright / Prime Steward (nam
 
 Extraction overrides (`tools/petart/overrides.json`):
 
-- `s2/care` sheet scale 1.22: The stage-2 care sheet draws the robot about 0.8x the size of its base sheet (b00 vs c10 standing heights to the antenna tip); normalised to the idle size.
-- `s3/care` sheet scale 1.25: The stage-3 care sheet draws the robot about 0.79x the size of its base sheet; normalised to the idle size.
+- stage 1 `c03`: dy=-2, source="c02". side-view c03 reads as spinning in the water loop; interim front-facing sip (c02) raised 2 px as a bob until the care sheets are regenerated
+- `s2/care` sheet: scale=1.22. The stage-2 care sheet draws the robot about 0.8x the size of its base sheet (b00 vs c10 standing heights to the antenna tip); normalised to the idle size.
+- stage 2 `c03`: dy=-2, source="c02". side-view c03 reads as spinning in the water loop; interim front-facing sip (c02) raised 2 px as a bob until the care sheets are regenerated
+- `s3/care` sheet: scale=1.25. The stage-3 care sheet draws the robot about 0.79x the size of its base sheet; normalised to the idle size.
+- stage 3 `b00`: erase_src=[[124, 244, 141, 285]], erase_when="g>r+10 && g>b+60". generator painted a yellow-green glow line on the key between arm and hip
+- stage 3 `c03`: dy=-1, source="c02". side-view c03 reads as spinning in the water loop; interim front-facing sip (c02) raised 2 px as a bob until the care sheets are regenerated; the stage-3 sip pose is the stage height limiter; only 1 px of headroom for the bob
 
 ## iguana
 
@@ -128,6 +152,21 @@ Iguana, the patient sun-seeker. Stages: Sunsprout / Crestrunner / Sunstone Regen
 | `stage3-base.png` | `#FF00FF` | `e760a922e8fd6dd21405104cde65a5160f1bd0f7aef7d0ab6e8b1dabe0d06d11` |
 | `stage3-care.png` | `#FF00FF` | `6b46e4b007579b5d114e65c17719b4603887af8809eb0fc7bce2dfe44a5181f2` |
 
+Extraction overrides (`tools/petart/overrides.json`):
+
+- stage 1 `c00`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 1 `c01`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 1 `c02`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 1 `c03`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 2 `c00`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 2 `c01`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 2 `c02`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 2 `c03`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 3 `c00`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 3 `c01`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 3 `c02`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+- stage 3 `c03`: flip=true. care sheet drew food/water facing left; flip to match the right-facing b03 entry frame
+
 ## spider
 
 Spider, the careful silk architect. Stages: Silkling / Threadstrider / Starweaver (names from provenance.json).
@@ -145,6 +184,15 @@ Spider, the careful silk architect. Stages: Silkling / Threadstrider / Starweave
 | `stage3-base.png` | `#00FF00` | `1822f452d9142e5206a03502d2f946fcecf11d83b5097c88c9aa1a730ce42ea4` |
 | `stage3-care.png` | `#00FF00` | `3046df503beaaa95cc9c3bd8d70656d3cf1c08f2c0869ecffe5fbb97e1f94eab` |
 
+Extraction overrides (`tools/petart/overrides.json`):
+
+- stage 1 keying (all sheets): clear_share=0.3. dark-green key pockets between legs and behind props survive as opaque paint; the spider prompt forbids any green on the spider or its props
+- stage 1 `b10`: dx=-6. centre the body across the walk cycle (b10 lurches 9 px forward)
+- stage 1 `b11`: dx=-3. centre the body across the walk cycle
+- stage 2 keying (all sheets): clear_share=0.3. dark-green key pockets between legs and behind props survive as opaque paint; the spider prompt forbids any green on the spider or its props
+- stage 3 keying (all sheets): clear_share=0.3. dark-green key pockets between legs and behind props survive as opaque paint; the spider prompt forbids any green on the spider or its props
+- stage 3 `b08`: dx=3. centre the body across the walk cycle
+
 ## snake
 
 Snake, the serene ribbon. Stages: Ribbonlet / Sunweave / Ambercrown Sage (names from provenance.json).
@@ -161,6 +209,10 @@ Snake, the serene ribbon. Stages: Ribbonlet / Sunweave / Ambercrown Sage (names 
 | `stage2-care.png` | `#FF00FF` | `00e17edd822840072f9a21afc7beabcac98c9986f5ddb8d1fbca8bb5035b9261` |
 | `stage3-base.png` | `#00FF00` | `55cac9ce38f4ade64e53ed85a8821f2928585a93d510eb15928b48d5fad5d5fc` |
 | `stage3-care.png` | `#FF00FF` | `dcb72f3a604a4987e50a5144253eadcc0b6db3e9afa55f0cc79aa1f58e1eb2e3` |
+
+Extraction overrides (`tools/petart/overrides.json`):
+
+- `s1/care` sheet: reassign=[{"near": [1380, 714], "to": 11}]. a confetti chip of the celebrate cell sits just above the row gutter and was assigned to the wash cell c07
 
 ## goldfish
 
@@ -196,6 +248,14 @@ Rabbit, the alert garden scout. Stages: Garden Kit / Meadow Scout / Warren Senti
 | `stage3-base.png` | `#00FF00` | `a155f7d1a8270d5de8e32cede92abb3399a3eed391ce25b5cd964a99bd1da03e` |
 | `stage3-care.png` | `#00FF00` | `01fd2db3329dc4eadf4b22a202218ba42be6feea65b8832fb644f964f419542b` |
 
+Extraction overrides (`tools/petart/overrides.json`):
+
+- `s1/care` sheet: clear_share=0.45, pocket_share=0.3. chroma-green pockets trapped between hay strands and legs; the rabbit and its props contain no green
+- stage 1 `c11`: dy=-6. binky is airborne (prompted all four feet off the ground); stays within the ground check tolerance for the motion lines
+- `s2/care` sheet: clear_share=0.45, pocket_share=0.3. chroma-green pockets trapped between hay strands and legs; the rabbit and its props contain no green
+- stage 2 `c11`: dy=-5. binky is airborne (prompted all four feet off the ground)
+- `s3/care` sheet: clear_share=0.45, pocket_share=0.3. chroma-green pockets trapped between hay strands and legs; the rabbit and its props contain no green
+
 ## turtle
 
 Turtle, the steadfast planner. Stages: Pebble / Trailshell / Mossback Sage (names from provenance.json).
@@ -212,6 +272,20 @@ Turtle, the steadfast planner. Stages: Pebble / Trailshell / Mossback Sage (name
 | `stage2-care.png` | `#FF00FF` | `5390644dd74d64ac648eaa0deffe74668aabe2641e3ce370d5dd32659e493b49` |
 | `stage3-base.png` | `#FF00FF` | `2c096ce2a164320ddc089d6e6cc972b0aef73a44517ff9fd65a2457490288c1c` |
 | `stage3-care.png` | `#FF00FF` | `b1077d09f5fecedba5a5a25e4fb0797824f7f0ae3a981605cb028b454b15c877` |
+
+Extraction overrides (`tools/petart/overrides.json`):
+
+- `s1/care` sheet: pocket_share=0.3. a magenta key streak is trapped between two leaves of the c08 rock alcove
+- stage 1 `b04`: flip=true. three-quarter happy pose faces left; flip so celebrate/care end frames face right
+- stage 1 `b06`: flip=true. error pose faces left; the stars circle the head and stay correct when mirrored
+- stage 2 `b04`: flip=true. three-quarter happy pose faces left; flip so celebrate/care end frames face right
+- stage 2 `b06`: flip=true. error pose faces left; the stars circle the head and stay correct when mirrored
+- stage 2 `c02`: flip=true. source drinking poses face left; frames must face right (A4); the bowl is symmetric
+- stage 2 `c03`: flip=true. source drinking poses face left; frames must face right (A4); the bowl is symmetric
+- stage 3 `b04`: flip=true. three-quarter happy pose faces left; flip so celebrate/care end frames face right
+- stage 3 `b06`: flip=true. error pose faces left; the stars circle the head and stay correct when mirrored
+- stage 3 `c02`: flip=true. source drinking poses face left; frames must face right (A4); the bowl is symmetric
+- stage 3 `c03`: flip=true. source drinking poses face left; frames must face right (A4); the bowl is symmetric
 
 ## frog
 
@@ -230,6 +304,12 @@ Frog, the spring-loaded optimist. Stages: Puddle Sprout / Lily Leaper / Marsh Mo
 | `stage3-base.png` | `#FF00FF` | `5fba0a92182ec87e4487bb07d7cb8c6b113ffb67d0d4479bb2761db046969a95` |
 | `stage3-care.png` | `#FF00FF` | `fdd845c9b5d664a7cee3245c11d18484823bc9dbed689102e9642f9fca9089f3` |
 
+Extraction overrides (`tools/petart/overrides.json`):
+
+- `s1/care` sheet: clear_share=0.45, pocket_share=0.3. glowing fly and shower mist were painted semi-transparent over the magenta key and extract as a pink/violet halo
+- `s2/care` sheet: clear_share=0.45, pocket_share=0.3. glowing fly and shower mist were painted semi-transparent over the magenta key and extract as a pink/violet halo
+- `s3/care` sheet: clear_share=0.45, pocket_share=0.3. glowing fly and shower mist were painted semi-transparent over the magenta key and extract as a pink/violet halo
+
 ## owl
 
 Owl, the thoughtful night librarian. Stages: Hootling / Quill Fledgling / Grand Night Librarian (names from provenance.json).
@@ -247,6 +327,16 @@ Owl, the thoughtful night librarian. Stages: Hootling / Quill Fledgling / Grand 
 | `stage3-base.png` | `#00FF00` | `b0da68b8a0ce3f6057c0514d29efc8a51525bfa1761f6d23f41b972ffccc05e0` |
 | `stage3-care.png` | `#00FF00` | `1fe4d0bcc16c14d192da766e45c19fcad1780b65b38c8583a484c70bb278a261` |
 
+Extraction overrides (`tools/petart/overrides.json`):
+
+- stage 1 `b08`: grounded=true. crouch is a ground contact frame, not airborne
+- `s2/care` sheet: scale=1.13. stage-2 care sheet ~0.88x base (b00 145 vs c09 129 px standing)
+- stage 2 `b08`: grounded=true. crouch is a ground contact frame, not airborne
+- stage 2 `c11`: fit_exclude=true. wide celebration wings; shrink only this cell
+- `s3/care` sheet: scale=1.16. stage-3 care sheet draws the owl ~0.86x its base size (b00 177 vs c09 151 px standing)
+- stage 3 `b08`: grounded=true. crouch is a ground contact frame, not airborne
+- stage 3 `c11`: fit_exclude=true. wide celebration wings; shrink only this cell
+
 ## red_panda
 
 Red panda, the bashful explorer. Stages: Ember Cub / Ringtail Scout / Autumn Sage (names from provenance.json).
@@ -263,6 +353,16 @@ Red panda, the bashful explorer. Stages: Ember Cub / Ringtail Scout / Autumn Sag
 | `stage2-care.png` | `#FF00FF` | `a3cd94bedcaf8942c992585b875ffdf41ff0f667b17d550286b9835402c08ef3` |
 | `stage3-base.png` | `#00FF00` | `2f67c7efe9d51fcb42344180e517cf2531975d86030f4d3b38aa7f82b05bce88` |
 | `stage3-care.png` | `#FF00FF` | `1faf4a088496037b6a318b42205c4b1d52bc8b028e90966ee1472be11b82c8cb` |
+
+Extraction overrides (`tools/petart/overrides.json`):
+
+- `s2/care` sheet: scale=1.1. stage-2 care sheet ~0.9x base (b00 153 vs c09 136 px sitting)
+- stage 2 `c04`: fit_exclude=true. tall hanging-leaf play pose would limit the stage scale after the care-sheet scale
+- stage 2 `c05`: fit_exclude=true. wide play pose would limit the stage scale after the care-sheet scale
+- `s3/care` sheet: scale=1.08. stage-3 care ~0.91x base (b00 159 vs c09 142 px)
+- stage 3 `c03`: fit_exclude=true. wide drink pose would limit the stage scale after the care-sheet scale
+- stage 3 `c04`: fit_exclude=true. tall hanging-leaf play pose would limit the stage scale after the care-sheet scale
+- stage 3 `c05`: fit_exclude=true. wide play pose would limit the stage scale after the care-sheet scale
 
 ## axolotl
 

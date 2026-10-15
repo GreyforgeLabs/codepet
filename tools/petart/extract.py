@@ -23,6 +23,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -124,6 +125,37 @@ def load_overrides():
     return json.loads(OVERRIDES.read_text()).get("species", {})
 
 
+CELL_KEYS = {"source", "flip", "dx", "dy", "fit_exclude", "scale", "grounded", "erase_src", "erase_when", "why"}
+KEYING_KEYS = ("clear_share", "pocket_share", "pocket_clear", "despill", "spill_gamut")
+SHEET_KEYS = {"scale", "reassign", "why", *KEYING_KEYS}
+
+
+def validate_overrides(species_ov):
+    """Reject unknown keys and missing reasons, so a typo cannot silently do nothing."""
+    for sid, ov in species_ov.items():
+        if sid not in roster.SPECIES:
+            raise SystemExit(f"overrides.json: unknown species {sid!r}")
+        for group, allowed, pat in (("cells", CELL_KEYS, r"(\*|s[123])/[bc](0\d|1[01])"),
+                                    ("sheets", SHEET_KEYS, r"s[123]/(base|care)")):
+            for key, o in ov.get(group, {}).items():
+                if not re.fullmatch(pat, key):
+                    raise SystemExit(f"overrides.json: {sid} {group} key {key!r} is malformed")
+                bad = set(o) - allowed
+                if bad:
+                    raise SystemExit(f"overrides.json: {sid} {group}[{key!r}] has unknown keys {sorted(bad)}")
+                if not str(o.get("why", "")).strip():
+                    raise SystemExit(f"overrides.json: {sid} {group}[{key!r}] needs a why")
+                if "erase_src" in o and not key.startswith("s"):
+                    raise SystemExit(f"overrides.json: {sid} {group}[{key!r}]: erase_src needs one stage (sheet px)")
+        kopts = ov.get("keying", {})
+        bad = set(kopts) - set(KEYING_KEYS) - {"why"}
+        if bad or (kopts and not str(kopts.get("why", "")).strip()):
+            raise SystemExit(f"overrides.json: {sid} keying needs a why and only {list(KEYING_KEYS)} (got {sorted(bad)})")
+        bad = set(ov) - {"cells", "sheets", "keying"}
+        if bad:
+            raise SystemExit(f"overrides.json: {sid} has unknown groups {sorted(bad)}")
+
+
 def cell_override(ov, stage, name):
     cells = ov.get("cells", {})
     out = {}
@@ -133,20 +165,71 @@ def cell_override(ov, stage, name):
     return out
 
 
+def sheet_override(ov, stage, kind):
+    """Species-wide `keying` options, then the sheet's own entry on top."""
+    out = {k: v for k, v in ov.get("keying", {}).items() if k != "why"}
+    out.update({k: v for k, v in ov.get("sheets", {}).get(f"s{stage}/{kind}", {}).items() if k != "why"})
+    return out
+
+
+_ERASE_CLAUSE = re.compile(r"\s*([rgb])\s*>\s*([rgb])\s*(?:([+-])\s*(\d+))?\s*")
+
+
+def erase_predicate(expr):
+    """Parse 'g>r+10 && g>b+60' into a function of an HxWx3 int array (no eval)."""
+    clauses = []
+    for part in expr.split("&&"):
+        m = _ERASE_CLAUSE.fullmatch(part)
+        if not m:
+            raise SystemExit(f"overrides.json: erase_when clause {part.strip()!r} must look like 'g>r+10'")
+        a, b, sign, n = m.groups()
+        clauses.append(("rgb".index(a), "rgb".index(b), (-1 if sign == "-" else 1) * int(n or 0)))
+
+    def pred(rgb):
+        ok = np.ones(rgb.shape[:2], dtype=bool)
+        for a, b, off in clauses:
+            ok &= rgb[..., a] > rgb[..., b] + off
+        return ok
+    return pred
+
+
+def erase_regions(ov, stage, kind):
+    """Source-sheet regions to repaint with the key colour before keying: [(rect, pred)]."""
+    out = []
+    prefix = "b" if kind == "base" else "c"
+    for key, o in sorted(ov.get("cells", {}).items()):
+        if key.startswith(f"s{stage}/{prefix}") and "erase_src" in o:
+            pred = (erase_predicate(o["erase_when"]) if "erase_when" in o
+                    else (lambda a: np.ones(a.shape[:2], dtype=bool)))
+            for rect in o["erase_src"]:
+                out.append((tuple(int(v) for v in rect), pred))
+    return out
+
+
 # ----------------------------------------------------------------- per-cell geometry
 
 class Cell:
     __slots__ = ("name", "rgba", "w", "h", "foot_cx", "bottom_abs", "flip", "dx", "dy",
-                 "fit_exclude", "source_name", "warnings", "mul")
+                 "fit_exclude", "source_name", "warnings", "mul", "grounded")
 
 
-def cut_cells(sheet, kind):
+def cut_cells(sheet, kind, opts=None, erase=()):
+    """Key one sheet and cut its 12 cells. `opts` is the sheet's override entry (keying
+    options and `reassign`); `erase` lists (rect, predicate) source regions repainted with
+    the key colour first (generator paint on the key that no keyer can tell from subject)."""
+    opts = opts or {}
     img = Image.open(sheet["path"])
     img.load()
     rgb = np.asarray(img.convert("RGB"))
     kkind = keying.parse_hex(sheet["chroma_hex"])
-    fg, alpha, info = keying.key_sheet(rgb, kkind)
-    masks, warnings = keying.segment(alpha)
+    if erase:
+        rgb = rgb.copy()
+        key = np.array(keying.GREEN if kkind == "green" else keying.MAGENTA, dtype=np.uint8)
+        for (x0, y0, x1, y1), pred in erase:
+            sub = rgb[y0:y1, x0:x1]
+            sub[pred(sub.astype(np.int32))] = key
+    fg, alpha, info = keying.key_sheet(rgb, kkind, **{k: opts[k] for k in KEYING_KEYS if k in opts})
+    masks, warnings = keying.segment(alpha, reassign=opts.get("reassign", ()))
     cells = []
     for i, m in enumerate(masks):
         a = alpha * m
@@ -251,7 +334,9 @@ def extract_species(sid, src_root, out_root, log=print):
         log(f"{sid}: not ready ({reason}); writing placeholder manifest")
         write_manifest(out_root, placeholder_manifest(sid, src_root, reason))
         return None
-    ov = load_overrides().get(sid, {})
+    all_ov = load_overrides()
+    validate_overrides(all_ov)
+    ov = all_ov.get(sid, {})
     prov = load_provenance(src_root, sid)
     sdir = out_root / PETS_REL / sid
     files = {}
@@ -265,7 +350,8 @@ def extract_species(sid, src_root, out_root, log=print):
         keyinfo = {}
         for kind in ("base", "care"):
             sheet = next(s for s in sheets if s["stage"] == stage and s["kind"] == kind)
-            cells, warn, info = cut_cells(sheet, kind)
+            cells, warn, info = cut_cells(sheet, kind, sheet_override(ov, stage, kind),
+                                          erase_regions(ov, stage, kind))
             keyinfo[kind] = info
             warnings += [f"s{stage} {kind}: {w}" for w in warn]
             for c in cells:
@@ -283,7 +369,8 @@ def extract_species(sid, src_root, out_root, log=print):
             c.dx, c.dy = o.get("dx", 0), o.get("dy", 0)
             c.fit_exclude = bool(o.get("fit_exclude", False))
             sheet_key = f"s{stage}/{'base' if name.startswith('b') else 'care'}"
-            c.mul = float(ov.get("sheets", {}).get(sheet_key, {}).get("scale", 1.0))
+            c.mul = float(ov.get("sheets", {}).get(sheet_key, {}).get("scale", 1.0)) * float(o.get("scale", 1.0))
+            c.grounded = bool(o.get("grounded", False))
             prepare(c, bool(o.get("flip", False)), habitat)
             cells[name] = c
             if o:
@@ -295,7 +382,7 @@ def extract_species(sid, src_root, out_root, log=print):
             loco = [cells[f"b{i:02d}"] for i in range(8, 12)]
             row_bottom = max(c.bottom_abs for c in loco)
             for c in loco:
-                elev_src[c.name] = row_bottom - c.bottom_abs
+                elev_src[c.name] = 0 if c.grounded else row_bottom - c.bottom_abs
         fits = [fit_scale(c, elev_src[c.name], habitat) for c in cells.values() if not c.fit_exclude]
         fit = min(fits)
         factor = roster.STAGE_FACTORS[stage - 1]
@@ -324,6 +411,8 @@ def extract_species(sid, src_root, out_root, log=print):
                            "overrides": applied,
                            "sheetScales": {k: v for k, v in ov.get("sheets", {}).items()
                                            if k.startswith(f"s{stage}/")}})
+        if ov.get("keying"):
+            stage_meta[-1]["keying"] = dict(ov["keying"])
     # Write outputs; delete stale generated files in this species dir only.
     sdir.mkdir(parents=True, exist_ok=True)
     keep = set(outputs) | {"manifest.json"}
@@ -349,10 +438,11 @@ def extract_species(sid, src_root, out_root, log=print):
 
 def state_table(sid, airborne):
     habitat = roster.SPECIES[sid]["habitat"]
+    custom = roster.SPECIES[sid]["stateFrames"]
     states = {}
     for name in roster.STATE_NAMES:
         t = roster.STATES[name]
-        frames = [f + ".webp" for f in t["frames"]]
+        frames = [f + ".webp" for f in custom.get(name, t["frames"])]
         mode = t["mode"]
         entry = {
             "frames": frames,
@@ -360,7 +450,7 @@ def state_table(sid, airborne):
             "mode": mode,
             "loop": mode in ("loop", "while_moving"),
             "repeats": 1,
-            "reducedFrame": t["reducedFrame"],
+            "reducedFrame": min(t["reducedFrame"], len(frames) - 1),
             "mirror": bool(t.get("mirror", True)) and habitat == "floor",
             "priority": t["priority"],
             "interrupt": t["interrupt"],
@@ -394,16 +484,22 @@ def geometry(sid, stage_boxes):
         "roams": habitat == "floor",
     }
     if habitat == "aquatic":
-        x, y, w, h = hit
-        water_line = y + int(round(h * 0.16))
-        geo["water"] = {
-            "outer": hit,
-            "waterLineY": water_line,
-            "swimBounds": [x + int(round(w * 0.16)), water_line + 6,
-                           int(round(w * 0.68)), int(round(h * 0.58))],
-            "approximate": True,
-        }
+        geo["water"] = dict(water_block(hit), approximate=True)
+        # The habitat grows with the stage; hit-testing a young tank with the mature
+        # union box would take clicks from windows around it.
+        geo["water"]["byStage"] = {s: water_block(b) for s, b in per_stage.items()}
     return geo
+
+
+def water_block(box):
+    x, y, w, h = box
+    water_line = y + int(round(h * 0.16))
+    return {
+        "outer": list(box),
+        "waterLineY": water_line,
+        "swimBounds": [x + int(round(w * 0.16)), water_line + 6,
+                       int(round(w * 0.68)), int(round(h * 0.58))],
+    }
 
 
 def base_manifest(sid, prov):
@@ -433,6 +529,10 @@ def build_manifest(sid, prov, sheets, files, stage_meta, stage_boxes, airborne, 
     m["placeholder"] = placeholder
     m["geometry"] = geometry(sid, stage_boxes)
     loco = dict(sp["locomotion"])
+    if sp["hopper"] and not placeholder:
+        # Renderers read the travel-only-while-airborne frames from the species locomotion
+        # block; states.locomotion.airborneFrames carries the same list for the state machine.
+        loco["airborneFrames"] = list(airborne)
     m["locomotion"] = loco
     m["states"] = state_table(sid, airborne)
     m["framePattern"] = "s{stage}/{frame}"

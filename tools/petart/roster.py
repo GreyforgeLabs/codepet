@@ -62,7 +62,7 @@ def _ticks(lo_s, hi_s):
 
 
 def _sp(display, default_name, personality, habitat, labels, stages, locomotion, hints=None,
-        hopper=False):
+        hopper=False, states=None):
     food, water, play, wash, bathroom, sleep = labels
     return {
         "displayName": display,
@@ -75,6 +75,9 @@ def _sp(display, default_name, personality, habitat, labels, stages, locomotion,
         "stageNamesFallback": stages,
         "locomotion": locomotion,
         "hopper": hopper,
+        # Per-species frame lists replacing the A4 table's (same mode and timing), for a
+        # species whose poses make the default loop read wrongly.
+        "stateFrames": states or {},
     }
 
 
@@ -86,7 +89,10 @@ SPECIES = {
     "dog": _sp("Dog", "Biscuit", "the enthusiastic teammate", "floor",
                ("Kibble", "Bowl lap", "Fetch ball", "Towel shake", "Bush screen", "Cushion nap"),
                ("Puppy", "Teammate", "Pack Lead"),
-               {"style": "trot", "pxPerTick": 6, "pauseTicks": _ticks(5, 14)}),
+               {"style": "trot", "pxPerTick": 6, "pauseTicks": _ticks(5, 14)},
+               # b00 stands while b04/b02 sit (stages 2-3): alternating them made the dog
+               # stand up and sit down every 800 ms. Hold the seated pose instead.
+               states={"working": ["b04"], "waiting": ["b02"]}),
     "capybara": _sp("Capybara", "Yuzu", "the unhurried team lead", "floor",
                     ("Leaf", "Slow sip", "Floating orange", "Gentle rinse", "Reed screen", "Side rest"),
                     ("Pup", "Lounger", "Hot-Spring Elder"),
@@ -132,7 +138,7 @@ SPECIES = {
     "frog": _sp("Frog", "Hopper", "the spring-loaded optimist", "floor",
                 ("Food mote", "Damp pad", "Lily-pad hops", "Mist rinse", "Reed screen", "Leaf crouch"),
                 ("Froglet", "Frog", "Bullfrog Sage"),
-                {"style": "leap", "pxPerTick": 10, "pxFrames": [1], "pauseTicks": _ticks(6, 18)},
+                {"style": "leap", "pxPerTick": 5, "pxFrames": [1, 2], "pauseTicks": _ticks(6, 18)},
                 hopper=True),
     "owl": _sp("Owl", "Quill", "the thoughtful night librarian", "floor",
                ("Morsel", "Sip", "Wooden bead", "Preen", "Perch screen", "Shoulder tuck"),
@@ -149,7 +155,7 @@ SPECIES = {
                    {"style": "bottom_walk_glide", "pxPerTick": 0, "pauseTicks": _ticks(8, 18)},
                    hints={"water": "Axolotls don't drink from bowls; this refreshes the tank water.",
                           "bathroom": "Cleans the filter; the axolotl stays in its plant hide.",
-                          "sleep": "Axolotls rest with their eyes open."}),
+                          "sleep": "Rests tucked inside its rock hide."}),
 }
 
 assert tuple(SPECIES) == ORDER

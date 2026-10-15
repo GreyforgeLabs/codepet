@@ -5,8 +5,10 @@ Checks 15 species x 3 stages x 15 states: manifest schema, registry and PetRegis
 agreement, every referenced file present with matching sha256 and nothing unreferenced,
 WebP with alpha at 192x192 (thumbnails 96x96), non-empty alpha inside a 2 px margin,
 ground contact within 6 px of groundY for floor species' standing frames, pairwise
-different locomotion frames, finite durations, aquatic water blocks, stage minLevels and
-default names equal to the Rust core, and the provenance and docs coverage.
+different locomotion frames, finite durations, aquatic water blocks (per stage too), hopper
+airborne frames exposed on the species locomotion block, per-stage hit boxes no larger than
+1.35x the stage's alpha union, stage minLevels and default names equal to the Rust core, and
+the provenance and docs coverage.
 
 Strict by default: all 15 species must be extracted (`placeholder: false`). With
 CODEPET_ALLOW_PARTIAL_ART=1, species still awaiting source sheets are skipped with a
@@ -34,6 +36,8 @@ STATE_NAMES = ("idle", "locomotion", "food", "water", "play", "wash", "bathroom"
 CARE = ("food", "water", "play", "wash", "bathroom")
 NO_FALLBACK = CARE + ("sleep_enter", "sleep", "sleep_exit")
 CANVAS, GROUND_Y, THUMB, MARGIN, GROUND_TOL = 192, 184, 96, 2, 6
+HOPPER_STYLES = ("hop", "leap")
+HIT_SLACK = 1.35          # a stage hit box may cover at most this much the stage's alpha union area
 ALPHA_ON = 16
 MODES = ("loop", "once", "hold", "while_moving")
 INTERRUPTS = ("any", "higher", "none")
@@ -272,6 +276,13 @@ for idx, sid in enumerate(CORE_IDS):
         fail(f"{pre} unreferenced or missing files on disk: extra {sorted(on_disk - set(files))[:3]}, "
              f"missing {sorted(set(files) - on_disk)[:3]}")
     airborne = set(states.get("locomotion", {}).get("airborneFrames", []))
+    loco = man.get("locomotion", {})
+    if loco.get("style") in HOPPER_STYLES:
+        # Renderers read species.locomotion.airborneFrames to move only while airborne.
+        if not loco.get("airborneFrames"):
+            fail(f"{pre} hopper species must expose a non-empty locomotion.airborneFrames")
+        elif sorted(loco["airborneFrames"]) != sorted(airborne):
+            fail(f"{pre} locomotion.airborneFrames {loco['airborneFrames']} != states.locomotion.airborneFrames {sorted(airborne)}")
     loco_frames = states.get("locomotion", {}).get("frames", [])
     airborne_files = {loco_frames[i] for i in airborne if 0 <= i < len(loco_frames)}
     pixels = {}
@@ -303,6 +314,30 @@ for idx, sid in enumerate(CORE_IDS):
         frame = rel.split("/", 1)[1]
         if habitat == "floor" and frame not in airborne_files and abs(box[3] - GROUND_Y) > GROUND_TOL:
             fail(f"{pre} {rel} bottom {box[3]} not within {GROUND_TOL} px of groundY {GROUND_Y}")
+    stage_union = {}
+    for rel, rgba in pixels.items():
+        b = alpha_info((CANVAS, CANVAS), rgba)
+        u = stage_union.get(rel[:2])
+        stage_union[rel[:2]] = b if u is None else (min(u[0], b[0]), min(u[1], b[1]), max(u[2], b[2]), max(u[3], b[3]))
+    by_stage = (geo.get("water") or {}).get("byStage") if habitat == "aquatic" else None
+    if habitat == "aquatic" and sorted(by_stage or {}) != ["1", "2", "3"]:
+        fail(f"{pre} aquatic water block needs byStage entries for stages 1-3")
+    for st in (1, 2, 3):
+        u = stage_union.get(f"s{st}")
+        if u is None:
+            continue
+        area = (u[2] - u[0]) * (u[3] - u[1])
+        boxes = {"stageHitBoxes": (geo.get("stageHitBoxes") or {}).get(str(st))}
+        if by_stage:
+            wb = by_stage.get(str(st)) or {}
+            boxes["water.byStage.outer"] = wb.get("outer")
+            if wb.get("outer") and not (wb["outer"][1] < wb.get("waterLineY", -1) < wb["outer"][1] + wb["outer"][3]):
+                fail(f"{pre} stage {st} waterLineY must fall inside its water.byStage outer box")
+        for name, bx in boxes.items():
+            if not (isinstance(bx, list) and len(bx) == 4):
+                fail(f"{pre} geometry {name} for stage {st} missing")
+            elif bx[2] * bx[3] > HIT_SLACK * area:
+                fail(f"{pre} stage {st} {name} {bx} is more than {HIT_SLACK}x its alpha union {list(u)}")
     for st in (1, 2, 3):
         imgs = [pixels.get(f"s{st}/{f}") for f in loco_frames]
         for i in range(len(imgs)):
