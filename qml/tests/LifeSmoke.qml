@@ -88,6 +88,23 @@ Window {
             return find(obj.contentItem, name)
         return null
     }
+    // Every need row is an accessible static text named exactly by its plain-text line.
+    function checkNeedRows(label) {
+        var needs = ["hunger", "thirst", "mental_health", "hygiene"]
+        var ok = true, seen = 0
+        for (var i = 0; i < needs.length; i++) {
+            var row = find(panel, "life.need." + needs[i])
+            if (!row) continue
+            seen += 1
+            var expected = LifeText.needLine(row.modelData) + (row.modelData.lethal ? "" : " (warning only)")
+            if (row.Accessible.role !== Accessible.StaticText || row.Accessible.name !== row.text
+                    || row.text !== expected || row.text === "" || row.textFormat !== Text.PlainText) {
+                console.log("need row " + needs[i] + ": role=" + row.Accessible.role + " name=" + row.Accessible.name)
+                ok = false
+            }
+        }
+        check(ok && seen === 4, label + ": every need row is accessible static text named by its line (" + seen + " rows)")
+    }
     function w(name) {
         var o = find(panel, name)
         if (!o) console.log("MISSING " + name)
@@ -354,8 +371,10 @@ Window {
                 top.check(/^Ginger is getting thirsty\. Water will help\. About .+ of active time before it becomes serious\.$/.test(warnText),
                           "warning names need, action and active-time duration: " + warnText)
                 top.check(top.w("life.need.thirst").text.indexOf("Hydration 28% · low · water") === 0, "thirst need row")
+                top.checkNeedRows("warning")
                 top.check(!top.w("life.critical").visible, "no critical card while only warning")
                 host.load("critical_hunger")
+                top.checkNeedRows("critical")
                 top.check(top.w("life.critical").visible && top.w("life.careNow").visible && top.w("life.criticalPause").visible,
                           "critical offers care and pause")
                 top.check(top.w("life.status").text.indexOf("Ginger urgently needs food. Care now keeps them safe. Without food, Ginger may pass away after about 5 h of active time.") === 0,
