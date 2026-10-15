@@ -44,6 +44,19 @@ Item {
                 top.check(form.draftParams().instructions === "Explain [REDACTED]", "editor adopts authoritative filtered instructions")
                 top.check(form.formError.indexOf("filtered") >= 0, "filtering visibly disclosed before acknowledgement")
                 top.check(form.preflightFresh && !form.dirty, "fresh preflight describes saved filtered revision")
+                // v0.2 life gates mirror Rust's order: no life → death pending → critical.
+                var base = host.snapshot
+                top.check(form.readyToWork, "a v0.1-shaped ready snapshot (no life key) stays ready")
+                host.snapshot = Object.assign({}, base, {life: null})
+                top.check(!form.readyToWork && form.readinessText === "Adopt a companion to start work.", "no living companion blocks Start")
+                host.snapshot = Object.assign({}, base, {life: {name: "Ginger", status: "critical", death_pending: true, fainted: false}})
+                top.check(!form.readyToWork && form.readinessText.indexOf("current task") >= 0, "a pending death blocks new work")
+                host.snapshot = Object.assign({}, base, {life: {name: "Ginger", status: "critical", death_pending: false, fainted: false},
+                                                         lifecycle: {critical: {need: "thirst"}, needs: []}})
+                top.check(!form.readyToWork && form.readinessText === "Ginger urgently needs water; care before starting work.",
+                          "critical blocks Start with the need: " + form.readinessText)
+                host.snapshot = Object.assign({}, base, {life: {name: "Ginger", status: "healthy", death_pending: false, fainted: false}})
+                top.check(form.readyToWork, "a healthy life with ready care allows Start")
                 console.log("DONE failures=" + top.failures)
                 Qt.exit(top.failures === 0 ? 0 : 3)
             }
