@@ -1,3 +1,53 @@
+# Care/progression validation — cloud workspace, 2026-10-15
+
+This revision was implemented and tested only in the cloud workspace, based directly on
+remote main `6a5f654`. Independent bugfix PRs #1 and #2 are not included or merged.
+Real providers remain disabled; no user-computer files or project directories were changed.
+
+## Rust gates
+
+Official Rust 1.85.0 (declared minimum) and 1.99.0 (stable), existing locked dependency cache:
+
+- `cargo fmt --all --check`: passed on both toolchains
+- `cargo test --workspace --locked`: 174 tests passed on both toolchains, unfiltered
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed on both
+- `cargo run --locked -p codepet -- mock-demo`: reaches review, NOT VERIFIED, no acceptance,
+  no provider launch and no project changes (the older in-memory demo remains distinct)
+- `git diff --check`: passed
+
+The cancellation regression retains its no-child-process assertion on cloud kernels lacking
+`/proc/<pid>/task/<tid>/children`, using a read-only PPid scan fallback. No test was skipped.
+
+New coverage includes all-four-full Start gating, transactional two-process races and debit,
+explicit care/acceptance idempotence, bathroom requirements, pre-execution refunds, mandatory
+and voluntary naps, early wake, closed-app completion, backward/forward clocks, monotonic
+settlement, review during sleep, migration preservation, isolated demo XP/levels/mastery,
+no provider permission expansion, and redaction before persistence/digesting. An independent
+review also checked stale preflight and saved-filtered-draft UI boundaries and care sequence
+interleavings; fixes received regression coverage.
+
+## Qt offscreen gates
+
+Qt/PySide6 6.8.3 installed from official PyPI into an isolated temporary cloud directory:
+
+- PreviewSmoke: 34 checks passed
+- CareSmoke: 26 checks passed
+- CareFlowSmoke: 10 checks passed (including concurrent busy-host interruption)
+- FilteredDraftSmoke: 3 checks passed
+- Qt6 qmllint: no output for shared/standalone components and all four smoke tests
+- Standalone 720×900 offscreen render inspected
+
+See [qml/README.md](../qml/README.md) for exact commands and scope. The existing Quickshell
+adapter was not changed; its real-RPC harness was updated but could not run because
+Quickshell is not installed here. Offscreen rendering does not establish live Omarchy,
+Wayland/X11, screen-reader or keyboard usability, packaging, resource budgets or performance.
+
+Hosted CI status is reported on the pull request, not inferred from local passes.
+
+---
+
+The previous validation records below are retained as history and describe earlier revisions.
+
 # Validation
 
 ## Milestone 1 on greyarch, 2026-10-14 (after the review fixes)

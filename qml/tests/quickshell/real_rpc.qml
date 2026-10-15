@@ -24,6 +24,9 @@ ShellRoot {
         a.request("state.get", {}, function (r) {
             check(r.ok && a.snapshot.meters.mental_health === 7000 && a.snapshot.active_task === null,
                   "fresh state: meters 70, idle")
+            a.request("pet.care", {"action": "routine"}, function (care) {
+                check(care.ok && care.result.care.ready_to_work && care.result.meters.hunger === 10000,
+                      "explicit care routine fills bars before preflight")
             a.request("task.create", {
                 "category": "mental_health", "provider": "mock", "folder": shell.root + "/project",
                 "scope": ["src"], "instructions": "Explain the state machine",
@@ -40,6 +43,7 @@ ShellRoot {
                     })
                 })
             })
+            }, "care-routine-1")
         })
     }
     Timer {
@@ -51,14 +55,16 @@ ShellRoot {
             var p = {"task_id": shell.taskId, "review_digest": shell.digest, "acknowledged": true,
                      "override_reason": "useful mock explanation"}
             a.request("task.accept_artifact", p, function (r2) {
-                shell.check(r2.ok && r2.result.receipt.amount_hundredths === 2000 && !r2.result.duplicate,
-                            "explicit acceptance grants one reward")
+                shell.check(r2.ok && r2.result.receipt.amount_hundredths === 0 && r2.result.receipt.demo_xp === 20
+                            && r2.result.receipt.real_xp === 0 && !r2.result.duplicate,
+                            "explicit acceptance grants demo XP only, no care reward")
                 a.request("task.accept_artifact", p, function (r3) {
                     shell.check(r3.ok && r3.result.receipt.request_id === "accept-1", "same request id replays the receipt")
                     a.request("state.get", {}, function (r4) {
-                        shell.check(r4.ok && a.snapshot.meters.mental_health === 9000
-                                    && a.snapshot.meters.hunger === 7000 && a.snapshot.active_task === null,
-                                    "Rust-owned snapshot: mental health 90, slot free")
+                        shell.check(r4.ok && a.snapshot.meters.mental_health === 9500
+                                    && a.snapshot.meters.hunger === 9000 && a.snapshot.active_task === null
+                                    && a.snapshot.progression.demo.lifetime_xp === 20 && a.snapshot.progression.real.lifetime_xp === 0,
+                                    "Rust-owned snapshot: care debit remains, demo XP20, real XP0, slot free")
                         shell.finish()
                     })
                 }, "accept-1")

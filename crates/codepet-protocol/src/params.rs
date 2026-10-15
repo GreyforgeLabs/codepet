@@ -71,7 +71,7 @@ fn check_limit(limit: Option<u32>, max: u32) -> Result<(), ProtocolError> {
     }
 }
 
-/// Params for methods that take none: `state.get`, `providers.inspect`, `task.recover`.
+/// Params for methods with no fields, including `pet.sleep` and `pet.wake`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EmptyParams {}
@@ -79,6 +79,8 @@ impl Validate for EmptyParams {}
 pub type StateGetParams = EmptyParams;
 pub type ProvidersInspectParams = EmptyParams;
 pub type TaskRecoverParams = EmptyParams;
+pub type PetSleepParams = EmptyParams;
+pub type PetWakeParams = EmptyParams;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -328,3 +330,24 @@ pub struct PetPauseParams {
     pub paused: bool,
 }
 impl Validate for PetPauseParams {}
+
+/// Explicit care actions. Validation runs before the state directory is opened.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PetCareParams {
+    pub action: String,
+}
+impl Validate for PetCareParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        if matches!(
+            self.action.as_str(),
+            "food" | "water" | "play" | "wash" | "bathroom" | "routine"
+        ) {
+            Ok(())
+        } else {
+            Err(invalid_params(
+                "action must be food, water, play, wash, bathroom or routine",
+            ))
+        }
+    }
+}

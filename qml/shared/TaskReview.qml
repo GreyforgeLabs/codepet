@@ -32,10 +32,10 @@ ColumnLayout {
     readonly property bool reasonOk: reasonBytes <= maxReasonBytes
         && (!needsOverride || reasonField.text.trim().length > 0)
     readonly property var categoryNames: ({
-        "hunger": "Hunger",
-        "thirst": "Thirst",
-        "mental_health": "Mental health",
-        "hygiene": "Hygiene"
+        "hunger": "Bugfix",
+        "thirst": "Quality & Performance",
+        "mental_health": "Learning & Specification",
+        "hygiene": "Cleanup"
     })
     spacing: 10
 
@@ -220,7 +220,7 @@ ColumnLayout {
             }
             Label {
                 Layout.fillWidth: true
-                text: "Accepting records the category reward once, in CodePet's saved state. Discarding grants nothing."
+                text: "Acceptance never refills care. Eligible simulated acceptance records demo XP once; failed checks grant no XP. Real-work XP remains separate and requires supported real evidence. Discarding grants nothing."
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
             }
@@ -271,8 +271,9 @@ ColumnLayout {
         visible: root.receipt !== null
         text: root.receipt
             ? (root.duplicate ? "Already accepted earlier. " : "Accepted. ")
-                + "Recorded reward: +" + (root.receipt.amount_hundredths / 100).toFixed(1) + " "
-                + root.categoryName(root.receipt.category) + " · verification: " + root.receipt.verification
+                + "Saved receipt: +" + (root.receipt.demo_xp || 0) + " demo XP · +" + (root.receipt.real_xp || 0) + " real-work XP"
+                + " · track: " + (root.receipt.progression_track || "none")
+                + (root.receipt.amount_hundredths > 0 ? " · historical care reward: +" + (root.receipt.amount_hundredths / 100).toFixed(1) : "") + " · verification: " + root.receipt.verification
                 + (root.receipt.override_reason ? " · override reason: " + root.receipt.override_reason : "")
             : ""
         textFormat: Text.PlainText

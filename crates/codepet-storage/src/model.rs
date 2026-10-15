@@ -91,6 +91,13 @@ pub struct ReceiptView {
     pub override_reason: Option<String>,
     pub request_id: String,
     pub accepted_at_ms: i64,
+    /// Isolated simulation progression; never verified-work experience.
+    #[serde(default)]
+    pub demo_xp: u32,
+    #[serde(default)]
+    pub real_xp: u32,
+    #[serde(default)]
+    pub progression_track: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -147,7 +154,7 @@ pub struct ReviewBrief {
     pub artifact_bytes: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MetersView {
     pub hunger: u16,
     pub thirst: u16,
@@ -202,6 +209,8 @@ pub struct Snapshot {
     pub protocol_version: u16,
     pub last_seq: i64,
     pub meters: MetersView,
+    pub care: CareView,
+    pub progression: ProgressionView,
     pub decay: DecayView,
     pub settings: SettingsView,
     pub active_task: Option<TaskBrief>,
@@ -308,4 +317,52 @@ pub struct HistoryCursor {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct PauseView {
     pub paused: bool,
+}
+
+/// Authoritative care/readiness. Values are settled only by explicit short commands.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CareView {
+    pub revision: i64,
+    pub bathroom_due: bool,
+    pub starts_since_bathroom: u32,
+    pub sleeping: bool,
+    pub sleep_due: bool,
+    pub sleep_remaining_ms: i64,
+    pub sleep_started_at_ms: Option<i64>,
+    pub work_sessions: u32,
+    pub execution_ms: i64,
+    pub ready_to_work: bool,
+    pub readiness_reasons: Vec<String>,
+    pub welcome_care_available: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CareOutcome {
+    pub request_id: String,
+    pub action: String,
+    pub changed: bool,
+    pub meters: MetersView,
+    pub care: CareView,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct MasteryView {
+    pub bugfix: u32,
+    pub quality_performance: u32,
+    pub learning_specification: u32,
+    pub cleanup: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct XpView {
+    pub lifetime_xp: u32,
+    pub level: u8,
+    pub next_level_xp: Option<u32>,
+    pub mastery: MasteryView,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ProgressionView {
+    pub real: XpView,
+    pub demo: XpView,
 }

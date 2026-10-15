@@ -27,10 +27,10 @@ ColumnLayout {
     readonly property bool hostBusy: !!(host && host.busy)
     readonly property var cancellable: ["preparing", "running", "waiting_for_user", "verifying"]
     readonly property var categoryNames: ({
-        "hunger": "Hunger",
-        "thirst": "Thirst",
-        "mental_health": "Mental health",
-        "hygiene": "Hygiene"
+        "hunger": "Bugfix",
+        "thirst": "Quality & Performance",
+        "mental_health": "Learning & Specification",
+        "hygiene": "Cleanup"
     })
     spacing: 14
 
@@ -92,8 +92,20 @@ ColumnLayout {
         visible: root.view === "home"
         spacing: 14
 
+        Label {
+            Layout.fillWidth: true
+            text: "SIMULATION ONLY · No real provider, commands or project changes"
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            font.bold: true
+        }
+        PetCare {
+            objectName: "panel.petCare"
+            Layout.fillWidth: true
+            host: root.host
+        }
         GroupBox {
-            title: "Well-being"
+            title: "Care · all four bars must reach 100 before Start"
             Layout.fillWidth: true
             ColumnLayout {
                 anchors.fill: parent
@@ -104,10 +116,10 @@ ColumnLayout {
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                 }
-                WellbeingMeter { Layout.fillWidth: true; label: "Hunger satisfied"; hundredths: root.meterValue("hunger") }
+                WellbeingMeter { Layout.fillWidth: true; label: "Nourishment"; hundredths: root.meterValue("hunger") }
                 WellbeingMeter { Layout.fillWidth: true; label: "Hydration"; hundredths: root.meterValue("thirst") }
-                WellbeingMeter { Layout.fillWidth: true; label: "Mental health"; hundredths: root.meterValue("mental_health") }
-                WellbeingMeter { Layout.fillWidth: true; label: "Cleanliness"; hundredths: root.meterValue("hygiene") }
+                WellbeingMeter { Layout.fillWidth: true; label: "Mood"; hundredths: root.meterValue("mental_health") }
+                WellbeingMeter { Layout.fillWidth: true; label: "Hygiene"; hundredths: root.meterValue("hygiene") }
                 Label {
                     Layout.fillWidth: true
                     text: !root.decayEnabled ? "Decay: off (default)" : (root.paused ? "Decay: paused" : "Decay: gentle decay while open")
@@ -202,6 +214,15 @@ ColumnLayout {
             }
         }
 
+        ProgressionPanel {
+            Layout.fillWidth: true
+            progression: root.snap ? root.snap.progression : null
+        }
+        TaskTimeline {
+            objectName: "panel.timeline"
+            Layout.fillWidth: true
+            host: root.host
+        }
         GroupBox {
             title: "Recent results"
             Layout.fillWidth: true
@@ -232,8 +253,9 @@ ColumnLayout {
                             Layout.fillWidth: true
                             visible: !!recentRow.modelData.receipt
                             text: recentRow.modelData.receipt
-                                ? "Recorded reward: +" + (recentRow.modelData.receipt.amount_hundredths / 100).toFixed(1) + " "
-                                    + root.categoryName(recentRow.modelData.receipt.category)
+                                ? "Saved receipt: " + (recentRow.modelData.receipt.demo_xp || 0) + " demo XP · "
+                                    + (recentRow.modelData.receipt.real_xp || 0) + " real-work XP"
+                                    + (recentRow.modelData.receipt.amount_hundredths > 0 ? " · historical care reward: +" + (recentRow.modelData.receipt.amount_hundredths / 100).toFixed(1) : "")
                                     + " (verification: " + recentRow.modelData.receipt.verification + ")"
                                 : ""
                             textFormat: Text.PlainText

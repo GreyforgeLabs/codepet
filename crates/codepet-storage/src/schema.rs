@@ -3,7 +3,7 @@ use codepet_core::{Settings, METER_START};
 use rusqlite::{params, Transaction};
 
 pub(crate) type Migration = fn(&Transaction<'_>, i64) -> rusqlite::Result<()>;
-pub(crate) const MIGRATIONS: &[Migration] = &[v1];
+pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2];
 
 /// Slot-occupying states; must equal `State::occupies_slot` (checked by a test).
 pub(crate) const SLOT_STATES: &str = "('preparing','running','waiting_for_user','verifying',\
@@ -158,4 +158,44 @@ fn v1(tx: &Transaction<'_>, now: i64) -> rusqlite::Result<()> {
         params![METER_START, now],
     )?;
     Ok(())
+}
+
+/// Additive migration: old meters, rewards, artifacts, request receipts and tasks are
+/// intentionally untouched. Existing tasks have no debit row and are never backcharged.
+fn v2(tx: &Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
+    tx.execute_batch(r"
+CREATE TABLE pet_care (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+    starts_since_bathroom INTEGER NOT NULL DEFAULT 0 CHECK (starts_since_bathroom >= 0),
+    work_sessions INTEGER NOT NULL DEFAULT 0 CHECK (work_sessions >= 0),
+    execution_ms INTEGER NOT NULL DEFAULT 0 CHECK (execution_ms >= 0),
+    rest_required INTEGER NOT NULL DEFAULT 0 CHECK (rest_required IN (0,1)),
+    sleep_remaining_ms INTEGER NOT NULL DEFAULT 120000 CHECK (sleep_remaining_ms BETWEEN 0 AND 120000),
+    sleep_started_at_ms INTEGER,
+    sleep_wall_ms INTEGER,
+    sleep_boot TEXT,
+    sleep_steady_ms INTEGER,
+    welcome_care_available INTEGER NOT NULL DEFAULT 1 CHECK (welcome_care_available IN (0,1))
+);
+INSERT INTO pet_care (id) VALUES (1);
+CREATE TABLE task_care_usage (
+    task_id TEXT PRIMARY KEY NOT NULL REFERENCES tasks(id),
+    executed INTEGER NOT NULL DEFAULT 0 CHECK (executed IN (0,1)),
+    refunded INTEGER NOT NULL DEFAULT 0 CHECK (refunded IN (0,1)),
+    execution_ms INTEGER NOT NULL DEFAULT 0 CHECK (execution_ms >= 0),
+    segment_wall_ms INTEGER,
+    segment_boot TEXT,
+    segment_steady_ms INTEGER
+);
+-- A separate ledger is the only source of demo progression. No real-work ledger is
+-- populated by this release, and historical acceptances are never backfilled.
+CREATE TABLE demo_xp_rewards (
+    task_id TEXT PRIMARY KEY NOT NULL REFERENCES tasks(id),
+    track TEXT NOT NULL CHECK (track IN ('bugfix','quality_performance','learning_specification','cleanup')),
+    amount INTEGER NOT NULL CHECK (amount = 20),
+    granted_at_ms INTEGER NOT NULL
+);
+UPDATE preflight_tokens SET status = 'invalidated' WHERE status = 'pending';
+")
 }

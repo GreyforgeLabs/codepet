@@ -1,189 +1,169 @@
 # CodePet QML UI
 
-Milestone 1 makes Rust the only authority for state. QML renders the snapshot returned
-by `codepet` and sends explicit requests; it never changes meters, computes rewards or
-advances task states itself. Result shapes are in `docs/milestone-1.md`.
+Rust is the authority for care, readiness, sleep, acceptance and progression. QML
+renders snapshots and sends deliberate requests. It never grants stats or XP,
+completes sleep, or starts work from an animation, timer, care action or level.
+Only the mock provider is available. The shared UI prominently labels simulation;
+no commands run and no project files are read or changed by mock execution.
 
-## Layout
+## Components
 
-| Path | Imports | Role |
-| --- | --- | --- |
-| `shared/Panel.qml` | QtQuick, Controls, Layouts | Meters with high-is-good legend, task status, New task, Pause decay, Cancel, Resolve recovery, Refresh, Check interrupted tasks, recent results |
-| `shared/TaskForm.qml` | same | Draft editor (loads a draft with `task.get`), preflight summary, acknowledgement, Start |
-| `shared/TaskReview.qml` | same | Provider-authored/SIMULATED artifact, verification, acknowledgement, override reason, Accept artifact / Discard; Abandon (no reward) for `recovery_required` |
-| `shared/WellbeingMeter.qml`, `shared/StatusBadge.qml` | same | One meter (integer hundredths); status glyph + words |
-| `standalone/Main.qml`, `standalone/PreviewHost.qml` | same + `../shared` | Pure-QML preview, not connected to Rust |
-| `omarchy/HostAdapter.qml` | QtQuick, Quickshell.Io | Quickshell transport: one `codepet rpc` process per request |
-| `tests/` | | Headless harnesses (below); not part of the UI |
+- `shared/Panel.qml`: care, meters, task controls, saved progression and recent results
+- `shared/PetCare.qml`: original geometric pet artwork, food/water bowls, pet menu,
+  bathroom tree, bed, explicit care controls and interruptible care routine
+- `shared/ProgressionPanel.qml`: isolated demo/real XP, levels, four mastery tracks
+  and a textual level-up notice. Advanced guided templates remain previews only
+- `shared/TaskForm.qml`: bounded draft, small guided simulation, providers,
+  revision-bound preflight, explicit acknowledgement and Start
+- `shared/TaskReview.qml`: literal-text artifacts, honest verification status,
+  override reason, explicit acceptance/discard and saved reward receipts
+- `shared/TaskTimeline.qml`: bounded, explicitly loaded durable task-state events
+- `shared/WellbeingMeter.qml`, `shared/StatusBadge.qml`: textual values and states
+- `standalone/Main.qml`, `standalone/PreviewHost.qml`: pure-QML fixed-fixture preview
+- `omarchy/HostAdapter.qml`: Quickshell transport, one `codepet rpc` process/request
+- `tests/`: headless UI/transport harnesses, not product runtime code
 
-Quickshell imports appear only under `omarchy/` (and its test harness).
-
-## What changed
-
-The old `codepet/shell.qml` kept its own phase, meters and acceptance guard and added
-+20 in QML. It is removed, together with the directory; `WellbeingMeter.qml` moved to
-`shared/` and now takes hundredths. The originals stay in Git (import commit `124f004`).
-Because of this, `docs/source-manifest.sha256` no longer matches its three `qml/` entries;
-that manifest records the original import and is not updated here.
+Quickshell imports remain confined to the Omarchy adapter and its test harnesses.
+The real standalone QProcess launcher is still not implemented. The optional
+Python test runner is a test dependency, not a replacement product architecture.
 
 ## Host contract
 
-Every shared component takes a `host` object:
+Shared components receive a `host` object with:
 
-- `property var snapshot`: last successful `state.get` result. Only the host sets it.
-- `property bool busy`: a request is waiting for its response. Hosts allow one request at
-  a time and answer a second one with `CLIENT_BUSY`.
-- `property string lastError`: `"CODE: message"` of the last failed request. It is cleared
-  when a new non-`state.get` request starts, so the refresh after a failed action keeps it.
-- `function request(method, params, callback[, requestId])`: sends one envelope; `callback`
-  receives the parsed response envelope (`ok`, `result` or `error`). Client-side failures use
-  the same shape with codes `CLIENT_BUSY`, `CLIENT_TIMEOUT`, `TRANSPORT`, `PROTOCOL_MISMATCH`
-  or `OUTPUT_LIMIT`. `requestId` is optional; TaskReview passes one so an identical
-  acceptance retry reuses its idempotency key, and changed parameters get a new key.
-- Optional `property bool supervisorActive`: a started job's process is still alive. The
-  panel uses it only to word its "Refresh" hint.
+- `snapshot`: last successful `state.get` result; only the host replaces it
+- `busy`: an outstanding request; hosts refuse overlap with `CLIENT_BUSY`
+- `lastError`: `CODE: message`, cleared on the next non-state request
+- `request(method, params, callback[, requestId])`: a v1 response envelope to the
+  callback; optional request IDs support identical acceptance/care retries
+- Optional `supervisorActive`: used only for the explicit Refresh hint
 
-After every action a component calls `host.request("state.get", {})`. Nothing refreshes on a
-timer. Start is sent only from the Start button's `onClicked`, and only with a preflight token
-for the current task id and revision, after the acknowledgement checkbox is ticked. Any edit
-clears the token and the acknowledgement; the token is dropped once Start is clicked, and an
-expired token (checked at click time) is refused locally. Unavailable providers are shown
-disabled as "Not yet supported on this version". Untrusted strings are rendered with
-`Text.PlainText` (including provider labels, whose button text would otherwise be AutoText).
+Existing task/transport contracts are retained. `snapshot.care` provides readiness,
+bathroom/rest counters and sleep status; `snapshot.progression` separates `demo`
+and `real` lifetime XP, levels and mastery. See `docs/milestone-1.md` for RPC shapes.
+Care mutations are `pet.care {action: food|water|play|wash|bathroom|routine}`,
+`pet.sleep {}` and `pet.wake {}`. The UI care routine deliberately sends only needed
+individual actions with a pause between confirmations; Stop or hiding cancels
+remaining actions. The atomic backend `routine` is also available to other hosts.
+Each confirmed care/sleep action is followed by an explicit state refresh.
 
-`state.get` lists task *briefs* (no folder, scope or artifact text, an instructions
-excerpt). "Continue draft" therefore loads the full draft with `task.get` before opening the
-form, and the review loads the full task with `task.review`. The form mirrors Rust's limits:
-16 KiB of instructions and 32 KiB for folder, scope and instructions as JSON. The override
-reason is limited to 512 UTF-8 bytes (counted in bytes, not characters).
+The Start button and its handler require the authoritative `ready_to_work`, a
+fresh preflight for this exact draft and care revision, and acknowledgement.
+Any edit or care/rest revision change clears preflight and acknowledgement.
+Start checks token expiry at click time and drops the token once clicked. Rust
+rechecks readiness and consumes the token transactionally. Care changes while
+already running do not cancel the task or prevent review/acceptance.
 
-A `recovery_required` task holds the slot until it is resolved. The panel then shows
-"Resolve recovery", which opens the review read-only. The only action there is "Abandon (no
-reward)", enabled after an acknowledgement; it sends `task.discard` with the task's stored
-digest and states that no files were restored or changed.
+Saved instructions returned by Rust replace any locally entered text changed by
+privacy filtering. The form visibly discloses the change before acknowledgement.
+Folder/scope/instructions remain bounded (16 KiB instructions, 32 KiB combined
+JSON), and override reasons remain bounded to 512 UTF-8 bytes. Untrusted artifacts,
+events, summaries and labels are plain text. Preview logging includes only request
+ID/method, never instructions, reasons or full payloads.
 
-## Standalone preview
+## Care, motion and sleep
+
+- Four high-is-good bars: Nourishment, Hydration, Mood and Hygiene
+- Food/water/play/wash fill their bar to 100; no care action grants XP
+- Bathroom due makes the wash button say `Bathroom + wash`; the tree always offers
+  the actual bathroom action. A plain wash cannot clear bathroom due in Rust
+- Bed discloses a two-minute nap. Early wake preserves remaining rest; review and
+  acceptance remain available while sleeping
+- Countdown uses local display-only elapsed time at 1 Hz while visible/asleep.
+  At zero it explicitly asks for Refresh/Wake to confirm saved readiness. It never
+  issues RPC, persists ticks, wakes the pet, or enables Start
+- Pose changes are capped at 5 FPS (200 ms), including short reactions. Hidden or
+  minimized windows, reduced-motion and quiet mode stop pose ticks. Sleeping uses
+  a static pose. No interpolated animation runs at an unbounded render-loop rate
+- Text feedback is retained with reduced motion, plus a four-entry care trail in
+  this view. The durable task timeline is separate. Sound is off
+- UI options are session-local; this milestone does not persist reduced-motion or
+  quiet-mode preferences or integrate compositor lock signals
+
+The timeline uses `events.subscribe {after_seq, limit:50}` only on a user click.
+It displays actual saved `task.state` transitions, validates event shapes, bounds
+its list to 100 entries and marks omitted/malformed content. It does **not** invent
+file reads, edits, tests, commands or completion percentages. Refresh is explicit;
+there is no process polling and no live provider-operation stream in this milestone.
+
+Acceptance displays the stored receipt, including isolated demo XP, real-work XP
+and any historical care reward from older receipts. Small eligible mock artifacts
+may grant 20 demo XP; failed checks grant none. No mock result earns real-work XP.
+Levels never expand providers, scope or permissions. Higher-tier template execution
+and richer unlocks remain deferred behind real-provider and containment gates.
+
+## Fixed-fixture standalone preview
+
+With a Qt6 runner: `qml6 qml/standalone/Main.qml`.
+
+The banner says `PREVIEW – not connected to Rust; no rewards are stored`. Fixtures:
+`idle`, `ready`, `bathroom_due`, `sleep_due`, `sleeping`, `demo_level_2`, `running`,
+`review_not_verified`, `review_check_failed`, and `recovery_required`.
+
+Preview snapshots never mutate in response to care, sleep, Start, acceptance,
+discard, cancel or recovery: those requests return `PREVIEW_ONLY`. Draft/preflight
+responses are canned for form inspection; the token is invalid outside preview.
+The fixed event history is explicitly fixture data, not work that ran. Select
+`ready` to inspect fresh-preflight/acknowledgement Start gating. Selecting a fixture
+is not a real state mutation.
+
+## Validation in the cloud workspace (2026-10-15)
+
+Tested with **Qt 6.8.3 / PySide6 6.8.3**, offscreen Linux only. PySide6 was installed
+from PyPI into `/tmp/codepet-qt`; it is not a project/runtime dependency. No packages
+or launchers were installed on the user's computer. Exact commands:
 
 ```sh
-qml6 qml/standalone/Main.qml
+python -m pip install --target /tmp/codepet-qt PySide6==6.8.3
+mkdir -p /tmp/codepet-qt-cache
+export PYTHONPATH=/tmp/codepet-qt
+export XDG_CACHE_HOME=/tmp/codepet-qt-cache
+export QT_QPA_PLATFORM=offscreen
+python qml/tests/run_qml.py qml/tests/PreviewSmoke.qml
+python qml/tests/run_qml.py qml/tests/CareSmoke.qml
+python qml/tests/run_qml.py qml/tests/CareFlowSmoke.qml
+python qml/tests/run_qml.py qml/tests/FilteredDraftSmoke.qml
+/tmp/codepet-qt/bin/pyside6-qmllint \
+  -I /tmp/codepet-qt/PySide6/Qt/qml -I qml \
+  qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml
 ```
 
-This opens an ordinary window bannered "PREVIEW – not connected to Rust; no rewards are
-stored". `PreviewHost` serves fixed fixtures (choose one in the header: idle, running,
-review not verified, review with a failed check, recovery required) and logs each envelope it
-would send with `console.log`. Draft and preflight answers are canned so the form can be
-inspected; the preflight token is not valid anywhere. Fixture snapshots use the brief shape; `task.get` and `task.review` return the full fixture
-task. Start, Accept, Discard (including Abandon), Cancel, Pause
-and Recover are refused with `PREVIEW_ONLY`, so the snapshot and meters never change. Qt may
-send `console.log` to the journal; set `QT_FORCE_STDERR_LOGGING=1` to see it in the terminal.
+Results:
 
-The real standalone host is a later minimal Qt 6 C++ launcher with a `QProcess` transport
-(spec §6). It is not built in this milestone.
+- `PreviewSmoke.qml`: 34 checks, 0 failures; retained draft, review, failed-check,
+  override-byte-limit and recovery gates
+- `CareSmoke.qml`: 26 checks, 0 failures; actionable care/readiness, sleeping/bathroom
+  gates, stale-care preflight invalidation, no RPC from countdown, hidden/reduced/
+  quiet animation pause, actual timeline events and isolated demo progression
+- `CareFlowSmoke.qml`: 10 checks, 0 failures; confirmed sequential care, Stop between
+  actions, skip full bars, stop when hidden/busy, no stranded routine and no task launch
+- `FilteredDraftSmoke.qml`: 3 checks, 0 failures; saved filtered instructions are
+  reviewed with visible disclosure, not stale unsanitized local text
+- Qt6 `qmllint`: no output on shared/standalone components and these smoke tests
+- Standalone offscreen rendering inspected at 720 × 900; this is not a live desktop
+  or accessibility certification
 
-## Omarchy adapter
+Quickshell is not installed in this cloud test environment. Its existing transport
+was left unchanged. `tests/quickshell/real_rpc.qml` was updated for mandatory care,
+care debits and demo-only receipts but was **not rerun here**. Prior 2026-10-14
+headless Quickshell 0.3.1 validation on greyarch is historical evidence only, not
+certification of this care revision. The adapter still uses argv arrays (no shell),
+64 KiB frame checks, one-shot response timeout and per-job supervisor lifetime.
+Its known newline-free stdout buffering and shell-reload lifetime limits remain.
 
-`HostAdapter.qml` runs `command` (default `["codepet", "rpc"]`, argv only, no shell) for
-each request: it writes one request line on stdin, then sets `stdinEnabled = false`, and
-reads the first stdout line through a `SplitParser`. The response must be a v1 envelope whose
-id matches (or `null` on an error). Ids are `qs-<time>-<n>`. A one-shot watchdog
-(`responseTimeoutMs`, 15 s) sends SIGTERM only if no response line has arrived. Each
-`Process` is destroyed only after it stops running, so the `task.start` process, which stays
-alive as the per-job mock supervisor, is not killed by cleanup. Stderr is kept as a short
-tail for error messages.
+Not validated: live Omarchy/Quickshell, visible Wayland/X11 desktop, real keyboard
+and screen-reader workflows, compositor lock signals, packaging, resource budgets
+or performance claims. No real provider or host-project writing is enabled.
 
-Quickshell 0.3.1 API checked against `/usr/lib/qt6/qml/Quickshell/Io/quickshell-io.qmltypes`
-(no Quickshell docs or sources are installed on this host): `Process.command`
-(list<string>), `running`, `stdinEnabled`, `stdout`/`stderr` (DataStreamParser), `write(string)`,
-`signal(int)`, `started()`, `runningChanged()`; `SplitParser.splitMarker` and `read(data)`.
-`exited(exitCode, exitStatus)` exists but is not used: qmllint cannot resolve its
-`QProcess::ExitStatus` parameter, and `runningChanged` also covers a failed start. Closing
-stdin with `stdinEnabled = false` follows existing local Quickshell code; `codepet rpc` reads
-one newline-terminated frame and does not need EOF.
+## Target-host manual checklist
 
-Known limits:
-
-- `SplitParser` buffers until a newline, so QML cannot bound a newline-free stdout stream;
-  oversize lines are rejected after they arrive.
-- The supervisor is a child of the Quickshell process. Reloading or quitting the shell
-  during a mock job may stop it; `task.recover` then marks the task interrupted. The spec's
-  transient systemd unit for Start is deferred.
-- Quickshell only loads QML inside the config folder (paths outside resolve to
-  `qrc:/qs-blackhole`), so an integration must ship `shared/` inside its plugin or config
-  folder. No `BarWidget` exists yet. A host opening the panel should call `panel.refresh()`.
-
-Nothing here registers a plugin, edits `~/.config`, enables autostart or touches a running
-shell.
-
-## Validated on greyarch (2026-10-14, after the milestone 1 review fixes)
-
-- `/usr/lib/qt6/bin/qmllint -I qml` (Qt 6.11.2) on every file under `shared/`, `standalone/`,
-  `omarchy/` and `tests/PreviewSmoke.qml`, and on the staged Quickshell harness: no output.
-  This qmllint does report problems (checked with a deliberately broken file), but it exits 0
-  on warnings, so "no output" is the criterion.
-- `qml6 qml/tests/PreviewSmoke.qml` (offscreen, under `timeout`): 34 checks pass, including
-  the new ones for the 512-byte override limit (200 CJK characters disable Accept), Resolve
-  recovery and Abandon gating on a `recovery_required` fixture, and Continue draft loading
-  the full draft through `task.get`.
-- The staged Quickshell harness against `fake_rpc.py`: 15 checks pass (the earlier note below
-  said 16; the harness has 15 checks).
-- `tests/quickshell/real_rpc.qml`, staged as `shell.qml` next to `omarchy/` and run with
-  `CODEPET_BIN=<repo>/target/debug/codepet CODEPET_TEST_ROOT=<tmp dir with home/ and project/>`
-  (headless Quickshell, `env -i`, offscreen, `QT_FORCE_STDERR_LOGGING=1`, under `timeout`):
-  9 checks pass against the **real** `codepet rpc`, through create, preflight, explicit start,
-  review, one acceptance, replay and the refreshed snapshot.
-- Still not validated: a visible window, a live
-  Omarchy panel, keyboard and screen-reader use.
-
-## Earlier validation in this environment (2026-10-14, before the review fixes)
-
-- `qmllint` from Qt 6.11.2 (`/usr/lib/qt6/bin/qmllint -I qml <file>`) on every file: no
-  warnings. `/usr/bin/qmllint` on this host is Qt 5's and reports nothing for any input,
-  including deliberately broken files.
-- `timeout 8 env QT_QPA_PLATFORM=offscreen qml6 qml/standalone/Main.qml`: loads with no QML
-  errors; the only output is the logged `state.get` envelope; exit 124 from `timeout`.
-- `qml6 qml/tests/PreviewSmoke.qml` (offscreen): 23 checks passed at that time. It covers the fixture load,
-  disabled unavailable provider, Start disabled before preflight and acknowledgement, edits
-  clearing preflight and acknowledgement, Start on a fresh revision 2 preflight,
-  `PREVIEW_ONLY` refusal with meters unchanged, review acceptance gating (acknowledgement and
-  override reason), and FAILED verification text.
-- `qml/tests/quickshell/shell.qml` in headless Quickshell 0.3.1 against
-  `tests/quickshell/fake_rpc.py`, a test-only stub: 16 checks pass. They cover the stdin/stdout
-  round trip, error envelope to `lastError`, the start response read while the process
-  lives, `supervisorActive` set and cleared, exit without a response, non-JSON, wrong id,
-  watchdog timeout, a missing binary, and the shared Panel rendering the adapter snapshot. Run:
-
-  ```sh
-  T=$(mktemp -d) && cp -r qml/omarchy qml/shared qml/tests/quickshell/* "$T"/ && \
-  mkdir -p "$T/xdg" && timeout 25 env -i PATH=/usr/bin HOME="$T/xdg" XDG_RUNTIME_DIR="$T/xdg" \
-    XDG_CONFIG_HOME="$T/xdg" XDG_CACHE_HOME="$T/xdg" XDG_STATE_HOME="$T/xdg" \
-    XDG_DATA_HOME="$T/xdg" LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
-    quickshell -p "$T/shell.qml"
-  ```
-
-  A `quickshell.ipc` socket error can appear when `$T` is a long path; it does not affect
-  the harness.
-
-- An offscreen render of the panel, the form and the review was inspected once; markup in
-  the artifact showed as literal text.
-
-Not validated: the real `codepet rpc` (the binary built at the time had no `rpc` command),
-a visible window, a live Omarchy panel, keyboard navigation, focus, screen readers, X11 or
-Wayland sessions, and resource use.
-
-## Manual checklist (target host)
-
-- Preview: the banner is visible; every fixture renders; the console shows one logged envelope
-  per action; meters never change.
-- With `codepet rpc`: the panel shows the Rust meters (70.0) and five providers with only Mock
-  enabled.
-- Blank or oversized (more than 16 KiB) fields disable preflight; Start stays disabled until a
-  fresh preflight and acknowledgement; any edit disables it again.
-- Start once: the state moves only after Refresh; nothing starts from opening the panel,
-  focus or a timer.
-- Review shows SIMULATED and NOT VERIFIED or FAILED; Accept needs acknowledgement and a
-  reason of at most 512 bytes; one +20 appears only in the category's meter after refresh; a second Accept
-  reports the earlier receipt with no new reward.
-- Discard, failure and cancellation grant nothing; "Check interrupted tasks" resumes nothing.
-- A `recovery_required` task shows Resolve recovery; Abandon needs the acknowledgement, grants
-  nothing and frees the slot.
-- Keyboard-only use, visible focus, small-window scrolling, screen-reader names.
+1. Verify every preview fixture and prominent preview/simulation labels
+2. With a real mock RPC host, care to 100 and observe persisted state after reopening
+3. Start only after fresh exact-revision preflight and acknowledgement; changing care
+   or draft must demand re-preflight, never auto-start
+4. Bathroom due requires tree/bathroom action; ordinary wash leaves the badge due
+5. Bed/wake and reopen preserve rest credit, show due state, and never start work
+6. Review/accept while sleeping works; acceptance leaves care alone and grants at most
+   one eligible demo reward. Failed checks remain failed and grant no XP
+7. Hide/minimize/reduce motion, then inspect timers and CPU; measure rather than infer
+8. Check keyboard focus, screen-reader labels, small-window scrolling and theme contrast

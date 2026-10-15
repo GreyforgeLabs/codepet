@@ -152,9 +152,12 @@ pub enum Method {
     HistoryList,
     SettingsUpdate,
     PetPause,
+    PetCare,
+    PetSleep,
+    PetWake,
 }
 impl Method {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 23] = [
         Self::Hello,
         Self::StateGet,
         Self::EventsSubscribe,
@@ -175,6 +178,9 @@ impl Method {
         Self::HistoryList,
         Self::SettingsUpdate,
         Self::PetPause,
+        Self::PetCare,
+        Self::PetSleep,
+        Self::PetWake,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -198,6 +204,9 @@ impl Method {
             Self::HistoryList => "history.list",
             Self::SettingsUpdate => "settings.update",
             Self::PetPause => "pet.pause",
+            Self::PetCare => "pet.care",
+            Self::PetSleep => "pet.sleep",
+            Self::PetWake => "pet.wake",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {

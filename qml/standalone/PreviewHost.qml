@@ -1,7 +1,7 @@
 import QtQml
 
 // Pure-QML preview host. It is NOT connected to Rust: it serves fixed fixture
-// snapshots and logs the request envelope it would have sent. It never changes
+// snapshots and logs only the request ID and method (never user payloads). It never changes
 // meters, never stores or simulates rewards, and refuses every state-changing
 // method with PREVIEW_ONLY. Draft and preflight replies are canned so the form
 // can be inspected; the preflight token is not valid anywhere.
@@ -23,7 +23,7 @@ QtObject {
         { "id": "hermes", "label": "Hermes", "available": false, "note": "Not yet supported on this version" },
         { "id": "claude_code", "label": "Claude Code", "available": false, "note": "Not yet supported on this version" }
     ]
-    readonly property var fixtureNames: ["idle", "running", "review_not_verified", "review_check_failed", "recovery_required"]
+    readonly property var fixtureNames: ["idle", "ready", "bathroom_due", "sleep_due", "sleeping", "demo_level_2", "running", "review_not_verified", "review_check_failed", "recovery_required"]
 
     function summary(id, state, outcome, verification) {
         var s = {
@@ -81,9 +81,29 @@ QtObject {
     function buildSnapshot(name) {
         var active = root.brief(root.activeFor(name))
         var recent = root.fullTasks(name).map(root.brief).reverse()
+        var ready = name === "ready" || name === "demo_level_2"
+        var sleeping = name === "sleeping"
+        var due = name === "sleep_due" || sleeping
+        var bathroom = name === "bathroom_due"
+        var meter = ready || due || bathroom ? 10000 : 7000
+        var reasons = []
+        if (!ready && meter < 10000) reasons.push("Needs food, water, play and a wash")
+        if (bathroom) reasons.push("Needs a bathroom break at the tree")
+        if (due) reasons.push(sleeping ? "Resting. Wake or refresh after the nap" : "Needs a two-minute nap")
+        if (active) reasons.push("Finish or resolve the active task first")
         return {
-            "schema_version": 1, "protocol_version": 1, "last_seq": 0,
-            "meters": { "hunger": 7000, "thirst": 7000, "mental_health": 7000, "hygiene": 7000 },
+            "schema_version": 2, "protocol_version": 1, "last_seq": 3,
+            "meters": { "hunger": meter, "thirst": meter, "mental_health": meter, "hygiene": meter },
+            "care": { "revision": 1, "bathroom_due": bathroom, "starts_since_bathroom": bathroom ? 2 : 0,
+                "sleeping": sleeping, "sleep_due": due, "sleep_remaining_ms": sleeping ? 92000 : 120000,
+                "sleep_started_at_ms": sleeping ? Date.now() - 28000 : null,
+                "work_sessions": due ? 3 : 0, "execution_ms": 0,
+                "ready_to_work": ready && !active, "readiness_reasons": reasons, "welcome_care_available": name === "idle" },
+            "progression": { "real": { "lifetime_xp": 0, "level": 1, "next_level_xp": 80,
+                "mastery": { "bugfix": 0, "quality_performance": 0, "learning_specification": 0, "cleanup": 0 } },
+                "demo": { "lifetime_xp": name === "demo_level_2" ? 80 : 0, "level": name === "demo_level_2" ? 2 : 1,
+                    "next_level_xp": name === "demo_level_2" ? 200 : 80,
+                    "mastery": { "bugfix": 0, "quality_performance": 0, "learning_specification": name === "demo_level_2" ? 80 : 0, "cleanup": 0 } } },
             "decay": { "enabled": false, "paused": false },
             "settings": { "revision": 1, "decay_enabled": false, "decay_per_hour": [100, 100, 50, 50], "timeout_seconds": 1800 },
             "active_task": active,
@@ -94,6 +114,14 @@ QtObject {
     function respond(id, method, params) {
         if (method === "state.get")
             return { "v": 1, "id": id, "ok": true, "result": root.buildSnapshot(root.fixture) }
+        if (method === "events.subscribe") {
+            var events = ["draft", "preparing", "running"].map(function (state, index) {
+                return {v: 1, event: "task.state", seq: index + 1, task_id: "preview-running",
+                    data: {state: state, from: index === 0 ? null : index === 1 ? "draft" : "preparing",
+                        revision: 1, at_ms: 1760400000000 + index * 1000}}
+            }).filter(function (event) { return event.seq > params.after_seq })
+            return {v: 1, id: id, ok: true, result: {events: events, last_seq: 3}}
+        }
         if (method === "task.review" || method === "task.get") {
             var tasks = root.fullTasks(root.fixture)
             for (var i = 0; i < tasks.length; i++)
@@ -143,8 +171,7 @@ QtObject {
         }
         root.seq += 1
         var id = requestId || ("preview-" + root.seq)
-        var envelope = { "v": 1, "id": id, "method": method, "params": params || {} }
-        console.log("[codepet preview] would send:", JSON.stringify(envelope).slice(0, 2000))
+        console.log("[codepet preview] request:", id, method)
         if (method !== "state.get")
             root.lastError = ""
         root.busy = true

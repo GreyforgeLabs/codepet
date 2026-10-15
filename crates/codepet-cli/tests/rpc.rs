@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 #[test]
 fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
     let env = Env::new();
+    env.care_routine();
     let id = env.create("hunger", 0, "artifact");
     let token = env.preflight(&id, 1);
     let started = env.call("task.start", Env::start_params(&id, 1, &token));
@@ -48,7 +49,7 @@ fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
     wrong["review_digest"] = json!("0".repeat(64));
     wrong["override_reason"] = json!("ok");
     assert_eq!(env.err("task.accept_artifact", wrong), "REVIEW_CHANGED");
-    assert_eq!(env.meter("hunger"), 7000);
+    assert_eq!(env.meter("hunger"), 9000, "work debits care exactly once");
 
     let mut accept = base.clone();
     accept["override_reason"] = json!("Read the simulated artifact");
@@ -57,7 +58,10 @@ fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
     let receipt = &first["receipt"];
     assert_eq!(receipt["task_id"], id);
     assert_eq!(receipt["category"], "hunger");
-    assert_eq!(receipt["amount_hundredths"], 2000);
+    assert_eq!(receipt["amount_hundredths"], 0);
+    assert_eq!(receipt["demo_xp"], 20);
+    assert_eq!(receipt["real_xp"], 0);
+    assert_eq!(receipt["progression_track"], "bugfix");
     assert_eq!(receipt["verification"], "not_verified");
     assert_eq!(receipt["override_reason"], "Read the simulated artifact");
     assert_eq!(receipt["request_id"], "acc-1");
@@ -84,12 +88,14 @@ fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
     // Every call above was a fresh process; check the durable result once more.
     let s = env.state();
     assert_eq!(s["meters"]["hunger"], 9000);
-    for other in ["thirst", "mental_health", "hygiene"] {
-        assert_eq!(
-            s["meters"][other], 7000,
-            "only the task's category is rewarded"
-        );
-    }
+    assert_eq!(
+        s["meters"],
+        json!({"hunger": 9000, "thirst": 9000, "mental_health": 9500, "hygiene": 9000}),
+        "acceptance never refills care"
+    );
+    assert_eq!(s["progression"]["demo"]["lifetime_xp"], 20);
+    assert_eq!(s["progression"]["demo"]["mastery"]["bugfix"], 20);
+    assert_eq!(s["progression"]["real"]["lifetime_xp"], 0);
     assert_eq!(s["active_task"], Value::Null);
     let t = &s["recent"][0];
     assert_eq!(t["task_id"], id);
@@ -102,6 +108,7 @@ fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
 #[test]
 fn replayed_tokens_and_stale_revisions_are_refused() {
     let env = Env::new();
+    env.care_routine();
     let a = env.create("hunger", 0, "artifact");
     let token_a = env.preflight(&a, 1);
     env.start(&a, 1, &token_a);
@@ -125,6 +132,7 @@ fn replayed_tokens_and_stale_revisions_are_refused() {
     assert_eq!(env.states(&b), ["draft"]);
 
     // Stale revision after an update.
+    env.care_routine();
     let token_b = env.preflight(&b, 1);
     let mut update = env.draft("mental_health", 0, "artifact");
     update["task_id"] = json!(b);
@@ -164,12 +172,13 @@ fn replayed_tokens_and_stale_revisions_are_refused() {
     assert_eq!(discarded["state"], "discarded");
     env.start(&b, 2, &token_b2);
     assert_eq!(env.task(&b)["state"], "review_ready");
-    assert_eq!(env.meter("hunger"), 7000, "discard never rewards");
+    assert_eq!(env.meter("hunger"), 9000, "discard never refills care");
 }
 
 #[test]
 fn cancellation_from_another_process_stops_the_supervisor() {
     let env = Env::new();
+    env.care_routine();
     // Long enough that the cancel lands while the supervisor sleeps before `running`.
     let id = env.create("mental_health", 2000, "artifact");
     let token = env.preflight(&id, 1);
@@ -187,11 +196,11 @@ fn cancellation_from_another_process_stops_the_supervisor() {
     assert_eq!(started["result"]["state"], "preparing");
 
     // The supervisor is still running in the child process and has no children.
-    let pid = child.id();
-    for thread in std::fs::read_dir(format!("/proc/{pid}/task")).unwrap() {
-        let children = thread.unwrap().path().join("children");
-        assert_eq!(std::fs::read_to_string(children).unwrap().trim(), "");
-    }
+    assert!(
+        child.try_wait().unwrap().is_none(),
+        "supervisor remains live"
+    );
+    common::assert_no_child_processes(child.id());
     let cancelled = env.ok("task.cancel", json!({"task_id": id}));
     assert_eq!(cancelled["state"], "cancelling");
     assert_eq!(env.state()["active_task"]["state"], "cancelling");
@@ -212,8 +221,8 @@ fn cancellation_from_another_process_stops_the_supervisor() {
     assert_eq!(env.state()["active_task"], Value::Null);
     assert_eq!(
         env.meter("mental_health"),
-        7000,
-        "cancellation never rewards"
+        10000,
+        "cancellation before execution refunds its debit exactly once"
     );
     // Cancel is idempotent; a cancelled task cannot be accepted.
     assert_eq!(
@@ -230,6 +239,7 @@ fn cancellation_from_another_process_stops_the_supervisor() {
 #[test]
 fn mock_outcomes_failure_and_simulated_check() {
     let env = Env::new();
+    env.care_routine();
     let failed = env.create("hygiene", 0, "provider_failure");
     let token = env.preflight(&failed, 1);
     env.start(&failed, 1, &token);
@@ -267,6 +277,10 @@ fn mock_outcomes_failure_and_simulated_check() {
     accept["override_reason"] = json!("Simulated failure acknowledged");
     let receipt = env.ok("task.accept_artifact", accept)["receipt"].clone();
     assert_eq!(receipt["verification"], "failed");
+    assert_eq!(receipt["demo_xp"], 0, "failed checks cannot earn demo XP");
+    assert_eq!(receipt["real_xp"], 0);
+    assert_eq!(receipt["amount_hundredths"], 0);
+    assert_eq!(env.state()["progression"]["demo"]["lifetime_xp"], 0);
     assert_eq!(env.meter("hygiene"), 9000);
     assert!(!env.folder().exists());
 }
@@ -493,6 +507,7 @@ fn max_draft(env: &Env) -> Value {
 #[test]
 fn maximal_draft_can_be_reviewed_and_discarded() {
     let env = Env::new();
+    env.care_routine();
     let created = env.call("task.create", max_draft(&env));
     assert!(created.stdout_bytes <= 65536);
     let id = created.response()["result"]["task_id"]
@@ -516,6 +531,7 @@ fn maximal_draft_can_be_reviewed_and_discarded() {
     env.ok("history.list", json!({"limit": 1}));
     env.ok("task.recover", json!({}));
     // A second task is refused while the slot is held, then runs once it is released.
+    env.care_routine();
     let next = env.create("thirst", 0, "artifact");
     let next_token = env.preflight(&next, 1);
     assert_eq!(
@@ -530,7 +546,7 @@ fn maximal_draft_can_be_reviewed_and_discarded() {
     let next_token = env.preflight(&next, 1);
     env.start(&next, 1, &next_token);
     assert_eq!(env.task(&next)["state"], "review_ready");
-    assert_eq!(env.meter("hygiene"), 7000);
+    assert_eq!(env.meter("hygiene"), 9000);
 }
 
 #[test]
@@ -627,6 +643,7 @@ fn over_long_override_reason_is_invalid_params_not_override_required() {
 #[test]
 fn home_is_refused_even_when_home_is_unset() {
     let env = Env::new();
+    env.care_routine();
     let uid = std::fs::read_to_string("/proc/self/status")
         .unwrap()
         .lines()
@@ -652,4 +669,38 @@ fn home_is_refused_even_when_home_is_unset() {
     let id = r.response()["result"]["task_id"].clone();
     let r = env.call_without_home("task.preflight", json!({"task_id": id, "revision": 1}));
     assert_eq!(r.response()["ok"], true, "{:?}", r.response());
+}
+
+#[test]
+fn sensitive_task_text_is_redacted_before_mock_artifact_and_receipt_persistence() {
+    let env = Env::new();
+    env.care_routine();
+    let mut draft = env.draft("mental_health", 0, "artifact");
+    draft["instructions"] =
+        json!("Explain this safely.\nAPI_KEY=do-not-store-me\n\u{1b}[31mVisible text\u{1b}[0m");
+    let created = env.ok("task.create", draft);
+    let id = created["task_id"].as_str().unwrap();
+    let instructions = created["instructions"].as_str().unwrap();
+    assert!(!instructions.contains("do-not-store-me"));
+    assert!(!instructions.contains('\u{1b}'));
+    assert!(instructions.contains("Visible text"));
+    let token = env.preflight(id, 1);
+    env.start(id, 1, &token);
+    let review = env.ok("task.review", json!({"task_id": id}));
+    let artifact = review["review"]["artifact"].as_str().unwrap();
+    assert!(!artifact.contains("do-not-store-me"));
+    assert!(!artifact.contains('\u{1b}'));
+    assert!(artifact.contains("SIMULATED"));
+    let params = json!({"task_id": id, "review_digest": review["review"]["digest"],
+        "acknowledged": true, "override_reason": "Reviewed.\nAuthorization: Bearer hide-this-token"});
+    let first = env.ok_with("private-receipt", "task.accept_artifact", params.clone());
+    assert!(!first.to_string().contains("hide-this-token"));
+    assert_eq!(
+        env.ok_with("private-receipt", "task.accept_artifact", params),
+        first
+    );
+    let state = env.state().to_string();
+    assert!(!state.contains("do-not-store-me"));
+    assert!(!state.contains("hide-this-token"));
+    assert_eq!(env.task(id)["receipt"], first["receipt"]);
 }

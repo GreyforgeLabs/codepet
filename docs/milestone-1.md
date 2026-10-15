@@ -1,3 +1,10 @@
+# Care/progression update
+
+The care/progression feature supersedes the original acceptance meter-refill rules below.
+See [care-progression.md](care-progression.md) for schema v2, explicit care/sleep commands,
+full-readiness gates and isolated demo XP. The original milestone contract is retained
+below as historical context; real providers remain disabled.
+
 # Milestone 1: durable mock execution
 
 Status: **implemented (mock only), 2026-10-14**, with the deviations listed below. This is

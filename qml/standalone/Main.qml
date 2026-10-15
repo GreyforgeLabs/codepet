@@ -17,7 +17,9 @@ ApplicationWindow {
     PreviewHost { id: previewHost }
 
     header: ToolBar {
+        implicitHeight: headerLayout.implicitHeight + 16
         ColumnLayout {
+            id: headerLayout
             anchors.fill: parent
             anchors.margins: 8
             Label {

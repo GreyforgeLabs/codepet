@@ -1,10 +1,11 @@
 //! Durable task engine. Every mutation is one `BEGIN IMMEDIATE` transaction; every task state
 //! change appends a `task_events` row in that same transaction.
+use crate::care;
 use crate::model::{
-    AcceptOutcome, DecayView, Event, EventData, EventsPage, HistoryCursor, HistoryPage, MetersView,
-    MockOptions, MockOutcome, PauseView, PreflightResult, PreflightSummary, ProviderInfo,
-    ReceiptView, RecoverResult, RecoveryChange, ReviewBrief, ReviewView, SettingsView, Snapshot,
-    StartResult, TaskBrief, TaskInput, TaskSummary,
+    AcceptOutcome, CareOutcome, DecayView, Event, EventData, EventsPage, HistoryCursor,
+    HistoryPage, MetersView, MockOptions, MockOutcome, PauseView, PreflightResult,
+    PreflightSummary, ProviderInfo, ReceiptView, RecoverResult, RecoveryChange, ReviewBrief,
+    ReviewView, SettingsView, Snapshot, StartResult, TaskBrief, TaskInput, TaskSummary,
 };
 use crate::schema::{Migration, MIGRATIONS, SLOT_STATES};
 use crate::sys::{self, sha256_hex, Supervisor};
@@ -15,8 +16,7 @@ use crate::{
     RECENT_TASKS, SCHEMA_VERSION, TOKEN_TTL_MS,
 };
 use codepet_core::{
-    Category, Draft, Meters, Provider, Settings, State, Verification, MAX_TASKS, PROTOCOL_VERSION,
-    REWARD_HUNDREDTHS,
+    Category, Draft, Provider, Settings, State, Verification, MAX_TASKS, PROTOCOL_VERSION,
 };
 use rusqlite::types::FromSql;
 use rusqlite::{
@@ -176,9 +176,12 @@ impl Store {
     }
 
     fn migrate(&mut self, migrations: &[Migration]) -> Result<()> {
-        let now = self.now();
+        let at = care::TimeMark::new(self.clock.as_ref());
+        let now = at.wall;
         let target = i64::try_from(migrations.len()).unwrap_or(i64::MAX);
-        let tx = self.write()?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         // Re-read under the write lock: another process may have migrated meanwhile.
         let version: i64 = tx.query_row("PRAGMA user_version", [], get0)?;
         if !(0..=target).contains(&version) {
@@ -196,10 +199,16 @@ impl Store {
         self.clock.now_ms()
     }
 
-    fn write(&mut self) -> Result<Transaction<'_>> {
-        Ok(self
+    fn write(&mut self) -> Result<(Transaction<'_>, care::TimeMark)> {
+        let clock = self.clock.clone();
+        let tx = self
             .conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)?)
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // Sample only after acquiring the writer lock. A contending command must not
+        // overwrite a newer sleep/execution checkpoint with an earlier timestamp.
+        let at = care::TimeMark::new(clock.as_ref());
+        care::settle_sleep(&tx, &at)?;
+        Ok((tx, at))
     }
 
     fn read(&self) -> Result<Transaction<'_>> {
@@ -210,7 +219,12 @@ impl Store {
 
     /// The exact `state.get` result.
     pub fn snapshot(&self) -> Result<Snapshot> {
-        let tx = self.read()?;
+        // A snapshot is an explicit short command. Take the writer lock before settling
+        // sleep so concurrent commands cannot spend the same elapsed credit twice.
+        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        let at = care::TimeMark::new(self.clock.as_ref());
+        care::settle_sleep(&tx, &at)?;
+        care::checkpoint_running(&tx, &at)?;
         let (meters, paused) = load_pet(&tx)?;
         let settings = load_settings(&tx)?;
         let active_task = active_task(&tx)?;
@@ -227,6 +241,8 @@ impl Store {
             protocol_version: PROTOCOL_VERSION,
             last_seq: last_seq(&tx)?,
             meters,
+            care: care::view(&tx, meters)?,
+            progression: care::progression(&tx)?,
             decay: DecayView {
                 enabled: settings.decay_enabled,
                 paused,
@@ -390,9 +406,12 @@ impl Store {
 
     pub fn create_task(&mut self, input: &TaskInput) -> Result<TaskSummary> {
         validate_input(input)?;
-        let now = self.now();
+        let mut input = input.clone();
+        input.draft.instructions = codepet_core::redact_display_text(&input.draft.instructions);
+        validate_input(&input)?;
         let id = sys::uuid_v4()?;
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         let drafts: i64 =
             tx.query_row("SELECT count(*) FROM tasks WHERE state = 'draft'", [], get0)?;
         if drafts >= i64::try_from(MAX_TASKS).unwrap_or(i64::MAX) {
@@ -429,8 +448,11 @@ impl Store {
         input: &TaskInput,
     ) -> Result<TaskSummary> {
         validate_input(input)?;
-        let now = self.now();
-        let tx = self.write()?;
+        let mut input = input.clone();
+        input.draft.instructions = codepet_core::redact_display_text(&input.draft.instructions);
+        validate_input(&input)?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         let t = load_task(&tx, task_id)?;
         if t.state != State::Draft {
             return Err(StorageError::InvalidState("only drafts can be edited"));
@@ -472,9 +494,9 @@ impl Store {
     /// Mock preflight: validates the stored draft and paths, then issues a one-use token
     /// (only its SHA-256 is stored) that supersedes older tokens for the task.
     pub fn preflight(&mut self, task_id: &str, revision: i64) -> Result<PreflightResult> {
-        let now = self.now();
         let paths = self.paths.clone();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         let t = load_task(&tx, task_id)?;
         if t.state != State::Draft {
             return Err(StorageError::InvalidState("only drafts can be preflighted"));
@@ -536,9 +558,9 @@ impl Store {
         token: &str,
         supervisor: Supervisor,
     ) -> Result<StartResult> {
-        let now = self.now();
         let paths = self.paths.clone();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         let t = load_task(&tx, task_id)?;
         if t.state != State::Draft {
             return Err(StorageError::InvalidState("only drafts can be started"));
@@ -591,6 +613,8 @@ impl Store {
         if active_task_id(&tx)?.is_some() {
             return Err(StorageError::Busy);
         }
+        care::ensure_ready(&tx, load_pet(&tx)?.0)?;
+        care::debit(&tx, &t.id, now)?;
         tx.execute(
             "UPDATE preflight_tokens SET status = 'consumed', consumed_at_ms = ?1
              WHERE token_sha256 = ?2 AND status = 'pending'",
@@ -600,7 +624,7 @@ impl Store {
             "UPDATE tasks SET supervisor_pid = ?1, supervisor_start_time = ?2 WHERE id = ?3",
             params![supervisor.pid, start_time_sql(supervisor)?, t.id],
         )?;
-        let seq = transition(&tx, &t, State::Preparing, now)?;
+        let seq = transition(&tx, &t, State::Preparing, &at)?;
         tx.commit()?;
         fault("start_after_commit");
         Ok(StartResult {
@@ -647,8 +671,7 @@ impl Store {
 
     /// Containment confirmed (mock: no child process exists): `cancelling → cancelled`.
     pub fn confirm_cancelled(&mut self, task_id: &str, supervisor: Supervisor) -> Result<i64> {
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
         let t = load_task(&tx, task_id)?;
         if t.supervisor != Some(supervisor) {
             return Err(StorageError::InvalidState("not this task's supervisor"));
@@ -656,7 +679,7 @@ impl Store {
         if t.state != State::Cancelling {
             return Err(StorageError::InvalidState("task is not cancelling"));
         }
-        let seq = transition(&tx, &t, State::Cancelled, now)?;
+        let seq = transition(&tx, &t, State::Cancelled, &at)?;
         tx.commit()?;
         Ok(seq)
     }
@@ -667,8 +690,7 @@ impl Store {
         supervisor: Supervisor,
         next: impl FnOnce(&TaskRow) -> Option<State>,
     ) -> Result<Step> {
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
         let t = load_task(&tx, task_id)?;
         if t.supervisor != Some(supervisor) {
             return Err(StorageError::InvalidState("not this task's supervisor"));
@@ -679,7 +701,7 @@ impl Store {
         let to = next(&t).ok_or(StorageError::InvalidState(
             "task is not in the expected state",
         ))?;
-        let seq = transition(&tx, &t, to, now)?;
+        let seq = transition(&tx, &t, to, &at)?;
         tx.commit()?;
         Ok(Step::Advanced { seq })
     }
@@ -702,11 +724,17 @@ impl Store {
                 "artifact must be non-blank text without NUL, at most 24 KiB JSON-encoded",
             ));
         }
+        let artifact = codepet_core::redact_display_text(artifact);
+        if artifact.trim().is_empty() || json_len(&artifact) > MAX_ARTIFACT_JSON_BYTES {
+            return Err(StorageError::InvalidParams(
+                "artifact is empty or too large after display redaction",
+            ));
+        }
         if simulated && verification == Verification::Passed {
             return Err(StorageError::InvalidParams("a simulated check cannot pass"));
         }
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         let t = load_task(&tx, task_id)?;
         if t.supervisor != Some(supervisor) {
             return Err(StorageError::InvalidState("not this task's supervisor"));
@@ -739,7 +767,7 @@ impl Store {
              WHERE id = ?4",
             params![digest, verification.as_str(), simulated, t.id],
         )?;
-        let seq = transition(&tx, &t, State::ReviewReady, now)?;
+        let seq = transition(&tx, &t, State::ReviewReady, &at)?;
         fault("review_before_commit");
         tx.commit()?;
         Ok(SealOutcome::Sealed { digest, seq })
@@ -747,15 +775,144 @@ impl Store {
 
     // ---- user actions ------------------------------------------------------------------
 
+    /// Explicit care is idempotent by request ID, including no-op full-meter actions.
+    pub fn care(&mut self, request_id: &str, action: &str) -> Result<CareOutcome> {
+        if !matches!(
+            action,
+            "food" | "water" | "play" | "wash" | "bathroom" | "routine"
+        ) {
+            return Err(StorageError::InvalidParams("unknown care action"));
+        }
+        self.care_command(request_id, "pet.care", action)
+    }
+
+    pub fn sleep(&mut self, request_id: &str) -> Result<CareOutcome> {
+        self.care_command(request_id, "pet.sleep", "sleep")
+    }
+
+    pub fn wake(&mut self, request_id: &str) -> Result<CareOutcome> {
+        self.care_command(request_id, "pet.wake", "wake")
+    }
+
+    fn care_command(
+        &mut self,
+        request_id: &str,
+        method: &str,
+        action: &str,
+    ) -> Result<CareOutcome> {
+        validate_request_id(request_id)?;
+        let params_sha256 = sha256_hex(action.as_bytes());
+        let (tx, at) = self.write()?;
+        let prior: Option<(String, String, String)> = tx
+            .query_row(
+                "SELECT method, params_sha256, response FROM request_results WHERE request_id = ?1",
+                [request_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        if let Some((old_method, sha, response)) = prior {
+            if old_method != method || sha != params_sha256 {
+                return Err(StorageError::IdempotencyConflict);
+            }
+            return serde_json::from_str(&response).map_err(|_| StorageError::Corrupt);
+        }
+        let before = load_pet(&tx)?.0;
+        let state = care::view(&tx, before)?;
+        let mut changed = false;
+        if action == "sleep" {
+            let executing: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN
+                ('preparing','running','waiting_for_user','verifying','cancelling','recovery_required'))",
+                [], get0)?;
+            if executing {
+                return Err(StorageError::InvalidState(
+                    "finish or recover active execution before putting the pet to bed",
+                ));
+            }
+            if !state.sleeping {
+                tx.execute(
+                    "UPDATE pet_care SET sleep_started_at_ms = ?1, sleep_wall_ms = ?1,
+                    sleep_boot = ?2, sleep_steady_ms = ?3, rest_required = 1 WHERE id = 1",
+                    params![at.wall, at.boot, at.steady],
+                )?;
+                changed = true;
+            }
+        } else if action == "wake" {
+            if state.sleeping {
+                tx.execute(
+                    "UPDATE pet_care SET sleep_started_at_ms = NULL, sleep_wall_ms = NULL,
+                    sleep_boot = NULL, sleep_steady_ms = NULL, rest_required = 1 WHERE id = 1",
+                    [],
+                )?;
+                changed = true;
+            }
+        } else {
+            if state.sleeping {
+                return Err(StorageError::InvalidState(
+                    "pet is sleeping; finish the nap or wake it before care",
+                ));
+            }
+            let columns: &[&str] = match action {
+                "food" => &["hunger"],
+                "water" => &["thirst"],
+                "play" => &["mental_health"],
+                "wash" | "bathroom" => &["hygiene"],
+                "routine" => &["hunger", "thirst", "mental_health", "hygiene"],
+                _ => return Err(StorageError::InvalidParams("unknown care action")),
+            };
+            for col in columns {
+                changed |= tx.execute(
+                    &format!(
+                        "UPDATE pet_state SET {col} = 10000,
+                    updated_at_ms = ?1 WHERE id = 1 AND {col} != 10000"
+                    ),
+                    [at.wall],
+                )? > 0;
+            }
+            if action == "bathroom" || (action == "routine" && state.bathroom_due) {
+                changed |= tx.execute(
+                    "UPDATE pet_care SET starts_since_bathroom = 0
+                    WHERE id = 1 AND starts_since_bathroom != 0",
+                    [],
+                )? > 0;
+            }
+            changed |= tx.execute(
+                "UPDATE pet_care SET welcome_care_available = 0
+                WHERE id = 1 AND welcome_care_available != 0 AND starts_since_bathroom < 2
+                AND EXISTS(SELECT 1 FROM pet_state WHERE id = 1 AND hunger = 10000
+                    AND thirst = 10000 AND mental_health = 10000 AND hygiene = 10000)",
+                [],
+            )? > 0;
+        }
+        if changed {
+            care::bump(&tx)?;
+        }
+        let meters = load_pet(&tx)?.0;
+        let result = CareOutcome {
+            request_id: request_id.to_owned(),
+            action: action.to_owned(),
+            changed,
+            meters,
+            care: care::view(&tx, meters)?,
+        };
+        let response = serde_json::to_string(&result)
+            .map_err(|_| StorageError::Unavailable("cannot encode care receipt"))?;
+        tx.execute(
+            "INSERT INTO request_results (request_id, method, params_sha256, response,
+            created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![request_id, method, params_sha256, response, at.wall],
+        )?;
+        tx.commit()?;
+        Ok(result)
+    }
+
     /// Idempotent: active phases → `cancelling`; already cancelling/cancelled → unchanged.
     pub fn cancel(&mut self, task_id: &str) -> Result<TaskSummary> {
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
         let t = load_task(&tx, task_id)?;
         match t.state {
             State::Cancelling | State::Cancelled => {}
             State::Preparing | State::Running | State::WaitingForUser | State::Verifying => {
-                transition(&tx, &t, State::Cancelling, now)?;
+                transition(&tx, &t, State::Cancelling, &at)?;
             }
             _ => return Err(StorageError::InvalidState("task cannot be cancelled now")),
         }
@@ -764,13 +921,13 @@ impl Store {
         Ok(s)
     }
 
-    /// Exactly-once artifact acceptance. Reward row, meter update, acceptance, state change
-    /// and request result commit in one transaction.
+    /// Exactly-once artifact acceptance. The isolated demo XP row, acceptance, state
+    /// change and request receipt commit together. Care meters are never refilled here.
     pub fn accept_artifact(&mut self, req: &AcceptRequest<'_>) -> Result<AcceptOutcome> {
         validate_request_id(req.request_id)?;
         let params_sha256 = sha256_hex(canonical_accept_params(req).as_bytes());
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         let prior: Option<(String, String, String)> = tx
             .query_row(
                 "SELECT method, params_sha256, response FROM request_results
@@ -819,32 +976,42 @@ impl Store {
             if verification != Verification::Passed && reason.is_none_or(str::is_empty) {
                 return Err(StorageError::OverrideRequired);
             }
-            let reason = reason.filter(|r| !r.is_empty()).map(str::to_owned);
-            let col = t.category.as_str();
-            let before: u16 = tx.query_row(
-                &format!("SELECT {col} FROM pet_state WHERE id = 1"),
-                [],
-                get0,
-            )?;
-            let after = Meters::apply_reward(before);
-            tx.execute(
-                &format!("UPDATE pet_state SET {col} = ?1, updated_at_ms = ?2 WHERE id = 1"),
-                params![after, now],
-            )?;
-            tx.execute(
-                "INSERT INTO rewards (task_id, category, amount_hundredths, applied_hundredths,
-                    meter_before, meter_after, status, granted_at_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'granted', ?7)",
-                params![
-                    t.id,
-                    col,
-                    REWARD_HUNDREDTHS,
-                    after - before,
-                    before,
-                    after,
-                    now
-                ],
-            )?;
+            let reason = reason
+                .filter(|r| !r.is_empty())
+                .map(codepet_core::redact_display_text);
+            let reason = reason
+                .map(|r| r.trim().to_owned())
+                .filter(|r| !r.is_empty());
+            if reason
+                .as_ref()
+                .is_some_and(|r| r.len() > MAX_OVERRIDE_REASON_BYTES)
+            {
+                return Err(StorageError::InvalidParams(
+                    "override reason is too large after display redaction",
+                ));
+            }
+            if verification != Verification::Passed && reason.is_none() {
+                return Err(StorageError::OverrideRequired);
+            }
+            // Only the fixed Small mock artifact template earns isolated demo XP.
+            // No real-work XP path exists until real verification and provider gates ship.
+            let demo_xp = if t.provider == Provider::Mock
+                && t.review_simulated
+                && t.mock.outcome == MockOutcome::Artifact
+                && verification == Verification::NotVerified
+            {
+                care::DEMO_XP
+            } else {
+                0
+            };
+            let progression_track = (demo_xp > 0).then(|| care::track(t.category).to_owned());
+            if let Some(track) = &progression_track {
+                tx.execute(
+                    "INSERT INTO demo_xp_rewards (task_id, track, amount, granted_at_ms)
+                    VALUES (?1, ?2, ?3, ?4)",
+                    params![t.id, track, demo_xp, now],
+                )?;
+            }
             tx.execute(
                 "INSERT INTO acceptances (task_id, request_id, review_digest, verification,
                     override_reason, accepted_at_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -857,12 +1024,15 @@ impl Store {
                     now
                 ],
             )?;
-            transition(&tx, &t, State::AcceptedArtifact, now)?;
+            transition(&tx, &t, State::AcceptedArtifact, &at)?;
             AcceptOutcome {
                 receipt: ReceiptView {
                     task_id: t.id.clone(),
                     category: t.category,
-                    amount_hundredths: REWARD_HUNDREDTHS,
+                    amount_hundredths: 0,
+                    demo_xp,
+                    real_xp: 0,
+                    progression_track,
                     verification,
                     override_reason: reason,
                     request_id: req.request_id.to_owned(),
@@ -889,8 +1059,7 @@ impl Store {
     /// does not require the artifact to still match: it is the way out of a damaged review.
     /// Repeating it on a discarded task is a no-op.
     pub fn discard(&mut self, task_id: &str, review_digest: &str) -> Result<TaskSummary> {
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
         let t = load_task(&tx, task_id)?;
         let digest = t
             .review_digest
@@ -902,7 +1071,7 @@ impl Store {
         match t.state {
             State::Discarded => {}
             State::ReviewReady | State::RecoveryRequired => {
-                transition(&tx, &t, State::Discarded, now)?;
+                transition(&tx, &t, State::Discarded, &at)?;
             }
             _ => return Err(StorageError::InvalidState("task cannot be discarded now")),
         }
@@ -917,8 +1086,7 @@ impl Store {
     /// replaced only with abandonment metadata, never a valid sealed review: a fresh opaque
     /// digest and `not_verified` let the user explicitly discard the blocked task.
     pub fn recover(&mut self) -> Result<RecoverResult> {
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
         let tasks = load_tasks(
             &tx,
             "state IN ('preparing','running','waiting_for_user','verifying','cancelling',
@@ -949,11 +1117,11 @@ impl Store {
                     "UPDATE tasks SET review_digest = COALESCE(review_digest, ?1),
                         review_verification = COALESCE(review_verification, 'not_verified'),
                         updated_at_ms = ?2 WHERE id = ?3",
-                    params![digest, now, t.id],
+                    params![digest, at.wall, t.id],
                 )?;
             }
             if let Some(to) = to {
-                transition(&tx, t, to, now)?;
+                transition(&tx, t, to, &at)?;
                 changed.push(RecoveryChange {
                     task_id: t.id.clone(),
                     from: t.state,
@@ -978,8 +1146,8 @@ impl Store {
         settings
             .validate()
             .map_err(|_| StorageError::InvalidParams("settings out of range"))?;
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         let current = load_settings(&tx)?;
         if current.revision != expected_revision {
             return Err(StorageError::StaleRevision);
@@ -1006,8 +1174,8 @@ impl Store {
     }
 
     pub fn set_paused(&mut self, paused: bool) -> Result<PauseView> {
-        let now = self.now();
-        let tx = self.write()?;
+        let (tx, at) = self.write()?;
+        let now = at.wall;
         tx.execute(
             "UPDATE pet_state SET decay_paused = ?1, updated_at_ms = ?2 WHERE id = 1",
             params![paused, now],
@@ -1257,7 +1425,8 @@ fn review_intact(c: &Connection, t: &TaskRow) -> Result<bool> {
     }))
 }
 
-fn transition(c: &Connection, t: &TaskRow, to: State, now: i64) -> Result<i64> {
+fn transition(c: &Connection, t: &TaskRow, to: State, at: &care::TimeMark) -> Result<i64> {
+    let now = at.wall;
     if !State::allowed_transition(t.state, to) {
         return Err(StorageError::InvalidState("transition not allowed"));
     }
@@ -1278,6 +1447,7 @@ fn transition(c: &Connection, t: &TaskRow, to: State, now: i64) -> Result<i64> {
     if n != 1 {
         return Err(StorageError::InvalidState("task changed concurrently"));
     }
+    care::transition(c, &t.id, t.state, to, at)?;
     append_event(c, &t.id, Some(t.state), to, t.revision, now)
 }
 
@@ -1395,11 +1565,23 @@ fn load_pet(c: &Connection) -> Result<(MetersView, bool)> {
 }
 
 fn load_receipt(c: &Connection, task_id: &str) -> Result<Option<ReceiptView>> {
-    let raw: Option<(String, i64, String, Option<String>, String, i64)> = c
+    type ReceiptRow = (
+        String,
+        i64,
+        String,
+        Option<String>,
+        String,
+        i64,
+        u32,
+        Option<String>,
+    );
+    let raw: Option<ReceiptRow> = c
         .query_row(
-            "SELECT r.category, r.amount_hundredths, a.verification, a.override_reason,
-                a.request_id, a.accepted_at_ms
-             FROM acceptances a JOIN rewards r ON r.task_id = a.task_id
+            "SELECT t.category, COALESCE(r.amount_hundredths, 0), a.verification, a.override_reason,
+                a.request_id, a.accepted_at_ms, COALESCE(x.amount, 0), x.track
+             FROM acceptances a JOIN tasks t ON t.id = a.task_id
+             LEFT JOIN rewards r ON r.task_id = a.task_id
+             LEFT JOIN demo_xp_rewards x ON x.task_id = a.task_id
              WHERE a.task_id = ?1",
             [task_id],
             |r| {
@@ -1410,12 +1592,23 @@ fn load_receipt(c: &Connection, task_id: &str) -> Result<Option<ReceiptView>> {
                     r.get(3)?,
                     r.get(4)?,
                     r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
                 ))
             },
         )
         .optional()?;
     raw.map(
-        |(category, amount, verification, override_reason, request_id, accepted_at_ms)| {
+        |(
+            category,
+            amount,
+            verification,
+            override_reason,
+            request_id,
+            accepted_at_ms,
+            demo_xp,
+            progression_track,
+        )| {
             Ok(ReceiptView {
                 task_id: task_id.to_owned(),
                 category: parse(&category, Category::parse)?,
@@ -1424,6 +1617,9 @@ fn load_receipt(c: &Connection, task_id: &str) -> Result<Option<ReceiptView>> {
                 override_reason,
                 request_id,
                 accepted_at_ms,
+                demo_xp,
+                real_xp: 0,
+                progression_track,
             })
         },
     )
