@@ -71,10 +71,10 @@ and a committed mutation could answer `OUTPUT_LIMIT`. The fixes changed the cont
 | --- | --- | --- |
 | `codepet-core` | Pure enums, draft validation, transition table, reward arithmetic, existing in-memory model | none |
 | `codepet-protocol` | Envelopes, methods, error codes, typed params, bounded framing | serde, serde_json |
-| `codepet-storage` | XDG state dir checks, SQLite schema/migrations, durable task engine, tokens, ledger, recovery, fault points | core, rusqlite (bundled), serde, serde_json, sha2 |
+| `codepet-storage` | XDG state dir checks, SQLite schema/migrations, durable task engine, tokens, ledger, recovery, fault points | core, rusqlite (bundled), serde, serde_json, sha2, rustix (`std`, `time`: CLOCK_MONOTONIC execution time) |
 | `codepet` (CLI) | Short commands, `rpc` dispatcher, mock supervisor, error mapping | core, protocol, storage, serde_json |
 
-No other third-party crates. Builds are offline against the cached registry.
+No other third-party crates at runtime (`tempfile` is a test-only dev-dependency of storage and the CLI). Builds are offline against the cached registry.
 
 ## Core additions (pure, no IO)
 
@@ -140,8 +140,8 @@ No other third-party crates. Builds are offline against the cached registry.
   Active states with a confirmed-dead supervisor → `interrupted`. `review_ready` stays
   readable after its digest is recomputed and matches; mismatch → `recovery_required`.
   If review metadata is missing, explicit recovery fills only the missing fields: a fresh
-  opaque digest identifies abandonment, and missing verification becomes `not_verified`.
-  A stored digest that is not exactly 64 lowercase hex characters (for example empty or
+  opaque digest identifies abandonment, and missing verification is restored as described
+  below. A stored digest that is not exactly 64 lowercase hex characters (for example empty or
   oversized, which `task.discard` could never echo back) counts as missing. Existing
   artifact bytes and any usable digest are preserved, and every replacement first records
   the previous column values in the `review_repairs` audit table (schema v3). A missing

@@ -16,11 +16,12 @@ Direct dependencies, with versions from `Cargo.lock` and licenses read from each
 | libsqlite3-sys (via rusqlite) | 0.37.0 | storage | MIT |
 | SQLite amalgamation bundled in libsqlite3-sys | 3.51.3 | storage | Public domain ("The author disclaims copyright to this source code") |
 | sha2 | 0.10.9 | storage | MIT OR Apache-2.0 |
+| rustix (features `std`, `time`; no default features) | 1.1.5 | storage (CLOCK_MONOTONIC execution time) | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | tempfile | 3.27.0 | tests only (dev-dependency of storage and CLI) | MIT OR Apache-2.0 |
 
 The bundled SQLite C source is compiled into the `codepet` binary, so a binary distribution includes public-domain SQLite code and the MIT-licensed rusqlite/libsqlite3-sys bindings.
 
-Transitive crates built for Linux (from `cargo tree`, same date) declare permissive licenses: MIT OR Apache-2.0 for most (bitflags, block-buffer, cc, cfg-if, cpufeatures, crypto-common, digest, fallible-iterator, fallible-streaming-iterator, fastrand, find-msvc-tools, getrandom, hashbrown, hashlink, itoa, libc, once_cell, pkg-config, proc-macro2, quote, serde_core, shlex, smallvec, syn, typenum, vcpkg, version_check); MIT (generic-array, zmij); Zlib (foldhash); Unlicense OR MIT (memchr); Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (rustix, linux-raw-sys); (MIT OR Apache-2.0) AND Unicode-3.0 (unicode-ident). Several are build-time or test-only (cc, pkg-config, vcpkg, proc-macro2, quote, syn, tempfile and its dependencies). This list records declared license fields; their full license texts and notice requirements have not been audited for a binary release.
+Transitive crates built for Linux (from `cargo tree`, same date) declare permissive licenses: MIT OR Apache-2.0 for most (bitflags, block-buffer, cc, cfg-if, cpufeatures, crypto-common, digest, fallible-iterator, fallible-streaming-iterator, fastrand, find-msvc-tools, getrandom, hashbrown, hashlink, itoa, libc, once_cell, pkg-config, proc-macro2, quote, serde_core, shlex, smallvec, syn, typenum, vcpkg, version_check); MIT (generic-array, zmij); Zlib (foldhash); Unlicense OR MIT (memchr); Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (linux-raw-sys; rustix is also a direct dependency, listed above); (MIT OR Apache-2.0) AND Unicode-3.0 (unicode-ident). Several are build-time or test-only (cc, pkg-config, vcpkg, proc-macro2, quote, syn, tempfile and its dependencies). This list records declared license fields; their full license texts and notice requirements have not been audited for a binary release.
 
 ## Upstream designs
 
