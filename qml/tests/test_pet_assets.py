@@ -14,6 +14,10 @@ reason instead of failing; everything else is still checked.
 
 Images are read with Pillow when available, otherwise with PySide6's QImage. Every check
 is an explicit comparison (no bare assert), so `python3 -O` does not disable it.
+
+CODEPET_ASSET_ROOT=<dir> validates another tree laid out like the repository
+(qml/assets/pets, qml/shared/PetRegistry.js, docs/pets.md, crates/codepet-core/src);
+qml/tests/test_pet_assets_invalid.py uses it to prove broken packs are rejected.
 """
 import hashlib
 import json
@@ -22,7 +26,8 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = (Path(os.environ["CODEPET_ASSET_ROOT"]).resolve() if os.environ.get("CODEPET_ASSET_ROOT")
+        else Path(__file__).resolve().parents[2])
 PETS = ROOT / "qml/assets/pets"
 REGISTRY_JS = ROOT / "qml/shared/PetRegistry.js"
 DOCS = ROOT / "docs/pets.md"
