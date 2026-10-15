@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "LifeText.js" as LifeText
 
 // Draft editor. Saves the draft in Rust (task.create / task.update), asks Rust for a
 // preflight, shows its summary, and enables Start only for a fresh, acknowledged
@@ -35,8 +36,18 @@ ColumnLayout {
             root.formError = "Care or rest changed after preflight. Run preflight again and review this revision before Start."
         }
     }
-    readonly property bool readyToWork: !!(care && care.ready_to_work)
+    // v0.2 life gates (SPEC §6), in Rust's order: no life → death pending → critical. Rust
+    // already refuses Start in these states; the form mirrors them so it never offers Start.
+    readonly property var life: snap && snap.life ? snap.life : null
+    readonly property string lifeBlock: LifeText.hasNoLife(snap) ? "Adopt a companion to start work."
+        : life && life.death_pending ? "New work waits until the current task is finished."
+        : life && (life.status === "critical" || life.fainted)
+            ? LifeText.cleanName(life.name) + " urgently needs "
+              + root.urgentCare() + "; care before starting work."
+        : ""
+    readonly property bool readyToWork: !!(care && care.ready_to_work) && lifeBlock === ""
     readonly property string readinessText: !care ? "Refresh to load care readiness before Start."
+        : lifeBlock !== "" ? lifeBlock
         : care.ready_to_work ? "Ready to work. Start still needs a fresh preflight and your acknowledgement."
         : (care.readiness_reasons || []).join(" · ") || "Care is not ready. Return to the pet and refresh."
     readonly property var providers: snap && snap.providers ? snap.providers : []
@@ -53,6 +64,11 @@ ColumnLayout {
         && preflightCareRevision === careRevision
     spacing: 10
 
+    function urgentCare() {
+        var lc = root.snap && root.snap.lifecycle ? root.snap.lifecycle : null
+        var need = lc && lc.critical ? lc.critical.need : (LifeText.worstNeed(root.snap) || {}).need
+        return LifeText.NEED_CARE[need] || "care"
+    }
     function utf8Bytes(s) {
         var n = 0
         for (var i = 0; i < s.length; i++) {

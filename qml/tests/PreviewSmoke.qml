@@ -190,6 +190,62 @@ Item {
             case 22:
                 top.check(top.form.taskId === "preview-draft" && top.form.draftParams().folder === "/preview/example-project"
                     && top.form.draftParams().scope.length === 1, "Continue draft uses the full task.get summary")
+                // v0.2 life fixtures: lifecycle mutations are refused like every other mutation.
+                host.fixture = "unarmed"
+                panel.view = "life"
+                panel.refresh()
+                break
+            case 24:
+                top.check(panel.life !== null && panel.life.armed === false, "unarmed fixture loaded")
+                top.check(top.find(panel, "life.rulesCard").visible, "unarmed life shows the rules card in the preview")
+                top.find(panel, "rulesCard.ack").checked = true
+                top.find(panel, "rulesCard.start").clicked()
+                break
+            case 26:
+                top.check(host.lastError.indexOf("PREVIEW_ONLY") === 0, "preview pet.rules refused: " + host.lastError)
+                top.check(host.snapshot.life.armed === false, "preview never arms a life")
+                host.fixture = "no_life_memorial"
+                panel.view = "home"
+                panel.refresh()
+                break
+            case 29:
+                var adoption = top.find(panel, "panel.adoption")
+                top.check(adoption.visible && adoption.rulesLoaded, "preview serves lifecycle.rules to the adoption form")
+                top.find(panel, "adoption.ack").checked = true
+                top.find(panel, "adoption.adopt").clicked()
+                break
+            case 31:
+                top.check(host.lastError.indexOf("PREVIEW_ONLY") === 0 && host.snapshot.life === null, "preview pet.adopt refused; still no companion")
+                panel.view = "life"
+                top.find(panel, "memorial.show").clicked()
+                break
+            case 33:
+                top.check(top.find(panel, "life.memorial").entries.length === 3, "preview serves pet.memorial pages")
+                // Every fixture renders in every view without a request.
+                var before = host.seq
+                var views = ["home", "care", "tasks", "companion", "life"]
+                for (var i = 0; i < host.fixtureNames.length; i++) {
+                    host.fixture = host.fixtureNames[i]
+                    host.snapshot = host.buildSnapshot(host.fixtureNames[i])
+                    for (var v = 0; v < views.length; v++) {
+                        panel.view = views[v]
+                        top.check(panel.inView, host.fixtureNames[i] + " renders in " + views[v])
+                    }
+                    var snap = host.snapshot
+                    top.check(snap.lifecycle && typeof snap.lifecycle.frozen_reason === "string"
+                              && ("life" in snap) && Array.isArray(snap.unseen_events) && snap.memorial,
+                              host.fixtureNames[i] + " has the v0.2 snapshot blocks")
+                }
+                top.check(host.seq === before, "switching fixtures and views sends no request")
+                top.check(host.fixtureNames.length === 20, "20 preview fixtures")
+                var wanted = ["unarmed", "warning_thirst", "critical_hunger", "gentle_fainted", "death_pending_review",
+                              "no_life_memorial", "evolved_unseen", "paused", "aquatic_goldfish", "robot_working"]
+                top.check(wanted.every(function (n) { return host.fixtureNames.indexOf(n) >= 0 }), "all spec §12 life fixtures exist")
+                host.snapshot = host.buildSnapshot("aquatic_goldfish")
+                top.check(host.snapshot.life.appearance === "goldfish" && host.snapshot.life.stage === 3, "aquatic fixture is a mature goldfish")
+                host.snapshot = host.buildSnapshot("robot_working")
+                top.check(host.snapshot.life.appearance === "robot" && host.snapshot.life.species === "cat"
+                          && host.snapshot.active_task.state === "running", "robot look on a cat life, working")
                 console.log("DONE failures=" + top.failures)
                 Qt.exit(top.failures === 0 ? 0 : 3)
                 break

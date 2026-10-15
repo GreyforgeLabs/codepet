@@ -2,10 +2,17 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "LifeText.js" as LifeText
 
+// Companion progress (SPEC-v0.2 §12). The top block is the living companion's own XP,
+// level and next growth stage ("Ginger · Level 2 · Desk Prowler"); evolution comes only from
+// accepted mock tasks. The "All companions (lifetime)" block keeps the existing account-wide
+// demo/real mastery view unchanged. Levels never change access, providers or approvals.
 GroupBox {
     id: root
     required property var progression
+    property var life: null
+    property var registry: null
     readonly property var demo: progression && progression.demo ? progression.demo : null
     readonly property var real: progression && progression.real ? progression.real : null
     property int lastDemoLevel: 0
@@ -28,6 +35,62 @@ GroupBox {
     ColumnLayout {
         anchors.fill: parent
         spacing: 8
+
+        // ---------------------------------------------------------- this companion
+        ColumnLayout {
+            objectName: "progression.life"
+            Layout.fillWidth: true
+            visible: root.life !== null
+            spacing: 6
+            Label {
+                objectName: "progression.headline"
+                Layout.fillWidth: true
+                text: root.life ? LifeText.lifeHeadline(root.life, root.registry)
+                    + (root.life.pace === "playtest" ? " · Playtest" : "") : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                font.bold: true
+            }
+            ProgressBar {
+                objectName: "progression.lifeXp"
+                Layout.fillWidth: true
+                from: 0
+                to: root.life && root.life.next_level_xp ? root.life.next_level_xp : Math.max(1, root.life ? root.life.xp : 1)
+                value: root.life ? root.life.xp : 0
+                Accessible.name: root.life ? (root.life.next_level_xp
+                    ? root.life.xp + " of " + root.life.next_level_xp + " XP toward level " + (root.life.level + 1)
+                    : root.life.xp + " XP, highest level") : "XP"
+            }
+            Label {
+                Layout.fillWidth: true
+                text: root.life ? root.life.xp + " XP"
+                    + (root.life.next_level_xp ? " · next level at " + root.life.next_level_xp + " XP" : "")
+                    + " · " + (root.life.tasks_accepted || 0) + " accepted tasks with " + LifeText.cleanName(root.life.name) : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+            Label {
+                objectName: "progression.nextStage"
+                Layout.fillWidth: true
+                text: LifeText.nextStageText(root.life, root.registry)
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "Growth comes only from accepted tasks. Care and time never add XP, and a new companion always starts at level 1."
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        // ---------------------------------------------------------- account lifetime
+        Label {
+            Layout.fillWidth: true
+            text: "All companions (lifetime)"
+            textFormat: Text.PlainText
+            font.bold: true
+        }
         Label {
             Layout.fillWidth: true
             text: root.demo ? "DEMO ONLY · Level " + root.demo.level + " · " + root.levelName(root.demo.level)

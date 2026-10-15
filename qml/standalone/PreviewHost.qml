@@ -1,10 +1,13 @@
 import QtQml
+import "Fixtures.js" as Fixtures
 
 // Pure-QML preview host. It is NOT connected to Rust: it serves fixed fixture
 // snapshots and logs only the request ID and method (never user payloads). It never changes
 // meters, never stores or simulates rewards, and refuses every state-changing
-// method with PREVIEW_ONLY. Draft and preflight replies are canned so the form
-// can be inspected; the preflight token is not valid anywhere.
+// method with PREVIEW_ONLY (including every v0.2 lifecycle mutation: pet.select, pet.adopt,
+// pet.rules, pet.configure_life, pet.retire and pet.events_seen). Draft and preflight replies
+// are canned so the form can be inspected; the preflight token is not valid anywhere. The
+// read-only `lifecycle.rules` and `pet.memorial` answer from Fixtures.js.
 QtObject {
     id: root
     property var snapshot: null
@@ -15,107 +18,32 @@ QtObject {
     property string fixture: "idle"
     property int seq: 0
     property var lastDraft: null
+    // v0.2 host contract (qml/README.md): request-id prefix and presentation locks.
+    property string clientTag: "preview"
+    property int presentationLocks: 0
+    // Every method requested, in order (method names only; no payloads), for tests.
+    property var methodLog: []
+    signal companionRequested()
+    signal lifeRequested()
+    function openCompanion() { root.companionRequested() }
+    function openLife() { root.lifeRequested() }
 
-    readonly property var providers: [
-        { "id": "mock", "label": "Mock", "available": true, "note": "Simulation only; runs no command" },
-        { "id": "codex", "label": "Codex", "available": false, "note": "Not yet supported on this version" },
-        { "id": "opencode", "label": "OpenCode", "available": false, "note": "Not yet supported on this version" },
-        { "id": "hermes", "label": "Hermes", "available": false, "note": "Not yet supported on this version" },
-        { "id": "claude_code", "label": "Claude Code", "available": false, "note": "Not yet supported on this version" }
-    ]
-    readonly property var fixtureNames: ["idle", "ready", "bathroom_due", "sleep_due", "sleeping", "demo_level_2", "running", "review_not_verified", "review_check_failed", "recovery_required"]
+    readonly property var providers: Fixtures.PROVIDERS
+    readonly property var fixtureNames: Fixtures.NAMES
 
-    function summary(id, state, outcome, verification) {
-        var s = {
-            "task_id": id, "revision": 2, "state": state,
-            "category": "mental_health", "provider": "mock",
-            "folder": "/preview/example-project", "scope": ["docs"],
-            "instructions": "Preview fixture: write a short plan for the parser refactor.",
-            "mock": { "outcome": outcome, "step_ms": 0 },
-            "created_at_ms": 1760400000000, "updated_at_ms": 1760400060000,
-            "review": null, "receipt": null
-        }
-        if (verification !== "")
-            s.review = {
-                "digest": "preview0000000000000000000000000000000000000000000000000000000000",
-                "verification": verification,
-                "metadata_repaired": false,
-                "artifact": "PREVIEW FIXTURE ARTIFACT\n<b>Markup stays literal</b>\nNo command ran; this text is static.",
-                "simulated": true
-            }
-        return s
-    }
-    // state.get lists briefs (docs/milestone-1.md): no folder, scope or artifact text.
-    function brief(s) {
-        if (!s)
-            return null
-        return {
-            "task_id": s.task_id, "revision": s.revision, "state": s.state,
-            "category": s.category, "provider": s.provider, "mock": s.mock,
-            "instructions_excerpt": s.instructions, "instructions_bytes": s.instructions.length,
-            "instructions_sha256": "(preview: not computed)",
-            "created_at_ms": s.created_at_ms, "updated_at_ms": s.updated_at_ms,
-            "review": s.review ? { "digest": s.review.digest, "verification": s.review.verification,
-                                   "metadata_repaired": s.review.metadata_repaired,
-                                   "simulated": s.review.simulated, "artifact_bytes": s.review.artifact.length } : null,
-            "receipt": s.receipt
-        }
-    }
-    function fullTasks(name) {
-        var list = [summary("preview-failed", "failed", "provider_failure", ""),
-                    summary("preview-draft", "draft", "artifact", "")]
-        var active = activeFor(name)
-        if (active)
-            list.push(active)
-        return list
-    }
-    function activeFor(name) {
-        if (name === "running")
-            return summary("preview-running", "running", "artifact", "")
-        if (name === "review_not_verified")
-            return summary("preview-review", "review_ready", "artifact", "not_verified")
-        if (name === "review_check_failed")
-            return summary("preview-review", "review_ready", "check_failed", "failed")
-        if (name === "recovery_required")
-            return summary("preview-recovery", "recovery_required", "artifact", "not_verified")
-        return null
-    }
-    function buildSnapshot(name) {
-        var active = root.brief(root.activeFor(name))
-        var recent = root.fullTasks(name).map(root.brief).reverse()
-        var ready = name === "ready" || name === "demo_level_2"
-        var sleeping = name === "sleeping"
-        var due = name === "sleep_due" || sleeping
-        var bathroom = name === "bathroom_due"
-        var meter = ready || due || bathroom ? 10000 : 7000
-        var reasons = []
-        if (!ready && meter < 10000) reasons.push("Needs food, water, play and a wash")
-        if (bathroom) reasons.push("Needs a bathroom break at the tree")
-        if (due) reasons.push(sleeping ? "Resting. Wake or refresh after the nap" : "Needs a two-minute nap")
-        if (active) reasons.push("Finish or resolve the active task first")
-        return {
-            "schema_version": 3, "protocol_version": 1, "last_seq": 3,
-            "meters": { "hunger": meter, "thirst": meter, "mental_health": meter, "hygiene": meter },
-            "care": { "revision": 1, "bathroom_due": bathroom, "starts_since_bathroom": bathroom ? 2 : 0,
-                "sleeping": sleeping, "sleep_due": due, "sleep_remaining_ms": sleeping ? 92000 : 120000,
-                "sleep_started_at_ms": sleeping ? Date.now() - 28000 : null,
-                "work_sessions": due ? 3 : 0, "execution_ms": 0,
-                "ready_to_work": ready && !active, "readiness_reasons": reasons, "welcome_care_available": name === "idle" },
-            "progression": { "real": { "lifetime_xp": 0, "level": 1, "next_level_xp": 80,
-                "mastery": { "bugfix": 0, "quality_performance": 0, "learning_specification": 0, "cleanup": 0 } },
-                "demo": { "lifetime_xp": name === "demo_level_2" ? 80 : 0, "level": name === "demo_level_2" ? 2 : 1,
-                    "next_level_xp": name === "demo_level_2" ? 200 : 80,
-                    "mastery": { "bugfix": 0, "quality_performance": 0, "learning_specification": name === "demo_level_2" ? 80 : 0, "cleanup": 0 } } },
-            "decay": { "enabled": false, "paused": false },
-            "settings": { "revision": 1, "decay_enabled": false, "decay_per_hour": [100, 100, 50, 50], "timeout_seconds": 1800 },
-            "active_task": active,
-            "recent": recent,
-            "providers": root.providers
-        }
-    }
+    function summary(id, state, outcome, verification) { return Fixtures.summary(id, state, outcome, verification) }
+    function brief(s) { return Fixtures.brief(s) }
+    function fullTasks(name) { return Fixtures.fullTasks(name) }
+    function activeFor(name) { return Fixtures.activeFor(name) }
+    function buildSnapshot(name) { return Fixtures.snapshot(name, Date.now()) }
     function respond(id, method, params) {
         if (method === "state.get")
             return { "v": 1, "id": id, "ok": true, "result": root.buildSnapshot(root.fixture) }
+        // Read-only lifecycle methods answer from fixtures; every mutation is refused below.
+        if (method === "lifecycle.rules")
+            return { "v": 1, "id": id, "ok": true, "result": Fixtures.rulesResult() }
+        if (method === "pet.memorial")
+            return { "v": 1, "id": id, "ok": true, "result": Fixtures.memorialPage(root.fixture, params) }
         if (method === "events.subscribe") {
             var events = ["draft", "preparing", "running"].map(function (state, index) {
                 return {v: 1, event: "task.state", seq: index + 1, task_id: "preview-running",
@@ -172,7 +100,8 @@ QtObject {
             return
         }
         root.seq += 1
-        var id = requestId || ("preview-" + root.seq)
+        root.methodLog = root.methodLog.concat([method])
+        var id = requestId || (root.clientTag + "-" + root.seq)
         console.log("[codepet preview] request:", id, method)
         if (method !== "state.get")
             root.lastError = ""

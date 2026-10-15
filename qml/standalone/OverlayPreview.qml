@@ -47,6 +47,21 @@ ApplicationWindow {
         onHideRequested: visible = false
         onTaskPanelRequested: taskWindow.show()
     }
+    // v0.2 DesktopPet menu: "Choose look…" opens the Companion view (ignored by older pets).
+    Connections {
+        target: pet
+        ignoreUnknownSignals: true
+        function onChooserRequested() { root.openView("companion") }
+    }
+    Connections {
+        target: host
+        function onCompanionRequested() { root.openView("companion") }
+        function onLifeRequested() { root.openView("life") }
+    }
+    function openView(name) {
+        panel.view = name
+        taskWindow.show()
+    }
     ApplicationWindow {
         id: taskWindow
         objectName: "overlayTaskWindow"
