@@ -15,15 +15,37 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libgl1 libxkbcommon0
-      - name: Install pinned test-only Qt runtime
-        run: python3 -m pip install PySide6==6.8.3
-      - name: Portable QML and lifecycle checks
+      - name: Install pinned test-only Qt and image runtime
+        run: python3 -m pip install PySide6==6.8.3 Pillow==11.1.0
+      # Every offscreen smoke in qml/tests (spec §17.1); a smoke exits non-zero on any FAIL.
+      - name: QML smokes
         run: |
-          for test in PreviewSmoke CareSmoke CareFlowSmoke FilteredDraftSmoke OverlaySmoke TimelineSmoke; do
-            python3 qml/tests/run_qml.py "qml/tests/$test.qml"
+          set -e
+          for smoke in qml/tests/*Smoke.qml; do
+            echo "== $smoke"
+            python3 qml/tests/run_qml.py "$smoke"
           done
+      - name: Overlay host and bar plugin contracts
+        run: |
           python3 qml/tests/test_overlay_windows.py
           python3 qml/tests/test_quickshell_host.py
+          python3 qml/tests/test_bar_plugin.py
+      - name: Pet assets (legacy sprites, v0.2 packs, invalid-pack fixtures, distinctness)
+        run: |
           python3 qml/tests/test_sprite_assets.py
+          python3 qml/tests/test_pet_assets.py
+          python3 qml/tests/test_pet_assets_invalid.py
+          python3 qml/tests/test_pet_distinctness.py
+      # tools/petart/extract.py --check needs the GPT Image 2 source sheets, which are a
+      # release asset (codepet-art-sources-v0.2.tar), not part of the repository; it runs
+      # locally only. The manifests' sha256 checks above cover the committed frames.
+      - name: Copy rules
+        run: python3 qml/tests/copy_lint.py
+      - name: Node model tests (bar model, presence model, state machine, life text)
+        run: |
+          node --version
+          node --test qml/tests/*.mjs
+      - name: CI matrix covers every test
+        run: python3 qml/tests/test_ci_matrix.py
       - name: Portable QML lint
         run: pyside6-qmllint -I qml qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml
