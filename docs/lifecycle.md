@@ -86,7 +86,7 @@ The Start gate checks, in order: no living companion, a pending end, a critical 
 
 ### What care does
 
-The matching care action (or a routine that fills the need) sets the meter to full, starts that need's satiety hold and clears that need's neglect. Unrelated care changes nothing else. A critical period clears only when no lethal need is still past its critical-after period. Caring for one of two critical needs moves the critical record to the other need and keeps the elapsed time and the frozen grace: no fresh grace is ever granted.
+The matching care action (or a routine that fills the need) sets the meter to full, starts that need's satiety hold and clears that need's neglect. Unrelated care changes nothing else. A critical period changes only when its own need is cared for: it then clears when no lethal need is still past its critical-after period. Caring for one of two critical needs moves the critical record to the other need and keeps the elapsed time and the frozen grace: no fresh grace is ever granted. A leniency change during a critical never clears it, even when the new critical-after period exceeds the need's neglect: it only extends the running grace, which keeps counting until that need is cared for.
 
 A Start debit ends every satiety hold. A refund that restores a meter to full gives that need its hold back.
 

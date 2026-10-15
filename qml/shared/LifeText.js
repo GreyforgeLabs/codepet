@@ -345,7 +345,9 @@ function applyCare(v, rules, filled) {
         s.carry[i] = 0
         if (lethal[i]) s.neglect_ms[i] = 0
     }
-    if (s.critical !== null) {
+    // A running critical changes only when its own need is filled (unrelated care never
+    // touches it, even after leniency raised critical_after_ms; see apply_care in Rust).
+    if (s.critical !== null && list.indexOf(s.critical.need) >= 0) {
         var still = []
         for (var j = 0; j < 4; j++)
             if (lethal[j] && s.neglect_ms[j] >= rules.critical_after_ms) still.push(NEEDS[j])
@@ -353,7 +355,7 @@ function applyCare(v, rules, filled) {
             s.critical = null
             s.fainted = false
             events.push({ kind: "recovered" })
-        } else if (list.indexOf(s.critical.need) >= 0) {
+        } else {
             s.critical.need = still[0]
         }
     }

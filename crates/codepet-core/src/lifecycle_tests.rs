@@ -833,6 +833,42 @@ fn apply_care_matching_irrelevant_and_partial() {
     assert_eq!(v.neglect_ms, [0; 4]);
 }
 
+/// Review finding: leniency during a critical must not let unrelated care clear it (and
+/// so grant a fresh grace later); the critical keeps counting under its frozen grace until
+/// its own need is cared for.
+#[test]
+fn leniency_during_a_critical_never_lets_unrelated_care_clear_it() {
+    let r = steady();
+    let mut crit = thirst_empty(2 * H);
+    crit.critical = Some(Critical {
+        need: Category::Thirst,
+        grace_ms: r.grace_ms,
+        elapsed_ms: H,
+    });
+    let lenient = r.with_leniency(None, Some(3 * H), None).unwrap();
+    assert!(crit.neglect_ms[1] < lenient.critical_after_ms);
+    let v = on_leniency(&crit, &lenient);
+    assert_eq!(
+        v.critical, crit.critical,
+        "leniency never clears a running critical"
+    );
+    // Unrelated care: nothing but the filled meters changes.
+    for unrelated in [Category::Hygiene, Category::MentalHealth, Category::Hunger] {
+        let (after, ev) = apply_care(&v, &lenient, &[unrelated]);
+        assert!(ev.is_empty(), "{unrelated:?}");
+        assert_eq!(after.critical, v.critical, "{unrelated:?}");
+        assert_eq!(after.neglect_ms[1], v.neglect_ms[1], "{unrelated:?}");
+        assert_eq!(status(&after, &lenient), LifeStatus::Critical);
+    }
+    // Without care the frozen grace still runs out.
+    let (a, _) = advance_traced(&v, &lenient, Mode::Permadeath, 5 * H);
+    assert_eq!(a.events, vec![Event::Died(Category::Thirst)]);
+    // Matching care recovers as before.
+    let (after, ev) = apply_care(&v, &lenient, &[Category::Thirst]);
+    assert_eq!(ev, vec![Event::Recovered]);
+    assert_eq!(after.critical, None);
+}
+
 #[test]
 fn debit_refund_and_leniency_helpers() {
     let r = steady();

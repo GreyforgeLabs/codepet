@@ -475,9 +475,12 @@ fn ceil_div(a: i64, b: i64) -> i64 {
 }
 
 /// Matching care: each filled need becomes full with a fresh satiety hold, zero
-/// carry and (if lethal) zero neglect. Critical clears only when no lethal need is
-/// still at or beyond `critical_after_ms`; otherwise the frozen grace and elapsed
-/// time are kept and no fresh grace is granted.
+/// carry and (if lethal) zero neglect. A running critical changes only when its own
+/// need is filled: it clears when no lethal need is still at or beyond
+/// `critical_after_ms`, and otherwise moves to that need, keeping the frozen grace and
+/// elapsed time (no fresh grace is granted). Unrelated care never touches it, even when a
+/// leniency change has since raised `critical_after_ms` past the critical need's
+/// neglect: [`on_leniency`] only extends a running grace, and [`advance`] keeps counting it.
 pub fn apply_care(v: &Vitals, r: &Rules, filled: &[Category]) -> (Vitals, Vec<Event>) {
     let mut s = v.clone();
     let mut events = Vec::new();
@@ -490,18 +493,14 @@ pub fn apply_care(v: &Vitals, r: &Rules, filled: &[Category]) -> (Vitals, Vec<Ev
             s.neglect_ms[i] = 0;
         }
     }
-    if let Some(crit) = s.critical {
-        let still = still_critical(&s, r);
-        match still.first() {
+    if let Some(crit) = s.critical.filter(|c| filled.contains(&c.need)) {
+        match still_critical(&s, r).first() {
             None => {
                 s.critical = None;
                 s.fainted = false;
                 events.push(Event::Recovered);
             }
-            Some(&next) if filled.contains(&crit.need) => {
-                s.critical = Some(Critical { need: next, ..crit });
-            }
-            Some(_) => {}
+            Some(&next) => s.critical = Some(Critical { need: next, ..crit }),
         }
     }
     (s, events)
@@ -529,7 +528,9 @@ pub fn on_refund(v: &Vitals, r: &Rules, restored: &[Category]) -> Vitals {
 }
 
 /// A leniency change took effect: a frozen grace already running becomes
-/// `max(frozen, r.grace_ms)`, so a deadline can only move later.
+/// `max(frozen, r.grace_ms)`, so a deadline can only move later. A running critical is
+/// never cleared here, even when `r.critical_after_ms` now exceeds its need's neglect:
+/// only care for that need ends it (see [`apply_care`]).
 pub fn on_leniency(v: &Vitals, r: &Rules) -> Vitals {
     let mut s = v.clone();
     if let Some(c) = s.critical.as_mut() {
