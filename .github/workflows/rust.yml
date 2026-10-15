@@ -13,3 +13,5 @@ jobs:
       - run: cargo +1.85.0 test --workspace --locked
       - run: cargo +1.85.0 clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo +1.85.0 run --locked -p codepet -- mock-demo
+      # The shipped binary's third-party notices must match the lock graph.
+      - run: python3 tools/release/third_party_licenses.py --check
