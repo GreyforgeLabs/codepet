@@ -32,6 +32,10 @@ Created with OpenAI image generation for CodePet. Original generation/edit promp
 
 Only the 15 preferred versions are committed: cat v1 uses the previously delivered alpha edit; axolotl v2 supersedes v1. Unselected and pre-edit originals (the cat sheet before its background edit, axolotl v1) are not in this repository; their hashes and storage location were not recorded, so each `imagegen_edit` step in the manifest records `edit_source_sha256: "not in repository; hash unavailable"`. The PNGs are byte-for-byte copies, with no resampling, optimization or pixel edits performed for publication.
 
+## Storage decision
+
+The 15 sheets (30,327,657 bytes) stay in Git as ordinary blobs, without LFS. Decided for v0.2.0: they are the canonical style anchor for CodePet's pet art in this private repository, and the v0.2.0 runtime art is generated from new sheets anchored on them. Every clone and the history carry about 30 MB that only a history rewrite could remove. The PNGs are already compressed; lossless re-encoding saves about 6 % and would break the byte-for-byte copy policy, so it is not done. The larger v0.2.0 runtime source sheets are planned to stay out of Git: the plan records their hashes in the repository and attaches the files to the release as an asset.
+
 ## QA limitations and next steps
 
 - Pose roles describe prompts, not certified semantic conformance.
