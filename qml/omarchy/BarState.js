@@ -1,6 +1,6 @@
 .pragma library
 
-// Pure helpers for the overlay's passive `bar-state.json` input (SPEC-v0.2 §10, §13).
+// Pure helpers for the overlay's passive `bar-state.json` input (docs/omarchy-plugin.md, docs/lifecycle.md).
 // No Quickshell, no I/O, no RPC: BarStateWatcher.qml reads the file, HostAdapter.qml
 // merges the parsed subset into its presentation snapshot. Node-tested by
 // qml/tests/test_quickshell_host.py.

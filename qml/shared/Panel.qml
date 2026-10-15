@@ -18,7 +18,7 @@ import "LifeText.js" as LifeText
 // v0.2 optional: clientTag (request-id prefix), presentationLocks (care routines running),
 //   openCompanion() / openLife() (host-level view requests; this panel also has its own).
 //
-// Views (SPEC-v0.2 §12): home (everything, the standalone default), care, tasks, companion
+// Views (docs/desktop-overlay.md): home (everything, the standalone default), care, tasks, companion
 // and life, plus the internal form and review views. With no living companion, home and life
 // show the adoption form; with an unarmed life, a small "Set up life rules" banner links to Life.
 ColumnLayout {

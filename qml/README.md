@@ -180,7 +180,7 @@ Current gates: the QML job in [`.github/workflows/qml.yml`](../.github/workflows
 results recorded in [docs/validation.md](../docs/validation.md). The section below is the
 historical record of the care/progression revision.
 
-### Validation in the cloud workspace (2026-10-15, care/progression revision)
+### Validation in a headless build environment without Quickshell (2026-10-15, care/progression revision)
 
 Tested with **Qt 6.8.3 / PySide6 6.8.3**, offscreen Linux only. PySide6 was installed
 from PyPI into `/tmp/codepet-qt`; it is not a project/runtime dependency. No packages
@@ -217,10 +217,10 @@ Results:
 - Standalone offscreen rendering inspected at 720 × 900; this is not a live desktop
   or accessibility certification
 
-Quickshell is not installed in this cloud test environment. Its existing transport
+Quickshell was not installed in that build environment. Its existing transport
 was left unchanged. `tests/quickshell/real_rpc.qml` was updated for mandatory care,
 care debits and demo-only receipts but was **not rerun here**. Prior 2026-10-14
-headless Quickshell 0.3.1 validation on greyarch is historical evidence only, not
+headless Quickshell 0.3.1 validation on a local workstation is historical evidence only, not
 certification of this care revision. The adapter still uses argv arrays (no shell),
 64 KiB frame checks, one-shot response timeout and per-job supervisor lifetime.
 Its known newline-free stdout buffering and shell-reload lifetime limits remain.

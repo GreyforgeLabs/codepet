@@ -373,7 +373,7 @@ class Staging(unittest.TestCase):
                 self.assertTrue(text.startswith(".pragma library"), "LifeText.js must stay a .pragma library")
                 self.assertNotRegex(text, r"(?m)^\s*\.?import\b", "LifeText.js must have no imports")
             else:
-                self.skipTest("qml/shared/LifeText.js does not exist yet (WP-7); byte identity untested")
+                self.skipTest("qml/shared/LifeText.js does not exist yet; byte identity untested")
 
     @unittest.skipUnless(os.environ.get("CODEPET_PLUGIN_STAGE_DIR") and shutil.which("omarchy"),
                          "set CODEPET_PLUGIN_STAGE_DIR (and have omarchy) to validate a staged copy")

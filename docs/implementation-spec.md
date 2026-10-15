@@ -23,7 +23,7 @@ The core loop is:
 5. Watch progress or cancel
 6. Review changes, verification evidence, and any remaining uncertainty
 7. Explicitly apply or accept the result; receive one care reward
-   *(Superseded for the implemented build: acceptance grants isolated demo XP for eligible mock results and never refills care; Start is gated on full care and required rest. See [care-progression.md](care-progression.md). Pending operator confirmation, see §4.)*
+   *(Superseded for the implemented build: acceptance grants isolated demo XP for eligible mock results and never refills care; Start is gated on full care and required rest. See [care-progression.md](care-progression.md). Pending maintainer confirmation, see §4.)*
 
 Use Rust because the on-demand controller is predominantly process supervision, file handling, local IPC, and small amounts of state. Retain QML because Omarchy already provides the UI host, and reuse portable Qt Quick components in a standalone lightweight window elsewhere. Rust runs for an active task or a short explicit state/control command, never as an idle daemon. Do not add Electron, Chromium, a webview, a local HTTP server, or a second UI framework.
 
@@ -90,7 +90,7 @@ A task may run tests and edit project code. It must not run `sudo`, administer t
 
 ## 4. Care categories and reward rules
 
-> **Supersession note (2026-10-15, pending operator confirmation).** The implemented build
+> **Supersession note (2026-10-15, pending maintainer confirmation).** The implemented build
 > follows [care-progression.md](care-progression.md) instead of the meter-reward rules in this section:
 > acceptance no longer refills a care meter; care is filled only by explicit care clicks;
 > Start requires all four meters full, no bathroom break due and no nap due, then debits
@@ -98,7 +98,7 @@ A task may run tests and edit project code. It must not run `sudo`, administer t
 > track. REW-01, REW-03, REW-04 and the exactly-once/idempotency parts of REW-02 and
 > REW-05 still apply, with "reward" meaning that XP ledger row. Whether gating every Start
 > on full care plus bathroom and nap is the intended product direction for real providers
-> has not been confirmed by the operator; confirm it before real providers rely on it.
+> has not been confirmed by the maintainer; confirm it before real providers rely on it.
 > The table and REW-06 below are the earlier target, kept for history.
 
 All meters represent **well-being**, from 0 to 100: larger is better. UI labels should say “Hunger satisfied,” “Hydration,” “Mental health,” and “Cleanliness,” or display the four requested names with an unambiguous high-is-good legend. Start at 70 each. Use integer hundredths internally and clamp after each update.

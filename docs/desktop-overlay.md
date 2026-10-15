@@ -21,7 +21,7 @@ QML inside the entry's folder, so `shared/`, `omarchy/` and `assets/` must sit b
 
 For daily use, `packaging/omarchy/install.sh` installs the runtime under
 `~/.local/share/codepet/current/` and the `codepet-overlay` launcher
-(`show|hide|toggle|tasks|care|companion|life|refresh|status`), which finds a running
+(`show|hide|toggle|tasks|care|companion|life|refresh|status|quit`), which finds a running
 overlay instead of starting a second one; the bar plugin drives the overlay only through
 it. The installer checks the installed binary with `codepet --version`, which prints
 `codepet <version>` without opening the state directory. It adds no autostart; the bar
@@ -101,7 +101,7 @@ care, readiness, sleep credit or XP. Only explicit care controls call the existi
 Rust-backed API; explicit Start remains the only task launch path. Real providers
 remain disabled. No sounds are imported or played.
 
-## Live validation checklist (not performed in the cloud)
+## Live validation checklist
 
 - Record compositor, Qt and Quickshell versions, scaling and monitor arrangement
 - Click behind every empty area, through visible care props, and around pet/menu

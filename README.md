@@ -6,11 +6,13 @@ Quick/QML (Quickshell on Omarchy) only renders what Rust returns and sends expli
 requests. The only provider is a mock that runs no command and never touches a project
 folder.
 
+![The fifteen CodePet companions at their three stages](docs/screenshots/codepet-v0.2-roster.webp)
+
 **Current release: [v0.2.1](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.2.1),
 the first public release (MIT)** (`codepet --version` prints `codepet 0.2.1`). See the
 [changelog](CHANGELOG.md).
 
-## What v0.2.0 adds
+## Features
 
 ### Fifteen companions that grow with your work
 
@@ -26,8 +28,8 @@ Roster, stage names and care labels: [docs/pets.md](docs/pets.md).
 ### A humane lifecycle, with permadeath or gentle mode
 
 - Every life chooses **permadeath** (preselected) or **gentle** when its rules are
-  acknowledged. Until then the clock is **unarmed**: nothing changes on its own, exactly as
-  in v0.1. An upgraded pet starts unarmed, so updating never costs a pet.
+  acknowledged. Until then the clock is **unarmed**: nothing changes on its own. A pet
+  carried over from an earlier build starts unarmed, so updating never costs a pet.
 - Needs change only during **attended time**: minutes the bar plugin observed you at the
   computer while the clock was running. Nothing counts offline, overnight, while paused,
   napping or while a task holds the slot.
@@ -60,19 +62,55 @@ never sends a `task.*` method. Details: [docs/omarchy-plugin.md](docs/omarchy-pl
 
 A small transparent pet on the desktop (Quickshell layer shell, click-through outside the
 pet and its open menu, no keyboard focus). Hover shows the meters; a click opens compact
-care controls. Task, review, Companion and Life tabs open in a separate focusable window
-only after an explicit action. The bar and the user drive it through `codepet-overlay`
-(`show|hide|toggle|tasks|care|companion|life|refresh|status`). Details:
+care controls. Care, Tasks, Companion and Life tabs open in a separate focusable window
+only after an explicit action (task review is shown inside Tasks). The bar and the user drive it through `codepet-overlay`
+(`show|hide|toggle|tasks|care|companion|life|refresh|status|quit`). Details:
 [docs/desktop-overlay.md](docs/desktop-overlay.md) and [qml/omarchy/README.md](qml/omarchy/README.md).
+
+## Requirements
+
+- **Runtime:** Omarchy 4 on Hyprland (tested with Omarchy 4.0.4's plugin API), with
+  `omarchy` on `PATH` for the bar plugin; Quickshell 0.3.1 with `qs` on `PATH` (or
+  `CODEPET_QS`) for the desktop pet; Qt's WebP image plugin (`qt6-imageformats` on Arch),
+  without which the pets render blank.
+- **Release binary:** x86_64 Linux with glibc 2.34 or later.
+- **Building from source:** Rust 1.85 or later with cargo, and a C compiler for the bundled
+  SQLite.
+- **Optional:** `jq` (the installer falls back to `grep`) and `systemd-run` (caps the
+  build's memory).
+
+`omarchy plugin add <repo-url>` is not supported: the repository root has no
+`manifest.json`, and the bar plugin needs the `codepet` binary and the `LifeText.js` the
+installer stages. Use `packaging/omarchy/install.sh`.
+
+## Quick start
+
+From a source checkout (builds `codepet`):
+
+```sh
+git clone https://github.com/GreyforgeLabs/codepet && cd codepet
+packaging/omarchy/install.sh --dry-run   # list every staged file; changes nothing
+packaging/omarchy/install.sh             # build, install, stage and enable the bar plugin
+codepet-overlay show                     # the desktop pet
+```
+
+### Install from the release archive (no build)
+
+Download `codepet-0.2.1-x86_64-linux.tar.gz` and `SHA256SUMS` from the
+[v0.2.1 release](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.2.1), then:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+tar xzf codepet-0.2.1-x86_64-linux.tar.gz
+cd codepet-0.2.1-x86_64-linux
+packaging/omarchy/install.sh --dry-run
+packaging/omarchy/install.sh             # installs the bundled bin/codepet; nothing is built
+```
 
 ## Install on Omarchy
 
-```sh
-packaging/omarchy/install.sh --dry-run   # list every staged file; changes nothing
-packaging/omarchy/install.sh             # build, install, stage and enable the bar plugin
-```
-
-The installer builds `codepet` (or uses `CODEPET_BIN_SOURCE`), installs `codepet` and
+The installer builds `codepet` (or installs the release archive's `bin/codepet`, or
+`CODEPET_BIN_SOURCE`), installs `codepet` and
 `codepet-overlay` into `~/.local/bin`, copies the overlay runtime to
 `~/.local/share/codepet/releases/<version>/` behind a `current` symlink, validates the
 plugin with `omarchy plugin validate`, moves it into
@@ -81,11 +119,51 @@ right section, after asking the running shell to rescan and waiting until it lis
 plugin. Without a running shell it prints the enable command instead of failing.
 `--no-plugin` skips the bar plugin. It never touches the pet's data in
 `$XDG_STATE_HOME/codepet`: the first `codepet state` migrates the database and keeps a
-backup. It never restarts the shell or the overlay and never arms a pet.
+backup. It never restarts the shell or the overlay and never arms a pet. It keeps the
+current and the previous release under `~/.local/share/codepet/releases/`.
+`tools/measure-overlay.sh PID...` reports PSS, CPU and wakeups (read-only).
 
-`packaging/omarchy/uninstall.sh` disables the plugin and moves the plugin and the overlay
-runtime to `~/.cache/codepet/uninstall-<timestamp>/`. It keeps the pet's data and the two
-commands. `tools/measure-overlay.sh PID...` reports PSS, CPU and wakeups (read-only).
+### First run
+
+1. After installing, the bar shows Ginger the cat with `◦`: not set up yet. Time is not
+   counting.
+2. Left-click the bar cell and choose **Set up…**: the Life tab opens in the desktop pet's
+   window. Read the rules, pick permadeath (preselected) or gentle, and acknowledge. That
+   starts the attended-time clock.
+3. Clicks on the bar cell: left opens the card, right shows or hides the desktop pet
+   (`codepet-overlay toggle`), middle opens the task window (`codepet-overlay tasks`).
+4. **Companion & looks…** changes the species look; it is cosmetic.
+5. Ginger is on the steady pace. Playtest can only be chosen when adopting a new
+   companion, after an ending or a retirement.
+
+The rules and numbers are in [docs/lifecycle.md](docs/lifecycle.md); the bar glyphs are in
+[docs/omarchy-plugin.md](docs/omarchy-plugin.md).
+
+### Uninstall
+
+```sh
+codepet-overlay quit                         # stop the desktop pet (refused while a task runs)
+packaging/omarchy/uninstall.sh --dry-run     # from the release archive or a checkout
+packaging/omarchy/uninstall.sh
+```
+
+`uninstall.sh` disables the bar plugin and moves the plugin and the overlay runtime to
+`~/.cache/codepet/uninstall-<timestamp>/`; it deletes nothing. If the plugin cannot be
+disabled (for example, the shell is not running), it warns, carries on and prints the
+command to run later. It keeps the pet's data and the two commands. To remove everything
+else:
+
+```sh
+rm ~/.local/bin/codepet ~/.local/bin/codepet-overlay
+rm -r ~/.cache/codepet          # uninstall-*, release-backup-* and plugin-backup-* folders
+```
+
+Only if you also want to delete your companion for good, including its history and the
+pre-migration database backup:
+
+```sh
+rm -r "${XDG_STATE_HOME:-$HOME/.local/state}/codepet"   # permanent: this cannot be undone
+```
 
 ## Honest limits
 
@@ -105,7 +183,7 @@ commands. `tools/measure-overlay.sh PID...` reports PSS, CPU and wakeups (read-o
 - The portable preview (`qml/standalone/`) is a normal fixture window, not an overlay for
   other desktops. "Any Linux" is the goal, not a tested claim.
 
-## Core (unchanged from v0.1, still enforced)
+## Design invariants (enforced)
 
 - Four crates: `codepet-core` (pure rules: care, evolution, lifecycle, presence),
   `codepet-protocol` (versioned, bounded JSON envelopes), `codepet-storage` (SQLite state)
@@ -160,14 +238,15 @@ per-job supervisor while a task runs.
 ## Pet art and source-art catalog
 
 The shipped companions are raster frames: 192×192 lossy WebP with alpha under
-`qml/assets/pets/<id>/s<stage>/`, extracted by `tools/petart/extract.py` from GPT Image 2
-sheets generated through the operator's ChatGPT subscription and anchored on the source
-catalog below. Every source-sheet and frame SHA-256 is in the manifests and
-[qml/assets/pets/PROVENANCE.md](qml/assets/pets/PROVENANCE.md). The extraction sheets
-(about 200 MB) are not committed. They are a planned release asset,
-`codepet-art-sources-v0.2.tar`; until it is attached, the sheets exist only on the
-operator's workstation, which is the only place `extract.py --check` (a byte-for-byte
-rebuild of the committed frames) can run. Raster art departs from issue #5's SVG-generator
+`qml/assets/pets/<id>/s<stage>/`, extracted by `tools/petart/extract.py` from sheets
+generated with GPT Image 2 (OpenAI image generation) via the Codex CLI image tool and
+anchored on the source catalog below. Every source-sheet and frame SHA-256 is in the
+manifests and [qml/assets/pets/PROVENANCE.md](qml/assets/pets/PROVENANCE.md). The
+extraction sheets (about 200 MB) are not committed: they are the release asset
+[`codepet-art-sources-v0.2.tar`](https://github.com/GreyforgeLabs/codepet/releases/download/v0.2.1/codepet-art-sources-v0.2.tar) of v0.2.1, with its checksum in that release's
+`SHA256SUMS`. After extracting it into `art-src/`, anyone can run `extract.py --check`, a
+byte-for-byte rebuild of the committed frames (steps in
+[docs/pets.md](docs/pets.md#reproducing-the-frames)). Raster art departs from issue #5's SVG-generator
 contract; the decision and its consequences are in
 [docs/decisions/0002-v0.2-raster-pet-art.md](docs/decisions/0002-v0.2-raster-pet-art.md).
 
@@ -187,10 +266,10 @@ ginger-cat sprites remain under `qml/assets/` with their own provenance record.
 - [Care, rest and demo progression](docs/care-progression.md)
 - [Security and manual-only invariants](docs/security.md)
 - [Validation report](docs/validation.md)
-- [Milestone 1 contract](docs/milestone-1.md) (RPC shapes for the v0.1 methods)
+- [Milestone 1 contract](docs/milestone-1.md) (RPC shapes for the Milestone 1 methods)
 - [Full target specification](docs/implementation-spec.md): design, not completed implementation
 - [Architecture](docs/architecture.md), [providers](docs/providers.md),
-  [licences](docs/licenses.md)
+  [licences](docs/licenses.md) and [third-party licences](THIRD-PARTY-LICENSES.md)
 
 `docs/source-manifest.sha256` records the original import and is intentionally stale (see
-[qml/README.md](qml/README.md)). No upstream code or sprites are vendored.
+[docs/import-provenance.md](docs/import-provenance.md)). No upstream code or sprites are vendored.

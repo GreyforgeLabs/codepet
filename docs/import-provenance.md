@@ -1,18 +1,12 @@
 # Verified source import
 
-The initial local Git commit is a new import, not a continuation of the cloud Git history.
-The source transfer identifies cloud commit `7095314c28ec6d20a06c5a50007f2b54ec9d4de8`.
-No Git objects or original commit history were transported, and that commit is not claimed
-as part of this repository's history.
+The repository starts from a verified import of the initial scaffold; earlier history is
+not included. `docs/source-manifest.sha256` records the imported files' hashes and is
+intentionally stale: later commits changed those files.
 
-All 22 supplied source paths were validated as safe relative paths, and their UTF-8
-contents matched their supplied SHA-256 hashes before materialization. All 22 files
-were checked again after writing. Existing different files and symlinks are refused.
-The original source files remain byte-for-byte unchanged. `source-manifest.sha256`
-records their expected hashes and can be checked from the repository root.
-
-Internal transfer SHA-256:
-`7f9bd55e70c8e5dd5b50f4958a77c045a8a88329c1df7e367024f0495f29dd93`
+All 22 imported source paths were validated as safe relative paths, and their UTF-8
+contents matched their recorded SHA-256 hashes before they were written. All 22 files
+were checked again after writing. Existing different files and symlinks were refused.
 
 ## Local validation, 2026-10-14 UTC
 

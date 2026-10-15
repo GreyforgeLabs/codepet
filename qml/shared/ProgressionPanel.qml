@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "LifeText.js" as LifeText
 
-// Companion progress (SPEC-v0.2 §12). The top block is the living companion's own XP,
+// Companion progress (docs/care-progression.md). The top block is the living companion's own XP,
 // level and next growth stage ("Ginger · Level 2 · Desk Prowler"); evolution comes only from
 // accepted mock tasks. The "All companions (lifetime)" block keeps the existing account-wide
 // demo/real mastery view unchanged. Levels never change access, providers or approvals.

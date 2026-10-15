@@ -22,8 +22,8 @@ Tasks are simulations: the plugin never sends a `task.*` method.
 | `README.md`, `CHANGELOG.md`, `LICENSE` | plugin docs and the repository MIT licence |
 | `LifeText.js` | **not checked in here**: the installer copies `qml/shared/LifeText.js` in byte-for-byte |
 
-`omarchy plugin validate` accepts the staged folder (checked on a copy under
-`~/Work/runs/codepet--2026-10-15--v0.2/plugin-stage/`; never installed by the tests).
+`omarchy plugin validate` accepts the staged folder (checked on a copy in a temporary stage
+directory; never installed by the tests).
 
 ## Paths
 
@@ -46,8 +46,9 @@ copy, which goes stale after a hot reload) and written only through
 
 When the `stateHome` setting holds an absolute path, both files move under it, every
 `codepet rpc` process gets `XDG_STATE_HOME=<stateHome>` in its environment, and every
-launcher call runs as `/usr/bin/env XDG_STATE_HOME=<stateHome> codepet-overlay <verb>`.
-The popup shows "Test state". Live QA uses this so the operator's real pet is never touched.
+launcher call runs as `/usr/bin/env XDG_STATE_HOME=<stateHome> codepet-overlay <verb>` (with
+`CODEPET_BIN=<binary>` first when the `binary` setting is set).
+The popup shows "Test state". Live QA uses this so your real pet is never touched.
 Relative paths and paths containing `..` are ignored.
 
 ## Settings
@@ -57,7 +58,7 @@ Relative paths and paths containing `..` are ignored.
 | `label` | `name` | `name`, `status` (name plus the most urgent need) or `none` |
 | `presence` | `true` | count active time while the widget is on the bar |
 | `overlayOnLoad` | `false` | the leader runs `codepet-overlay show` once at startup |
-| `binary` | `""` | absolute path of `codepet` |
+| `binary` | `""` | absolute path of `codepet`; launcher calls pass it on as `CODEPET_BIN`, so the desktop pet uses the same binary |
 | `stateHome` | `""` | absolute test state home (see above) |
 
 ## What it shows
@@ -114,8 +115,8 @@ napping; it updates the displayed countdown only.
 | Trigger | Effect |
 |---|---|
 | left click | toggles the popup; opening sends one `state.get` (it settles presence and may record an ending); an unseen growth is shown once ("★ Ginger grew into a Desk Cat!") and then acknowledged with one `pet.events_seen` |
-| right click | `codepet-overlay toggle` (detached argv) |
-| middle click | `codepet-overlay tasks` (detached argv) |
+| right click | `codepet-overlay toggle` (detached argv); opens the popup instead when the launcher is not installed |
+| middle click | `codepet-overlay tasks` (detached argv); opens the popup instead when the launcher is not installed |
 | leader startup | one `state.get` (settles, exports `bar-state.json`, creates the boot cursor); `codepet-overlay show` if `overlayOnLoad` |
 | Refresh | one `state.get` |
 | care / bed / wake / pause | one `pet.care` / `pet.sleep` / `pet.wake` / `pet.pause` |
@@ -206,7 +207,7 @@ Exactly four, none of which sends a request or launches anything:
 ## Limits
 
 - The offscreen load test has no compositor: idle monitoring, Hyprland fullscreen, the popup
-  window and real bar placement are not exercised there. Live behaviour on greyarch is recorded
+  window and real bar placement are not exercised there. Live behaviour on a live Omarchy desktop is recorded
   separately in `docs/validation.md`.
 - An ending is recorded only on the next settling command (popup open, care, Refresh, CLI, a
   task action or bar startup). The bar shows "as of HH:MM".

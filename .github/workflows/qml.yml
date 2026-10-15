@@ -36,9 +36,9 @@ jobs:
           python3 qml/tests/test_pet_assets.py
           python3 qml/tests/test_pet_assets_invalid.py
           python3 qml/tests/test_pet_distinctness.py
-      # tools/petart/extract.py --check needs the GPT Image 2 source sheets, which are a
-      # release asset (codepet-art-sources-v0.2.tar), not part of the repository; it runs
-      # locally only. The manifests' sha256 checks above cover the committed frames.
+      # tools/petart/extract.py --check needs the GPT Image 2 source sheets, the v0.2.1
+      # release asset codepet-art-sources-v0.2.tar (about 200 MB, not in the repository), so
+      # it is not run in CI. The manifests' sha256 checks above cover the committed frames.
       # Source-art catalog (PR #7): stdlib-only checks that also fail under -O. Isolated
       # mode (-I) ignores user site-packages, so test_verify.py's optional Pillow --alpha
       # recheck skips when Pillow is installed only for the user.

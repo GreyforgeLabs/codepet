@@ -1,6 +1,6 @@
 .pragma library
 
-// LifeText.js: pure copy and attended-time math for the CodePet life UI (SPEC-v0.2 §2, §6, §12).
+// LifeText.js: pure copy and attended-time math for the CodePet life UI (docs/lifecycle.md).
 //
 // No imports, no Quickshell, no I/O and no requests. The Omarchy bar plugin stages this exact
 // file byte-for-byte, so it must stay a dependency-free `.pragma library`.

@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "LifeText.js" as LifeText
 
-// Memorial of ended lives (SPEC-v0.2 §12). Read-only and paged: nothing loads until the
+// Memorial of ended lives (docs/lifecycle.md). Read-only and paged: nothing loads until the
 // user presses "Show memorial", and further pages load only on the explicit "More" button
 // (pet.memorial {before_ordinal, limit}). Entries are plain text from the saved summaries.
 GroupBox {

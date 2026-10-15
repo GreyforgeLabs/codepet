@@ -2,7 +2,7 @@
 
 This page documents ruleset `lifecycle-v1`: evolution by XP, the humane permadeath lifecycle, attended-time accounting, and how storage enforces them. It is the reference for the storage layer (`crates/codepet-storage`) and for UI copy.
 
-The product decisions behind it (D1 to D12) are recorded in `docs/decisions/0001-v0.2-lifecycle.md`. They are delegated defaults for a private testing prerelease.
+The product decisions behind it (D1 to D12) are recorded in `docs/decisions/0001-v0.2-lifecycle.md`. They are the v1 defaults, first shipped in the v0.2.0 testing prerelease and carried into v0.2.1.
 
 **Verification status.** Everything below about storage is covered by the `codepet-storage` unit tests (`life_tests.rs`, `lifecycle_tests.rs`, `presence_tests.rs`, `bar_export_tests.rs`, `migration_v4_tests.rs`). The tests exercise the documented SQLite behaviour with a manual clock. They do not exercise the bar plugin's recorder on a live Omarchy session, the CLI wiring, or the QML UI. Those have their own tests and live QA, recorded in `docs/validation.md`.
 
@@ -23,7 +23,7 @@ Every number is a ruleset value from `codepet_core::lifecycle::RULES_V1`. Its ca
 | Level XP thresholds (L1 to L5) | 0, 80, 200, 400, 700 | same |
 | Stage minimum levels (young, grown, mature) | 1, 2, 4 | same |
 
-Mood and hygiene only ever warn. Bathroom and nap requirements still block Start, as in v0.1, and are never neglect.
+Mood and hygiene only ever warn. Bathroom and nap requirements still block Start, as before, and are never neglect.
 
 All durations are **attended (active) time**: time the bar plugin observed you at the computer while the companion's clock was running. Nothing counts offline or overnight.
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Release documentation required by spec §16 WP-INT / §18 and issues #5 and #6: the
-decision record, the superseded "no death" text, the changelog, the pet coverage matrix
-and an honest v0.2 validation entry (contact-sheet review checklist and the §17.9 live QA
-table, each item pass, fail or untested).
+"""Release documentation for issues #5 and #6: the decision record, the superseded
+"no death" text, the changelog, the pet coverage matrix and an honest v0.2 validation
+entry (contact-sheet review checklist and the live QA table, each item pass, fail or
+untested).
 
 Run: python3 qml/tests/test_release_docs.py
 """
@@ -23,7 +23,12 @@ def read(rel):
 class ReleaseDocs(unittest.TestCase):
     def test_decision_record_carries_d1_to_d12(self):
         adr = read("docs/decisions/0001-v0.2-lifecycle.md")
-        self.assertIn("delegated defaults for a private testing prerelease", adr)
+        self.assertIn("ruleset `lifecycle-v1`", adr)
+        self.assertIn("carried unchanged into", adr)
+        # A build prompt and session wording never belong in a public decision record.
+        self.assertNotIn("Record these verbatim", adr)
+        self.assertNotIn("this run", adr)
+        self.assertNotIn("operator", adr)
         for n in range(1, 13):
             self.assertRegex(adr, rf"(?m)^\| D{n} \|", f"D{n}")
         for req in ("evolution is tied to XP and levels", "neglect can permanently end a life",
@@ -40,9 +45,14 @@ class ReleaseDocs(unittest.TestCase):
         self.assertIn("docs/decisions/0002-v0.2-raster-pet-art.md", read("CHANGELOG.md"))
         readme = read("README.md")
         self.assertIn("docs/decisions/0002-v0.2-raster-pet-art.md", readme)
-        # The source tar is planned, not attached: no doc may say it already is the asset.
-        self.assertNotIn("they are the release asset", readme)
-        self.assertIn("planned release asset", read("qml/assets/pets/PROVENANCE.md"))
+        # The source tar is the v0.2.1 release asset: every doc names that one download.
+        url = "releases/download/v0.2.1/codepet-art-sources-v0.2.tar"
+        for rel in ("README.md", "docs/decisions/0002-v0.2-raster-pet-art.md",
+                    "qml/assets/pets/PROVENANCE.md", "docs/pets.md"):
+            text = read(rel)
+            self.assertIn(url, text, rel)
+            for stale in ("planned release asset", "until it is attached", "operator's workstation"):
+                self.assertNotIn(stale, text, (rel, stale))
 
     def test_no_death_text_is_superseded_with_pointers(self):
         spec = read("docs/implementation-spec.md")
@@ -79,6 +89,36 @@ class ReleaseDocs(unittest.TestCase):
         for shot in ("codepet-overlay-idle.png", "codepet-overlay-menu.png"):
             line = next(l for l in overlay.splitlines() if shot in l)
             self.assertIn("Legacy v0.1", line, shot)
+
+    def test_readme_shows_the_product_and_the_release(self):
+        readme = read("README.md")
+        version = tomllib.loads(read("Cargo.toml"))["workspace"]["package"]["version"]
+        self.assertIn("](docs/screenshots/codepet-v0.2-roster.webp)", readme)
+        self.assertIn(f"`codepet --version` prints `codepet {version}`", readme)
+        self.assertIn(f"codepet-{version}-x86_64-linux.tar.gz", readme)
+        for section in ("## Requirements", "## Quick start", "### First run", "### Uninstall"):
+            self.assertIn(section, readme)
+        for stale in ("private testing prerelease", "operator", "v0.1"):
+            self.assertNotIn(stale, readme)
+
+    def test_validation_has_a_v021_live_qa_placeholder(self):
+        v = read("docs/validation.md")
+        self.assertLess(v.index("# v0.2.1"), v.index("# v0.2.0"))
+        section = v[v.index("# v0.2.1"):v.index("# v0.2.0")]
+        self.assertIn("## Live QA (v0.2.1)", section)
+        self.assertNotRegex(section, r"(?m)^\| \d \| [^|]+ \| pass \|", "no live result is claimed here")
+
+    def test_release_notes_have_no_relative_links(self):
+        import subprocess, tempfile
+        version = tomllib.loads(read("Cargo.toml"))["workspace"]["package"]["version"]
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "notes.md"
+            r = subprocess.run(["python3", str(REPO / "tools/release/release_docs.py"), "notes",
+                                "--version", version, "--out", str(out)], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            notes = out.read_text()
+        self.assertNotRegex(notes, r"\]\((?!https?://)[^)]+\)")
+        self.assertIn(f"/blob/v{version}/", notes)
 
     def test_validation_has_an_honest_v02_entry(self):
         v = read("docs/validation.md")

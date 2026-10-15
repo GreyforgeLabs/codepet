@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "LifeText.js" as LifeText
 
-// Explicit adoption (SPEC-v0.2 §2 D8, §12). Shown only when there is no living companion.
+// Explicit adoption (docs/decisions/0001-v0.2-lifecycle.md D8). Shown only when there is no living companion.
 // Species pick, a name (max 24, defaulting to the species' default name), Mode with
 // Permadeath preselected, Pace (Steady default / Playtest) and a required acknowledgement.
 // "Adopt <Name> (starts at level 1)" sends pet.adopt and reuses one retry key while the

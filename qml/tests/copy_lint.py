@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calm-copy lint for CodePet's user-facing text (SPEC-v0.2 §2 D7(e), §17.3).
+"""Calm-copy lint for CodePet's user-facing text (docs/lifecycle.md, Copy rules; ADR 0001 D7(e)).
 
 Scans every string literal in the QML and JavaScript UI sources (qml/shared, qml/standalone,
 qml/omarchy, qml/shell.qml and the Omarchy bar plugin, which stages qml/shared/LifeText.js

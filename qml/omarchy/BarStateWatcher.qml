@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell.Io
 import "BarState.js" as BarState
 
-// Passive reader of `$XDG_STATE_HOME/codepet/bar-state.json` (SPEC-v0.2 §10, §13).
+// Passive reader of `$XDG_STATE_HOME/codepet/bar-state.json` (docs/omarchy-plugin.md, docs/lifecycle.md).
 // The Rust store rewrites that file atomically, under its database lock, after every
 // committed change, so care done from the Omarchy bar reaches the desktop pet here.
 //

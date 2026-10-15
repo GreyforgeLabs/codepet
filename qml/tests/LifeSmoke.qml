@@ -1,4 +1,4 @@
-// Life UI smoke test (SPEC-v0.2 §17.7, T6): rules card, adoption, retirement, memorial
+// Life UI smoke test (docs/lifecycle.md): rules card, adoption, retirement, memorial
 // paging, leniency, mode switch, growth acknowledgement and calm copy over every fixture.
 // A recording fake host answers from qml/standalone/Fixtures.js; nothing reaches Rust.
 // Run: QT_QPA_PLATFORM=offscreen python3 qml/tests/run_qml.py qml/tests/LifeSmoke.qml

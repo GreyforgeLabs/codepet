@@ -1,5 +1,5 @@
 //! Shared helpers: every test gets its own temporary XDG_STATE_HOME and HOME and runs the
-//! built `codepet` binary. Nothing touches the operator's real state directory.
+//! built `codepet` binary. Nothing touches the user's real state directory.
 #![allow(dead_code)]
 use codepet_storage::{Clock, ManualClock, StatePaths, Store, SystemClock};
 use serde_json::{json, Value};
