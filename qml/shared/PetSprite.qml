@@ -28,6 +28,8 @@ Item {
     readonly property bool mirrored: artwork.mirror
     readonly property url currentSource: artwork.source
     readonly property int loadStatus: artwork.status
+    // Exposed for tests: the artwork never uses Qt's shared pixmap cache.
+    readonly property bool pixmapCached: artwork.cache
     readonly property real canvasSize: 192
 
     onTargetUrlChanged: root.broken = false
@@ -43,7 +45,10 @@ Item {
         smooth: true
         mipmap: false
         asynchronous: false
-        cache: true
+        // No pixmap cache: only the frame on screen stays decoded, so at most the current
+        // pack is resident however often looks change (spec §1 / issue #5 bounded cache).
+        // Re-decoding one small WebP per ≤ 5 Hz frame change is cheap.
+        cache: false
         // Deferred so the fallback never re-enters the synchronous load of `source`.
         // The placeholder itself failing leaves an empty frame; it never loops.
         onStatusChanged: if (status === Image.Error && !root.broken) Qt.callLater(root.fallBack, String(source))

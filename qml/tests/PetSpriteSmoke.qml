@@ -79,7 +79,7 @@ Item {
                           "a later valid frame clears the fallback")
                 // 200 look switches: only the current pack (and stage) is ever referenced.
                 var ids = ["cat", "goldfish", "ghost", "cat", "goldfish"]
-                var foreign = 0
+                var foreign = 0, held = 0
                 for (var i = 0; i < 200; i++) {
                     var id = ids[i % ids.length]
                     sprite.petId = id
@@ -87,8 +87,13 @@ Item {
                     sprite.frame = i
                     var target = String(sprite.targetUrl)
                     if (target.indexOf(top.base + id + "/s" + sprite.stage + "/") !== 0) foreign += 1
+                    // The one Image only ever holds the current target (or the placeholder).
+                    var shown = String(sprite.currentSource)
+                    if (shown !== target && !sprite.showingPlaceholder) held += 1
                 }
                 top.check(foreign === 0, "every switch targets only the current pack and stage")
+                top.check(held === 0 && !sprite.pixmapCached,
+                          "no earlier pack stays referenced or cached: only the shown frame is decoded")
                 break
             case 5:
                 top.check(sprite.petId === "goldfish" && sprite.loadStatus === Image.Ready && !sprite.showingPlaceholder,

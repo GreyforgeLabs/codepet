@@ -40,7 +40,9 @@ test('PetSprite stays passive: no Timer, no requests, no animations', () => {
     assert.ok(!src.includes('.request('), 'PetSprite.qml must not send requests');
     assert.doesNotMatch(src, /\b(NumberAnimation|SequentialAnimation|PropertyAnimation|Behavior on)\b/);
     assert.match(src, /asynchronous: false/);
-    assert.match(src, /cache: true/);
+    // Bounded residency: no shared pixmap cache, so only the shown frame stays decoded.
+    assert.match(src, /cache: false/);
+    assert.doesNotMatch(src, /cache: true/);
 });
 
 test('shared QML never imports Quickshell', () => {
