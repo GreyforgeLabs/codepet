@@ -223,10 +223,12 @@ impl Store {
 
     // ---- reads -------------------------------------------------------------------------
 
-    /// The exact `state.get` result. It settles persisted rest and checkpoints a live
-    /// execution segment when either exists (so `state.get` is classified as mutating);
-    /// otherwise it is a plain WAL read that never waits for the writer lock. A checkpoint
-    /// never invalidates preflight approvals.
+    /// The exact `state.get` result. When something needs settling (a nap, a live
+    /// execution segment, a presence sidecar, or a pending end whose slot is free) it takes
+    /// the writer lock and runs the full write prologue and epilogue, so it may commit a
+    /// settlement or an end (`state.get` is classified as mutating). Otherwise it is a
+    /// plain WAL read that never waits for the writer lock and changes nothing. A
+    /// checkpoint never invalidates preflight approvals.
     pub fn snapshot(&self) -> Result<Snapshot> {
         let read = self.read()?;
         let needs_settlement = care::snapshot_needs_settlement(&read)?
