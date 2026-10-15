@@ -3,6 +3,15 @@
 All notable changes to CodePet. Real providers stay disabled; every task is a mock
 (simulation) task.
 
+## Unreleased
+
+### Fixed
+- Running the test suite no longer floods the desktop with "Process crashed: codepet"
+  alerts. Debug-build fault injection (`CODEPET_FAULT`) now marks the process
+  non-dumpable before it aborts, so systemd-coredump never records the deliberate abort
+  as a crash. `ulimit -c 0` alone suppressed only the core file. Release builds are
+  unchanged.
+
 ## 0.2.0 - 2026-10-15 (testing prerelease, private)
 
 Closes issues #5 (15 companions with evolution) and #6 (lifecycle, evolution and

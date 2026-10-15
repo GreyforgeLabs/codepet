@@ -70,7 +70,9 @@ impl Env {
     }
 
     /// `codepet <args>` with the test environment. A fault run goes through `sh` only to
-    /// set `ulimit -c 0`, so injected aborts leave no core dumps; `exec` keeps the status.
+    /// set `ulimit -c 0`, so injected aborts leave no core dumps even where the binary
+    /// cannot mark itself non-dumpable (see `codepet_storage::fault`); `exec` keeps the
+    /// status.
     pub fn command(&self, args: &[&str], fault: Option<&str>) -> Command {
         let mut c = match fault {
             None => Command::new(BIN),

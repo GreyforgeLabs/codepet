@@ -328,12 +328,20 @@ impl Clock for ManualClock {
 /// Crash-injection point. `CODEPET_FAULT=<name>` aborts the process here, in debug builds
 /// only; release builds ignore the variable. Storage already calls every point in
 /// `FAULT_POINTS` at its documented place.
+///
+/// The process marks itself non-dumpable first. With a piped `core_pattern`
+/// (systemd-coredump), `ulimit -c 0` still journals every abort as a crash, and desktop
+/// crash watchers then report each injected fault; a non-dumpable process skips the
+/// core-dump path in the kernel entirely.
 pub fn fault(name: &str) {
     debug_assert!(FAULT_POINTS.contains(&name), "unknown fault point {name}");
     #[cfg(test)]
     test_fault::hit(name);
     #[cfg(debug_assertions)]
     if std::env::var_os("CODEPET_FAULT").is_some_and(|v| v == name) {
+        #[cfg(target_os = "linux")]
+        let _ =
+            rustix::process::set_dumpable_behavior(rustix::process::DumpableBehavior::NotDumpable);
         std::process::abort();
     }
 }
