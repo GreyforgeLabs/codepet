@@ -115,7 +115,7 @@ pub(crate) struct BarState {
 }
 
 /// Longest prefix of `s` that is at most `max` UTF-8 bytes.
-fn byte_prefix(s: &str, max: usize) -> &str {
+pub(crate) fn byte_prefix(s: &str, max: usize) -> &str {
     if s.len() <= max {
         return s;
     }

@@ -87,15 +87,7 @@ fn read_inner(path: &Path, now_wall: i64) -> Result<Option<PresenceDoc>, Refusal
         return Err(Refusal::NotRegular);
     }
     let uid = sys::current_uid().map_err(|_| Refusal::Unreadable)?;
-    if meta.uid() != uid {
-        return Err(Refusal::ForeignOwner);
-    }
-    if meta.mode() & 0o022 != 0 {
-        return Err(Refusal::Writable);
-    }
-    if meta.len() > MAX_PRESENCE_BYTES {
-        return Err(Refusal::TooLarge);
-    }
+    vet(meta.uid(), uid, meta.mode(), meta.len())?;
     let mut text = Vec::new();
     file.take(MAX_PRESENCE_BYTES + 1)
         .read_to_end(&mut text)
@@ -115,6 +107,20 @@ fn read_inner(path: &Path, now_wall: i64) -> Result<Option<PresenceDoc>, Refusal
     };
     presence::validate(&doc, now_wall).map_err(Refusal::Invalid)?;
     Ok(Some(doc))
+}
+
+/// Ownership, permission and size checks on the opened handle's metadata.
+pub(crate) fn vet(file_uid: u32, uid: u32, mode: u32, len: u64) -> Result<(), Refusal> {
+    if file_uid != uid {
+        return Err(Refusal::ForeignOwner);
+    }
+    if mode & 0o022 != 0 {
+        return Err(Refusal::Writable);
+    }
+    if len > MAX_PRESENCE_BYTES {
+        return Err(Refusal::TooLarge);
+    }
+    Ok(())
 }
 
 /// True when something exists at `path` that a settlement would have to look at (a
