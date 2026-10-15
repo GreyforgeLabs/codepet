@@ -421,20 +421,43 @@ Item {
                 test.requestBaseline = fake.seq
                 pet.selected = false
                 pet.clearTransients()
-                var elapsed = 0, wakes = 0, minInterval = 1e9, maxInterval = 0, offGrid = 0
+                var elapsed = 0, wakes = 0, minInterval = 1e9, maxInterval = 0, offGrid = 0, stillWakes = 0, stillMs = 0
                 while (elapsed < 600000) {
                     var iv = pet.timerInterval
                     minInterval = Math.min(minInterval, iv)
                     maxInterval = Math.max(maxInterval, iv)
                     if (iv % 200 !== 0) offGrid += 1
+                    if (!pet.walking) { stillWakes += 1; stillMs += iv }
                     elapsed += iv
                     wakes += 1
                     pet.cosmeticTick()
                 }
+                console.log("idle wake rate: " + wakes + " wakes in 10 min; " + stillWakes + " while still over "
+                            + Math.round(stillMs / 1000) + " s = " + (stillWakes / (stillMs / 60000)).toFixed(1) + "/min")
                 test.check(fake.seq === test.requestBaseline, "no requests during 10 simulated idle minutes")
                 test.check(minInterval >= 200 && offGrid === 0, "every wake is on the 200 ms grid (≤ 5 updates/s)")
                 test.check(maxInterval >= 2000, "idle pauses switch to one long wake (max " + maxInterval + " ms)")
                 test.check(wakes < 3000, "fewer wakes than a fixed 200 ms tick: " + wakes + " in 10 min")
+                // While still, a pause is one wake for its whole length (spec §12, about 0.1
+                // wakeups/s); only the short idle beat between pauses animates.
+                test.check(maxInterval > 8000, "a whole idle pause is a single wake (max " + maxInterval + " ms)")
+                test.check(stillWakes / (stillMs / 60000) <= 24,
+                           "still-pet wakes stay low: " + (stillWakes / (stillMs / 60000)).toFixed(1) + "/min")
+                // A single-frame hold (critical needs_care cannot roam) has nothing to animate.
+                fake.snapshot = test.snap({life: test.lifeWith({status: "critical"}),
+                                           lifecycle: {needs: [], critical: {need: "thirst", action: "water"}}})
+                pet.stopMoving(); pet.resting = false; pet.baseElapsedMs = 0; pet.updateInterval()
+                var holdWakes = 0, holdMs = 0, holdFrames = {}
+                while (holdMs < 120000) {
+                    holdMs += pet.timerInterval
+                    holdWakes += 1
+                    pet.cosmeticTick()
+                    holdFrames[pet.displayState + ":" + pet.frame] = true
+                }
+                test.check(Object.keys(holdFrames).join(",") === "needs_care:0" && holdWakes <= 16,
+                           "a single-frame hold wakes only once per pause: " + holdWakes + " wakes in 2 min")
+                test.check(fake.seq === test.requestBaseline, "and sends nothing")
+                fake.snapshot = test.snap({})
                 // No life: memorial, nothing to care for, Adopt offered.
                 fake.snapshot = test.snap({life: null, lifecycle: null})
                 test.check(pet.displayState === "memorial" && test.spriteUrl(pet) === test.base + "_memorial.webp", "no life renders the memorial")

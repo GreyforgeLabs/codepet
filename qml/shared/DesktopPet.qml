@@ -250,18 +250,21 @@ Item {
             return
         }
         if (resting) {
-            resting = false
             baseElapsedMs = 0
             idleTicks -= Math.round(dt / 200)
             if (idleTicks <= 0) {
-                if (selected || hovered || !PetStateMachine.canRoam(facts)) idleTicks = 25
-                else startMoving()
+                // The pause is over: walk, or (held by a click, hover or a state that
+                // cannot roam) one more beat followed by a whole new pause.
+                if (selected || hovered || !PetStateMachine.canRoam(facts)) idleTicks = randomPause()
+                else { resting = false; startMoving(); updateInterval(); return }
             }
+            // A single-frame hold (needs_care, error) has no beat to play: keep resting.
+            resting = PetStateMachine.frameCount(displayMeta) <= 1
             updateInterval()
             return
         }
         baseElapsedMs += dt
-        if (baseElapsedMs >= PetStateMachine.cycleMs(displayMeta)) {
+        if (baseElapsedMs >= PetStateMachine.cycleMs(displayMeta) || PetStateMachine.frameCount(displayMeta) <= 1) {
             // Beat done: hold the first frame and sleep until the next beat or walk.
             baseElapsedMs = 0
             resting = true
@@ -275,7 +278,9 @@ Item {
         } else if (walking) {
             ms = 200
         } else if (resting) {
-            ms = Math.min(8000, Math.max(200, idleTicks * 200))
+            // One wake for the whole remaining pause (about 0.1 wakeups/s, spec §12),
+            // bounded so a malformed pause range cannot park the scene for long.
+            ms = Math.min(60000, Math.max(200, idleTicks * 200))
         } else {
             ms = PetStateMachine.frameMsOf(displayMeta)
         }
