@@ -9,7 +9,13 @@ pub const MAX_PROMPT_BYTES: usize = 16 * 1024;
 pub const MAX_FRAME_BYTES: usize = 64 * 1024;
 pub const MAX_EVENTS: usize = 128;
 pub const MAX_TASKS: usize = 256;
+/// Override reasons are 1..=512 bytes after trimming, without NUL (core, protocol, storage).
+pub const MAX_OVERRIDE_REASON_BYTES: usize = 512;
 pub const PROTOCOL_VERSION: u16 = 1;
+/// Meter values are integer hundredths: 7000 = 70.0.
+pub const METER_START: u16 = 7000;
+pub const METER_MAX: u16 = 10000;
+pub const REWARD_HUNDREDTHS: u16 = 2000;
 pub type JobId = u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,7 +26,25 @@ pub enum Category {
     Hygiene,
 }
 impl Category {
-    fn index(self) -> usize {
+    /// Stable order shared by meters and `Settings::decay_per_hour`.
+    pub const ALL: [Self; 4] = [
+        Self::Hunger,
+        Self::Thirst,
+        Self::MentalHealth,
+        Self::Hygiene,
+    ];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hunger => "hunger",
+            Self::Thirst => "thirst",
+            Self::MentalHealth => "mental_health",
+            Self::Hygiene => "hygiene",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.as_str() == s)
+    }
+    pub fn index(self) -> usize {
         match self {
             Self::Hunger => 0,
             Self::Thirst => 1,
@@ -35,16 +59,22 @@ pub struct Meters {
 }
 impl Default for Meters {
     fn default() -> Self {
-        Self { values: [7000; 4] }
+        Self {
+            values: [METER_START; 4],
+        }
     }
 }
 impl Meters {
     pub fn hundredths(&self, category: Category) -> u16 {
         self.values[category.index()]
     }
+    /// One fixed acceptance reward, clamped to the meter maximum.
+    pub fn apply_reward(current: u16) -> u16 {
+        current.saturating_add(REWARD_HUNDREDTHS).min(METER_MAX)
+    }
     fn reward(&mut self, category: Category) {
         let v = &mut self.values[category.index()];
-        *v = v.saturating_add(2000).min(10000);
+        *v = Self::apply_reward(*v);
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,8 +111,36 @@ pub enum Provider {
     ClaudeCode,
 }
 impl Provider {
+    pub const ALL: [Self; 5] = [
+        Self::Mock,
+        Self::Codex,
+        Self::OpenCode,
+        Self::Hermes,
+        Self::ClaudeCode,
+    ];
     pub fn supported(self) -> bool {
         self == Self::Mock
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mock => "mock",
+            Self::Codex => "codex",
+            Self::OpenCode => "opencode",
+            Self::Hermes => "hermes",
+            Self::ClaudeCode => "claude_code",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.as_str() == s)
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Mock => "Mock",
+            Self::Codex => "Codex",
+            Self::OpenCode => "OpenCode",
+            Self::Hermes => "Hermes",
+            Self::ClaudeCode => "Claude Code",
+        }
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,6 +208,71 @@ pub enum State {
     RecoveryRequired,
 }
 impl State {
+    pub const ALL: [Self; 13] = [
+        Self::Draft,
+        Self::Preparing,
+        Self::Running,
+        Self::WaitingForUser,
+        Self::Verifying,
+        Self::ReviewReady,
+        Self::Cancelling,
+        Self::Cancelled,
+        Self::Failed,
+        Self::Interrupted,
+        Self::AcceptedArtifact,
+        Self::Discarded,
+        Self::RecoveryRequired,
+    ];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Preparing => "preparing",
+            Self::Running => "running",
+            Self::WaitingForUser => "waiting_for_user",
+            Self::Verifying => "verifying",
+            Self::ReviewReady => "review_ready",
+            Self::Cancelling => "cancelling",
+            Self::Cancelled => "cancelled",
+            Self::Failed => "failed",
+            Self::Interrupted => "interrupted",
+            Self::AcceptedArtifact => "accepted_artifact",
+            Self::Discarded => "discarded",
+            Self::RecoveryRequired => "recovery_required",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|st| st.as_str() == s)
+    }
+    /// Terminal execution states (spec §8). They never occupy the slot.
+    pub fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Cancelled
+                | Self::Failed
+                | Self::Interrupted
+                | Self::AcceptedArtifact
+                | Self::Discarded
+        )
+    }
+    /// Spec §8 transition table restricted to the states that exist in this milestone.
+    /// `waiting_for_user` is a running substate; `recovery_required` may only be abandoned.
+    pub fn allowed_transition(from: Self, to: Self) -> bool {
+        use State::*;
+        matches!(
+            (from, to),
+            (Draft, Preparing)
+                | (Preparing, Running | Failed | Cancelling | Interrupted)
+                | (
+                    Running,
+                    WaitingForUser | Verifying | Failed | Cancelling | Interrupted
+                )
+                | (WaitingForUser, Running | Failed | Cancelling | Interrupted)
+                | (Verifying, ReviewReady | Failed | Cancelling | Interrupted)
+                | (Cancelling, Cancelled | Interrupted)
+                | (ReviewReady, AcceptedArtifact | Discarded | RecoveryRequired)
+                | (RecoveryRequired, Discarded)
+        )
+    }
     pub fn occupies_slot(self) -> bool {
         matches!(
             self,
@@ -168,6 +291,19 @@ pub enum Verification {
     Passed,
     Failed,
     NotVerified,
+}
+impl Verification {
+    pub const ALL: [Self; 3] = [Self::Passed, Self::Failed, Self::NotVerified];
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+            Self::NotVerified => "not_verified",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|v| v.as_str() == s)
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Review {
@@ -455,15 +591,15 @@ impl Engine {
         self.require(id, &[State::ReviewReady])?;
         let reason = override_reason.map(|r| r.trim().to_owned());
         if review.verification != Verification::Passed
-            && reason
-                .as_ref()
-                .is_none_or(|r| r.is_empty() || r.len() > 512 || r.contains('\0'))
+            && reason.as_ref().is_none_or(|r| {
+                r.is_empty() || r.len() > MAX_OVERRIDE_REASON_BYTES || r.contains('\0')
+            })
         {
             return Err(Error::OverrideRequired);
         }
         if reason
             .as_ref()
-            .is_some_and(|r| r.len() > 512 || r.contains('\0'))
+            .is_some_and(|r| r.len() > MAX_OVERRIDE_REASON_BYTES || r.contains('\0'))
         {
             return Err(Error::OverrideRequired);
         }
@@ -495,7 +631,9 @@ impl Engine {
                 _ => None,
             };
             if let Some(state) = next {
-                self.tasks.get_mut(&id).expect("existing job").state = state;
+                let task = self.tasks.get_mut(&id).expect("existing job");
+                debug_assert!(State::allowed_transition(task.state, state));
+                task.state = state;
                 self.publish(id);
             }
         }
@@ -530,7 +668,11 @@ impl Engine {
         }
     }
     fn transition(&mut self, id: JobId, state: State) -> Result<(), Error> {
-        self.tasks.get_mut(&id).ok_or(Error::UnknownJob)?.state = state;
+        let task = self.tasks.get_mut(&id).ok_or(Error::UnknownJob)?;
+        if !State::allowed_transition(task.state, state) {
+            return Err(Error::InvalidTransition);
+        }
+        task.state = state;
         self.publish(id);
         Ok(())
     }

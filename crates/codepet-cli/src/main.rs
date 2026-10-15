@@ -1,35 +1,70 @@
-use codepet_core::{Category, Draft, Engine, Provider, Verification};
+//! CodePet short commands. No daemon: each invocation answers one explicit request and
+//! exits; only a successful `rpc` task.start continues as that job's mock supervisor.
+mod demo;
+mod errors;
+mod rpc;
+mod supervisor;
+
+use std::io::Write;
+
+const HELP: &str = "CodePet (milestone 1: durable mock execution)
+  codepet providers   Show provider support (mock only)
+  codepet state       Print the state.get snapshot as JSON
+  codepet rpc         Answer one protocol request frame read from stdin
+  codepet mock-demo   Explicitly run an in-memory simulation
+No daemon, real provider, project IO, timers or background polling. Only an explicit
+task.start runs a per-job mock supervisor, which spawns no process.";
+
+const PROVIDERS: &str = "Mock: available (simulation only)
+Codex: unsupported
+OpenCode: unsupported
+Hermes: unsupported
+Claude Code: unsupported";
+
 fn main() {
-    match std::env::args().nth(1).as_deref() {
-        Some("providers") => println!("Mock: available (simulation only)\nCodex: unsupported\nOpenCode: unsupported\nHermes: unsupported\nClaude Code: unsupported"),
-        Some("mock-demo") => demo(),
-        None | Some("--help") | Some("help") => println!("CodePet prototype\n  codepet providers   Show mock-only support\n  codepet mock-demo   Explicitly run an in-memory simulation\nNo daemon, real provider, project IO, persistence, or background jobs."),
-        Some(other) => { eprintln!("Unsupported command: {other}. Use --help."); std::process::exit(2); }
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let command = args.first().map(|a| a.to_str());
+    let code = match (command, args.len()) {
+        (None, _) | (Some(Some("--help" | "help")), 1) => {
+            println!("{HELP}");
+            0
+        }
+        (Some(Some("providers")), 1) => {
+            println!("{PROVIDERS}");
+            0
+        }
+        (Some(Some("mock-demo")), 1) => {
+            demo::run();
+            0
+        }
+        (Some(Some("rpc")), 1) => rpc::run(),
+        (Some(Some("state")), 1) => state(),
+        (Some(Some(c @ ("--help" | "help" | "providers" | "mock-demo" | "rpc" | "state"))), _) => {
+            usage(&format!("{c} takes no arguments"))
+        }
+        (Some(Some(other)), _) => usage(&format!("Unsupported command: {other}")),
+        (Some(None), _) => usage("Unsupported command"),
+    };
+    std::process::exit(code);
+}
+
+fn state() -> i32 {
+    match rpc::state_get() {
+        Ok(value) => {
+            let mut out = std::io::stdout().lock();
+            match writeln!(out, "{value}").and_then(|()| out.flush()) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            }
+        }
+        Err(f) => {
+            let _ = writeln!(std::io::stderr(), "{}: {}", f.code, f.message);
+            1
+        }
     }
 }
-fn demo() {
-    let mut engine = Engine::default();
-    let id = engine
-        .create(Draft {
-            category: Category::MentalHealth,
-            provider: Provider::Mock,
-            folder: "/mock/project".into(),
-            scope: vec!["src".into()],
-            instructions: "Explain a mock state machine; do not read or edit files".into(),
-        })
-        .expect("valid mock draft");
-    let token = engine.preflight(id).expect("mock validation");
-    engine
-        .start(id, token)
-        .expect("explicit mock-demo invocation");
-    engine.mock_prepared(id).unwrap();
-    engine.mock_exited(id, true).unwrap();
-    let digest = engine.mock_review(id,"SIMULATED artifact: draft -> explicit Start -> running -> review -> explicit acceptance.".into(),Verification::NotVerified).unwrap();
-    for event in engine.events_after(0).unwrap() {
-        println!(
-            "seq={} job={} state={:?}",
-            event.seq, event.job_id, event.state
-        );
-    }
-    println!("Review digest={digest}; NOT VERIFIED; no acceptance or reward occurs in this demo. Mental health={}/100. No files touched and no provider launched.",engine.meters().hundredths(Category::MentalHealth)/100);
+
+fn usage(message: &str) -> i32 {
+    let _ = writeln!(std::io::stderr(), "{message}. Use --help.");
+    2
 }

@@ -337,3 +337,126 @@ fn out_of_order_or_wrong_job_events_fail_closed() {
     assert_eq!(e.mock_prepared(999), Err(Error::UnknownJob));
     assert_eq!(e.cancel(id), Err(Error::InvalidTransition));
 }
+#[test]
+fn string_forms_round_trip_and_are_stable() {
+    let states: Vec<_> = State::ALL.iter().map(|s| s.as_str()).collect();
+    assert_eq!(
+        states,
+        [
+            "draft",
+            "preparing",
+            "running",
+            "waiting_for_user",
+            "verifying",
+            "review_ready",
+            "cancelling",
+            "cancelled",
+            "failed",
+            "interrupted",
+            "accepted_artifact",
+            "discarded",
+            "recovery_required"
+        ]
+    );
+    for s in State::ALL {
+        assert_eq!(State::parse(s.as_str()), Some(s));
+    }
+    let cats: Vec<_> = Category::ALL.iter().map(|c| c.as_str()).collect();
+    assert_eq!(cats, ["hunger", "thirst", "mental_health", "hygiene"]);
+    for (i, c) in Category::ALL.into_iter().enumerate() {
+        assert_eq!(Category::parse(c.as_str()), Some(c));
+        assert_eq!(c.index(), i);
+    }
+    let providers: Vec<_> = Provider::ALL.iter().map(|p| p.as_str()).collect();
+    assert_eq!(
+        providers,
+        ["mock", "codex", "opencode", "hermes", "claude_code"]
+    );
+    let labels: Vec<_> = Provider::ALL.iter().map(|p| p.label()).collect();
+    assert_eq!(
+        labels,
+        ["Mock", "Codex", "OpenCode", "Hermes", "Claude Code"]
+    );
+    for p in Provider::ALL {
+        assert_eq!(Provider::parse(p.as_str()), Some(p));
+        assert_eq!(p.supported(), p == Provider::Mock);
+    }
+    let v: Vec<_> = Verification::ALL.iter().map(|v| v.as_str()).collect();
+    assert_eq!(v, ["passed", "failed", "not_verified"]);
+    for x in Verification::ALL {
+        assert_eq!(Verification::parse(x.as_str()), Some(x));
+    }
+    for bad in [
+        "", "Draft", "DRAFT", " draft", "draft\0", "accepted", "applying",
+    ] {
+        assert_eq!(State::parse(bad), None);
+    }
+    assert_eq!(Category::parse("mental health"), None);
+    assert_eq!(Provider::parse("claude-code"), None);
+    assert_eq!(Verification::parse("verified"), None);
+}
+#[test]
+fn transition_table_matches_spec() {
+    use State::*;
+    let allowed = [
+        (Draft, Preparing),
+        (Preparing, Running),
+        (Preparing, Failed),
+        (Preparing, Cancelling),
+        (Preparing, Interrupted),
+        (Running, WaitingForUser),
+        (Running, Verifying),
+        (Running, Failed),
+        (Running, Cancelling),
+        (Running, Interrupted),
+        (WaitingForUser, Running),
+        (WaitingForUser, Failed),
+        (WaitingForUser, Cancelling),
+        (WaitingForUser, Interrupted),
+        (Verifying, ReviewReady),
+        (Verifying, Failed),
+        (Verifying, Cancelling),
+        (Verifying, Interrupted),
+        (Cancelling, Cancelled),
+        (Cancelling, Interrupted),
+        (ReviewReady, AcceptedArtifact),
+        (ReviewReady, Discarded),
+        (ReviewReady, RecoveryRequired),
+        (RecoveryRequired, Discarded),
+    ];
+    for from in State::ALL {
+        for to in State::ALL {
+            assert_eq!(
+                State::allowed_transition(from, to),
+                allowed.contains(&(from, to)),
+                "{from:?} -> {to:?}"
+            );
+        }
+    }
+    for s in State::ALL {
+        if s.is_terminal() {
+            assert!(!s.occupies_slot());
+            assert!(State::ALL
+                .iter()
+                .all(|to| !State::allowed_transition(s, *to)));
+        }
+        assert!(!State::allowed_transition(s, Draft));
+    }
+    assert!(!Draft.is_terminal() && !Draft.occupies_slot());
+    let terminal: Vec<_> = State::ALL.into_iter().filter(|s| s.is_terminal()).collect();
+    assert_eq!(
+        terminal,
+        [Cancelled, Failed, Interrupted, AcceptedArtifact, Discarded]
+    );
+    // Review-ready and recovery are not terminal: they still hold the slot.
+    assert!(ReviewReady.occupies_slot() && RecoveryRequired.occupies_slot());
+}
+#[test]
+fn pure_reward_helper_is_fixed_and_clamped() {
+    assert_eq!(Meters::apply_reward(METER_START), 9000);
+    assert_eq!(Meters::apply_reward(0), REWARD_HUNDREDTHS);
+    assert_eq!(Meters::apply_reward(8000), METER_MAX);
+    assert_eq!(Meters::apply_reward(9999), METER_MAX);
+    assert_eq!(Meters::apply_reward(METER_MAX), METER_MAX);
+    assert_eq!(Meters::apply_reward(u16::MAX), METER_MAX);
+}

@@ -1,3 +1,94 @@
+# Validation
+
+## Milestone 1 on greyarch, 2026-10-14 (after the review fixes)
+
+Local workstation (Arch Linux, kernel 7.2.5-3-omarchy, x86_64). This is not an Omarchy,
+Quickshell or desktop runtime validation.
+
+### Platform versions recorded (handoff step 5)
+
+Omarchy 4.0.4, Quickshell 0.3.1, Qt 6.11.2 (qt6-base, qt6-declarative), bubblewrap 0.12.0,
+system SQLite 3.53.4 (unused; the build bundles 3.51.3), kernel 7.2.5-3-omarchy, Hyprland
+session. These are recorded, not certified: no containment or desktop integration was tested.
+Upstream Omagotchi/OmaPets commits are not pinned yet and no upstream code or assets are used.
+
+### Toolchain
+
+- rustc 1.98.1 (48a229cea 2026-09-01), cargo 1.98.1, clippy 0.1.98, rustfmt 1.9.0 (the
+  default `stable` rustup toolchain on this host)
+- GCC 16.2.1 (builds the bundled SQLite 3.51.3)
+- Qt 6.11.2 (`/usr/lib/qt6/bin/qmllint`, `qml6`), Quickshell 0.3.1
+- Every cargo command ran offline (`CARGO_NET_OFFLINE=true`) with 2 build jobs inside a
+  `systemd-run --user --scope` with `MemoryMax=3G`, against the local registry cache.
+
+**Rust 1.85.0, the declared minimum and the CI pin, was not run here.** That toolchain is not
+installed on this host and none was installed for this run. The dependencies' declared
+`rust-version` fields are all 1.85 or lower (rusqlite and libsqlite3-sys declare none), but
+the MSRV is unverified until CI or a 1.85.0 toolchain runs the gates. No hosted CI run is
+claimed.
+
+### Gates
+
+- `cargo fmt --all --check`: passed
+- `cargo test --workspace --locked`: **143 passed, 0 failed** (core 24, protocol 39,
+  storage 54, CLI unit 2, CLI integration: `cli` 7, `crash` 5, `rpc` 12; no doctests)
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed
+- `cargo run -p codepet --locked -- mock-demo`: reached ReviewReady, NOT VERIFIED, mental
+  health 70/100, no acceptance, no files touched
+- `qmllint -I qml` on all 9 QML files under `qml/shared`, `qml/standalone`, `qml/omarchy` and
+  `qml/tests/PreviewSmoke.qml`, plus the staged Quickshell harness: no output. This qmllint
+  exits 0 even with warnings; a deliberately broken file confirmed that it does report them.
+- `qml6 qml/tests/PreviewSmoke.qml` (offscreen, under `timeout`): 34 checks passed.
+  `qml6 qml/standalone/Main.qml` (offscreen, stopped by `timeout`) loaded with no QML errors.
+- Quickshell harness against the test stub `fake_rpc.py` (headless, under `timeout`):
+  15 checks passed.
+- Quickshell harness `qml/tests/quickshell/real_rpc.qml` against the **real** debug
+  `codepet rpc` binary (headless Quickshell 0.3.1, `env -i`, offscreen, isolated
+  `XDG_STATE_HOME`/`HOME`, under `timeout`): 9 checks passed. It covers fresh idle state,
+  create, preflight, explicit start, the mock supervisor reaching `review_ready` NOT VERIFIED,
+  one acceptance reward, same-request-id replay and the resulting Rust-owned snapshot
+  (mental health 9000, slot free). The project folder stayed empty; the state directory was
+  0700 and the database 0600. Quickshell logged its usual IPC-socket error for the long
+  scratch path; it does not affect the harness.
+
+All tests use temporary `XDG_STATE_HOME` and `HOME` directories; none touch the real state
+directory. Integration tests run the built `codepet` binary, one process per request.
+
+### Review findings reproduced and fixed
+
+Each was first reproduced against the debug binary in temporary directories, then fixed with
+a regression test:
+
+- A valid draft could hold the active slot forever because every response carrying its
+  review digest exceeded 64 KiB. Lists now carry task briefs, drafts are capped at 32 KiB
+  of JSON and artifacts at 24 KiB; tests prove maximal tasks can be read, reviewed and
+  discarded, and every response fits.
+- A 65,530-byte `task.create` committed a draft and answered `OUTPUT_LIMIT`; it is now
+  refused with `INVALID_PARAMS` before anything is stored.
+- A tampered artifact could be accepted with the original digest and rewarded. Review and
+  acceptance now recompute the digest and refuse with `REVIEW_CHANGED`.
+- A 600-byte (200-character CJK) override reason got `OVERRIDE_REQUIRED`; it is now
+  `INVALID_PARAMS`, with one 512-byte limit in core, protocol, storage and QML.
+- A folder under a symlink into the state directory passed preflight; with `HOME` unset the
+  home directory passed preflight. Both are refused now, and start repeats the folder check.
+- A backward clock step extended a preflight token; history paging skipped tasks created in
+  the same millisecond; the UI had no way to resolve `recovery_required`. All fixed and
+  tested.
+
+### Not run / not established
+
+- Rust 1.85.0 (see above) and GitHub Actions
+- A live Omarchy panel or bar widget, any visible
+  window, keyboard or screen-reader use, X11 or Wayland sessions, other distributions
+- Real providers, staging, sandboxing, apply/rollback (not implemented)
+- CPU, memory or binary-size measurements
+- Fuzzing; tests are example-based
+
+---
+
+The record below is the earlier scaffold validation, kept unchanged as history. It predates
+milestone 1 and describes the dependency-free scaffold.
+
 # Scaffold validation
 
 Verified in the Linux cloud build workspace on 2026-10-14. This is not Omarchy/Qt runtime validation.

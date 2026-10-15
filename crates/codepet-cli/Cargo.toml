@@ -7,6 +7,12 @@ license.workspace = true
 
 [dependencies]
 codepet-core = { path = "../codepet-core" }
+codepet-protocol = { path = "../codepet-protocol" }
+codepet-storage = { path = "../codepet-storage" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true
