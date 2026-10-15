@@ -20,6 +20,9 @@
 #      (without a running shell, the enable command is printed instead);
 #   5. on update, print restart advice for a running overlay and the shell.
 #
+# An update keeps the replaced release tree and plugin under ~/.cache/codepet as
+# release-backup-<version>-<ts> and plugin-backup-<ts>; only the newest of each is kept.
+#
 # It never reads, writes, moves or deletes $XDG_STATE_HOME/codepet (the pet's data):
 # the first `codepet state` after install migrates the database itself and keeps a
 # backup. It never restarts the shell or the overlay, and never arms a pet.
@@ -166,6 +169,18 @@ else
 fi
 [ -f "$BIN_SRC" ] && [ ! -L "$BIN_SRC" ] || die "no built codepet binary at $BIN_SRC"
 
+# prune_backups <prefix> <kept>: after a successful swap, remove this script's earlier
+# backups named $WORK/<prefix>*, keeping only <kept> (the one just made), so repeated
+# installs do not grow ~/.cache by a release tree each time.
+prune_backups() {
+    local old
+    for old in "$WORK/$1"*; do
+        [ "$old" != "$2" ] && [ -d "$old" ] && [ ! -L "$old" ] || continue
+        rm -rf -- "$old"
+        echo "removed older backup: $old"
+    done
+}
+
 # 2. binaries, each by temporary name then rename
 install_file() { # install_file <src> <dest>
     install -m 0755 -- "$1" "$2.tmp-$TS"
@@ -195,6 +210,8 @@ if [ -e "$RELEASE" ]; then
         next="$next.old"
     fi
     mv -T -- "$next" "$WORK/release-backup-$VERSION-$TS"
+    echo "runtime: previous copy of $VERSION kept at $WORK/release-backup-$VERSION-$TS"
+    prune_backups release-backup- "$WORK/release-backup-$VERSION-$TS"
 else
     mv -T -- "$next" "$RELEASE"
 fi
@@ -240,6 +257,7 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
         fi
         mv -T -- "$stage" "$WORK/plugin-backup-$TS"
         echo "plugin: updated $PLUGIN_DIR (previous copy: $WORK/plugin-backup-$TS)"
+        prune_backups plugin-backup- "$WORK/plugin-backup-$TS"
     else
         mv -T -- "$stage" "$PLUGIN_DIR"
         echo "plugin: installed $PLUGIN_DIR"

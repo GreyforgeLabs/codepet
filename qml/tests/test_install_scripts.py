@@ -246,6 +246,18 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual((backups[0] / "marker").read_text(), "old copy")
         self.assertEqual(len(list((e.cache / "codepet").glob("release-backup-*"))), 1)
         self.assertEqual(os.readlink(current), f"releases/{VERSION}")
+        # Another reinstall keeps only the newest backup of each kind, not one per run.
+        (plugin / "marker").write_text("second copy")
+        (qml / "marker").write_text("second runtime")
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        backups = list((e.cache / "codepet").glob("plugin-backup-*"))
+        self.assertEqual(len(backups), 1, backups)
+        self.assertEqual((backups[0] / "marker").read_text(), "second copy")
+        releases = list((e.cache / "codepet").glob("release-backup-*"))
+        self.assertEqual(len(releases), 1, releases)
+        self.assertEqual((releases[0] / "qml/marker").read_text(), "second runtime")
+        self.assertEqual(r.stdout.count("removed older backup: "), 2, r.stdout)
         enables = [c for c in e.calls() if c.startswith("omarchy plugin enable")]
         self.assertEqual(len(enables), 1, "already listed in shell.json: not enabled twice")
         self.assertIn("already listed", r.stdout)
