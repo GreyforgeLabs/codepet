@@ -1,0 +1,22 @@
+{
+ "_doc": "Per-species extraction fixes, applied by tools/petart/extract.py and copied into PROVENANCE.md. cells: keys 's<stage>/<bNN|cNN>' or '*/<bNN|cNN>' with any of source (render this file from another cell of the same stage), flip (mirror horizontally), dx/dy (canvas px nudge; dy<0 raises), fit_exclude (shrink only this cell if it would not fit), why (required). sheets: keys 's<stage>/<base|care>' with scale (relative size multiplier for every cell of that sheet, used when the generator drew one sheet of a stage at a different character size than the other), why (required).",
+ "species": {
+  "penguin": {
+   "sheets": {
+    "s2/care": {"scale": 0.78, "why": "The stage-2 care sheet draws the penguin about 1.28x larger than its base sheet (standing heights of b00 vs upright care poses); normalised so care frames match the idle size."},
+    "s3/care": {"scale": 0.8, "why": "The stage-3 care sheet draws the penguin about 1.25x larger than its base sheet; normalised to the idle size."}
+   }
+  },
+  "robot": {
+   "sheets": {
+    "s2/care": {"scale": 1.22, "why": "The stage-2 care sheet draws the robot about 0.8x the size of its base sheet (b00 vs c10 standing heights to the antenna tip); normalised to the idle size."},
+    "s3/care": {"scale": 1.25, "why": "The stage-3 care sheet draws the robot about 0.79x the size of its base sheet; normalised to the idle size."}
+   }
+  },
+  "capybara": {
+   "sheets": {
+    "s1/care": {"scale": 1.3, "why": "The stage-1 care sheet draws the pup about 0.76x the size of its base sheet (b02 vs c07 standing heights); normalised to the idle size."}
+   }
+  }
+ }
+}
