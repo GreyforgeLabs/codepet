@@ -12,6 +12,12 @@ import struct
 import sys
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+UNAVAILABLE_SOURCE = "not in repository; hash unavailable"
+HEX_DIGITS = frozenset("0123456789abcdef")
+
+
+def is_sha256(value):
+    return isinstance(value, str) and len(value) == 64 and set(value) <= HEX_DIGITS
 
 
 class Checks:
@@ -87,6 +93,25 @@ def verify(root):
             bool(asset.get("provenance")) and bool(asset.get("visual_qa_from_generator")),
             f"{label}: provenance and QA notes are required",
         )
+        for step_index, step in enumerate(asset.get("provenance") or []):
+            if step.get("kind") != "imagegen_edit":
+                continue
+            where = f"{label}: provenance[{step_index}]"
+            source = step.get("edit_source")
+            digest = step.get("edit_source_sha256")
+            checks.require(
+                isinstance(source, str) and source.strip(),
+                f"{where}: edit steps must name their edit_source",
+            )
+            checks.require(
+                digest == UNAVAILABLE_SOURCE or is_sha256(digest),
+                f"{where}: edit_source_sha256 must be a SHA-256 or {UNAVAILABLE_SOURCE!r}",
+            )
+            if isinstance(source, str) and source.startswith("source/"):
+                checks.require(
+                    (root / source).is_file(),
+                    f"{where}: edit_source {source} does not exist in the catalog",
+                )
         total += len(data)
 
     on_disk = {p.relative_to(root).as_posix() for p in root.rglob("*.png")}

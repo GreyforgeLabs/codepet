@@ -114,6 +114,25 @@ class VerifyCorruptionTest(unittest.TestCase):
         self.edit_manifest(lambda m: m["assets"][2].update(relative_path="../outside.png"))
         self.assert_fails_in_every_mode("path must be relative")
 
+    def test_edit_step_without_source_hash_fails_under_optimization(self):
+        def drop(manifest):
+            cat = next(a for a in manifest["assets"] if a["species"] == "cat")
+            del next(s for s in cat["provenance"] if s["kind"] == "imagegen_edit")[
+                "edit_source_sha256"
+            ]
+
+        self.edit_manifest(drop)
+        self.assert_fails_in_every_mode("edit_source_sha256 must be")
+
+    def test_dangling_edit_source_path_fails_under_optimization(self):
+        def dangle(manifest):
+            axolotl = next(a for a in manifest["assets"] if a["species"] == "axolotl")
+            step = next(s for s in axolotl["provenance"] if s["kind"] == "imagegen_edit")
+            step["edit_source"] = "source/axolotl/v1/source-sheet.png"
+
+        self.edit_manifest(dangle)
+        self.assert_fails_in_every_mode("does not exist in the catalog")
+
     def test_unlisted_png_fails_under_optimization(self):
         stray = self.root / "source" / "stray.png"
         self.remove.append(stray)

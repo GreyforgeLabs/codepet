@@ -13,7 +13,7 @@
     "Evolution stages and complete care-action animation sets are not included.",
     "No runtime integration or 96px render validation was performed.",
     "Alpha was measured directly. Hidden RGB may look brown in alpha-unaware previews; zero-alpha RGB is not a solid backdrop. Semi-transparent subjects and edge fringes require compositing review.",
-    "Selected generation/edit bytes are preserved exactly. Unselected originals are retained separately and are not included in this catalog."
+    "Selected generation/edit bytes are preserved exactly. Unselected and pre-edit originals (cat v1 before its background edit, axolotl v1) are not in this repository, and their hashes and storage location were not recorded, so each edit step records its source as \"not in repository; hash unavailable\"."
   ],
   "assets": [
     {
@@ -46,7 +46,9 @@
           "kind": "imagegen_edit",
           "tool": "built-in image_gen__imagegen",
           "prompt": "Edit only the background of this twelve-pose kitten sheet. Remove ALL brown beige gradient backdrop completely to genuine transparent alpha pixels. Preserve exact kitten identity, every whisker, fur edge, all twelve poses, positions, scale and canvas layout. No checkerboard painted into image, no new color background, no backdrop or floor or cast shadows. This must be true transparent PNG with isolated characters.",
-          "reason": "Background-removal edit requested before pixel inspection established original already contained genuine alpha."
+          "reason": "Background-removal edit requested before pixel inspection established original already contained genuine alpha.",
+          "edit_source": "cat v1 pre-edit generation (not in repository)",
+          "edit_source_sha256": "not in repository; hash unavailable"
         }
       ],
       "intended_grid": {
@@ -810,7 +812,8 @@
           "kind": "imagegen_edit",
           "tool": "built-in image_gen__imagegen",
           "prompt": "Background-extraction edit only. Preserve all twelve axolotl poses and their small aquatic water outlines/bubbles exactly, preserving all eyes, gills, fins, limbs, palette and 4-column 3-row composition. Remove the broad blue/grey rectangular backdrop and every faint haze pixel in the gutters and outer margins so those areas are exactly transparent alpha zero. Preserve local water vignettes but no overall backdrop. Full animals retain their opacity; no re-design, no new details, no text. Clean transparent PNG sprite source sheet.\n",
-          "edit_source": "source/axolotl/v1/source-sheet.png"
+          "edit_source": "axolotl v1 source sheet (not in repository)",
+          "edit_source_sha256": "not in repository; hash unavailable"
         }
       ],
       "intended_grid": {

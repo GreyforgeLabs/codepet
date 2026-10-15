@@ -28,7 +28,7 @@ Paths below are relative to this directory. The [manifest](manifest.json) record
 
 Created with OpenAI image generation for CodePet. Original generation/edit prompts are retained in the manifest; no third-party game asset pack is imported here. This records generation provenance, not a legal conclusion about copyright or exclusivity.
 
-Only the 15 preferred versions are committed: cat v1 uses the previously delivered alpha edit; axolotl v2 supersedes v1. Unselected originals remain preserved separately. The PNGs are byte-for-byte copies, with no resampling, optimization or pixel edits performed for publication.
+Only the 15 preferred versions are committed: cat v1 uses the previously delivered alpha edit; axolotl v2 supersedes v1. Unselected and pre-edit originals (the cat sheet before its background edit, axolotl v1) are not in this repository; their hashes and storage location were not recorded, so each `imagegen_edit` step in the manifest records `edit_source_sha256: "not in repository; hash unavailable"`. The PNGs are byte-for-byte copies, with no resampling, optimization or pixel edits performed for publication.
 
 ## QA limitations and next steps
 
@@ -38,7 +38,7 @@ Only the 15 preferred versions are committed: cat v1 uses the previously deliver
 - Evolution stages and complete care-action animation sets are not included.
 - No runtime integration or 96px render validation was performed.
 - Alpha was measured directly. Hidden RGB may look brown in alpha-unaware previews; zero-alpha RGB is not a solid backdrop. Semi-transparent subjects and edge fringes require compositing review.
-- Selected generation/edit bytes are preserved exactly. Unselected originals are retained separately and are not included in this catalog.
+- Selected generation/edit bytes are preserved exactly. Unselected and pre-edit originals are not in this catalog and their hashes are unavailable.
 
 Before runtime integration: inspect each pose and anatomy, crop with custom bounds where needed, normalize scale and anchors, composite against light/dark backgrounds, remove edge artifacts, register fixed props, create missing transition frames, validate loops/timing and 96px rendering, then pack a versioned atlas with explicit frame metadata. Do not assume a uniform 4×3 crop is safe.
 
