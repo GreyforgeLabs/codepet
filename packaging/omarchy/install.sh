@@ -167,7 +167,9 @@ else
     fi
     BIN_SRC="${CARGO_TARGET_DIR:-$REPO/target}/release/codepet"
 fi
-[ -f "$BIN_SRC" ] && [ ! -L "$BIN_SRC" ] || die "no built codepet binary at $BIN_SRC"
+if [ ! -f "$BIN_SRC" ] || [ -L "$BIN_SRC" ]; then
+    die "no built codepet binary at $BIN_SRC"
+fi
 
 # prune_backups <prefix> <kept>: after a successful swap, remove this script's earlier
 # backups named $WORK/<prefix>*, keeping only <kept> (the one just made), so repeated
@@ -175,7 +177,9 @@ fi
 prune_backups() {
     local old
     for old in "$WORK/$1"*; do
-        [ "$old" != "$2" ] && [ -d "$old" ] && [ ! -L "$old" ] || continue
+        if [ "$old" = "$2" ] || [ ! -d "$old" ] || [ -L "$old" ]; then
+            continue
+        fi
         rm -rf -- "$old"
         echo "removed older backup: $old"
     done
