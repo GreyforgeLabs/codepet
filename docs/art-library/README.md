@@ -50,7 +50,7 @@ From the repository root, with Python 3:
 
     python3 docs/art-library/verify.py
 
-This checks manifest structure, relative file paths, PNG headers/dimensions, sizes and SHA-256. Every check is an explicit comparison, not an `assert`, so it still runs under `python3 -O` or `PYTHONOPTIMIZE`; any mismatch is listed and the script exits 1. It does not certify pixel-level visual quality or animation readiness.
+This checks, with the Python standard library only: manifest structure; relative paths of the form `source/<species>/<version>/<file>` that match each entry's species and version; PNG signature, IHDR dimensions, bit depth 8 and the colour type implied by `mode` (6 for RGBA); sizes and SHA-256; that each grid's roles, `columns × rows` and `pose_count` agree and sum to `intended_pose_count`; provenance on every edit step; and a whole-directory inventory, compared case-insensitively, so any unlisted file (a stray `.PNG`, `.webp` or other binary) fails. The manifest's alpha statistics are not re-verified by default; `python3 docs/art-library/verify.py --alpha` recomputes them with Pillow and fails if Pillow is missing. Every check is an explicit comparison, not an `assert`, so it still runs under `python3 -O` or `PYTHONOPTIMIZE`; any mismatch is listed and the script exits 1. It does not certify pixel-level visual quality or animation readiness.
 
 The regression test corrupts a temporary copy of the catalog and expects failure in plain, `-O`, `-OO` and `PYTHONOPTIMIZE` runs:
 

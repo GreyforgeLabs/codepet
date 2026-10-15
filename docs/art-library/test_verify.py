@@ -14,6 +14,13 @@ import sys
 import tempfile
 import unittest
 
+try:
+    import PIL  # noqa: F401
+except ImportError:  # the default verifier needs only the stdlib
+    HAVE_PILLOW = False
+else:
+    HAVE_PILLOW = True
+
 CATALOG = Path(__file__).resolve().parent
 # Plain, -O, -OO and the environment form that the README's command inherits.
 MODES = (
@@ -48,11 +55,11 @@ class VerifyCorruptionTest(unittest.TestCase):
         self.restore = []
         self.remove = []
 
-    def run_verify(self, flags, extra_env):
+    def run_verify(self, flags, extra_env, args=()):
         env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
         env.update(extra_env)
         return subprocess.run(
-            [sys.executable, *flags, str(self.root / "verify.py")],
+            [sys.executable, *flags, str(self.root / "verify.py"), *args],
             cwd=self.root.parent,
             env=env,
             capture_output=True,
@@ -66,10 +73,10 @@ class VerifyCorruptionTest(unittest.TestCase):
         change(manifest)
         (self.root / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    def assert_fails_in_every_mode(self, expected):
+    def assert_fails_in_every_mode(self, expected, args=()):
         for name, flags, env in MODES:
             with self.subTest(mode=name):
-                result = self.run_verify(flags, env)
+                result = self.run_verify(flags, env, args)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertNotIn("PASS", result.stdout)
                 self.assertIn(expected, result.stderr)
@@ -138,6 +145,45 @@ class VerifyCorruptionTest(unittest.TestCase):
         self.remove.append(stray)
         shutil.copy2(self.root / json.loads(self.manifest_text)["assets"][0]["relative_path"], stray)
         self.assert_fails_in_every_mode("differ from the manifest")
+
+
+    def test_uppercase_or_other_binary_fails_under_optimization(self):
+        source = self.root / json.loads(self.manifest_text)["assets"][0]["relative_path"]
+        for name in ("STRAY.PNG", "stray.webp", "notes.txt"):
+            with self.subTest(file=name):
+                stray = self.root / "source" / name
+                self.remove.append(stray)
+                shutil.copy2(source, stray)
+                self.assert_fails_in_every_mode("unlisted=")
+                stray.unlink()
+
+    def test_mode_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][4].update(mode="RGB"))
+        self.assert_fails_in_every_mode("IHDR colour type 6 does not match mode 'RGB'")
+
+    def test_grid_roles_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][6]["intended_grid"]["roles"].pop())
+        self.assert_fails_in_every_mode("grid roles, columns x rows and pose_count disagree")
+
+    def test_intended_pose_total_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m.update(intended_pose_count=179))
+        self.assert_fails_in_every_mode("not intended_pose_count")
+
+    def test_species_path_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][7].update(species="ferret"))
+        self.assert_fails_in_every_mode("path must be source/<species>/<version>/<file>")
+
+    @unittest.skipUnless(HAVE_PILLOW, "the optional --alpha recheck needs Pillow")
+    def test_alpha_recheck_passes_and_catches_wrong_statistics(self):
+        result = self.run_verify(["-I", "-O"], {}, ["--alpha"])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("alpha statistics recomputed", result.stdout)
+        self.edit_manifest(lambda m: m["assets"][0]["alpha"].update(fully_opaque_pixels=1))
+        self.assert_fails_in_every_mode("alpha statistics", args=["--alpha"])
+
+    def test_unknown_argument_is_rejected(self):
+        result = self.run_verify(["-I"], {}, ["--skip-hashes"])
+        self.assertEqual(result.returncode, 2)
 
 
 if __name__ == "__main__":
