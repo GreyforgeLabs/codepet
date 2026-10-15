@@ -200,15 +200,23 @@ var NEED_WORDS = {
     hygiene: { adjective: "a bit grubby", action: "A wash", noun: "a wash", from: "grubbiness" }
 }
 
-// "about 2 h 10 min of active time"
+// "about 2 h 10 min of active time". Whole minutes rounded down, like LifeText.formatActive
+// and CodePetBar.formatActive, so an estimate never claims more time than the rules give
+// (a countdown of 90 s reads "about 1 min", 30 s "less than a minute").
 function formatActive(ms) {
-    var minutes = Math.max(1, Math.round(Number(ms) / 60000))
-    if (!isFinite(minutes)) return "a while of active time"
+    var n = Number(ms)
+    if (!isFinite(n)) return "a while of active time"
+    var minutes = Math.floor(Math.max(0, n) / 60000)
+    if (minutes < 1) return "less than a minute of active time"
     var h = Math.floor(minutes / 60), m = minutes % 60
     var parts = []
     if (h > 0) parts.push(h + " h")
-    if (m > 0 || h === 0) parts.push(m + " min")
+    if (m > 0) parts.push(m + " min")
     return "about " + parts.join(" ") + " of active time"
+}
+
+function capitalized(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 function needOf(lifecycle, predicate) {
@@ -250,7 +258,7 @@ function statusLine(snap) {
         if (w) {
             var text = name + " is getting " + w.adjective + ". " + w.action + " will help."
             if (typeof low.until_critical_ms === "number" && low.until_critical_ms > 0)
-                text += " " + formatActive(low.until_critical_ms).replace(/^about/, "About") + " before it becomes serious."
+                text += " " + capitalized(formatActive(low.until_critical_ms)) + " before it becomes serious."
             return text
         }
         return name + " could use some care."

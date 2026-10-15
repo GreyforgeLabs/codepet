@@ -349,6 +349,13 @@ test('statusLine copy follows the calm templates and never predicts a death', ()
     assert.equal(SM.formatActive(60000), 'about 1 min of active time');
     assert.equal(SM.formatActive(3600000), 'about 1 h of active time');
     assert.equal(SM.formatActive(7800000), 'about 2 h 10 min of active time');
+    // Rounded down, never up: an estimate never claims more time than the rules give.
+    assert.equal(SM.formatActive(30000), 'less than a minute of active time');
+    assert.equal(SM.formatActive(90000), 'about 1 min of active time');
+    assert.equal(SM.formatActive(3570000), 'about 59 min of active time');
+    assert.equal(SM.statusLine({ life: life({ status: 'warning' }),
+                                 lifecycle: { needs: [need('thirst', 'low', { until_critical_ms: 30000 })] } }),
+        'Ginger is getting thirsty. Water will help. Less than a minute of active time before it becomes serious.');
     const lines = [];
     for (const status of ['healthy', 'warning', 'critical'])
         for (const mode of ['permadeath', 'gentle'])
@@ -444,4 +451,18 @@ test('hitRect follows the stage: young pets do not capture clicks around them', 
     // Without a stage (older callers) the union box is used; out-of-range stages clamp.
     assert.ok(near(plain(R.hitRect('cat', 192, false)), scaled(REAL.species.cat.geometry.hitBox, 192)));
     assert.ok(near(plain(R.hitRect('cat', 192, false, 9)), scaled(REAL.species.cat.geometry.stageHitBoxes['3'], 192)));
+});
+
+// Review finding: the desktop pet and the life panel must show the same countdown for the
+// same remaining_ms (both rounded down).
+test('statusLine and LifeText.criticalText render the same permadeath countdown', () => {
+    const LT = loadLibrary('../shared/LifeText.js');
+    for (const remaining of [0, 30000, 59999, 60000, 90000, 3570000, 3600000, 18630000]) {
+        const pet = SM.statusLine({ life: { name: 'Ginger', status: 'critical', mode: 'permadeath' },
+                                    lifecycle: { critical: { need: 'thirst', remaining_ms: remaining } } });
+        const panel = LT.criticalText('Ginger', 'thirst', remaining, 'permadeath');
+        const span = (text) => text.match(/after (.*) of active time\.$/)[1];
+        assert.equal(span(pet), span(panel), `remaining_ms ${remaining}`);
+        assert.equal(SM.formatActive(remaining), LT.formatActive(remaining), `formatActive ${remaining}`);
+    }
 });
