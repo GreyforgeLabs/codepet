@@ -67,3 +67,7 @@ The desired architecture has **no permanently resident Rust daemon**: short expl
 - [QML UI](qml/README.md)
 
 `docs/source-manifest.sha256` records the original import and is now stale: on 2026-10-14, 9 of its entries no longer match (milestone 1 changed the Cargo files, README, core, CLI and QML README) and 2 listed QML files were removed (see [qml/README.md](qml/README.md)). It is kept unchanged as the import record. No upstream code or sprites are vendored. The original vector cat assets have their own provenance record under `qml/assets/`. Preserve this distinction until upstream commits, assets and licenses are audited.
+
+## Source-art catalog
+
+The [generated art library](docs/art-library/README.md) preserves 15 AI-generated concept/pose sheets with prompts, hashes and QA limitations. These are not tested animation atlases and are not integrated into the runtime.

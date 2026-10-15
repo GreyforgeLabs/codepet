@@ -1,0 +1,845 @@
+{
+  "title": "CodePet generated source-art library",
+  "created_date": "2026-10-15",
+  "species_count": 15,
+  "selected_png_count": 15,
+  "intended_pose_count": 180,
+  "status": "source artwork; not validated runtime animation assets",
+  "total_selected_png_bytes": 30327657,
+  "limitations": [
+    "Pose roles describe prompts, not certified semantic conformance.",
+    "Grid extraction, per-pose cropping, alignment, anchor normalization and runtime atlas packing are incomplete.",
+    "Walk/crawl/swim continuity, timing and seamless loops have not been validated.",
+    "Evolution stages and complete care-action animation sets are not included.",
+    "No runtime integration or 96px render validation was performed.",
+    "Alpha was measured directly. Hidden RGB may look brown in alpha-unaware previews; zero-alpha RGB is not a solid backdrop. Semi-transparent subjects and edge fringes require compositing review.",
+    "Selected generation/edit bytes are preserved exactly. Unselected originals are retained separately and are not included in this catalog."
+  ],
+  "assets": [
+    {
+      "species": "cat",
+      "version": "v1",
+      "relative_path": "source/cat/v1/poses-alpha.png",
+      "size_bytes": 2491866,
+      "sha256": "d95d3008ace07f3aa1db0007376094f1e2719c407ce1ebee599d25bbf16aedc4",
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          254
+        ],
+        "fully_transparent_pixels": 615640,
+        "fully_opaque_pixels": 0,
+        "fully_transparent_fraction": 0.3914133707682292,
+        "partially_transparent_pixels": 957224
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Create an exceptionally beautiful, cute premium 2D hand-painted CodePet companion CAT source art sheet. Exactly twelve separate full-body drawings of the SAME tiny fluffy warm ginger-and-cream kitten, big luminous amber eyes, delicate whiskers, pink nose, plush curved tail, elegant clean contours, softly detailed fur and rich restrained shading, readable at 96px. Genuine transparent alpha background, no floor, shadow plane, scene, labels, text, grid lines, panels, border or accessories. Layout precisely FOUR columns and THREE rows with generous transparent gutters, each complete character centered within its equal cell, all appendages intact, matching character scale, anatomy and palette. Read left to right: row1 front idle, LEFT-facing strict profile idle, RIGHT-facing strict profile idle, back three-quarter; row2 front eyes fully closed blink, front one-eye wink, front joyful smile, curled sleeping; row3 LEFT-facing walking contact pose, LEFT-facing walking passing pose, RIGHT-facing walking contact pose, RIGHT-facing walking passing pose. Subtle expressive whisker and tail variation, distinct walking legs, physically coherent feline anatomy. No overlaps or cutoffs. This is pose source art, not a diagram."
+        },
+        {
+          "kind": "imagegen_edit",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Edit only the background of this twelve-pose kitten sheet. Remove ALL brown beige gradient backdrop completely to genuine transparent alpha pixels. Preserve exact kitten identity, every whisker, fur edge, all twelve poses, positions, scale and canvas layout. No checkerboard painted into image, no new color background, no backdrop or floor or cast shadows. This must be true transparent PNG with isolated characters.",
+          "reason": "Background-removal edit requested before pixel inspection established original already contained genuine alpha."
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_idle",
+          "right_idle",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "front_joy",
+          "sleep",
+          "left_walk_contact",
+          "left_walk_passing",
+          "right_walk_contact",
+          "right_walk_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "All twelve requested poses visible; convincing ginger kitten identity, blink and wink readable.",
+        "Left walk contact/passing very similar; smooth loop not verified.",
+        "True alpha established via pixel inspection; view_image displays hidden brown RGB.",
+        "Catalog selects the already-delivered poses-alpha.png edit; no claim that it improves the original."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "dog",
+      "version": "v1",
+      "relative_path": "source/dog/v1/poses.png",
+      "size_bytes": 2258601,
+      "sha256": "232759484fc19752294caf5e641a1c25e9ecd0f6d12802c0a395d8bd4782654c",
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          254
+        ],
+        "fully_transparent_pixels": 723300,
+        "fully_opaque_pixels": 0,
+        "fully_transparent_fraction": 0.45986175537109375,
+        "partially_transparent_pixels": 849564
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Create premium hand-painted clean 2D CodePet companion source art: DOG: tiny plush golden-cream puppy with floppy ears, rounded muzzle, warm brown eyes and a fluffy wagging tail. Extremely cute, warm personality, beautifully detailed soft materials, expressive warm eyes, elegant clean contours and rich restrained shading that reads at96px. Exactly TWELVE fullbody poses of SAME character in FOUR equal columns by THREE equal rows, generous empty transparent gutters, every appendage complete and within cell. THE BACKGROUND MUST BE EMPTY TRANSPARENT ALPHA. No painted colored backdrop, gradients, floor, shadows, checkerboard, panels, text or labels. Matching identity, scale, anatomy and palette. Left to right row1: front idle; strict LEFT-facing profile idle; strict RIGHT-facing profile idle; back three-quarter. Row2: front closed-eyes blink; front one-eye wink; front joy; sleeping. Row3: LEFT walking contact, LEFT walking passing, RIGHT walking contact, RIGHT walking passing. Walking contact versus passing must show visibly DIFFERENT leg positions. Species-appropriate tail and whisker movement, no extra features or accessories. All cells isolated with large empty gutters and clear margins. Transparent sprite source sheet."
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_idle",
+          "right_idle",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "front_joy",
+          "sleep",
+          "left_walk_contact",
+          "left_walk_passing",
+          "right_walk_contact",
+          "right_walk_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve complete poses; front/left/right/back, expressive blink/wink, sleep and distinct walking gestures.",
+        "Front idle and joy similar; scale and gait alignment still need atlas preparation.",
+        "True alpha established; hidden brown RGB is displayed by inspection renderer."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "capybara",
+      "version": "v1",
+      "relative_path": "source/capybara/v1/poses.png",
+      "size_bytes": 2231628,
+      "sha256": "4fc3f93146bac3e940628b923a2f075223998cfd60e2c593822eb7f76c0a8b7a",
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          254
+        ],
+        "fully_transparent_pixels": 840799,
+        "fully_opaque_pixels": 0,
+        "fully_transparent_fraction": 0.5345656077067057,
+        "partially_transparent_pixels": 732065
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Create premium hand-painted clean 2D CodePet companion source art: CAPYBARA: adorable round honey-brown capybara with blunt rectangular snout, tiny round ears, dark gentle eyes, short sturdy legs, subtle sparse whiskers and NO visible tail. Extremely cute, warm personality, beautifully detailed soft materials, expressive warm eyes, elegant clean contours and rich restrained shading that reads at96px. Exactly TWELVE fullbody poses of SAME character in FOUR equal columns by THREE equal rows, generous empty transparent gutters, every appendage complete and within cell. THE BACKGROUND MUST BE EMPTY TRANSPARENT ALPHA. No painted colored backdrop, gradients, floor, shadows, checkerboard, panels, text or labels. Matching identity, scale, anatomy and palette. Left to right row1: front idle; strict LEFT-facing profile idle; strict RIGHT-facing profile idle; back three-quarter. Row2: front closed-eyes blink; front one-eye wink; front joy; sleeping. Row3: LEFT walking contact, LEFT walking passing, RIGHT walking contact, RIGHT walking passing. Walking contact versus passing must show visibly DIFFERENT leg positions. Species-appropriate tail and whisker movement, no extra features or accessories. All cells isolated with large empty gutters and clear margins. Transparent sprite source sheet."
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_idle",
+          "right_idle",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "front_joy",
+          "sleep",
+          "left_walk_contact",
+          "left_walk_passing",
+          "right_walk_contact",
+          "right_walk_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve complete poses, correct small ears/blunt snout/no visible tail, expressive wink and sleep.",
+        "Left walking pair has only modest leg difference; likely needs more tween poses.",
+        "True alpha established; hidden brown RGB appears in inspection renderer."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "penguin",
+      "version": "v1",
+      "relative_path": "source/penguin/v1/poses.png",
+      "size_bytes": 1798234,
+      "sha256": "893a53fdce9a31a545d1f485ad6eca85d2fe704f0039d8056ad41e55f333220d",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 825460,
+        "fully_opaque_pixels": 456,
+        "fully_transparent_fraction": 0.5249254703254886,
+        "partially_transparent_pixels": 746612
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Create premium hand-painted clean 2D CodePet companion source art: PENGUIN: tiny round emperor penguin chick with smoky grey down, black and ivory head markings, black beak and feet, flippers and tiny bird tail, NO mammal ears, fur whiskers or teeth. Extremely cute, warm personality, beautifully detailed soft materials, expressive warm eyes, elegant clean contours and rich restrained shading that reads at96px. Exactly TWELVE fullbody poses of SAME character in FOUR equal columns by THREE equal rows, generous empty transparent gutters, every appendage complete and within cell. THE BACKGROUND MUST BE EMPTY TRANSPARENT ALPHA. No painted colored backdrop, gradients, floor, shadows, checkerboard, panels, text or labels. Matching identity, scale, anatomy and palette. Left to right row1: front idle; strict LEFT-facing profile idle; strict RIGHT-facing profile idle; back three-quarter. Row2: front closed-eyes blink; front one-eye wink; front joy; sleeping. Row3: LEFT walking contact, LEFT walking passing, RIGHT walking contact, RIGHT walking passing. Walking contact versus passing must show visibly DIFFERENT leg positions. Species-appropriate tail and whisker movement, no extra features or accessories. All cells isolated with large empty gutters and clear margins. Transparent sprite source sheet."
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_idle",
+          "right_idle",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "front_joy",
+          "sleep",
+          "left_walk_contact",
+          "left_walk_passing",
+          "right_walk_contact",
+          "right_walk_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve coherent poses; wing and foot movements distinct, wink/blink/sleep readable, no mammalian additions.",
+        "Sleeping pose nearly reaches right canvas edge; bottom walking poses near lower edge.",
+        "True alpha, but preview shows colorful edge speckles; edge compositing QA needed before runtime."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "robot",
+      "version": "v1",
+      "relative_path": "source/robot/v1/poses.png",
+      "size_bytes": 1314001,
+      "sha256": "b7b8ca3b201cd2da76d2c58cd599ec6a9426dda5b2b735c38cc53b01d4d241de",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 1015061,
+        "fully_opaque_pixels": 1112,
+        "fully_transparent_fraction": 0.6454962964093485,
+        "partially_transparent_pixels": 556355
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Create premium hand-painted clean 2D CodePet companion source art: ROBOT: original tiny friendly service robot with rounded pearl-ivory casing, soft teal joints, dark rounded face screen with luminous cyan expressive LED eyes, compact hands and feet and a little single antenna, NO animal tail or whiskers. Extremely cute, warm personality, beautifully detailed soft materials, expressive warm eyes, elegant clean contours and rich restrained shading that reads at96px. Exactly TWELVE fullbody poses of SAME character in FOUR equal columns by THREE equal rows, generous empty transparent gutters, every appendage complete and within cell. THE BACKGROUND MUST BE EMPTY TRANSPARENT ALPHA. No painted colored backdrop, gradients, floor, shadows, checkerboard, panels, text or labels. Matching identity, scale, anatomy and palette. Left to right row1: front idle; strict LEFT-facing profile idle; strict RIGHT-facing profile idle; back three-quarter. Row2: front closed-eyes blink; front one LED eye winking; front joy; sleeping. Row3: LEFT walking contact, LEFT walking passing, RIGHT walking contact, RIGHT walking passing. Walking contact versus passing must show visibly DIFFERENT leg positions. Species-appropriate tail and whisker movement, no extra features or accessories. All cells isolated with large empty gutters and clear margins. Transparent sprite source sheet."
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_idle",
+          "right_idle",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "front_joy",
+          "sleep",
+          "left_walk_contact",
+          "left_walk_passing",
+          "right_walk_contact",
+          "right_walk_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve poses with coherent pearl/teal material and LED expression, complete antenna and hands.",
+        "Idle eyes smiling rather than neutral; blink changes arm pose too. Walking gestures differ but not loop-verified.",
+        "True alpha; visible cyan glow and colored edge speckles need compositing QA before runtime."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "iguana",
+      "version": "v1",
+      "relative_path": "source/iguana/v1/iguana-source.png",
+      "size_bytes": 1927473,
+      "sha256": "9a7bf50fb7ec4dc83d26822d7ee3a94469436b1978adccc474e8116989b879fc",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 880790,
+        "fully_opaque_pixels": 1039,
+        "fully_transparent_fraction": 0.5601108533520548,
+        "partially_transparent_pixels": 690699
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen.imagegen",
+          "prompt": "Use case: stylized-concept. Create a premium original CodePet desktop-companion character source sheet: exactly twelve full-body poses of ONE consistent adorable baby green IGUANA in a 4-column by 3-row layout, generous transparent gutters, all tails/toes fully inside each cell. High-quality handpainted clean 2D chibi illustration, soft detailed scales, expressive warm eyes, elegant clear contours, rich soft shading readable at 96px, warm friendly personality. Match character colors proportions and lighting across all twelve poses. Row 1 left to right: front idle, left-facing profile, right-facing profile, back three-quarter. Row 2: front blink, front wink, joyful, curled sleeping. Row 3: left-facing walk contact, left-facing walk passing, right-facing walk contact, right-facing walk passing. Anatomically recognizable iguana: four legs, little dorsal crest, long elegantly curving tail, no clothing/accessories. True transparent alpha backdrop, no labels/text, no grid, no floor, no frames, no UI, no decorations. This is source art for animation, with distinct motion poses and full-body consistent scale.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "joy",
+          "sleep",
+          "left_move_contact",
+          "left_move_passing",
+          "right_move_contact",
+          "right_move_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve coherent full-body poses; clear front and both facing directions.",
+        "Long tails and motion poses crowd cell boundaries; grid extraction requires per-frame bounds.",
+        "Visible colored edge fringe in preview; inspect compositing before use."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "spider",
+      "version": "v1",
+      "relative_path": "source/spider/v1/spider-source.png",
+      "size_bytes": 2037726,
+      "sha256": "fc38743423bf6b44385eb4dd7f2227de5222119edf8d5e2185695af3b871f410",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 799647,
+        "fully_opaque_pixels": 326,
+        "fully_transparent_fraction": 0.5085105002899789,
+        "partially_transparent_pixels": 772555
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen.imagegen",
+          "prompt": "Use case: stylized-concept. Premium CodePet desktop-companion SOURCE ART sheet, exactly twelve full-body poses of ONE consistent adorable little fuzzy jumping SPIDER, 4 columns x 3 rows, evenly spaced with generous true transparent gutters. Every spider is centered within its own cell and smaller than 75% of the cell width/height, all eight legs fully included. High quality handpainted clean 2D chibi, softly detailed chestnut and cream fuzz, expressive warm large eyes, elegant clear contours, rich soft shading readable at 96px, warm friendly personality. Anatomically a spider with cephalothorax and abdomen and EXACTLY EIGHT legs (four on each side), no vertebrate torso/arms/feet, consistent markings/colors. Row1: front idle; left profile; right profile; back three-quarter. Row2: front gentle relaxed pose with lowered body; front playful head tilt; joyful lifted front pair of legs; sleepy tucked legs. Avoid eyelid blinking because spiders have no eyelids. Row3: leftward crawling contact; leftward crawling passing; rightward crawling contact; rightward crawling passing. Exactly 12 isolated fullbody poses, no clipping/touching neighbors, no labels/text/watermark/grid/background/floor/frames/UI/accessories. True transparent alpha exterior.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "relaxed_low_body",
+          "head_tilt",
+          "joy_front_legs_lifted",
+          "rest_tucked_legs",
+          "left_crawl_contact",
+          "left_crawl_passing",
+          "right_crawl_contact",
+          "right_crawl_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve coherent fuzzy-spider poses; front, both directions and back present.",
+        "Leg count cannot be reliably verified in overlapping side poses; needs anatomy review.",
+        "Sleep pose appears to add lowered eyelids despite no-eyelid prompt; replace or omit sleep frame.",
+        "Visible colored edge fringe in preview; inspect compositing before use."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "snake",
+      "version": "v1",
+      "relative_path": "source/snake/v1/snake-source.png",
+      "size_bytes": 1803220,
+      "sha256": "171417ab4dc3d9c32064c1e7c4f7569f19497232b04cf8082298cf95e202bb1a",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 801445,
+        "fully_opaque_pixels": 982,
+        "fully_transparent_fraction": 0.5096538821566293,
+        "partially_transparent_pixels": 770101
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen.imagegen",
+          "prompt": "Use case: stylized-concept. Premium CodePet desktop-companion SOURCE ART sheet, exactly twelve full-body poses of ONE consistent adorable baby SNAKE, 4 columns x 3 rows, evenly spaced with generous true transparent gutters. Each snake occupies at most 75% of its cell. All tail tips fully included. High quality handpainted clean 2D chibi illustration, soft detailed pale honey cream and warm orange patterned scales, expressive warm amber eyes, elegant clear contours, rich soft shading readable at 96px, friendly gentle personality. Anatomically recognizable limbless snake with a single continuous tubular body and one tapered tail; no limbs/horns/ears. SAME colors markings proportions across poses. Row1: front idle coil; left profile coil; right profile coil; back three-quarter coil. Row2: front tongue flick; front playful head tilt; joyful raised head; sleepy tightly curled with head resting on coils EYES OPEN (snakes have no eyelids). Row3: left-facing slither S-curve phase A; left-facing slither phase B; right-facing slither phase A; right-facing slither phase B. No walking. Twelve isolated fullbody source-art poses; no clipping/touching neighbors. No eyelids or closed eyes anywhere. No labels/text/watermark/grid/background/floor/frames/UI/accessories. True transparent alpha exterior.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle_coil",
+          "left_profile_coil",
+          "right_profile_coil",
+          "back_three_quarter_coil",
+          "tongue_flick",
+          "head_tilt",
+          "joy_raised_head",
+          "rest_eyes_open",
+          "left_slither_A",
+          "left_slither_B",
+          "right_slither_A",
+          "right_slither_B"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve coherent limbless snake poses; tongue flick and open-eye rest correctly substituted for blinks.",
+        "Slither frames are source concepts, not validated seamless motion.",
+        "Stray colored fringe pixels visible across gutters; needs alpha/compositing review."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "goldfish-in-jar",
+      "version": "v1",
+      "relative_path": "source/goldfish-in-jar/v1/goldfish-in-jar-source.png",
+      "size_bytes": 2484871,
+      "sha256": "c25b30a5cb9a7ed6bfad55855b8229e22c01a55f68843e6e1938112563d7689e",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 513993,
+        "fully_opaque_pixels": 798,
+        "fully_transparent_fraction": 0.3268577729617533,
+        "partially_transparent_pixels": 1057737
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen.imagegen",
+          "prompt": "Use case: stylized-concept. Premium CodePet desktop-companion SOURCE ART sheet, exactly twelve full-body aquatic vignettes of ONE consistent adorable golden orange GOLDFISH IN A GLASS JAR, 4 columns x 3 rows evenly spaced with generous true transparent gutters. Every complete jar is at most 72% of cell width and 80% height; no clipping or touching neighbors. High quality handpainted clean 2D chibi illustration, expressive warm open eyes, beautiful flowing fins, elegant clear contours, rich soft shading readable at 96px, warm friendly personality. EACH CELL shows SAME upright round wide glass jar with open rim, ample turquoise water, same small green plant at left and same pale gravel at bottom. Jar unchanged orientation/proportions/scale across all twelve cells; fish ALWAYS entirely underwater inside jar, no feet or walking. Row1 fish poses: front idle; left profile; right profile; back three-quarter. Row2 fish poses: front fin flick; front playful turn; joyful swimming upward with small bubbles; restful lower-in-water floating with EYES OPEN. Goldfish have no eyelids; all eyes open. Row3 fish swims inside stationary jar: left phase A; left phase B; right phase A; right phase B, varied tail/fin flow. Consistent fish markings and jar. True transparent alpha OUTSIDE the jars; transparent glass highlights and visibly watery interior. No labels/text/watermark/grid/background/floor/frames/UI/decorations outside jars.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "fin_flick",
+          "playful_turn",
+          "joy_upward_swim",
+          "rest_eyes_open",
+          "left_swim_A",
+          "left_swim_B",
+          "right_swim_A",
+          "right_swim_B"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve aquatic poses; fish always inside water-filled jar with plant and gravel; no closed eyes.",
+        "Jar silhouettes are broadly consistent but not pixel-identical; animation will need fixed jar registration.",
+        "Visible cyan fringe around glass; inspect compositing."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "rabbit",
+      "version": "v1",
+      "relative_path": "source/rabbit/v1/rabbit-source.png",
+      "size_bytes": 1803194,
+      "sha256": "771c404f28bc2caa253b035e4f3efea70cb60008307921a902278d4cd0dd31b8",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 719508,
+        "fully_opaque_pixels": 382,
+        "fully_transparent_fraction": 0.45754860962730076,
+        "partially_transparent_pixels": 852638
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen.imagegen",
+          "prompt": "Use case: stylized-concept. Premium CodePet desktop-companion SOURCE ART sheet: exactly twelve full-body poses of ONE consistent adorable baby RABBIT, 4 columns x 3 rows evenly spaced with generous true transparent gutters. All tall ears feet whiskers and tail fully contained inside each cell, character at most 75% cell width and height with padding. High quality handpainted clean 2D chibi illustration, beautifully soft fluffy cream fur with warm caramel ears/back markings, expressive warm dark brown eyes, tiny pink nose, delicate whiskers, elegant clear contours, rich soft shading readable at 96px, warm friendly personality. Consistent character design/colors/proportions. Row1: front idle; left-facing profile; right-facing profile; back three-quarter showing small cotton tail. Row2: front blink and tiny nose twitch; front wink and whisker twitch; joyful alert posture; curled sleeping. Row3: left-facing hop contact all paws tucked near ground; left-facing hop passing with rear feet extended and front paws lifted; right-facing hop contact; right-facing hop passing. Anatomical rabbit with four paws, two long ears, one small cotton tail, no clothes/accessories. Twelve isolated fullbody poses no clipping/touching neighbors. True transparent alpha exterior, NO labels/text/watermark/grid/background/floor/frames/UI or decorations.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "joy",
+          "sleep",
+          "left_move_contact",
+          "left_move_passing",
+          "right_move_contact",
+          "right_move_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Twelve coherent rabbit poses, front/left/right/back, blink/wink/sleep and hop phases.",
+        "Whiskers and some poses crowd cell edges; inspect cropped-frame boundaries.",
+        "Visible colored fringe pixels across gutters; needs alpha/compositing review."
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "turtle",
+      "version": "v1",
+      "relative_path": "source/turtle/v1/source-sheet.png",
+      "size_bytes": 1710197,
+      "sha256": "c0d6d5107d8b573b6aaa9bcba013b9c2be7f5aefdc0cd55c01e2233aad432557",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 823824,
+        "fully_opaque_pixels": 1085,
+        "fully_transparent_fraction": 0.5238851072922072,
+        "partially_transparent_pixels": 747619
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Create a beautiful polished source pose sheet for a cute TURTLE virtual companion. True transparent alpha background. Exactly 12 full-body renderings of the SAME turtle, arranged evenly in 4 columns x 3 rows, generous transparent gutters, identical scale and consistent anatomy, markings and lighting. High-quality hand-painted clean 2D chibi, warm expressive dark eyes, soft detailed shell and skin materials, elegant clear contours, rich soft shading, readable at 96px. Sage-green turtle with warm amber rounded segmented shell and cream underside, four turtle legs, small tail, rounded head, anatomically coherent. Row 1 left to right: frontal idle; strict left-facing profile; strict right-facing profile; back three-quarter. Row 2: frontal blink eyes closed; frontal wink one eye closed; delighted front with raised head; sleeping with head gently tucked into shell. Row 3: left-facing plod contact pose; left-facing plod passing pose; right-facing plod contact pose; right-facing plod passing pose. Clearly distinguish contact versus passing by natural short-leg placement. Keep shell size consistent. All appendages intact in frame; no extra limbs. No text, labels, grid, floor, cast ground shadow, scenery, background, UI, watermark. It is a source illustration sheet, not an infographic.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "joy",
+          "sleep",
+          "left_move_contact",
+          "left_move_passing",
+          "right_move_contact",
+          "right_move_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Outer margins tighter than requested",
+        "Possible colored alpha-edge speckling in preview",
+        "Pose-to-pose shell marking and scale variation needs alignment review"
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "frog",
+      "version": "v1",
+      "relative_path": "source/frog/v1/source-sheet.png",
+      "size_bytes": 1429736,
+      "sha256": "9a0a63d9afdc6416ed79d75c3c3c49f3f2d5f31dc819c3fe29b59ec1830c6cf2",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 926392,
+        "fully_opaque_pixels": 649,
+        "fully_transparent_fraction": 0.5891100190266882,
+        "partially_transparent_pixels": 645487
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Beautiful polished source pose sheet for a cute FROG virtual companion. True transparent alpha background. Exactly 12 full-body renderings of the SAME frog, evenly spaced 4 columns x 3 rows; 8% outer transparent margins and generous clear gutters, identical character scale and consistent anatomy/color/lighting. High-quality hand-painted clean 2D chibi, warm expressive dark amber eyes, soft detailed smooth skin materials, elegant clear contours, rich soft shading, readable at 96px. Fresh leaf-green tree frog, cream belly, tiny warm cheek accents, four anatomically coherent frog limbs (two small front arms and two folded powerful hind legs) and round toe pads, no tail. Row1: front idle; strict left-facing profile; strict right-facing profile; back three-quarter. Row2: front blink; front wink; front delight slight joyful bounce; sleeping crouch. Row3: left-facing hop contact crouch; left-facing airborne short hop with extended hind legs; right-facing hop contact crouch; right-facing airborne short hop with extended hind legs. Keep head and body size consistent, full bodies and all toes intact in each cell. No extra limbs. No labels, text, grid lines, floor, cast shadow, background scenery, props, UI or watermark. Crisp clean alpha edges without colored speckles or halo.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "joy",
+          "sleep",
+          "left_move_contact",
+          "left_move_passing",
+          "right_move_contact",
+          "right_move_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Outer margins tighter than requested",
+        "Hop poses differ in scale and require anchor alignment",
+        "Possible alpha-edge speckling in preview"
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "owl",
+      "version": "v1",
+      "relative_path": "source/owl/v1/source-sheet.png",
+      "size_bytes": 2122821,
+      "sha256": "0fb84ed982f5c3d09e7d5a7f1306dc061ccdf67b6c5bd40b15fad53b1209426c",
+      "width": 1448,
+      "height": 1086,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          255
+        ],
+        "fully_transparent_pixels": 710071,
+        "fully_opaque_pixels": 823,
+        "fully_transparent_fraction": 0.4515474446241975,
+        "partially_transparent_pixels": 861634
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Beautiful polished source pose sheet for a cute OWL virtual companion. Genuine transparent alpha background. Exactly 12 full-body renderings of the SAME owl, evenly spaced 4 columns x 3 rows; generous outer transparent margins and clear gutters, identical character scale, consistent markings/color/lighting. High-quality hand-painted clean 2D chibi, warm expressive amber eyes, soft detailed fluffy feather materials, elegant clear contours, rich soft shading, readable at 96px. Round chestnut-brown little owl, cream facial discs and belly, dark brown wing markings, small golden beak, two taloned feet and exactly TWO wings, no arms in addition to wings. Row1: frontal idle; strict left-facing profile; strict right-facing profile; back three-quarter. Row2: front blink eyes shut; front wink; front delighted little wing stretch; sleeping fluffed with wings folded. Row3: left-facing step-contact with wings down; left-facing light airborne wing flutter with wings raised; right-facing step-contact wings down; right-facing light airborne wing flutter wings raised. Full bodies and all wing tips intact within each cell. No extra limbs, no human hands. No labels, text, grid, floor, cast ground shadow, scenery, props, background, UI or watermark. Clean alpha edges without colored halos or speckling.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "joy",
+          "sleep",
+          "left_move_contact",
+          "left_move_passing",
+          "right_move_contact",
+          "right_move_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Spread-wing joy exceeds a strict equal-width cell; crop bounds need custom review",
+        "Flight wing tips close to cell boundaries",
+        "Possible alpha-edge speckling in preview"
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "red-panda",
+      "version": "v1",
+      "relative_path": "source/red-panda/v1/source-sheet.png",
+      "size_bytes": 2341145,
+      "sha256": "4fd8f2293ad1e4815c578a84fed0a4dbe3eeb0cd40627bca25c60ab167bde2ff",
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          254
+        ],
+        "fully_transparent_pixels": 806966,
+        "fully_opaque_pixels": 0,
+        "fully_transparent_fraction": 0.513055165608724,
+        "partially_transparent_pixels": 765898
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Beautiful polished source pose sheet for a cute RED PANDA virtual companion. Genuine transparent alpha background. Exactly 12 full-body renderings of the SAME red panda, evenly spaced in 4 columns x 3 rows; generous outer transparent margins and clear gutters between all tails and adjacent poses, identical character scale and consistent markings/color/lighting. High-quality hand-painted clean 2D chibi, warm expressive dark brown eyes, soft detailed fluffy fur materials, elegant clear contours, rich soft shading, readable at 96px. Cinnamon red panda, cream ears and muzzle and cheek masks, chocolate belly and legs, big beautiful bushy ringed tail. Anatomically coherent quadruped with four paws and one tail. Row1: frontal seated idle; strict left-facing standing profile; strict right-facing standing profile; back three-quarter. Row2: front blink eyes closed; front wink one eye closed; joyful front with paws raised; sleeping curl with tail wrapped. Row3: left-facing walk contact with tail curving up; left-facing walk passing with opposite paws and tail swishing lower; right-facing walk contact tail curving up; right-facing walk passing opposite paws and tail swishing lower. Keep face identity and tail ring pattern consistent. Full bodies and all tail tips intact inside each cell. No extra limbs. No labels, text, grid, floor, cast shadow, scenery, props, background, UI or watermark. Clean alpha edges.\n"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "front_blink",
+          "front_wink",
+          "joy",
+          "sleep",
+          "left_move_contact",
+          "left_move_passing",
+          "right_move_contact",
+          "right_move_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Movement tail silhouette varies intentionally; custom crop and anchor review needed",
+        "RGB preview displays brown matte although actual alpha is zero across most background",
+        "Semi-transparent subjects: maximum alpha 254"
+      ],
+      "runtime_ready": false
+    },
+    {
+      "species": "axolotl",
+      "version": "v2",
+      "relative_path": "source/axolotl/v2/source-sheet.png",
+      "size_bytes": 2572944,
+      "sha256": "19dd4e4a8c334be04f4e469b6c68276076e8eeb279cba6c9f95f247e88143377",
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGBA",
+      "alpha": {
+        "present": true,
+        "extrema": [
+          0,
+          254
+        ],
+        "fully_transparent_pixels": 671058,
+        "fully_opaque_pixels": 0,
+        "fully_transparent_fraction": 0.4266471862792969,
+        "partially_transparent_pixels": 901806
+      },
+      "provenance": [
+        {
+          "kind": "generation",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Use case: stylized-concept. Beautiful source pose sheet for a cute AXOLOTL virtual companion, genuinely transparent background outside each aquatic vignette. Exactly 12 full-body poses of SAME pink axolotl evenly spaced 4 columns x 3 rows with large transparent margins and gutters. High-quality hand-painted clean 2D chibi, warm expressive black eyes, soft detailed pearly skin, elegant clean contours, rich soft shading readable at 96px. Pale pink body, six feathery coral gill branches (three per side), four small legs, long translucent finned tail. All poses entirely UNDER WATER, each surrounded by same small subtle transparent aqua water vignette with a few bubbles and faint curved water edge, no land, no walking. Keep full animal and habitat visible within each cell, identical scale and anatomy. Axolotls have NO EYELIDS: eyes stay open even resting. Row1 front idle float; strict left-facing swimming profile; strict right-facing swimming profile; rear three-quarter float. Row2 front gills softly folded (replacement for blink); front asymmetric gill flutter (replacement for wink); joyful front spread gills and gentle tail curl; peaceful resting float eyes naturally open with limbs relaxed. Row3 left swimming tail stroke A; left swimming tail stroke B; right swimming tail stroke A; right swimming tail stroke B. Distinct naturally curved tail movement, anatomically plausible legs and gill count. No text, grid, floor, opaque rectangular backdrop, scenery, UI, watermark. This is companion source art, not husbandry instructions. True alpha outside aquatic vignettes.\n"
+        },
+        {
+          "kind": "imagegen_edit",
+          "tool": "built-in image_gen__imagegen",
+          "prompt": "Background-extraction edit only. Preserve all twelve axolotl poses and their small aquatic water outlines/bubbles exactly, preserving all eyes, gills, fins, limbs, palette and 4-column 3-row composition. Remove the broad blue/grey rectangular backdrop and every faint haze pixel in the gutters and outer margins so those areas are exactly transparent alpha zero. Preserve local water vignettes but no overall backdrop. Full animals retain their opacity; no re-design, no new details, no text. Clean transparent PNG sprite source sheet.\n",
+          "edit_source": "source/axolotl/v1/source-sheet.png"
+        }
+      ],
+      "intended_grid": {
+        "columns": 4,
+        "rows": 3,
+        "pose_count": 12,
+        "order": "row-major",
+        "roles": [
+          "front_idle",
+          "left_profile",
+          "right_profile",
+          "back_three_quarter",
+          "gill_fold",
+          "gill_flutter",
+          "joy",
+          "rest_float",
+          "left_move_contact",
+          "left_move_passing",
+          "right_move_contact",
+          "right_move_passing"
+        ]
+      },
+      "visual_qa_from_generator": [
+        "Transparency extraction improved: sampled outer/gutter pixels are exactly alpha zero, but full per-cell gutter validation remains",
+        "Aquatic vignettes and bubbles need custom crop/overlap review",
+        "Gill count and occluded limbs require per-pose anatomical review",
+        "Maximum subject alpha 254"
+      ],
+      "runtime_ready": false
+    }
+  ]
+}
