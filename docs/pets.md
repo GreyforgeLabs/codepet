@@ -26,6 +26,10 @@ Extracted: **15 of 15** species. Pending species carry `placeholder: true` and r
 
 Stage minimum levels: young L1, grown L2, mature L4 (= `RULES_V1.stage_min_level`). Stage names come from each species' `provenance.json` when present, else SPEC §11.5.
 
+![Every companion at its three stages (idle pose, 96 px, light and dark)](screenshots/codepet-v0.2-roster.webp)
+
+The gallery above is `tools/petart/extract.py --gallery` (b00 of every species and stage). It shows still frames only; full per-state contact sheets come from `--contact` and stay in the run directory.
+
 ## Care labels
 
 | id | food | water | play | wash | bathroom | sleep |

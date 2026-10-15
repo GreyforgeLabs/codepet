@@ -9,6 +9,7 @@ Dev-time tool only; nothing here runs inside the app. Python 3, Pillow, numpy, s
     python3 tools/petart/extract.py --index           # registry.json, PetRegistry.js, PROVENANCE.md, docs/pets.md
     python3 tools/petart/extract.py --check           # rebuild into a scratch dir and byte-compare
     python3 tools/petart/extract.py --contact         # contact sheets into the run directory
+    python3 tools/petart/extract.py --gallery         # docs/screenshots/codepet-v0.2-roster.webp
 
 Source sheets live outside the repository (about 200 MB):
 `$CODEPET_ART_SRC` or `~/Media/codepet-art/v0.2/<srcdir>/stage{1,2,3}-{base,care}.png`
@@ -42,6 +43,7 @@ REPO = HERE.parents[1]
 PETS_REL = Path("qml/assets/pets")
 REGISTRY_JS_REL = Path("qml/shared/PetRegistry.js")
 DOCS_REL = Path("docs/pets.md")
+GALLERY_REL = Path("docs/screenshots/codepet-v0.2-roster.webp")
 DEFAULT_SRC = Path(os.environ.get("CODEPET_ART_SRC", "~/Media/codepet-art/v0.2")).expanduser()
 DEFAULT_RUN = Path(os.environ.get("CODEPET_RUN_DIR", "~/Work/runs/codepet--2026-10-15--v0.2")).expanduser()
 OVERRIDES = HERE / "overrides.json"
@@ -720,6 +722,8 @@ def main(argv=None):
     ap.add_argument("--index", action="store_true", help="registry, PetRegistry.js, PROVENANCE.md, docs/pets.md")
     ap.add_argument("--check", action="store_true", help="rebuild in a scratch dir and compare bytes")
     ap.add_argument("--contact", action="store_true", help="render contact sheets for extracted species")
+    ap.add_argument("--gallery", action="store_true",
+                    help=f"write the committed preview gallery {GALLERY_REL}")
     ap.add_argument("--status", action="store_true", help="show which species are ready")
     ap.add_argument("--src", type=Path, default=DEFAULT_SRC, help=f"source sheet root (default {DEFAULT_SRC})")
     ap.add_argument("--contact-dir", type=Path, default=DEFAULT_RUN / "contact-sheets")
@@ -753,6 +757,10 @@ def main(argv=None):
         args.contact_dir.mkdir(parents=True, exist_ok=True)
         for p in contact.render_all(REPO / PETS_REL, args.contact_dir, species=targets or None):
             print(f"contact sheet: {p}")
+    if args.gallery:
+        import contact
+        did = True
+        print(f"gallery: {contact.gallery(REPO / PETS_REL, REPO / GALLERY_REL)}")
     if args.check:
         did = True
         problems = check(src)

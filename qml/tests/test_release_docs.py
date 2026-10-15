@@ -54,6 +54,19 @@ class ReleaseDocs(unittest.TestCase):
         for sid in registry["order"]:
             self.assertIn(f"`{sid}`", pets, sid)
 
+    def test_v02_gallery_is_committed_and_linked(self):
+        gallery = REPO / "docs/screenshots/codepet-v0.2-roster.webp"
+        self.assertTrue(gallery.is_file())
+        self.assertEqual(gallery.read_bytes()[:4], b"RIFF")
+        self.assertEqual(gallery.read_bytes()[8:12], b"WEBP")
+        self.assertLess(gallery.stat().st_size, 400_000, "keep the committed gallery small")
+        self.assertIn("(screenshots/codepet-v0.2-roster.webp)", read("docs/pets.md"))
+        overlay = read("docs/desktop-overlay.md")
+        self.assertIn("legacy v0.1", overlay.lower())
+        for shot in ("codepet-overlay-idle.png", "codepet-overlay-menu.png"):
+            line = next(l for l in overlay.splitlines() if shot in l)
+            self.assertIn("Legacy v0.1", line, shot)
+
     def test_validation_has_an_honest_v02_entry(self):
         v = read("docs/validation.md")
         self.assertIn("# v0.2.0", v)

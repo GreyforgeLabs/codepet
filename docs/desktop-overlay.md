@@ -124,9 +124,14 @@ Offscreen renders and source-policy tests cannot establish these compositor fact
 
 ## Offscreen visual evidence
 
-These are Qt 6.8.3 fixture-preview renders, **not live desktop screenshots**. The
-solid backdrop and top controls belong only to the preview host; the production
-layer-shell scene is transparent. Screenshots establish artwork/layout only.
+The v0.2 companions are shown in the [pet gallery](pets.md#roster)
+(`screenshots/codepet-v0.2-roster.webp`, still frames from the shipped WebP packs). No
+v0.2 overlay screenshot is committed yet.
 
-![Idle fixture preview](screenshots/codepet-overlay-idle.png)
-![Selected care menu fixture preview](screenshots/codepet-overlay-menu.png)
+The two renders below are **legacy v0.1 evidence** from PR #4: the old SVG ginger cat in
+Qt 6.8.3 fixture-preview renders, **not live desktop screenshots** and not the v0.2 art.
+The solid backdrop and top controls belong only to the preview host; the production
+layer-shell scene is transparent. They establish the overlay layout only.
+
+![Legacy v0.1 idle fixture preview (SVG ginger cat)](screenshots/codepet-overlay-idle.png)
+![Legacy v0.1 selected care menu fixture preview (SVG ginger cat)](screenshots/codepet-overlay-menu.png)

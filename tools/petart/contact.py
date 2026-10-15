@@ -2,7 +2,8 @@
 
 Per species `<id>.png`: for each stage, every state's frame sequence on a light and a
 dark background (ground line and centre marked faintly), a mirrored locomotion strip, and
-a 96 px / 64 px row. Plus `roster.png`: b00 of every species and stage on light and dark.
+a 96 px / 64 px row. Plus `roster.png`: b00 of every species and stage on light and dark,
+and (`gallery`) the same roster at 96 px for the committed docs gallery.
 """
 
 import json
@@ -107,8 +108,7 @@ def species_sheet(pets_dir, sid, out_path):
     return out_path
 
 
-def roster_sheet(pets_dir, out_path):
-    size = 128
+def roster_sheet(pets_dir, out_path, size=128):
     label_h = 40
     cols = len(roster.ORDER)
     width = cols * (size + PAD) + PAD
@@ -129,8 +129,18 @@ def roster_sheet(pets_dir, out_path):
                 if m.get("placeholder"):
                     p = pets_dir / "_placeholder.webp"
                 sheet.alpha_composite(_frame(p, size, bg, guides=False), (x, y0 + label_h + (st - 1) * size))
-    sheet.convert("RGB").save(out_path, optimize=True)
+    out_path = Path(out_path)
+    if out_path.suffix == ".webp":
+        sheet.convert("RGB").save(out_path, "WEBP", quality=82, method=6)
+    else:
+        sheet.convert("RGB").save(out_path, optimize=True)
     return out_path
+
+
+def gallery(pets_dir, out_path):
+    """The committed v0.2 preview gallery (docs/screenshots): b00 of every species and
+    stage at 96 px on light and dark, as a small lossy WebP."""
+    return roster_sheet(pets_dir, out_path, size=96)
 
 
 def render_all(pets_dir, out_dir, species=None):

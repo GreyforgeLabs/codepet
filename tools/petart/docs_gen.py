@@ -120,6 +120,13 @@ def pets_md(manifests):
       + " (= `RULES_V1.stage_min_level`). Stage names come from each species' `provenance.json` "
       "when present, else SPEC §11.5.")
     w("")
+    w("![Every companion at its three stages (idle pose, 96 px, light and dark)]"
+      "(screenshots/codepet-v0.2-roster.webp)")
+    w("")
+    w("The gallery above is `tools/petart/extract.py --gallery` (b00 of every species and "
+      "stage). It shows still frames only; full per-state contact sheets come from `--contact` "
+      "and stay in the run directory.")
+    w("")
     w("## Care labels")
     w("")
     w("| id | food | water | play | wash | bathroom | sleep |")
