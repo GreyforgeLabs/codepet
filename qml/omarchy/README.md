@@ -43,7 +43,7 @@ A production integration must supply trustworthy events and a fresh initial stat
 python qml/tests/test_quickshell_host.py
 ```
 
-This checks source contracts plus executable JavaScript monitor-selection and hit-region policy (Node required for that portion). It is **not** proof of Quickshell loading, native focus behavior or Wayland input passthrough. Qt6 qmllint can parse the file here but cannot resolve missing Quickshell imports. No live Omarchy/Wayland session or Quickshell binary was available for this change.
+This checks source contracts plus executable JavaScript monitor-selection and hit-region policy (Node required for that portion). When `qs` is installed it also runs two isolated load smokes (offscreen Qt, no Wayland/X11 display, temporary HOME/XDG/runtime directories, a stub `codepet` on PATH): the real `qml/shell.qml` must get past Quickshell's config scanner and fail only with `No PanelWindow backend loaded`, and a staged copy with the layer-shell `PanelWindow` replaced by a `FloatingWindow` must load and answer `qs ipc call codepet show/hide/tasks/closeTasks/...`. The smokes are skipped where Quickshell is absent (as in CI). They are **not** proof of layer-shell behavior, native focus or Wayland input passthrough; those still need the live checklist below. Qt6 qmllint can parse the file but cannot resolve Quickshell imports.
 
 Before release, run the actual entry on the target Quickshell/Omarchy version and verify:
 

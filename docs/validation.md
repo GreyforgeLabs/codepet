@@ -196,7 +196,11 @@ Fresh validation in the cloud workspace (not inherited earlier results):
 
 New CI workflow runs pinned Qt 6.8.3 offscreen suites, lifecycle/policy/assets and
 portable QML lint. These tests do not import a real Quickshell runtime. Host APIs
-were source-reviewed against official 0.3.1 docs/source. Quickshell runtime,
+were source-reviewed against official 0.3.1 docs/source, but the entry was **never
+loaded** by Quickshell in this run; a later real load showed it could not load at all
+(its `../shared` import was outside the Quickshell config folder). That was fixed during
+integration by moving the entry to `qml/shell.qml`; see the integration record at the top
+of this file. Quickshell runtime,
 compositor input pass-through/focus, monitor hotplug, trusted lock/suspend/fullscreen
 hooks, accessibility integration and CPU/PSS/power measurements were **not run**.
 No live desktop compatibility claim follows from offscreen tests. See
