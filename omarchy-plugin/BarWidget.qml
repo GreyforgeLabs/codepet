@@ -216,8 +216,9 @@ BarWidget {
 
     property var careRetry: null
     property int careSeq: 0
-    // Care, sleep, wake and pause: one key per press, reused when that same press is
-    // retried after an unconfirmed response. Success is shown only after the response.
+    // Care, sleep, wake and pause: one key per press, reused only when that same press is
+    // retried within Model.RETRY_WINDOW_MS of an unconfirmed response; any later press is
+    // new. Success is shown only after the response.
     function perform(method, params, doneText) {
         if (rpc.busy) return
         var signature = method + JSON.stringify(params)
@@ -225,8 +226,8 @@ BarWidget {
         root.careRetry = Model.retryKey(root.careRetry, signature, Date.now(), root.careSeq)
         root.feedback = "Waiting for CodePet…"
         rpc.request(method, params, function (resp) {
+            root.careRetry = Model.retryAfterResponse(root.careRetry, resp, Date.now())
             if (resp.ok) {
-                root.careRetry = null
                 root.feedback = resp.result && resp.result.changed === false ? "Already done; nothing changed." : doneText
             } else {
                 root.feedback = "Not confirmed: " + String((resp.error || {}).message || "refresh to check saved state.")

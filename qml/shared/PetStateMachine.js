@@ -23,6 +23,16 @@ var CARE_ACTIONS = ["food", "water", "play", "wash", "bathroom"]
 var WORKING_TASK_STATES = ["preparing", "running", "verifying", "cancelling"]
 var WAITING_TASK_STATES = ["waiting_for_user", "review_ready"]
 var TICK_MS = 200
+// How long an unconfirmed care press may be retried under its own key (the bar plugin
+// uses the same window). A later press is a new press: replaying an old key would return
+// the old receipt, apply no new care, and still read as confirmed.
+var CARE_RETRY_WINDOW_MS = 120000
+
+// True when a press with `signature` at `now` may reuse the previous key.
+function reuseRetryKey(prevKey, prevSignature, expiresAt, signature, now) {
+    return typeof prevKey === "string" && prevKey !== "" && prevSignature === signature
+        && typeof expiresAt === "number" && isFinite(expiresAt) && typeof now === "number" && now <= expiresAt
+}
 
 function isCareAction(action) {
     return CARE_ACTIONS.indexOf(String(action)) >= 0

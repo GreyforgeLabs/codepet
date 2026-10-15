@@ -356,3 +356,19 @@ test('statusLine copy follows the calm templates and never predicts a death', ()
                         lifecycle: { needs: [need(n, 'low', { until_critical_ms: 600000 })], critical: { need: n, remaining_ms: 1 } } }));
     for (const l of lines) assert.doesNotMatch(l, BANNED, l);
 });
+
+test('care retry keys are reused only briefly after an unconfirmed press', () => {
+    const sig = 'pet.care{"action":"water"}';
+    const t0 = 5_000_000;
+    const until = t0 + SM.CARE_RETRY_WINDOW_MS;
+    assert.equal(SM.reuseRetryKey('care-a-1', sig, until, sig, t0 + 1000), true, 'immediate retry of the same press');
+    assert.equal(SM.reuseRetryKey('care-a-1', sig, until, sig, until), true);
+    assert.equal(SM.reuseRetryKey('care-a-1', sig, until, sig, until + 1), false, 'after the window it is a new press');
+    assert.equal(SM.reuseRetryKey('care-a-1', sig, until, sig, t0 + 6 * 3_600_000), false, 'hours later');
+    assert.equal(SM.reuseRetryKey('care-a-1', sig, until, 'pet.care{"action":"food"}', t0), false, 'another action');
+    assert.equal(SM.reuseRetryKey('', sig, until, sig, t0), false, 'no previous key');
+    assert.equal(SM.reuseRetryKey('care-a-1', sig, 0, sig, t0), false, 'confirmed (expiry cleared)');
+    // The overlay and the bar plugin use the same window.
+    const barSrc = readFileSync(new URL('../../omarchy-plugin/CodePetBar.js', import.meta.url), 'utf8');
+    assert.match(barSrc, new RegExp('var RETRY_WINDOW_MS = ' + SM.CARE_RETRY_WINDOW_MS + '\\b'));
+});

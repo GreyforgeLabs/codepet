@@ -156,11 +156,27 @@ function thumbPath(petId, stage) {
 function allowedMethod(m) { return ALLOWED_METHODS.indexOf(m) >= 0 }
 function allowedCareAction(a) { return CARE_ACTIONS.indexOf(a) >= 0 }
 
-// One retry key per button press: the same press retried (same signature, no
-// confirmed response yet) reuses its key, so the backend applies it at most once.
+// How long an unconfirmed press may be retried under its own key. A press of the same
+// button after this window is a new press: reusing the old key would make the backend
+// replay the old receipt (no new care applied) while the bar said "Care confirmed".
+var RETRY_WINDOW_MS = 120000
+
+// One retry key per button press: the same press retried soon after an unconfirmed
+// response (same signature, within RETRY_WINDOW_MS) reuses its key, so the backend
+// applies it at most once. Anything else gets a fresh key.
 function retryKey(prev, signature, now, seq) {
-    if (isObject(prev) && prev.key && prev.signature === signature) return prev
-    return { key: "bar-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)), signature: signature }
+    if (isObject(prev) && prev.key && prev.signature === signature
+            && isNum(prev.expiresAt) && isNum(now) && now <= prev.expiresAt)
+        return prev
+    return { key: "bar-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)),
+             signature: signature, expiresAt: (isNum(now) ? now : 0) + RETRY_WINDOW_MS }
+}
+
+// The key to keep after a response: none after a confirmed one; after an unconfirmed
+// one (failure, timeout, lost response), the same key for RETRY_WINDOW_MS from now.
+function retryAfterResponse(prev, resp, now) {
+    if (!isObject(prev) || !prev.key || !isObject(resp) || resp.ok === true || !isNum(now)) return null
+    return { key: prev.key, signature: prev.signature, expiresAt: now + RETRY_WINDOW_MS }
 }
 
 function newRequestId(now, seq) { return "bar-rq-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)) }

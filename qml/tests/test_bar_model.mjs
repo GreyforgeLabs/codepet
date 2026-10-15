@@ -210,6 +210,29 @@ test('retryKey reuses one key per press until confirmed, and changes with the ac
     assert.match(M.newRequestId(Date.now(), 9), /^[A-Za-z0-9._:-]{1,128}$/);
 });
 
+test('a retry key never outlives its press: confirmed or expired keys are never replayed', () => {
+    const sig = 'pet.care{"action":"water"}';
+    const t0 = 1_000_000;
+    const a = M.retryKey(null, sig, t0, 1);
+    // Confirmed: dropped.
+    assert.equal(M.retryAfterResponse(a, { ok: true, result: {} }, t0 + 100), null);
+    // Unconfirmed (lost response, timeout, transport or backend failure): kept briefly.
+    for (const code of ['CLIENT_TIMEOUT', 'TRANSPORT', 'PROTOCOL_MISMATCH', 'INVALID_STATE']) {
+        const kept = M.retryAfterResponse(a, { ok: false, error: { code } }, t0 + 15_000);
+        assert.equal(kept.key, a.key, code);
+        assert.equal(kept.expiresAt, t0 + 15_000 + M.RETRY_WINDOW_MS);
+        // An immediate retry of the same press reuses it...
+        assert.equal(M.retryKey(kept, sig, t0 + 20_000, 2).key, a.key);
+        // ...a press of the same button much later is a new press with a new key, so the
+        // backend applies new care instead of replaying the old receipt.
+        assert.notEqual(M.retryKey(kept, sig, t0 + 15_000 + M.RETRY_WINDOW_MS + 1, 3).key, a.key);
+        assert.notEqual(M.retryKey(kept, sig, t0 + 3 * 3_600_000, 4).key, a.key, 'hours later');
+    }
+    assert.ok(M.RETRY_WINDOW_MS > 15_000 && M.RETRY_WINDOW_MS <= 300_000);
+    // A key without an expiry (older state) is never reused.
+    assert.notEqual(M.retryKey({ key: 'bar-x-1', signature: sig }, sig, t0, 5).key, 'bar-x-1');
+});
+
 // ------------------------------------------------------------------ summarize
 
 const STATUS_CASES = {

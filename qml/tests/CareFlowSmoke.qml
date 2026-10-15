@@ -17,6 +17,7 @@ Item {
     property bool part1Done: false
     property bool part2Done: false
     property string firstKey: ""
+    property int mark: 0
     function finish() {
         if (!part1Done || !part2Done) return
         console.log("DONE failures=" + top.failures)
@@ -248,6 +249,31 @@ Item {
                 top.check(flow.readinessText.indexOf("grace time has run out") >= 0 && flow.readinessText.indexOf("Care opens") < 0
                           && flow.readinessText.indexOf("needs care") < 0,
                           "a pending end never promises that care can still help: " + flow.readinessText)
+                break
+            case 31:
+                // A press long after an unconfirmed one is a new press: the old key would make
+                // the backend replay its old receipt and apply no new care.
+                slow.snapshot = top.lifeSnap({})
+                slow.failNext = true
+                top.mark = slow.calls.length
+                flow.careClicked("wash")
+                break
+            case 33:
+                var washes = slow.calls.slice(top.mark).filter(function (c) { return c.method === "pet.care" && c.params.action === "wash" })
+                top.check(washes.length === 1 && flow.failureSeq >= 2 && flow.retryKey === washes[0].id,
+                          "an unconfirmed wash keeps its key for a prompt retry")
+                top.check(flow.retryExpiresAt > Date.now() && flow.retryExpiresAt <= Date.now() + 120000,
+                          "the key is kept only for the short retry window")
+                top.firstKey = washes[0].id
+                flow.retryExpiresAt = Date.now() - 1 // the window has passed
+                flow.careClicked("wash")
+                break
+            case 35:
+                var washes2 = slow.calls.slice(top.mark).filter(function (c) { return c.method === "pet.care" && c.params.action === "wash" })
+                top.check(washes2.length === 2 && washes2[1].id !== top.firstKey,
+                          "a later press of the same button gets a new key, never a stale replay")
+                top.check(slow.snapshot.meters.hygiene === 10000 && flow.retryKey === "" && flow.retryExpiresAt === 0,
+                          "the new press commits and its key is dropped once confirmed")
                 PetCatalog.install()
                 top.part2Done = true
                 top.finish()

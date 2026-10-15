@@ -36,6 +36,8 @@ ColumnLayout {
     property int routineGeneration: 0
     property string retryKey: ""
     property string retrySignature: ""
+    // The retry key is reusable until this time (ms); see PetStateMachine.CARE_RETRY_WINDOW_MS.
+    property double retryExpiresAt: 0
     property int actionSequence: 0
     property double countdownStarted: Date.now()
     property double countdownNow: Date.now()
@@ -110,17 +112,23 @@ ColumnLayout {
         if (root.hostBusy || !root.care || root.pendingAction !== "" || !root.lifeCanCare)
             return
         var signature = method + JSON.stringify(params)
-        if (root.retryKey === "" || root.retrySignature !== signature) {
+        var now = Date.now()
+        // One key per press; reused only for a retry soon after an unconfirmed response.
+        if (!PetStateMachine.reuseRetryKey(root.retryKey, root.retrySignature, root.retryExpiresAt, signature, now)) {
             root.actionSequence += 1
-            root.retryKey = "care-" + Date.now().toString(36) + "-" + root.actionSequence
+            root.retryKey = "care-" + now.toString(36) + "-" + root.actionSequence
             root.retrySignature = signature
         }
+        root.retryExpiresAt = now + PetStateMachine.CARE_RETRY_WINDOW_MS
         var key = root.retryKey
         root.pendingAction = action
         root.host.request(method, params, function (response) {
             root.pendingAction = ""
+            if (!response.ok)
+                root.retryExpiresAt = Date.now() + PetStateMachine.CARE_RETRY_WINDOW_MS
             if (response.ok) {
                 root.retryKey = ""
+                root.retryExpiresAt = 0
                 root.lastError = ""
                 root.reaction = action
                 if (PetStateMachine.isCareAction(action)) {
