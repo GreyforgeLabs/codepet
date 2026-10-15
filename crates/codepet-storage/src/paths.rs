@@ -6,6 +6,9 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path, PathBuf};
 
+pub const PRESENCE_FILE: &str = "presence.json";
+pub const BAR_STATE_FILE: &str = "bar-state.json";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StatePaths {
     /// `$XDG_STATE_HOME/codepet` or `$HOME/.local/state/codepet`.
@@ -56,6 +59,16 @@ impl StatePaths {
             .and_then(|(uid, passwd)| sys::passwd_home(&passwd, uid))
             .filter(|h| plain_absolute(h));
         Ok(paths)
+    }
+    /// The bar leader's attended-presence sidecar, `<state_dir>/presence.json`. Storage
+    /// only reads it (spec §5.2).
+    pub fn presence_path(&self) -> PathBuf {
+        self.state_dir.join(PRESENCE_FILE)
+    }
+    /// The UIs' passive state file, `<state_dir>/bar-state.json`, written only by
+    /// `Store::export_bar_state` (spec §10).
+    pub fn bar_state_path(&self) -> PathBuf {
+        self.state_dir.join(BAR_STATE_FILE)
     }
     /// Every known form of the user's home directory.
     pub fn homes(&self) -> impl Iterator<Item = &PathBuf> {

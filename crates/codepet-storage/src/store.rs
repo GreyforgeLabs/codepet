@@ -1,6 +1,10 @@
 //! Durable task engine. Every mutation is one `BEGIN IMMEDIATE` transaction; every task state
-//! change appends a `task_events` row in that same transaction.
+//! change appends a `task_events` row in that same transaction. Every write transaction runs
+//! the fixed order (spec §8.1): settle presence → settle sleep → command body →
+//! `finalize_if_due` → `state_version++` → commit.
 use crate::care;
+use crate::life;
+use crate::lifecycle_store;
 use crate::model::{
     AcceptOutcome, CareOutcome, DecayView, Event, EventData, EventsPage, HistoryCursor,
     HistoryPage, MetersView, MockOptions, MockOutcome, PauseView, PreflightResult,
@@ -58,9 +62,9 @@ pub struct AcceptRequest<'a> {
 }
 
 pub struct Store {
-    conn: Connection,
-    clock: Arc<dyn Clock>,
-    paths: StatePaths,
+    pub(crate) conn: Connection,
+    pub(crate) clock: Arc<dyn Clock>,
+    pub(crate) paths: StatePaths,
 }
 
 impl std::fmt::Debug for Store {
@@ -177,7 +181,6 @@ impl Store {
 
     fn migrate(&mut self, migrations: &[Migration]) -> Result<()> {
         let at = care::TimeMark::new(self.clock.as_ref());
-        let now = at.wall;
         let target = i64::try_from(migrations.len()).unwrap_or(i64::MAX);
         let tx = self
             .conn
@@ -188,7 +191,7 @@ impl Store {
             return Err(StorageError::SchemaUnsupported(version));
         }
         for m in &migrations[usize::try_from(version).unwrap_or(usize::MAX)..] {
-            m(&tx, now)?;
+            m(&tx, &at)?;
         }
         tx.pragma_update(None, "user_version", target)?;
         tx.commit()?;
@@ -199,15 +202,18 @@ impl Store {
         self.clock.now_ms()
     }
 
-    fn write(&mut self) -> Result<(Transaction<'_>, care::TimeMark)> {
+    /// `BEGIN IMMEDIATE`, then the time sample, then the settlement prologue. Every
+    /// mutating method ends in [`finish`] (or [`seal`] + commit).
+    pub(crate) fn write(&mut self) -> Result<(Transaction<'_>, care::TimeMark)> {
         let clock = self.clock.clone();
+        let paths = self.paths.clone();
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         // Sample only after acquiring the writer lock. A contending command must not
         // overwrite a newer sleep/execution checkpoint with an earlier timestamp.
         let at = care::TimeMark::new(clock.as_ref());
-        care::settle_sleep(&tx, &at)?;
+        settle_all(&tx, &paths, &at)?;
         Ok((tx, at))
     }
 
@@ -223,14 +229,18 @@ impl Store {
     /// never invalidates preflight approvals.
     pub fn snapshot(&self) -> Result<Snapshot> {
         let read = self.read()?;
-        let tx = if care::snapshot_needs_settlement(&read)? {
+        let needs_settlement = care::snapshot_needs_settlement(&read)?
+            || crate::presence_io::present(&self.paths.presence_path())
+            || life::death_due(&read)?;
+        let tx = if needs_settlement {
             read.commit()?;
             // Take the writer lock before settling so concurrent commands cannot spend
             // the same elapsed credit twice. Settlement re-reads under the lock.
             let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
             let at = care::TimeMark::new(self.clock.as_ref());
-            care::settle_sleep(&tx, &at)?;
+            settle_all(&tx, &self.paths, &at)?;
             care::checkpoint_running(&tx, &at)?;
+            seal(&tx, &at)?;
             tx
         } else {
             read
@@ -246,8 +256,10 @@ impl Store {
         .iter()
         .map(|t| brief(&tx, t))
         .collect::<Result<_>>()?;
+        let block = life::LifeBlock::load(&tx)?;
         let snapshot = Snapshot {
             schema_version: SCHEMA_VERSION,
+            state_version: life::state_version(&tx)?,
             protocol_version: PROTOCOL_VERSION,
             last_seq: last_seq(&tx)?,
             meters,
@@ -261,6 +273,10 @@ impl Store {
             active_task,
             recent,
             providers: ProviderInfo::all(),
+            life: block.life,
+            lifecycle: block.lifecycle,
+            unseen_events: block.unseen_events,
+            memorial: block.memorial,
         };
         tx.commit()?;
         Ok(snapshot)
@@ -446,7 +462,7 @@ impl Store {
         insert_scopes(&tx, &id, &d.scope)?;
         append_event(&tx, &id, None, State::Draft, 1, now)?;
         let s = summary(&tx, &load_task(&tx, &id)?)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(s)
     }
 
@@ -497,7 +513,7 @@ impl Store {
         invalidate_tokens(&tx, Some(&t.id))?;
         append_event(&tx, &t.id, Some(State::Draft), State::Draft, revision, now)?;
         let s = summary(&tx, &load_task(&tx, &t.id)?)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(s)
     }
 
@@ -520,6 +536,8 @@ impl Store {
             return Err(StorageError::UnsupportedProvider);
         }
         check_folder(&draft.folder, &paths)?;
+        // No companion, a pending end or a critical need blocks approval as well as Start.
+        care::ensure_lifecycle_ready(&tx)?;
         let settings = load_settings(&tx)?;
         let token = sys::hex(&sys::random_bytes::<32>()?);
         let expires_at_ms = now.saturating_add(TOKEN_TTL_MS);
@@ -540,7 +558,7 @@ impl Store {
                 expires_at_ms
             ],
         )?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(PreflightResult {
             task_id: t.id,
             revision: t.revision,
@@ -635,7 +653,7 @@ impl Store {
             params![supervisor.pid, start_time_sql(supervisor)?, t.id],
         )?;
         let seq = transition(&tx, &t, State::Preparing, &at)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         fault("start_after_commit");
         Ok(StartResult {
             task_id: t.id,
@@ -690,7 +708,7 @@ impl Store {
             return Err(StorageError::InvalidState("task is not cancelling"));
         }
         let seq = transition(&tx, &t, State::Cancelled, &at)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(seq)
     }
 
@@ -712,7 +730,7 @@ impl Store {
             "task is not in the expected state",
         ))?;
         let seq = transition(&tx, &t, to, &at)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(Step::Advanced { seq })
     }
 
@@ -779,7 +797,7 @@ impl Store {
         )?;
         let seq = transition(&tx, &t, State::ReviewReady, &at)?;
         fault("review_before_commit");
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(SealOutcome::Sealed { digest, seq })
     }
 
@@ -813,114 +831,13 @@ impl Store {
         validate_request_id(request_id)?;
         let params_sha256 = sha256_hex(action.as_bytes());
         let (tx, at) = self.write()?;
-        let prior: Option<(String, String, String)> = tx
-            .query_row(
-                "SELECT method, params_sha256, response FROM request_results WHERE request_id = ?1",
-                [request_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .optional()?;
-        if let Some((old_method, sha, response)) = prior {
-            if old_method != method || sha != params_sha256 {
-                return Err(StorageError::IdempotencyConflict);
-            }
-            return serde_json::from_str(&response).map_err(|_| StorageError::Corrupt);
+        let (result, replayed) =
+            replay_or_run(&tx, request_id, method, &params_sha256, at.wall, || {
+                care_body(&tx, &at, request_id, action)
+            })?;
+        if !replayed {
+            tx.commit()?;
         }
-        let before = load_pet(&tx)?.0;
-        let state = care::view(&tx, before)?;
-        let mut changed = false;
-        if action == "sleep" {
-            let executing: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN
-                ('preparing','running','waiting_for_user','verifying','cancelling','recovery_required'))",
-                [], get0)?;
-            if executing {
-                return Err(StorageError::InvalidState(
-                    "finish or recover active execution before putting the pet to bed",
-                ));
-            }
-            if !state.sleeping {
-                tx.execute(
-                    "UPDATE pet_care SET sleep_started_at_ms = ?1, sleep_wall_ms = ?1,
-                    sleep_boot = ?2, sleep_steady_ms = ?3, rest_required = 1 WHERE id = 1",
-                    params![at.wall, at.boot, at.steady],
-                )?;
-                changed = true;
-            }
-        } else if action == "wake" {
-            if state.sleeping {
-                tx.execute(
-                    "UPDATE pet_care SET sleep_started_at_ms = NULL, sleep_wall_ms = NULL,
-                    sleep_boot = NULL, sleep_steady_ms = NULL, rest_required = 1 WHERE id = 1",
-                    [],
-                )?;
-                changed = true;
-            }
-        } else {
-            if state.sleeping {
-                return Err(StorageError::InvalidState(
-                    "pet is sleeping; finish the nap or wake it before care",
-                ));
-            }
-            let columns: &[&str] = match action {
-                "food" => &["hunger"],
-                "water" => &["thirst"],
-                "play" => &["mental_health"],
-                "wash" | "bathroom" => &["hygiene"],
-                "routine" => &["hunger", "thirst", "mental_health", "hygiene"],
-                _ => return Err(StorageError::InvalidParams("unknown care action")),
-            };
-            for col in columns {
-                changed |= tx.execute(
-                    &format!(
-                        "UPDATE pet_state SET {col} = 10000,
-                    updated_at_ms = ?1 WHERE id = 1 AND {col} != 10000"
-                    ),
-                    [at.wall],
-                )? > 0;
-            }
-            if action == "bathroom" || (action == "routine" && state.bathroom_due) {
-                changed |= tx.execute(
-                    "UPDATE pet_care SET starts_since_bathroom = 0
-                    WHERE id = 1 AND starts_since_bathroom != 0",
-                    [],
-                )? > 0;
-            }
-            changed |= tx.execute(
-                "UPDATE pet_care SET welcome_care_available = 0
-                WHERE id = 1 AND welcome_care_available != 0 AND starts_since_bathroom < 2
-                AND EXISTS(SELECT 1 FROM pet_state WHERE id = 1 AND hunger = 10000
-                    AND thirst = 10000 AND mental_health = 10000 AND hygiene = 10000)",
-                [],
-            )? > 0;
-        }
-        if changed {
-            care::bump(&tx)?;
-        }
-        let meters = load_pet(&tx)?.0;
-        let result = CareOutcome {
-            request_id: request_id.to_owned(),
-            action: action.to_owned(),
-            changed,
-            meters,
-            care: care::view(&tx, meters)?,
-        };
-        let response = serde_json::to_string(&result)
-            .map_err(|_| StorageError::Unavailable("cannot encode care receipt"))?;
-        tx.execute(
-            "INSERT INTO request_results (request_id, method, params_sha256, response,
-            created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![request_id, method, params_sha256, response, at.wall],
-        )?;
-        // Ordinary clicks must not grow the database without bound: keep only the most
-        // recent care receipts (insertion order), never acceptance receipts.
-        tx.execute(
-            "DELETE FROM request_results WHERE method IN ('pet.care','pet.sleep','pet.wake')
-             AND rowid NOT IN (SELECT rowid FROM request_results
-                WHERE method IN ('pet.care','pet.sleep','pet.wake')
-                ORDER BY rowid DESC LIMIT ?1)",
-            [MAX_CARE_RECEIPTS],
-        )?;
-        tx.commit()?;
         Ok(result)
     }
 
@@ -936,137 +853,29 @@ impl Store {
             _ => return Err(StorageError::InvalidState("task cannot be cancelled now")),
         }
         let s = summary(&tx, &load_task(&tx, task_id)?)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(s)
     }
 
-    /// Exactly-once artifact acceptance. The isolated demo XP row, acceptance, state
-    /// change and request receipt commit together. Care meters are never refilled here.
+    /// Exactly-once artifact acceptance. The isolated demo XP row (bound to the life that
+    /// performed the task), acceptance, state change, evolution journal and request receipt
+    /// commit together. Care meters are never refilled here. A due death finalizes in the
+    /// same transaction, after the XP.
     pub fn accept_artifact(&mut self, req: &AcceptRequest<'_>) -> Result<AcceptOutcome> {
         validate_request_id(req.request_id)?;
         let params_sha256 = sha256_hex(canonical_accept_params(req).as_bytes());
         let (tx, at) = self.write()?;
-        let now = at.wall;
-        let prior: Option<(String, String, String)> = tx
-            .query_row(
-                "SELECT method, params_sha256, response FROM request_results
-                 WHERE request_id = ?1",
-                [req.request_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .optional()?;
-        if let Some((method, sha, response)) = prior {
-            if method != ACCEPT_METHOD || sha != params_sha256 {
-                return Err(StorageError::IdempotencyConflict);
-            }
-            return serde_json::from_str(&response).map_err(|_| StorageError::Corrupt);
-        }
-        let t = load_task(&tx, req.task_id)?;
-        let digest = t
-            .review_digest
-            .as_deref()
-            .ok_or(StorageError::InvalidState("task has no review"))?;
-        if req.review_digest != digest {
-            return Err(StorageError::ReviewChanged);
-        }
-        if !req.acknowledged {
-            return Err(StorageError::AcknowledgementRequired);
-        }
-        let outcome = if let Some(receipt) = load_receipt(&tx, &t.id)? {
-            AcceptOutcome {
-                receipt,
-                duplicate: true,
-            }
-        } else {
-            if t.state != State::ReviewReady {
-                return Err(StorageError::InvalidState("task is not review_ready"));
-            }
-            // The digest binds acceptance to the sealed content, not just the stored column.
-            if !review_intact(&tx, &t)? {
-                return Err(StorageError::ReviewDamaged);
-            }
-            let verification = t.review_verification.ok_or(StorageError::Corrupt)?;
-            let reason = req.override_reason.map(str::trim);
-            if reason.is_some_and(|r| r.len() > MAX_OVERRIDE_REASON_BYTES || r.contains('\0')) {
-                return Err(StorageError::InvalidParams(
-                    "override_reason must be at most 512 bytes after trimming, without NUL",
-                ));
-            }
-            if verification != Verification::Passed && reason.is_none_or(str::is_empty) {
-                return Err(StorageError::OverrideRequired);
-            }
-            let reason = reason
-                .filter(|r| !r.is_empty())
-                .map(codepet_core::redact_display_text);
-            let reason = reason
-                .map(|r| r.trim().to_owned())
-                .filter(|r| !r.is_empty());
-            if reason
-                .as_ref()
-                .is_some_and(|r| r.len() > MAX_OVERRIDE_REASON_BYTES)
-            {
-                return Err(StorageError::InvalidParams(
-                    "override reason is too large after display redaction",
-                ));
-            }
-            if verification != Verification::Passed && reason.is_none() {
-                return Err(StorageError::OverrideRequired);
-            }
-            // Only the fixed Small mock artifact template earns isolated demo XP.
-            // No real-work XP path exists until real verification and provider gates ship.
-            let demo_xp = if t.provider == Provider::Mock
-                && t.review_simulated
-                && t.mock.outcome == MockOutcome::Artifact
-                && verification == Verification::NotVerified
-            {
-                care::DEMO_XP
-            } else {
-                0
-            };
-            let progression_track = (demo_xp > 0).then(|| care::track(t.category).to_owned());
-            if let Some(track) = &progression_track {
-                tx.execute(
-                    "INSERT INTO demo_xp_rewards (task_id, track, amount, granted_at_ms)
-                    VALUES (?1, ?2, ?3, ?4)",
-                    params![t.id, track, demo_xp, now],
-                )?;
-            }
-            tx.execute(
-                "INSERT INTO acceptances (task_id, request_id, review_digest, verification,
-                    override_reason, accepted_at_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    t.id,
-                    req.request_id,
-                    digest,
-                    verification.as_str(),
-                    reason,
-                    now
-                ],
-            )?;
-            transition(&tx, &t, State::AcceptedArtifact, &at)?;
-            AcceptOutcome {
-                receipt: ReceiptView {
-                    task_id: t.id.clone(),
-                    category: t.category,
-                    amount_hundredths: 0,
-                    demo_xp,
-                    real_xp: 0,
-                    progression_track,
-                    verification,
-                    override_reason: reason,
-                    request_id: req.request_id.to_owned(),
-                    accepted_at_ms: now,
-                },
-                duplicate: false,
-            }
-        };
-        let response = serde_json::to_string(&outcome)
-            .map_err(|_| StorageError::Unavailable("cannot encode receipt"))?;
-        tx.execute(
-            "INSERT INTO request_results (request_id, method, params_sha256, response,
-                created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![req.request_id, ACCEPT_METHOD, params_sha256, response, now],
+        let (outcome, replayed) = replay_or_run(
+            &tx,
+            req.request_id,
+            ACCEPT_METHOD,
+            &params_sha256,
+            at.wall,
+            || accept_body(&tx, &at, req),
         )?;
+        if replayed {
+            return Ok(outcome);
+        }
         fault("accept_before_commit");
         tx.commit()?;
         fault("accept_after_commit");
@@ -1095,7 +904,7 @@ impl Store {
             _ => return Err(StorageError::InvalidState("task cannot be discarded now")),
         }
         let s = summary(&tx, &load_task(&tx, task_id)?)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(s)
     }
 
@@ -1176,7 +985,7 @@ impl Store {
             }
         }
         let active_task = active_task(&tx)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(RecoverResult {
             changed,
             repaired,
@@ -1216,19 +1025,43 @@ impl Store {
         )?;
         invalidate_tokens(&tx, None)?;
         let view = load_settings(&tx)?;
-        tx.commit()?;
+        finish(tx, &at)?;
         Ok(view)
     }
 
+    /// Pause/Travel for the living companion: freezes decay, neglect and grace; grants
+    /// and refills nothing; never blocks care or Start. Journaled when it changes.
     pub fn set_paused(&mut self, paused: bool) -> Result<PauseView> {
         let (tx, at) = self.write()?;
         let now = at.wall;
-        tx.execute(
-            "UPDATE pet_state SET decay_paused = ?1, updated_at_ms = ?2 WHERE id = 1",
+        let life = life::active_life(&tx)?.ok_or(StorageError::NoActivePet)?;
+        if lifecycle_store::load(&tx)?.death_pending {
+            return Err(StorageError::InvalidState(
+                "the companion cannot be paused right now",
+            ));
+        }
+        let changed = tx.execute(
+            "UPDATE pet_state SET decay_paused = ?1, updated_at_ms = ?2
+             WHERE id = 1 AND decay_paused != ?1",
             params![paused, now],
-        )?;
-        tx.commit()?;
-        Ok(PauseView { paused })
+        )? > 0;
+        if changed {
+            life::journal(
+                &tx,
+                &life.life_id,
+                if paused { "paused" } else { "resumed" },
+                None,
+                &serde_json::json!({}),
+                None,
+                None,
+                now,
+            )?;
+        }
+        finish(tx, &at)?;
+        Ok(PauseView {
+            paused,
+            life_id: Some(life.life_id),
+        })
     }
 }
 
@@ -1288,6 +1121,313 @@ impl TaskRow {
             instructions: self.instructions.clone(),
         }
     }
+}
+
+/// The settlement prologue of every write (and of a settling snapshot): attended presence
+/// first, then rest. Presence reads the nap state before `settle_sleep` changes it.
+pub(crate) fn settle_all(tx: &Connection, paths: &StatePaths, at: &care::TimeMark) -> Result<()> {
+    lifecycle_store::settle_presence(tx, paths, at)?;
+    care::settle_sleep(tx, at)?;
+    Ok(())
+}
+
+/// The epilogue without the commit: finalize a due death (after any XP this transaction
+/// granted), then `meta.state_version += 1`.
+pub(crate) fn seal(tx: &Connection, at: &care::TimeMark) -> Result<()> {
+    life::finalize_if_due(tx, at)?;
+    tx.execute(
+        "UPDATE meta SET state_version = state_version + 1 WHERE id = 1",
+        [],
+    )?;
+    Ok(())
+}
+
+/// The single ordering helper every mutating method ends in (spec §8.1).
+pub(crate) fn finish(tx: Transaction<'_>, at: &care::TimeMark) -> Result<()> {
+    seal(&tx, at)?;
+    tx.commit()?;
+    Ok(())
+}
+
+const CARE_METHODS: &str = "('pet.care','pet.sleep','pet.wake')";
+const LIFE_RECEIPT_METHODS: &str =
+    "('pet.select','pet.events_seen','pet.rules','pet.configure_life')";
+
+/// Idempotency by envelope request id. The same id with the same method and params
+/// returns the stored response (`true` = replayed; the caller then commits nothing); the
+/// same id with anything else is `IDEMPOTENCY_CONFLICT`. Otherwise `run` executes and its
+/// result is stored in the same transaction. Frequent care and lifecycle receipts are
+/// pruned to the most recent ones; acceptance, adoption and retirement receipts are kept.
+pub(crate) fn replay_or_run<T, F>(
+    tx: &Connection,
+    request_id: &str,
+    method: &str,
+    params_sha256: &str,
+    now: i64,
+    run: F,
+) -> Result<(T, bool)>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+    F: FnOnce() -> Result<T>,
+{
+    validate_request_id(request_id)?;
+    let prior: Option<(String, String, String)> = tx
+        .query_row(
+            "SELECT method, params_sha256, response FROM request_results WHERE request_id = ?1",
+            [request_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?;
+    if let Some((old_method, sha, response)) = prior {
+        if old_method != method || sha != params_sha256 {
+            return Err(StorageError::IdempotencyConflict);
+        }
+        let value = serde_json::from_str(&response).map_err(|_| StorageError::Corrupt)?;
+        return Ok((value, true));
+    }
+    let value = run()?;
+    let response = serde_json::to_string(&value)
+        .map_err(|_| StorageError::Unavailable("cannot encode receipt"))?;
+    tx.execute(
+        "INSERT INTO request_results (request_id, method, params_sha256, response,
+            created_at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![request_id, method, params_sha256, response, now],
+    )?;
+    // Ordinary clicks must not grow the database without bound: keep only the most
+    // recent receipts of each frequent group (insertion order).
+    for (group, keep) in [
+        (CARE_METHODS, MAX_CARE_RECEIPTS),
+        (LIFE_RECEIPT_METHODS, crate::MAX_LIFE_RECEIPTS),
+    ] {
+        if group.contains(&format!("'{method}'")) {
+            tx.execute(
+                &format!(
+                    "DELETE FROM request_results WHERE method IN {group}
+                     AND rowid NOT IN (SELECT rowid FROM request_results
+                        WHERE method IN {group} ORDER BY rowid DESC LIMIT ?1)"
+                ),
+                [keep],
+            )?;
+        }
+    }
+    Ok((value, false))
+}
+
+/// The body of `task.accept_artifact` after the idempotency check.
+fn accept_body(
+    tx: &Transaction<'_>,
+    at: &care::TimeMark,
+    req: &AcceptRequest<'_>,
+) -> Result<AcceptOutcome> {
+    let now = at.wall;
+    let t = load_task(tx, req.task_id)?;
+    let digest = t
+        .review_digest
+        .as_deref()
+        .ok_or(StorageError::InvalidState("task has no review"))?;
+    if req.review_digest != digest {
+        return Err(StorageError::ReviewChanged);
+    }
+    if !req.acknowledged {
+        return Err(StorageError::AcknowledgementRequired);
+    }
+    if let Some(receipt) = load_receipt(tx, &t.id)? {
+        seal(tx, at)?;
+        return Ok(AcceptOutcome {
+            receipt,
+            duplicate: true,
+        });
+    }
+    if t.state != State::ReviewReady {
+        return Err(StorageError::InvalidState("task is not review_ready"));
+    }
+    // The digest binds acceptance to the sealed content, not just the stored column.
+    if !review_intact(tx, &t)? {
+        return Err(StorageError::ReviewDamaged);
+    }
+    let verification = t.review_verification.ok_or(StorageError::Corrupt)?;
+    let reason = req.override_reason.map(str::trim);
+    if reason.is_some_and(|r| r.len() > MAX_OVERRIDE_REASON_BYTES || r.contains('\0')) {
+        return Err(StorageError::InvalidParams(
+            "override_reason must be at most 512 bytes after trimming, without NUL",
+        ));
+    }
+    if verification != Verification::Passed && reason.is_none_or(str::is_empty) {
+        return Err(StorageError::OverrideRequired);
+    }
+    let reason = reason
+        .filter(|r| !r.is_empty())
+        .map(codepet_core::redact_display_text);
+    let reason = reason
+        .map(|r| r.trim().to_owned())
+        .filter(|r| !r.is_empty());
+    if reason
+        .as_ref()
+        .is_some_and(|r| r.len() > MAX_OVERRIDE_REASON_BYTES)
+    {
+        return Err(StorageError::InvalidParams(
+            "override reason is too large after display redaction",
+        ));
+    }
+    if verification != Verification::Passed && reason.is_none() {
+        return Err(StorageError::OverrideRequired);
+    }
+    // Only the fixed Small mock artifact template earns isolated demo XP.
+    // No real-work XP path exists until real verification and provider gates ship.
+    let eligible = demo_xp_eligible(&t, verification);
+    // XP belongs to the life that performed the task (`tasks.life_id`, set at Start),
+    // never "the active life", and only while that life has not ended.
+    let performer: Option<String> =
+        tx.query_row("SELECT life_id FROM tasks WHERE id = ?1", [&t.id], get0)?;
+    let living = match &performer {
+        Some(id) => life::is_living(tx, id)?,
+        None => false,
+    };
+    let demo_xp = if eligible && living { care::DEMO_XP } else { 0 };
+    let old_life_xp = match &performer {
+        Some(id) if demo_xp > 0 => life::life_xp(tx, id)?.0,
+        _ => 0,
+    };
+    if demo_xp > 0 {
+        tx.execute(
+            "INSERT INTO demo_xp_rewards (task_id, track, amount, granted_at_ms, life_id)
+            VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![t.id, care::track(t.category), demo_xp, now, performer],
+        )?;
+    }
+    tx.execute(
+        "INSERT INTO acceptances (task_id, request_id, review_digest, verification,
+            override_reason, accepted_at_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            t.id,
+            req.request_id,
+            digest,
+            verification.as_str(),
+            reason,
+            now
+        ],
+    )?;
+    transition(tx, &t, State::AcceptedArtifact, at)?;
+    if let (Some(life_id), true) = (&performer, demo_xp > 0) {
+        if life::record_evolution(tx, life_id, &t.id, old_life_xp, demo_xp, now)? {
+            fault("evolve_before_commit");
+        }
+    }
+    seal(tx, at)?;
+    Ok(AcceptOutcome {
+        receipt: load_receipt(tx, &t.id)?.ok_or(StorageError::Corrupt)?,
+        duplicate: false,
+    })
+}
+
+/// Demo XP rule: only a simulated, unverified mock artifact earns it.
+fn demo_xp_eligible(t: &TaskRow, verification: Verification) -> bool {
+    t.provider == Provider::Mock
+        && t.review_simulated
+        && t.mock.outcome == MockOutcome::Artifact
+        && verification == Verification::NotVerified
+}
+
+/// The body of `pet.care` / `pet.sleep` / `pet.wake` after the idempotency check.
+fn care_body(
+    tx: &Transaction<'_>,
+    at: &care::TimeMark,
+    request_id: &str,
+    action: &str,
+) -> Result<CareOutcome> {
+    life::active_life(tx)?.ok_or(StorageError::NoActivePet)?;
+    if lifecycle_store::load(tx)?.death_pending {
+        return Err(StorageError::InvalidState(
+            "care is not possible while the current task finishes",
+        ));
+    }
+    let before = load_pet(tx)?.0;
+    let state = care::view(tx, before)?;
+    let mut changed = false;
+    if action == "sleep" {
+        let executing: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN
+            ('preparing','running','waiting_for_user','verifying','cancelling','recovery_required'))",
+            [],
+            get0,
+        )?;
+        if executing {
+            return Err(StorageError::InvalidState(
+                "finish or recover active execution before putting the pet to bed",
+            ));
+        }
+        if !state.sleeping {
+            tx.execute(
+                "UPDATE pet_care SET sleep_started_at_ms = ?1, sleep_wall_ms = ?1,
+                sleep_boot = ?2, sleep_steady_ms = ?3, rest_required = 1 WHERE id = 1",
+                params![at.wall, at.boot, at.steady],
+            )?;
+            changed = true;
+        }
+    } else if action == "wake" {
+        if state.sleeping {
+            tx.execute(
+                "UPDATE pet_care SET sleep_started_at_ms = NULL, sleep_wall_ms = NULL,
+                sleep_boot = NULL, sleep_steady_ms = NULL, rest_required = 1 WHERE id = 1",
+                [],
+            )?;
+            changed = true;
+        }
+    } else {
+        if state.sleeping {
+            return Err(StorageError::InvalidState(
+                "pet is sleeping; finish the nap or wake it before care",
+            ));
+        }
+        let filled: &[Category] = match action {
+            "food" => &[Category::Hunger],
+            "water" => &[Category::Thirst],
+            "play" => &[Category::MentalHealth],
+            "wash" | "bathroom" => &[Category::Hygiene],
+            "routine" => &Category::ALL,
+            _ => return Err(StorageError::InvalidParams("unknown care action")),
+        };
+        for category in filled {
+            let col = category.as_str();
+            changed |= tx.execute(
+                &format!(
+                    "UPDATE pet_state SET {col} = 10000,
+                updated_at_ms = ?1 WHERE id = 1 AND {col} != 10000"
+                ),
+                [at.wall],
+            )? > 0;
+        }
+        if action == "bathroom" || (action == "routine" && state.bathroom_due) {
+            changed |= tx.execute(
+                "UPDATE pet_care SET starts_since_bathroom = 0
+                WHERE id = 1 AND starts_since_bathroom != 0",
+                [],
+            )? > 0;
+        }
+        changed |= tx.execute(
+            "UPDATE pet_care SET welcome_care_available = 0
+            WHERE id = 1 AND welcome_care_available != 0 AND starts_since_bathroom < 2
+            AND EXISTS(SELECT 1 FROM pet_state WHERE id = 1 AND hunger = 10000
+                AND thirst = 10000 AND mental_health = 10000 AND hygiene = 10000)",
+            [],
+        )? > 0;
+        // Matching care restarts satiety holds, resets lethal neglect and may recover
+        // the companion. It is allowed while critical; no fresh grace is granted.
+        lifecycle_store::on_care(tx, filled, at.wall)?;
+    }
+    if changed {
+        care::bump(tx)?;
+    }
+    seal(tx, at)?;
+    let meters = load_pet(tx)?.0;
+    Ok(CareOutcome {
+        request_id: request_id.to_owned(),
+        action: action.to_owned(),
+        changed,
+        meters,
+        care: care::view(tx, meters)?,
+        lifecycle: Some(life::LifeBlock::load(tx)?.lifecycle),
+    })
 }
 
 fn get0<T: FromSql>(r: &Row<'_>) -> rusqlite::Result<T> {
@@ -1639,21 +1779,28 @@ fn load_pet(c: &Connection) -> Result<(MetersView, bool)> {
     )?)
 }
 
+/// The acceptance receipt of `task_id`, rebuilt from durable rows only, so a fresh
+/// acceptance, its replay under another request id and `task.get` always agree.
+/// Lifecycle fields: `life_id` is the performing life; `level_before`/`level_after` are
+/// that life's levels from its demo XP accepted up to (excluding/including) this
+/// acceptance; `evolved_to` lists the stages this acceptance journaled; `xp_withheld`
+/// marks an eligible reward the ended performing life could not receive.
 fn load_receipt(c: &Connection, task_id: &str) -> Result<Option<ReceiptView>> {
     type ReceiptRow = (
-        String,
-        i64,
-        String,
-        Option<String>,
-        String,
-        i64,
-        u32,
-        Option<String>,
+        (String, i64, String, Option<String>, String, i64),
+        (u32, Option<String>, Option<String>, i64),
+        (bool, bool),
     );
     let raw: Option<ReceiptRow> = c
         .query_row(
             "SELECT t.category, COALESCE(r.amount_hundredths, 0), a.verification, a.override_reason,
-                a.request_id, a.accepted_at_ms, COALESCE(x.amount, 0), x.track
+                a.request_id, a.accepted_at_ms, COALESCE(x.amount, 0), x.track, t.life_id,
+                a.rowid,
+                (t.provider = 'mock' AND COALESCE(t.review_simulated, 0) = 1
+                    AND t.mock_outcome = 'artifact' AND a.verification = 'not_verified'
+                    AND x.task_id IS NULL),
+                (t.life_id IS NULL OR EXISTS(SELECT 1 FROM lives l WHERE l.life_id = t.life_id
+                    AND l.ended_at_ms IS NOT NULL AND l.ended_at_ms <= a.accepted_at_ms))
              FROM acceptances a JOIN tasks t ON t.id = a.task_id
              LEFT JOIN rewards r ON r.task_id = a.task_id
              LEFT JOIN demo_xp_rewards x ON x.task_id = a.task_id
@@ -1661,44 +1808,65 @@ fn load_receipt(c: &Connection, task_id: &str) -> Result<Option<ReceiptView>> {
             [task_id],
             |r| {
                 Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
-                    r.get(6)?,
-                    r.get(7)?,
+                    (
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ),
+                    (r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?),
+                    (r.get(10)?, r.get(11)?),
                 ))
             },
         )
         .optional()?;
-    raw.map(
-        |(
-            category,
-            amount,
-            verification,
-            override_reason,
-            request_id,
-            accepted_at_ms,
-            demo_xp,
-            progression_track,
-        )| {
-            Ok(ReceiptView {
-                task_id: task_id.to_owned(),
-                category: parse(&category, Category::parse)?,
-                amount_hundredths: u16::try_from(amount).map_err(|_| StorageError::Corrupt)?,
-                verification: parse(&verification, Verification::parse)?,
-                override_reason,
-                request_id,
-                accepted_at_ms,
-                demo_xp,
-                real_xp: 0,
-                progression_track,
-            })
-        },
-    )
-    .transpose()
+    let Some((
+        (category, amount, verification, override_reason, request_id, accepted_at_ms),
+        (demo_xp, progression_track, life_id, acceptance_rowid),
+        (missing_eligible_reward, performer_ended),
+    )) = raw
+    else {
+        return Ok(None);
+    };
+    let (level_before, level_after, evolved_to) = match &life_id {
+        Some(life) => {
+            let after: i64 = c.query_row(
+                "SELECT COALESCE(SUM(x.amount), 0) FROM demo_xp_rewards x
+                 JOIN acceptances a ON a.task_id = x.task_id
+                 WHERE x.life_id = ?1 AND a.rowid <= ?2",
+                params![life, acceptance_rowid],
+                get0,
+            )?;
+            let after = u32::try_from(after).map_err(|_| StorageError::Corrupt)?;
+            let before = after.saturating_sub(demo_xp);
+            let rules = &codepet_core::lifecycle::RULES_V1.steady;
+            (
+                codepet_core::evolution::level_for_xp(before, rules),
+                codepet_core::evolution::level_for_xp(after, rules),
+                life::evolved_by_task(c, task_id)?,
+            )
+        }
+        None => (0, 0, Vec::new()),
+    };
+    Ok(Some(ReceiptView {
+        task_id: task_id.to_owned(),
+        category: parse(&category, Category::parse)?,
+        amount_hundredths: u16::try_from(amount).map_err(|_| StorageError::Corrupt)?,
+        verification: parse(&verification, Verification::parse)?,
+        override_reason,
+        request_id,
+        accepted_at_ms,
+        demo_xp,
+        real_xp: 0,
+        progression_track,
+        life_id,
+        level_before,
+        level_after,
+        evolved_to,
+        xp_withheld: (missing_eligible_reward && performer_ended).then(|| "life_ended".to_owned()),
+    }))
 }
 
 fn brief(c: &Connection, t: &TaskRow) -> Result<TaskBrief> {

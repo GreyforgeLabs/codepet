@@ -218,6 +218,7 @@ fn snapshot_json_shape_matches_contract() {
         keys(&v),
         set(&[
             "schema_version",
+            "state_version",
             "protocol_version",
             "last_seq",
             "meters",
@@ -227,7 +228,11 @@ fn snapshot_json_shape_matches_contract() {
             "settings",
             "active_task",
             "recent",
-            "providers"
+            "providers",
+            "life",
+            "lifecycle",
+            "unseen_events",
+            "memorial"
         ])
     );
     assert_eq!(
@@ -337,12 +342,15 @@ fn snapshot_json_shape_matches_contract() {
     let out = accept(&mut store, &id, &digest, "req-1", Some("useful")).unwrap();
     let a = serde_json::to_value(&out).unwrap();
     assert_eq!(keys(&a), set(&["receipt", "duplicate"]));
+    let life_id = store.snapshot().unwrap().life.unwrap().life_id;
     assert_eq!(
         a["receipt"],
         serde_json::json!({"task_id": id, "category": "mental_health",
             "amount_hundredths": 0, "demo_xp": 20, "real_xp": 0,
             "progression_track": "learning_specification", "verification": "not_verified",
-            "override_reason": "useful", "request_id": "req-1", "accepted_at_ms": T0})
+            "override_reason": "useful", "request_id": "req-1", "accepted_at_ms": T0,
+            "life_id": life_id, "level_before": 1, "level_after": 1, "evolved_to": [],
+            "xp_withheld": null})
     );
     let v = serde_json::to_value(store.snapshot().unwrap()).unwrap();
     assert!(v["active_task"].is_null());
@@ -1743,13 +1751,13 @@ fn newer_schema_is_refused_untouched() {
     env.paths.prepare().unwrap();
     {
         let c = env.raw();
-        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 4;")
+        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 5;")
             .unwrap();
     }
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(4))
+        Err(StorageError::SchemaUnsupported(5))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     assert_eq!(fs::read_dir(&env.paths.state_dir).unwrap().count(), 1);
@@ -1804,8 +1812,8 @@ fn corrupt_database_is_refused_untouched() {
 
 #[test]
 fn migration_backs_up_older_versions_first() {
-    fn v4(tx: &rusqlite::Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
-        tx.execute_batch("CREATE TABLE extra (x INTEGER)")
+    fn v5(tx: &rusqlite::Transaction<'_>, _at: &care::TimeMark) -> Result<()> {
+        Ok(tx.execute_batch("CREATE TABLE extra (x INTEGER)")?)
     }
     let env = Env::new();
     let id = {
@@ -1819,35 +1827,36 @@ fn migration_backs_up_older_versions_first() {
         schema::MIGRATIONS[0],
         schema::MIGRATIONS[1],
         schema::MIGRATIONS[2],
-        v4,
+        schema::MIGRATIONS[3],
+        v5,
     ];
     env.clock.set(T0 + 42);
     let store = Store::open_with(&env.paths, env.clock.clone(), migrations).unwrap();
     assert_eq!(store.task(&id).unwrap().task_id, id);
     drop(store);
-    assert_eq!(env.count("PRAGMA user_version"), 4);
+    assert_eq!(env.count("PRAGMA user_version"), 5);
     assert_eq!(env.count("SELECT count(*) FROM extra"), 0);
     let backup = env
         .paths
         .state_dir
-        .join(format!("codepet.sqlite3.bak-v3-{}", T0 + 42));
+        .join(format!("codepet.sqlite3.bak-v4-{}", T0 + 42));
     assert_eq!(mode(&backup), 0o600);
     let b = Connection::open(&backup).unwrap();
     let v: i64 = b
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(v, 3);
+    assert_eq!(v, 4);
     let n: i64 = b
         .query_row("SELECT count(*) FROM tasks WHERE id = ?1", [&id], |r| {
             r.get(0)
         })
         .unwrap();
     assert_eq!(n, 1);
-    // This build (v3) now refuses the upgraded file without touching it.
+    // This build (v4) now refuses the upgraded file without touching it.
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(4))
+        Err(StorageError::SchemaUnsupported(5))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     // Reopening at the same version neither migrates nor backs up again.
