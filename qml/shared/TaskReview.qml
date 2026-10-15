@@ -112,11 +112,19 @@ ColumnLayout {
             root.acceptKeyParams = key
         }
         root.host.request("task.accept_artifact", params, function (resp) {
-            if (resp.ok && resp.result) {
-                root.receipt = resp.result.receipt
-                root.duplicate = resp.result.duplicate === true
+            var outcome = resp.ok && resp.result ? resp.result : null
+            if (outcome) {
+                root.receipt = outcome.receipt
+                root.duplicate = outcome.duplicate === true
             }
-            root.host.request("state.get", {}, function () {})
+            root.host.request("state.get", {}, function () {
+                // This UI performed the acceptance: announce it once the refreshed snapshot
+                // (with the new growth events and their seqs) is in place, so the desktop
+                // pet celebrates from this response (spec D11). Hosts without the signal
+                // simply skip it.
+                if (outcome && root.host && typeof root.host.taskAccepted === "function")
+                    root.host.taskAccepted(outcome)
+            })
         }, root.acceptKey)
     }
     function discardClicked() {

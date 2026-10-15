@@ -36,6 +36,10 @@ QtObject {
     signal lifeRequested()
     // Emitted after an authoritative state.get replaced the snapshot.
     signal snapshotReplaced()
+    // Emitted by the UI that performed an acceptance (TaskReview), with the real
+    // `task.accept_artifact` result ({receipt, duplicate}), after its follow-up state.get.
+    // DesktopPet celebrates new growth from it (spec D11); nothing here issues RPC.
+    signal taskAccepted(var outcome)
     readonly property bool supervisorActive: liveSupervisors > 0
     property int liveSupervisors: 0
 

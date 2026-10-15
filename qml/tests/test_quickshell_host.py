@@ -310,12 +310,22 @@ class HostContractV02(unittest.TestCase):
     def test_host_contract_additions(self):
         for token in ('property string clientTag: "qs"', 'property int presentationLocks: 0',
                       'signal companionRequested()', 'signal lifeRequested()',
-                      'signal snapshotReplaced()', 'function openCompanion() {',
+                      'signal snapshotReplaced()', 'signal taskAccepted(var outcome)',
+                      'function openCompanion() {',
                       'function openLife() {', 'return root.clientTag + "-" +'):
             self.assertIn(token, ADAPTER)
         self.assertIn('clientTag: "overlay"', CODE)
         for fn in ('function openCompanion() {', 'function openLife() {'):
             self.assertNotIn('request(', block(ADAPTER, fn))
+        # The accepting UI announces its own acceptance through the host (spec D11), after
+        # the follow-up state.get, with the real task.accept_artifact result.
+        review = (QML / "shared/TaskReview.qml").read_text()
+        accept = block(review, 'function acceptClicked() {')
+        self.assertIn('root.host.taskAccepted(outcome)', accept)
+        self.assertLess(accept.index('"state.get"'), accept.index('root.host.taskAccepted(outcome)'))
+        pet = (QML / "shared/DesktopPet.qml").read_text()
+        self.assertIn('function onTaskAccepted(outcome) { root.celebrateFromAcceptance(outcome) }', pet)
+        self.assertIn('receipt.evolved_to', block(pet, 'function celebrateFromAcceptance(outcome) {'))
 
 
 BAR_STATE_NODE = r"""

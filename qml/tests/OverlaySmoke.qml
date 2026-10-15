@@ -37,7 +37,11 @@ Item {
         property bool hold: false
         property bool failNext: false
         property var queue: []
-        signal taskAccepted(var result)
+        // task.accept_artifact answers acceptResult and (as storage would) replaces the
+        // snapshot with afterAccept, which the follow-up state.get then returns.
+        property var acceptResult: null
+        property var afterAccept: null
+        signal taskAccepted(var outcome)
         function methods() { return calls.map(function (c) { return c.method }) }
         function count(method) { return calls.filter(function (c) { return c.method === method }).length }
         function request(method, params, callback, requestId) {
@@ -58,6 +62,9 @@ Item {
                     fake.lastError = "INVALID_STATE: Not now."
                 } else if (method === "state.get") {
                     resp = {ok: true, result: fake.snapshot}
+                } else if (method === "task.accept_artifact" && fake.acceptResult) {
+                    if (fake.afterAccept) fake.snapshot = fake.afterAccept
+                    resp = {ok: true, result: fake.acceptResult}
                 } else if (method === "pet.care") {
                     var saved = JSON.parse(JSON.stringify(fake.snapshot))
                     saved.meters[{food: "hunger", water: "thirst", play: "mental_health", wash: "hygiene", bathroom: "hygiene"}[params.action]] = 10000
@@ -93,6 +100,14 @@ Item {
         for (var k in over || {}) s[k] = over[k]
         return s
     }
+    // The real AcceptOutcome shape (model.rs): {receipt: ReceiptView, duplicate}. The
+    // receipt names the stages reached but carries no event seqs.
+    function outcome(stages, lifeId) {
+        return {duplicate: false, receipt: {task_id: "t-9", category: "hunger", amount_hundredths: 0,
+            verification: "passed", override_reason: null, request_id: "accept-1", accepted_at_ms: 0,
+            demo_xp: 20, real_xp: 0, progression_track: "demo", life_id: lifeId || "life-1",
+            level_before: 3, level_after: 4, evolved_to: stages, xp_withheld: null}}
+    }
     function lifeWith(over) {
         var l = snap().life
         for (var k in over) l[k] = over[k]
@@ -101,6 +116,7 @@ Item {
 
     DesktopPet { id: legacy; width: test.width; height: test.height; host: host; onTaskPanelRequested: test.openedPanels += 1 }
     DesktopPet { id: pet; width: test.width; height: test.height; host: fake; onChooserRequested: test.chooserOpened += 1 }
+    TaskReview { id: review; host: fake; visible: false }
     Component { id: petComponent; DesktopPet { width: 600; height: 400 } }
 
     function check(value, label) {
@@ -296,10 +312,17 @@ Item {
                 pet.celebrateFromAcceptance({unseen_events: [{seq: 5, kind: "evolved", stage: 3}]})
                 test.check(fake.count("pet.events_seen") === 1, "the same growth is never acknowledged twice")
                 pet.clearTransients()
-                pet.celebrateFromAcceptance({})
+                pet.celebrateFromAcceptance(test.outcome([3]))
                 test.check(pet.transientState === "", "already celebrated growth never replays")
-                fake.taskAccepted({unseen_events: [{seq: 6, kind: "evolved", stage: 3}]})
-                test.check(pet.transientState === "celebrate", "this UI's acceptance response celebrates new growth")
+                fake.snapshot = test.snap({unseen_events: [{seq: 6, kind: "evolved", stage: 3, at_ms: 0}]})
+                test.check(pet.transientState === "", "growth arriving in a snapshot alone never celebrates")
+                fake.taskAccepted(test.outcome([]))
+                test.check(pet.transientState === "", "an acceptance that reached no stage leaves other growth to a click")
+                fake.taskAccepted(test.outcome([3], "life-other"))
+                test.check(pet.transientState === "", "another life's acceptance never celebrates this one")
+                fake.taskAccepted(test.outcome([3]))
+                test.check(pet.transientState === "celebrate",
+                           "this UI's acceptance (real AcceptOutcome, seqs from the follow-up state.get) celebrates new growth")
                 break
             case 11:
                 test.check(fake.count("pet.events_seen") === 2 && fake.calls[fake.calls.length - 1].params.through_seq === 6,
@@ -410,6 +433,24 @@ Item {
                 fake.snapshot = test.snap({})
                 test.find(pet, "desktopPet.chooseLook").clicked()
                 test.check(test.chooserOpened === 1, "Choose look… asks the host for the chooser")
+                // End to end: this UI's TaskReview accepts; once its follow-up state.get has
+                // the new event, the host announces the outcome and the pet celebrates.
+                pet.selected = false
+                pet.clearTransients()
+                fake.acceptResult = test.outcome([2])
+                fake.afterAccept = test.snap({unseen_events: [{seq: 9, kind: "evolved", stage: 2, at_ms: 0}]})
+                review.task = {task_id: "t-9", state: "review_ready",
+                               review: {digest: "ab".repeat(32), verification: "passed", simulated: true}}
+                test.find(review, "taskReview.ack").checked = true
+                test.requestBaseline = fake.seq
+                review.acceptClicked()
+                break
+            case 15:
+                test.check(fake.methods().slice(test.requestBaseline).join(",") === "task.accept_artifact,state.get,pet.events_seen",
+                           "accept, refresh, then one pet.events_seen: " + fake.methods().slice(test.requestBaseline).join(","))
+                test.check(review.receipt && review.receipt.evolved_to[0] === 2, "the review shows the real receipt")
+                test.check(pet.transientState === "celebrate", "the accepting UI celebrates from its own response")
+                test.check(fake.calls[fake.calls.length - 1].params.through_seq === 9, "and acknowledges the new event's seq")
                 PetCatalog.install()
                 console.log("Overlay smoke: " + test.checks + " checks, " + test.failures + " failures")
                 Qt.exit(test.failures > 0 ? 1 : 0)

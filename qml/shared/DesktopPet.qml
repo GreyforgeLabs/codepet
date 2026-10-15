@@ -309,9 +309,16 @@ Item {
         sendEventsSeen(max)
         return true
     }
-    function celebrateFromAcceptance(result) {
-        var events = result && Array.isArray(result.unseen_events) ? result.unseen_events
-            : result && Array.isArray(result.evolved) ? result.evolved : unseenEvents
+    // `outcome` is the real task.accept_artifact result: {receipt, duplicate}. The receipt
+    // lists the stages this acceptance reached (`evolved_to`) but no event seqs; those come
+    // from the follow-up state.get, already in `unseenEvents` when the host announces it.
+    function celebrateFromAcceptance(outcome) {
+        var receipt = outcome && outcome.receipt ? outcome.receipt : null
+        var stages = receipt && Array.isArray(receipt.evolved_to) ? receipt.evolved_to : []
+        if (stages.length === 0 || !life) return false
+        if (receipt.life_id && String(receipt.life_id) !== String(life.life_id)) return false
+        var events = unseenEvents.filter(function (e) { return stages.indexOf(e.stage) >= 0 })
+        if (events.length === 0) return false
         return acknowledgeGrowth(events)
     }
     function sendEventsSeen(seq) {
@@ -368,12 +375,13 @@ Item {
         onReactionSeqChanged: root.startTransient(controller.lastReaction, 0)
         onFailureSeqChanged: root.startTransient("error", 2000)
     }
-    // A host may announce this UI's own confirmed acceptance; growth then celebrates
-    // from that response (other UIs wait for an explicit click).
+    // The host announces this UI's own confirmed acceptance (TaskReview emits
+    // host.taskAccepted after the follow-up state.get); growth then celebrates from that
+    // response. Other UIs wait for an explicit click.
     Connections {
         target: root.host
         ignoreUnknownSignals: true
-        function onTaskAccepted(result) { root.celebrateFromAcceptance(result) }
+        function onTaskAccepted(outcome) { root.celebrateFromAcceptance(outcome) }
     }
     Item {
         id: pet
