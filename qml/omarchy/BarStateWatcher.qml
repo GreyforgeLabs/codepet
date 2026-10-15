@@ -9,7 +9,7 @@ import "BarState.js" as BarState
 //
 // This component NEVER issues RPC and holds no reference to the host transport. A
 // file event only parses the file and emits `updated(state)` for a strictly newer
-// `state_version`; the host merges the subset into its presentation snapshot. Full
+// `state_version` (or another database's file); the host merges the subset into its presentation snapshot. Full
 // task details refresh only on explicit actions (opening the window, Refresh, clicks).
 // A missing or malformed file is ignored. Changes are watched by inotify; there is no
 // polling timer.
@@ -17,8 +17,11 @@ QtObject {
     id: root
     // Absolute file path, or "" to stay idle.
     property string path: ""
-    // Highest state_version emitted so far; older or equal files are ignored.
+    // Highest state_version emitted so far for database `lastDbId`; older or equal files
+    // of that database are ignored. A file naming another database (restored, recreated
+    // or swapped) starts a new order instead of being ignored until its counter catches up.
     property real lastVersion: -1
+    property string lastDbId: ""
     property int rejected: 0
 
     signal updated(var state)
@@ -36,8 +39,10 @@ QtObject {
             root.rejected += 1
             return false
         }
-        if (state.state_version <= root.lastVersion)
+        var dbId = typeof state.db_id === "string" ? state.db_id : ""
+        if (dbId === root.lastDbId && state.state_version <= root.lastVersion)
             return false
+        root.lastDbId = dbId
         root.lastVersion = state.state_version
         root.updated(state)
         return true

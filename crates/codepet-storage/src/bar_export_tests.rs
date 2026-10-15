@@ -21,6 +21,7 @@ fn export_writes_the_contract_shape_with_mode_0600() {
         set(&[
             "schema",
             "state_version",
+            "db_id",
             "generated_at_ms",
             "app_version",
             "ruleset",
@@ -198,7 +199,10 @@ fn the_file_only_moves_forward() {
     // An older or equal state never overwrites a newer file.
     assert!(!a.export_bar_state().unwrap());
     let path = env.paths.bar_state_path();
-    let future = serde_json::json!({"schema": "codepet.bar.v1", "state_version": newest + 100});
+    // (Same database: the file names this database's db_id.)
+    let db_id = read_bar(&env)["db_id"].clone();
+    let future =
+        serde_json::json!({"schema": "codepet.bar.v1", "state_version": newest + 100, "db_id": db_id});
     fs::write(&path, future.to_string()).unwrap();
     a.care("c2", "water").unwrap();
     assert!(!a.export_bar_state().unwrap());
@@ -355,4 +359,77 @@ fn the_ui_fixture_has_exactly_the_exported_shape() {
         })
         .collect();
     assert!(extra.is_empty(), "fixture has fields Rust never emits: {extra:?}");
+}
+
+#[test]
+fn db_id_is_stable_for_one_database_and_shared_with_the_snapshot() {
+    let env = Env::new();
+    let store = env.open();
+    assert!(store.export_bar_state().unwrap());
+    let id = read_bar(&env)["db_id"].as_str().unwrap().to_owned();
+    assert!(id.starts_with("db-") && id.len() == 27, "{id}");
+    assert_eq!(store.snapshot().unwrap().db_id, id);
+    drop(store);
+    // Reopening the same database keeps it; nothing about a life change alters it.
+    let mut store = env.open();
+    assert_eq!(store.snapshot().unwrap().db_id, id);
+    let life = store.snapshot().unwrap().life.unwrap().life_id;
+    store
+        .select_appearance("look", &life, "dog")
+        .unwrap();
+    assert_eq!(store.snapshot().unwrap().db_id, id);
+    // The id never repeats the life id itself.
+    assert!(!id.contains(&life[5..]));
+}
+
+#[test]
+fn a_file_from_another_database_is_replaced_even_with_a_higher_version() {
+    // Restoring a pre-lifecycle backup, deleting and recreating the database, or pointing
+    // at another state copy leaves a bar-state.json whose counter may be far ahead. It
+    // must not pin the bar to the other database's pet until this counter catches up.
+    let env = Env::new();
+    let store = env.open();
+    assert!(store.export_bar_state().unwrap());
+    let ours = read_bar(&env);
+    let path = env.paths.bar_state_path();
+    for foreign in [
+        serde_json::json!({"schema": "codepet.bar.v1", "state_version": 1_000_000,
+            "db_id": "db-000000000000000000000000", "life": {"name": "Someone else"}}),
+        // A file written before db_id existed names no database: also replaced.
+        serde_json::json!({"schema": "codepet.bar.v1", "state_version": 1_000_000}),
+    ] {
+        fs::write(&path, foreign.to_string()).unwrap();
+        assert!(store.export_bar_state().unwrap(), "{foreign}");
+        let v = read_bar(&env);
+        assert_eq!(v["db_id"], ours["db_id"]);
+        assert_eq!(v["state_version"], ours["state_version"]);
+        assert_eq!(v["life"]["name"], "Ginger");
+    }
+}
+
+#[test]
+fn a_recreated_database_gets_a_new_db_id_and_replaces_the_old_file() {
+    let env = Env::new();
+    let mut store = env.open();
+    for i in 0..5 {
+        store.care(&format!("c{i}"), "food").unwrap();
+    }
+    assert!(store.export_bar_state().unwrap());
+    let old = read_bar(&env);
+    drop(store);
+    // Delete the database (and its WAL/SHM) and start again from nothing.
+    for entry in fs::read_dir(&env.paths.state_dir).unwrap() {
+        let p = entry.unwrap().path();
+        if p.file_name().unwrap().to_string_lossy().starts_with("codepet.sqlite3") {
+            fs::remove_file(p).unwrap();
+        }
+    }
+    let store = env.open();
+    let fresh = store.snapshot().unwrap();
+    assert_ne!(fresh.db_id, old["db_id"].as_str().unwrap());
+    assert!(fresh.state_version < old["state_version"].as_i64().unwrap());
+    assert!(store.export_bar_state().unwrap());
+    let v = read_bar(&env);
+    assert_eq!(v["db_id"], fresh.db_id.as_str());
+    assert_eq!(v["state_version"], fresh.state_version);
 }

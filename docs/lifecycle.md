@@ -196,7 +196,7 @@ Acceptance receipts add `life_id`, `level_before`, `level_after`, `evolved_to` a
 
 `Store::export_bar_state()` writes `$XDG_STATE_HOME/codepet/bar-state.json` (mode 0600, at most 16 KiB). The file contains a bar-safe subset:
 
-- schema `codepet.bar.v1`, `state_version`, app version and ruleset;
+- schema `codepet.bar.v1`, `state_version`, `db_id`, app version and ruleset;
 - the companion's look, stage, level and status;
 - the meters, the need windows (`until_warning_ms`, `until_critical_ms` and `until_end_ms` per need, in active time) and the critical period;
 - the care summary, with at most 8 readiness reasons of at most 160 bytes each;
@@ -205,7 +205,7 @@ Acceptance receipts add `life_id`, `level_before`, `level_after`, `evolved_to` a
 
 It never contains task instructions, folders, artifacts, logs or provider error text.
 
-The export takes the writer lock, reads committed rows without settling, and skips the write when the existing file already holds the same or a newer `state_version`. Otherwise it creates a fresh temporary file exclusively (never following a symlink; a random suffix, so a stale temporary file left by a crash cannot block it), syncs it and renames it while the lock is held. The file therefore only moves forward. Readers never launch Rust in response to a change of this file.
+The export takes the writer lock, reads committed rows without settling, and skips the write when the existing file already holds the same or a newer `state_version` **of the same database**. `db_id` names the database (a digest of its first life's random id, which is created with the database and never changes); `state.get` reports the same `db_id`. A file from another database, or one without `db_id`, is always replaced, so restoring a backup, deleting and recreating the database, or switching state copies never pins the bar to the previous database's pet until the counter catches up. Readers (the overlay's `BarStateWatcher` and `HostAdapter`) likewise order versions only within one `db_id`. Otherwise it creates a fresh temporary file exclusively (never following a symlink; a random suffix, so a stale temporary file left by a crash cannot block it), syncs it and renames it while the lock is held. The file therefore only moves forward. Readers never launch Rust in response to a change of this file.
 
 `presence.wanted` is Rust's half of the recorder's eligibility: a living, armed, unpaused companion, no task in the slot and no pending end. Sleep deliberately does not clear it.
 

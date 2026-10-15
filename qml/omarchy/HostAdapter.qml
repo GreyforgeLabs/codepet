@@ -76,10 +76,19 @@ QtObject {
     function applyBarState(bar) {
         if (!bar || typeof bar.state_version !== "number")
             return false
-        if (root.lastBarState && bar.state_version <= root.lastBarState.state_version)
+        // Versions are ordered only within one database (db_id): a file from a
+        // restored, recreated or swapped database is taken, never ignored as "older".
+        if (root.lastBarState && BarState.sameFileDatabase(root.lastBarState, bar)
+                && bar.state_version <= root.lastBarState.state_version)
             return false
         root.lastBarState = bar
-        if (root.snapshot === null || !BarState.isNewer(root.snapshot, bar))
+        if (root.snapshot === null)
+            return false
+        if (BarState.replacesDatabase(root.snapshot, bar)) {
+            root.snapshot = BarState.merge(root.snapshot, bar, true)
+            return true
+        }
+        if (!BarState.isNewer(root.snapshot, bar))
             return false
         root.snapshot = BarState.merge(root.snapshot, bar)
         return true

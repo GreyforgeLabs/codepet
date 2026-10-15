@@ -229,6 +229,9 @@ pub struct Snapshot {
     /// `meta.state_version`: increases with every committed write (and every settling
     /// `state.get`); `bar-state.json` carries the same counter.
     pub state_version: i64,
+    /// This database's identity (`bar-state.json` carries the same value): `state_version`
+    /// is only comparable between a snapshot and the file when the two `db_id`s match.
+    pub db_id: String,
     pub protocol_version: u16,
     pub last_seq: i64,
     pub meters: MetersView,

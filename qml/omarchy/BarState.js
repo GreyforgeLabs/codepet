@@ -6,7 +6,9 @@
 // qml/tests/test_quickshell_host.py.
 //
 // The file is a bar-safe subset written by `Store::export_bar_state()` under the
-// database lock, so `state_version` only grows. Anything malformed is ignored as a
+// database lock, so `state_version` only grows **within one database** (`db_id`). A
+// restored, recreated or swapped database starts a new order: a file or snapshot with
+// another `db_id` is never compared by version. Anything malformed is ignored as a
 // whole (fail closed): the overlay keeps its last authoritative snapshot.
 
 var SCHEMA = "codepet.bar.v1"
@@ -18,6 +20,7 @@ var CARE_BOOLS = ["sleeping", "sleep_due", "bathroom_due", "ready_to_work"]
 // blinds the pet, and renders unknown values through the shared fallbacks.
 var TOKEN = /^[a-z_]{1,32}$/
 var PET_ID = /^[a-z_]{2,24}$/
+var DB_ID = /^db-[0-9a-f]{24}$/
 var MAX_REASONS = 8
 var MAX_REASON_BYTES = 160
 var MAX_EVENTS = 64
@@ -186,6 +189,8 @@ function parse(text) {
     }
     if (!isObject(s) || s.schema !== SCHEMA || !isCount(s.state_version))
         return null
+    if (s.db_id !== undefined && !(typeof s.db_id === "string" && DB_ID.test(s.db_id)))
+        return null
     if (!validMeters(s.meters) || !validLife(s.life === undefined ? null : s.life)
             || !validCare(s.care) || !validTask(s.task === undefined ? null : s.task)
             || !validNeeds(s.needs) || !validEvents(s.unseen_events) || !validMemorial(s.memorial))
@@ -195,13 +200,38 @@ function parse(text) {
     return s
 }
 
-// True when `bar` carries a strictly newer committed state than `snap`. Without a
-// numeric `state_version` on both sides the order is unknown, and the authoritative
-// snapshot wins (fail closed: the passive file never overrides it).
+// True when both carry a `db_id` and the two differ: their versions are unrelated.
+function otherDatabase(a, b) {
+    return isObject(a) && isObject(b) && typeof a.db_id === "string" && typeof b.db_id === "string"
+           && a.db_id !== b.db_id
+}
+
+// True when two parsed files name the same database (an unnamed file, from before
+// db_id existed, only matches another unnamed one).
+function sameFileDatabase(a, b) {
+    var x = isObject(a) && typeof a.db_id === "string" ? a.db_id : ""
+    var y = isObject(b) && typeof b.db_id === "string" ? b.db_id : ""
+    return x === y
+}
+
+// True when `bar` carries a strictly newer committed state than `snap` of the same
+// database. Without a numeric `state_version` on both sides, or across databases, the
+// order is unknown, and the authoritative snapshot wins (fail closed: the passive file
+// never overrides it).
 function isNewer(snap, bar) {
     if (!bar || !isCount(bar.state_version) || !snap || !isCount(snap.state_version))
         return false
+    if (otherDatabase(snap, bar))
+        return false
     return bar.state_version > snap.state_version
+}
+
+// True when a freshly read file belongs to another database than `snap` (restored,
+// recreated or swapped). The file is the newest observation of the current database
+// (the store rewrites it on every command), so the host replaces the bar-safe subset
+// with it instead of keeping the other database's pet on screen.
+function replacesDatabase(snap, bar) {
+    return !!bar && isCount(bar.state_version) && otherDatabase(snap, bar)
 }
 
 function copy(o) {
@@ -216,12 +246,23 @@ function copy(o) {
 // Merges the passive subset of a newer `bar-state.json` into a copy of the full
 // `state.get` snapshot. Returns `snap` unchanged when `bar` is not newer. Never
 // invents task details: the bar subset has no task id, so a task the snapshot does
-// not know stays unknown until an explicit refresh.
-function merge(snap, bar) {
-    if (!snap || !bar || !isNewer(snap, bar))
+// not know stays unknown until an explicit refresh. With `acrossDatabases`, a file
+// from another database (see replacesDatabase) also merges, and the old database's
+// task details are dropped rather than shown against the new one.
+function merge(snap, bar, acrossDatabases) {
+    if (!snap || !bar)
+        return snap
+    var across = acrossDatabases === true && replacesDatabase(snap, bar)
+    if (!across && !isNewer(snap, bar))
         return snap
     var out = copy(snap)
     out.state_version = bar.state_version
+    if (typeof bar.db_id === "string")
+        out.db_id = bar.db_id
+    if (across) {
+        out.active_task = null
+        out.recent = []
+    }
 
     var meters = {}
     for (var i = 0; i < METERS.length; i++)
@@ -260,8 +301,8 @@ function merge(snap, bar) {
     var task = bar.task === undefined ? null : bar.task
     if (task === null) {
         out.active_task = null
-    } else if (isObject(snap.active_task)) {
-        var brief = copy(snap.active_task)
+    } else if (isObject(out.active_task)) {
+        var brief = copy(out.active_task)
         brief.state = task.state
         if (typeof task.category === "string")
             brief.category = task.category

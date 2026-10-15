@@ -46,7 +46,7 @@ const RUST_EXPORT = JSON.parse(readFileSync(new URL('./fixtures/bar-state.v1.jso
 
 function barState(over = {}) {
     const base = {
-        schema: 'codepet.bar.v1', state_version: 812, generated_at_ms: Date.UTC(2026, 9, 15, 14, 5), app_version: '0.2.0',
+        schema: 'codepet.bar.v1', state_version: 812, db_id: 'db-0123456789abcdef01234567', generated_at_ms: Date.UTC(2026, 9, 15, 14, 5), app_version: '0.2.0',
         ruleset: 'lifecycle-v1',
         life: { life_id: LIFE, ordinal: 1, name: 'Ginger', appearance: 'cat', stage: 2, level: 2, xp: 120,
                 next_stage_xp: 400, status: 'healthy', mode: 'permadeath', armed: true, pace: 'steady',

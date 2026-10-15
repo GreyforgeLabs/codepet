@@ -262,6 +262,7 @@ impl Store {
         let snapshot = Snapshot {
             schema_version: SCHEMA_VERSION,
             state_version: life::state_version(&tx)?,
+            db_id: life::db_id(&tx)?,
             protocol_version: PROTOCOL_VERSION,
             last_seq: last_seq(&tx)?,
             meters,

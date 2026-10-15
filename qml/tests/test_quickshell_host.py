@@ -464,6 +464,35 @@ assert.equal(merge(s0, parse(text(bar({memorial: {count: 0, latest_name: null}})
 const crit = {need: 'thirst', action: 'water', grace_ms: 21600000, elapsed_ms: 1, remaining_ms: 2, since_ms: 0};
 const mc = merge(s0, parse(text(bar({critical: crit}))));
 assert.deepEqual(mc.lifecycle.critical, crit);
+// Database identity: versions are ordered only within one db_id.
+const A = 'db-' + 'a'.repeat(24), B = 'db-' + 'b'.repeat(24);
+assert.equal(parse(text(bar({db_id: A}))).db_id, A);
+assert.equal(parse(text(bar({db_id: 'db-XYZ'}))), null, 'malformed db_id');
+assert.equal(parse(text(bar({db_id: 7}))), null);
+assert.ok(parse(text(bar())), 'a file without db_id (older writer) still parses');
+const sA = Object.assign(snap(), {db_id: A});
+assert.ok(isNewer(sA, parse(text(bar({db_id: A})))));
+assert.ok(!isNewer(sA, parse(text(bar({db_id: B})))), 'another database is never "newer"');
+assert.ok(!isNewer(sA, parse(text(bar({db_id: B, state_version: 10 ** 9})))));
+assert.ok(replacesDatabase(sA, parse(text(bar({db_id: B, state_version: 2})))));
+assert.ok(!replacesDatabase(sA, parse(text(bar({db_id: A, state_version: 2})))));
+assert.ok(!replacesDatabase(snap(), parse(text(bar({db_id: B})))), 'unknown snapshot identity: no replacement');
+assert.ok(sameFileDatabase(parse(text(bar({db_id: A}))), parse(text(bar({db_id: A})))));
+assert.ok(!sameFileDatabase(parse(text(bar({db_id: A}))), parse(text(bar({db_id: B})))));
+assert.ok(!sameFileDatabase(parse(text(bar())), parse(text(bar({db_id: B})))));
+// A plain merge never crosses databases (finish(): a fresh state.get beats an old file).
+const stale = parse(text(bar({db_id: B, state_version: 10 ** 9})));
+assert.strictEqual(merge(sA, stale), sA);
+// An explicit cross-database merge takes the file's subset and drops old task details.
+const sTask = Object.assign(snap(), {db_id: A});
+const crossed = merge(sTask, parse(text(bar({db_id: B, state_version: 2, task: null}))), true);
+assert.equal(crossed.db_id, B); assert.equal(crossed.state_version, 2);
+assert.equal(crossed.active_task, null); assert.deepEqual(crossed.recent, []);
+assert.equal(crossed.meters.thirst, 2800);
+const crossedBusy = merge(sTask, parse(text(bar({db_id: B, state_version: 2}))), true);
+assert.equal(crossedBusy.active_task, null, 'the old database task is never shown against the new one');
+assert.strictEqual(merge(sTask, parse(text(bar({db_id: A, state_version: 2}))), true), sTask,
+  'same database, older version: still ignored');
 console.log('bar-state parse, newer-only merge, XDG path and no-invention rules passed');
 """
 
@@ -865,9 +894,12 @@ SNAPSHOT = {
 }
 
 
-def bar_state_text(version, appearance):
+DB_A = "db-" + "a" * 24
+
+
+def bar_state_text(version, appearance, db_id=DB_A):
     return json.dumps({
-        "schema": "codepet.bar.v1", "state_version": version, "generated_at_ms": 0,
+        "schema": "codepet.bar.v1", "state_version": version, "db_id": db_id, "generated_at_ms": 0,
         "app_version": "0.2.0", "ruleset": "lifecycle-v1",
         "life": dict(SNAPSHOT["life"], appearance=appearance, stage=2, level=2, xp=120,
                      status="warning", armed=True, next_stage_xp=400),
@@ -1019,6 +1051,18 @@ class QuickshellOverlayRuntime(unittest.TestCase):
                 time.sleep(1.0)
                 st = session.status()
                 self.assertEqual((st.get("state_version"), st.get("appearance")), (8, "frog"), st)
+                # A restored or recreated database restarts its counter: its lower-versioned
+                # file is applied, not ignored until the count catches up.
+                write_atomically(bar, bar_state_text(2, "penguin", db_id="db-" + "b" * 24))
+                st = session.wait_for(lambda s: s.get("appearance") == "penguin")
+                self.assertEqual((st.get("state_version"), st.get("appearance")), (2, "penguin"), st)
+                write_atomically(bar, bar_state_text(3, "turtle", db_id="db-" + "b" * 24))
+                st = session.wait_for(lambda s: s.get("state_version") == 3)
+                self.assertEqual(st.get("appearance"), "turtle", st)
+                # ...and within that database the order holds again.
+                write_atomically(bar, bar_state_text(1, "dog", db_id="db-" + "b" * 24))
+                time.sleep(1.0)
+                self.assertEqual(session.status().get("appearance"), "turtle")
                 self.assertEqual(len(self.rpc_log(env)), reads, "file events never launch codepet")
             finally:
                 out = session.close()

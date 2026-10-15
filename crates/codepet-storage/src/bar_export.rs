@@ -103,6 +103,8 @@ struct BarMemorial {
 pub(crate) struct BarState {
     schema: &'static str,
     state_version: i64,
+    /// The database identity; `state_version` is ordered only within one `db_id`.
+    db_id: String,
     generated_at_ms: i64,
     app_version: &'static str,
     ruleset: &'static str,
@@ -155,6 +157,7 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
     Ok(BarState {
         schema: BAR_SCHEMA,
         state_version: life::state_version(c)?,
+        db_id: life::db_id(c)?,
         generated_at_ms,
         app_version: env!("CARGO_PKG_VERSION"),
         ruleset: RULESET_V1,
@@ -233,12 +236,16 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
     })
 }
 
-/// The `state_version` the existing file claims; 0 when it is missing, not a regular
-/// file, too large or unparsable.
-fn existing_version(path: &Path) -> i64 {
+/// The `state_version` the existing file claims **for database `db_id`**; 0 when it is
+/// missing, not a regular file, too large, unparsable, or written for another (or an
+/// unnamed) database. A file from another database is therefore always replaced instead
+/// of pinning the bar to that database's pet until this counter catches up.
+fn existing_version(path: &Path, db_id: &str) -> i64 {
     #[derive(serde::Deserialize)]
     struct Head {
         state_version: i64,
+        #[serde(default)]
+        db_id: Option<String>,
     }
     let Ok(meta) = fs::symlink_metadata(path) else {
         return 0;
@@ -258,20 +265,24 @@ fn existing_version(path: &Path) -> i64 {
     {
         return 0;
     }
-    serde_json::from_slice::<Head>(&text).map_or(0, |h| h.state_version)
+    match serde_json::from_slice::<Head>(&text) {
+        Ok(h) if h.db_id.as_deref() == Some(db_id) => h.state_version,
+        _ => 0,
+    }
 }
 
 impl Store {
     /// Writes `bar-state.json` from committed state (spec §10). Takes the writer lock and
     /// does not settle. Returns `Ok(false)` when the file already holds this or a newer
-    /// `state_version`. The temporary file is created exclusively (never following a
+    /// `state_version` of this same database (`db_id`); a file from another database is
+    /// always replaced. The temporary file is created exclusively (never following a
     /// symlink) with mode 0600, synced, then renamed while the lock is held, so the file
     /// only ever moves forward.
     pub fn export_bar_state(&self) -> Result<bool> {
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
         let state = build(&tx, self.clock.now_ms())?;
         let path = self.paths.bar_state_path();
-        if state.state_version <= existing_version(&path) {
+        if state.state_version <= existing_version(&path, &state.db_id) {
             tx.rollback()?;
             return Ok(false);
         }

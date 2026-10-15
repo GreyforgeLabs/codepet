@@ -219,6 +219,7 @@ fn snapshot_json_shape_matches_contract() {
         set(&[
             "schema_version",
             "state_version",
+            "db_id",
             "protocol_version",
             "last_seq",
             "meters",

@@ -317,6 +317,19 @@ pub(crate) fn action_for(need: Category) -> &'static str {
     }
 }
 
+/// This database's identity: a digest of its first life's id. Life #1 is created with a
+/// random id by the lifecycle migration (or a fresh install) and is never changed or
+/// deleted (terminal-life triggers), so the value is stable for one database and differs
+/// for a recreated database or one re-migrated from a pre-lifecycle backup. Readers of
+/// `bar-state.json` compare `state_version` only within one `db_id`.
+pub(crate) fn db_id(c: &Connection) -> Result<String> {
+    let first: String = c.query_row("SELECT life_id FROM lives WHERE ordinal = 1", [], |r| {
+        r.get(0)
+    })?;
+    let digest = crate::sys::sha256_hex(format!("codepet-db-id:{first}").as_bytes());
+    Ok(format!("db-{}", &digest[..24]))
+}
+
 pub(crate) fn state_version(c: &Connection) -> Result<i64> {
     Ok(
         c.query_row("SELECT state_version FROM meta WHERE id = 1", [], |r| {

@@ -1,11 +1,12 @@
 {
   "schema": "codepet.bar.v1",
   "state_version": 3,
-  "generated_at_ms": 1792050825996,
+  "db_id": "db-2c852a39b6a7be9815dbd45e",
+  "generated_at_ms": 1792051252029,
   "app_version": "0.2.0",
   "ruleset": "lifecycle-v1",
   "life": {
-    "life_id": "life-09bc6376ade4bca696b6b41e",
+    "life_id": "life-30b6f1816d7b922ab5befc25",
     "ordinal": 1,
     "name": "Ginger",
     "appearance": "cat",
@@ -74,7 +75,7 @@
   "task": null,
   "presence": {
     "wanted": true,
-    "life_id": "life-09bc6376ade4bca696b6b41e",
+    "life_id": "life-30b6f1816d7b922ab5befc25",
     "tick_ms": 60000,
     "idle_timeout_s": 180
   },
