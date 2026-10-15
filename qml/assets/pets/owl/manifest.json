@@ -1,0 +1,598 @@
+{
+ "schemaVersion": 1,
+ "id": "owl",
+ "displayName": "Owl",
+ "defaultName": "Quill",
+ "personality": "the thoughtful night librarian",
+ "habitat": "floor",
+ "assetRevision": "0.2.0",
+ "license": "MIT",
+ "provenance": "../PROVENANCE.md#owl",
+ "careLabels": {
+  "food": "Morsel",
+  "water": "Sip",
+  "play": "Wooden bead",
+  "wash": "Preen",
+  "bathroom": "Perch screen",
+  "sleep": "Shoulder tuck"
+ },
+ "careHints": {},
+ "stages": [
+  {
+   "stage": 1,
+   "key": "young",
+   "name": "Hootling",
+   "minLevel": 1
+  },
+  {
+   "stage": 2,
+   "key": "grown",
+   "name": "Quill Fledgling",
+   "minLevel": 2
+  },
+  {
+   "stage": 3,
+   "key": "mature",
+   "name": "Grand Night Librarian",
+   "minLevel": 4
+  }
+ ],
+ "stageNamesSource": "provenance.json",
+ "placeholder": false,
+ "geometry": {
+  "viewBox": [
+   0,
+   0,
+   192,
+   192
+  ],
+  "canvas": 192,
+  "pivot": [
+   96,
+   184
+  ],
+  "groundY": 184,
+  "hitBox": [
+   16,
+   7,
+   168,
+   177
+  ],
+  "stageHitBoxes": {
+   "1": [
+    26,
+    55,
+    138,
+    129
+   ],
+   "2": [
+    26,
+    39,
+    142,
+    145
+   ],
+   "3": [
+    16,
+    7,
+    168,
+    177
+   ]
+  },
+  "safeBounds": [
+   2,
+   2,
+   188,
+   188
+  ],
+  "propAnchor": [
+   176,
+   176
+  ],
+  "badgeAnchor": [
+   178,
+   14
+  ],
+  "roams": true
+ },
+ "locomotion": {
+  "style": "hop",
+  "pxPerTick": 3,
+  "pauseTicks": [
+   75,
+   175
+  ]
+ },
+ "states": {
+  "idle": {
+   "frames": [
+    "b00.webp",
+    "b00.webp",
+    "b01.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 0,
+   "interrupt": "any",
+   "fallback": null,
+   "airborneFrames": []
+  },
+  "locomotion": {
+   "frames": [
+    "b08.webp",
+    "b09.webp",
+    "b10.webp",
+    "b11.webp"
+   ],
+   "frameMs": 200,
+   "mode": "while_moving",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 20,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": [
+    0,
+    2,
+    3
+   ]
+  },
+  "food": {
+   "frames": [
+    "b03.webp",
+    "c00.webp",
+    "c01.webp",
+    "c00.webp",
+    "c01.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "water": {
+   "frames": [
+    "b03.webp",
+    "c02.webp",
+    "c03.webp",
+    "c02.webp",
+    "c03.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "play": {
+   "frames": [
+    "b03.webp",
+    "c04.webp",
+    "c05.webp",
+    "c04.webp",
+    "c05.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "wash": {
+   "frames": [
+    "b00.webp",
+    "c06.webp",
+    "c07.webp",
+    "c06.webp",
+    "c07.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "bathroom": {
+   "frames": [
+    "b03.webp",
+    "c08.webp",
+    "c08.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "sleep_enter": {
+   "frames": [
+    "c09.webp",
+    "b07.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "sleep": {
+   "frames": [
+    "b07.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 85,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "breathing": {
+    "maxScale": 0.02,
+    "maxUpdatesPerSecond": 1,
+    "reducedMotion": false
+   }
+  },
+  "sleep_exit": {
+   "frames": [
+    "c10.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "celebrate": {
+   "frames": [
+    "c11.webp",
+    "b04.webp",
+    "c11.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 60,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": [],
+   "totalMs": 1600
+  },
+  "working": {
+   "frames": [
+    "b04.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 40,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "waiting": {
+   "frames": [
+    "b02.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 35,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "needs_care": {
+   "frames": [
+    "b05.webp"
+   ],
+   "frameMs": 800,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 50,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "error": {
+   "frames": [
+    "b06.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 100,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": []
+  }
+ },
+ "framePattern": "s{stage}/{frame}",
+ "thumbnailPattern": "thumb-s{stage}.webp",
+ "source": {
+  "dir": "owl",
+  "sheets": [
+   {
+    "stage": 1,
+    "kind": "base",
+    "file": "stage1-base.png",
+    "sha256": "9798234aae8bfd55336bf504025b070f5b8dd4d4b1b3abfde093166e74e6f7e9",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 1,
+    "kind": "care",
+    "file": "stage1-care.png",
+    "sha256": "2f2f3bb8af1a5085374f9333d02d8b9bf492e1017106ebdd476e603864143f15",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 2,
+    "kind": "base",
+    "file": "stage2-base.png",
+    "sha256": "ada0561bc91b7f3eee2efdab1149fa21acbc0b64f272198def7431a31528b7de",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 2,
+    "kind": "care",
+    "file": "stage2-care.png",
+    "sha256": "ec92fcef630aa2c5d4841fe3b313925dc9900b361117df13deb3b83032e29522",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 3,
+    "kind": "base",
+    "file": "stage3-base.png",
+    "sha256": "b0da68b8a0ce3f6057c0514d29efc8a51525bfa1761f6d23f41b972ffccc05e0",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 3,
+    "kind": "care",
+    "file": "stage3-care.png",
+    "sha256": "1fe4d0bcc16c14d192da766e45c19fcad1780b65b38c8583a484c70bb278a261",
+    "chromaHex": "#00FF00"
+   }
+  ],
+  "extraction": [
+   {
+    "stage": 1,
+    "fitScale": 0.488189,
+    "stageFactor": 0.82,
+    "scale": 0.400315,
+    "key": {
+     "base": {
+      "bg_strength": 246.0,
+      "bg_rgb": [
+       4.0,
+       249.0,
+       3.0
+      ]
+     },
+     "care": {
+      "bg_strength": 236.0,
+      "bg_rgb": [
+       2.0,
+       249.0,
+       12.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 2,
+    "fitScale": 0.468514,
+    "stageFactor": 0.92,
+    "scale": 0.431033,
+    "key": {
+     "base": {
+      "bg_strength": 242.0,
+      "bg_rgb": [
+       2.0,
+       249.0,
+       7.0
+      ]
+     },
+     "care": {
+      "bg_strength": 239.0,
+      "bg_rgb": [
+       2.0,
+       249.0,
+       10.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 3,
+    "fitScale": 0.497326,
+    "stageFactor": 1.0,
+    "scale": 0.497326,
+    "key": {
+     "base": {
+      "bg_strength": 235.0,
+      "bg_rgb": [
+       2.0,
+       248.0,
+       14.0
+      ]
+     },
+     "care": {
+      "bg_strength": 235.0,
+      "bg_rgb": [
+       2.0,
+       249.0,
+       14.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   }
+  ],
+  "tool": "tools/petart/extract.py",
+  "reference": {
+   "file": "ref-pr7.png",
+   "sha256": "0fb84ed982f5c3d09e7d5a7f1306dc061ccdf67b6c5bd40b15fad53b1209426c",
+   "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/owl/v1/source-sheet.png (PR #7)"
+  },
+  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+ },
+ "files": {
+  "s1/b00.webp": "2acf45e793e283026d39eda8c42785820204f4592430eeb6faf235bac347da96",
+  "s1/b01.webp": "8332d3f9285c1a3562e4c5b430ab1b296857cc72c1fe89c9c6f64ecd7ee950a2",
+  "s1/b02.webp": "6ae21d6417ddae349ca529577e408dc7f98357a5435e79b0473fa7f0cfb3c9d6",
+  "s1/b03.webp": "1996093866e9aba95e33b1a4852806575dc782aed279152a72236e30ab78bd32",
+  "s1/b04.webp": "635ba12cc9667ff2ec0fa9b75383ec10847033bfdbef499a05fe113328402c30",
+  "s1/b05.webp": "2cbf048dc2c568d89f756a19f930cf0ea6154ae7147aaae0f443c2906e19b1d8",
+  "s1/b06.webp": "881038f448feec7850f1655f6fc9a54ec3c22529159afb23a5e5c3b22d3389d7",
+  "s1/b07.webp": "d1248e9e4c75a2820856cc4d28250429140f856bb78d38efbb71a9919fcb9284",
+  "s1/b08.webp": "f2265f353e3b065760c6befd05f53734148c834e423e09290a23ec0987ef6e2e",
+  "s1/b09.webp": "af444d6afd2e272ac6ce8420a59a722b89d4de5db24e5ab191b892362d6ba211",
+  "s1/b10.webp": "8e9675913db57dc26aadeed4befc74ca81115dc8f7f05d0ef7c4c0305557b1cd",
+  "s1/b11.webp": "3db887ef16c310ba0301376eedc93f2f5ae6d3ebbb479abb1d06fc5f7ada8565",
+  "s1/c00.webp": "8a22aa6f644303441b25218bab7966d23c28d8f34258d4ae608f4fdba32ef236",
+  "s1/c01.webp": "9d06c9ab13152e3fcdeb087d4f43085c2068800ff7de6a66a448b4f2d8806e26",
+  "s1/c02.webp": "57fbce013d876fb3dd699c3974343aef957d5c9b0160db82b7c8656e1eed679c",
+  "s1/c03.webp": "c98191e956e31ab07f837f8500c7fca94df950e78d3a9bbbfa8134846df2a88a",
+  "s1/c04.webp": "02bc0926172f52ff5e898b936019106c055532a6291c778ee152f5e0bc48b7d0",
+  "s1/c05.webp": "83641b24cdfadd30091e7e60f851a9e83b537a54634737a050e723a9d228f96e",
+  "s1/c06.webp": "123a5ff8ce5e8d5df304cad4df4e145831ce9780131906966771c938d6ad0467",
+  "s1/c07.webp": "03f0b547f38e0de066bac18371da0599760c20003fbebd85a3dd6a394b0bc52a",
+  "s1/c08.webp": "d54973d7ef5c6e64b803356ae81a9ad46eccb322c1e73923ad173c94c618ac5d",
+  "s1/c09.webp": "4b37dc1b73c59e9e117eaa097f24de328cbd844f348d3b0306559b6742654db8",
+  "s1/c10.webp": "08c52f50fed83d6224c668dd4b4e57015dd0440237926bd11c51b39d7ca397a8",
+  "s1/c11.webp": "e7bc59969117be945ff140e9818368a27efd9fd2a5da142d348e9b3b95d90a3d",
+  "s2/b00.webp": "c022941d6ca1c2fd4571b1e75b7000aa125aa8b71b7aa580dfd64bd9d06c335c",
+  "s2/b01.webp": "d4190d7df7e0ce22188e3209f38396d714ce1f78c2d12a7711edc4b8ace6e3ad",
+  "s2/b02.webp": "91cdd1a80b6dbcc9d052a38a899a75253bc3b508dcb3199f47d7855cec5a88f5",
+  "s2/b03.webp": "b9a865ef38a655c3d50d8b6b7c9c8f30e0cc461c69a096c3c4de9f54a9947762",
+  "s2/b04.webp": "5ea318cacbbad8495a1fe5a03d516ba019ea4dc2a1800def3221edcecb9488f5",
+  "s2/b05.webp": "4f8ce4d138cf0c9dbccf492f6174febd9947171b8ff787976751f2f78c75d315",
+  "s2/b06.webp": "abcd5696f37de0a1b665d377d6e493da65c8f80c717ecab3372e757957b0a480",
+  "s2/b07.webp": "cd4d03c359268cfb8d164101a94ceae9ba5435e8fc857e2773d68924b35d4544",
+  "s2/b08.webp": "98f671468eb6f28ed80510ff9e26aae3137d40a8e730b8637e83878bb52872b7",
+  "s2/b09.webp": "8fc0f6618770d167bdbf458d69eddfbb7c1e66cf0e0a485c972e6cdba67f8e9a",
+  "s2/b10.webp": "cb10ea6c974bdcc34793bda2166cc2ae14cb6c12f9b409703cadc20ac2035176",
+  "s2/b11.webp": "28c10c0380cc16eb1c0fe0e125a11d37f36d1d9f2b510a30dc6808a53a242124",
+  "s2/c00.webp": "4ee6a2ed122793af6b2a42a9961fe3abbd332351da7aa7627d2aee862d460af4",
+  "s2/c01.webp": "e56e86ace4d3ad523d0a3e12abc5d16410029102acbd74e5933dfcfea44f5dee",
+  "s2/c02.webp": "c9aa1dc5a5e7128d2482df466a0c78f59d510fa7bd8e15f1c2bb2e4e0a1cfb62",
+  "s2/c03.webp": "e0d3bc1d93b246c645d0fa4bf324ce138651cf2bb827a668728a0b27b0318e62",
+  "s2/c04.webp": "420f2d39f62a86529061915352924a65f72590486316944dc8bc9ff6e6d3883c",
+  "s2/c05.webp": "370c85d00ebe3146dd77074fdb31383ea190bdbc72e5465cc7bf7ec40e96200a",
+  "s2/c06.webp": "0435046df06ac85a00ea995ea41213b4877a4261a748a2affa1091c8061a3a9f",
+  "s2/c07.webp": "d1649bd037e2b82a2e89eb6dd6e56cc86553708305c24f7a18e12fc7378779d8",
+  "s2/c08.webp": "c4b3047446bab233e88563e490094ea01e9def88611a725b15cc9e8ec3280b2f",
+  "s2/c09.webp": "a19d06b252e8357a9fae5f041c035027653dc18cc9e0dbec2b52ee9bf8dc72ae",
+  "s2/c10.webp": "9123ba168e78f40ae0f71b74b09e01371b704af981746b7333d59de179fc1477",
+  "s2/c11.webp": "ce93f59c2e0843fff71e91542cfaa0029a48d6d1efa6f2abe0c737cd3cf8a77f",
+  "s3/b00.webp": "4b6dd1e95706e3262ac69bf0bad950758490a78df0a1571523f5727f48e6a039",
+  "s3/b01.webp": "a0a6173d9609927e04afd9da0276d40b6ee1a628f59ea10688830b172e79271d",
+  "s3/b02.webp": "5f7cb8d3d4b2438fefdb90cab11bedead9eca4c462ec957179bb6441ffd7b09e",
+  "s3/b03.webp": "075480b88af6d6f4c1f8a23b1f34fa3bbfdb8a8829f0761273f8d895209788b8",
+  "s3/b04.webp": "e0b5732c3e892dcda926c432f129170eb0ef1de5e333dfcbacf78689d9016f94",
+  "s3/b05.webp": "343d81e7dbfd0699752b2d6bade812ccb36d64b301e1671443ebe38cc5ea3d91",
+  "s3/b06.webp": "d0362088f8a0d3b9311324cbd299ea834f9bddb5e20ff37c0add3003f32ba2a2",
+  "s3/b07.webp": "31a357eacd2ab1d3cc2ad2c854ef6903d85571108a09394e24ebf7fbc2ab23a7",
+  "s3/b08.webp": "5e8c1c42d02b9aa83b9cf3cb1ff03336c3fb0e84913be9666974336f189a7b19",
+  "s3/b09.webp": "87fa218ae0c05351144a20a3544b036b7bbfc6dcfb3709a8b541893e5959b9eb",
+  "s3/b10.webp": "0ba670be63325eecb93a2918765182fee0d70ba530631ecd7fcc842a31ac406c",
+  "s3/b11.webp": "5b7078cfab5751b0d1c6a01cfb92f1d091055f50133cc0d836cadb6c4b085710",
+  "s3/c00.webp": "5fe87c515979fe0663687b63d64871a8017a1c7f27097a44c2a9324216c5fc59",
+  "s3/c01.webp": "e24b91a401e2e21d2c514a2651097275d5c5bfdd5db978240c76dc0e1984bd15",
+  "s3/c02.webp": "c0ffcc535edd1fb9462095a196ce858d95c0360f60603e319dd07dd8aad0d861",
+  "s3/c03.webp": "0fd6e6b781b31a6eb3592a474013d8fc029ca7bcc3f24b40fc43f12c2115d6bd",
+  "s3/c04.webp": "1ef81f643dd9c81f0b78d6c02f691383cb53d30adffc01611829650a11d0517c",
+  "s3/c05.webp": "6b9372e3a35db76741dffb575e3c6ce403c12cf38746591e39ba29d3cab292e5",
+  "s3/c06.webp": "acd621f49ea139599203825ee706523f871da4213fd97f6aa52dc6d344b74529",
+  "s3/c07.webp": "881bbc237286c600d47c1e2c91a68d1586faf1c12cfd4c855ab32e132de48840",
+  "s3/c08.webp": "680f66c39dd1134649f1f4392e3800a6328a1c6219fb36fb2044dfa097cb5ce6",
+  "s3/c09.webp": "78072009c3b553d16e5bc943fee50c1ada5b00b89cfd5a9cb7c42c652e2ae2ce",
+  "s3/c10.webp": "84056ef72329f80ca259f31b51724b0fbb59841252fc3a66ef4a7f37692ea5b3",
+  "s3/c11.webp": "9ec38a3fa3643953cc8d5efbdd756b5e00e3dd346f7cfdff3f228f452291d003",
+  "thumb-s1.webp": "187ad4cce20acd9f43df026c9799c826739ce25bed3e3fdbb136aa2482bb6005",
+  "thumb-s2.webp": "583dd16473fa54ff606be92237155ebfc8d3daba23e108da1aae5c7f09815c42",
+  "thumb-s3.webp": "e60a1941721475d3d207c05ac65975d226a4ebb96c5f19bf914d83b101743386"
+ }
+}

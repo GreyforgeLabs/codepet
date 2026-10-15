@@ -1,0 +1,594 @@
+{
+ "schemaVersion": 1,
+ "id": "red_panda",
+ "displayName": "Red panda",
+ "defaultName": "Maple",
+ "personality": "the bashful explorer",
+ "habitat": "floor",
+ "assetRevision": "0.2.0",
+ "license": "MIT",
+ "provenance": "../PROVENANCE.md#red-panda",
+ "careLabels": {
+  "food": "Bamboo sprig",
+  "water": "Muzzle dip",
+  "play": "Hanging leaf",
+  "wash": "Paw wipe",
+  "bathroom": "Bamboo screen",
+  "sleep": "Tail-nose nap"
+ },
+ "careHints": {},
+ "stages": [
+  {
+   "stage": 1,
+   "key": "young",
+   "name": "Ember Cub",
+   "minLevel": 1
+  },
+  {
+   "stage": 2,
+   "key": "grown",
+   "name": "Ringtail Scout",
+   "minLevel": 2
+  },
+  {
+   "stage": 3,
+   "key": "mature",
+   "name": "Autumn Sage",
+   "minLevel": 4
+  }
+ ],
+ "stageNamesSource": "provenance.json",
+ "placeholder": false,
+ "geometry": {
+  "viewBox": [
+   0,
+   0,
+   192,
+   192
+  ],
+  "canvas": 192,
+  "pivot": [
+   96,
+   184
+  ],
+  "groundY": 184,
+  "hitBox": [
+   4,
+   25,
+   186,
+   159
+  ],
+  "stageHitBoxes": {
+   "1": [
+    24,
+    55,
+    153,
+    129
+   ],
+   "2": [
+    24,
+    31,
+    163,
+    153
+   ],
+   "3": [
+    4,
+    25,
+    186,
+    159
+   ]
+  },
+  "safeBounds": [
+   2,
+   2,
+   188,
+   188
+  ],
+  "propAnchor": [
+   182,
+   176
+  ],
+  "badgeAnchor": [
+   178,
+   31
+  ],
+  "roams": true
+ },
+ "locomotion": {
+  "style": "amble",
+  "pxPerTick": 3.5,
+  "pauseTicks": [
+   50,
+   125
+  ]
+ },
+ "states": {
+  "idle": {
+   "frames": [
+    "b00.webp",
+    "b00.webp",
+    "b01.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 0,
+   "interrupt": "any",
+   "fallback": null,
+   "airborneFrames": []
+  },
+  "locomotion": {
+   "frames": [
+    "b08.webp",
+    "b09.webp",
+    "b10.webp",
+    "b11.webp"
+   ],
+   "frameMs": 200,
+   "mode": "while_moving",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 20,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "food": {
+   "frames": [
+    "b03.webp",
+    "c00.webp",
+    "c01.webp",
+    "c00.webp",
+    "c01.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "water": {
+   "frames": [
+    "b03.webp",
+    "c02.webp",
+    "c03.webp",
+    "c02.webp",
+    "c03.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "play": {
+   "frames": [
+    "b03.webp",
+    "c04.webp",
+    "c05.webp",
+    "c04.webp",
+    "c05.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "wash": {
+   "frames": [
+    "b00.webp",
+    "c06.webp",
+    "c07.webp",
+    "c06.webp",
+    "c07.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "bathroom": {
+   "frames": [
+    "b03.webp",
+    "c08.webp",
+    "c08.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "sleep_enter": {
+   "frames": [
+    "c09.webp",
+    "b07.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "sleep": {
+   "frames": [
+    "b07.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 85,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "breathing": {
+    "maxScale": 0.02,
+    "maxUpdatesPerSecond": 1,
+    "reducedMotion": false
+   }
+  },
+  "sleep_exit": {
+   "frames": [
+    "c10.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "celebrate": {
+   "frames": [
+    "c11.webp",
+    "b04.webp",
+    "c11.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 60,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": [],
+   "totalMs": 1600
+  },
+  "working": {
+   "frames": [
+    "b04.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 40,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "waiting": {
+   "frames": [
+    "b02.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 35,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "needs_care": {
+   "frames": [
+    "b05.webp"
+   ],
+   "frameMs": 800,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 50,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "error": {
+   "frames": [
+    "b06.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 100,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": []
+  }
+ },
+ "framePattern": "s{stage}/{frame}",
+ "thumbnailPattern": "thumb-s{stage}.webp",
+ "source": {
+  "dir": "red-panda",
+  "sheets": [
+   {
+    "stage": 1,
+    "kind": "base",
+    "file": "stage1-base.png",
+    "sha256": "bbc07e3785891e4acdc37a541ee4428204ae1c70398b1921d726d58e317e3ee2",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 1,
+    "kind": "care",
+    "file": "stage1-care.png",
+    "sha256": "e8275242840ffa072ff9003d0ae2b07fc07a12921a7efa7760ff3feaaab49804",
+    "chromaHex": "#FF00FF"
+   },
+   {
+    "stage": 2,
+    "kind": "base",
+    "file": "stage2-base.png",
+    "sha256": "d9ea1d1f2a37e7b58504ec5ad04a13e86f50f553be7771f796296fcbd0e8eb94",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 2,
+    "kind": "care",
+    "file": "stage2-care.png",
+    "sha256": "a3cd94bedcaf8942c992585b875ffdf41ff0f667b17d550286b9835402c08ef3",
+    "chromaHex": "#FF00FF"
+   },
+   {
+    "stage": 3,
+    "kind": "base",
+    "file": "stage3-base.png",
+    "sha256": "2f67c7efe9d51fcb42344180e517cf2531975d86030f4d3b38aa7f82b05bce88",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 3,
+    "kind": "care",
+    "file": "stage3-care.png",
+    "sha256": "1faf4a088496037b6a318b42205c4b1d52bc8b028e90966ee1472be11b82c8cb",
+    "chromaHex": "#FF00FF"
+   }
+  ],
+  "extraction": [
+   {
+    "stage": 1,
+    "fitScale": 0.62,
+    "stageFactor": 0.82,
+    "scale": 0.5084,
+    "key": {
+     "base": {
+      "bg_strength": 244.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       5.0
+      ]
+     },
+     "care": {
+      "bg_strength": 247.0,
+      "bg_rgb": [
+       250.0,
+       3.0,
+       250.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 2,
+    "fitScale": 0.603896,
+    "stageFactor": 0.92,
+    "scale": 0.555584,
+    "key": {
+     "base": {
+      "bg_strength": 243.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       6.0
+      ]
+     },
+     "care": {
+      "bg_strength": 247.0,
+      "bg_rgb": [
+       250.0,
+       3.0,
+       250.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 3,
+    "fitScale": 0.603896,
+    "stageFactor": 1.0,
+    "scale": 0.603896,
+    "key": {
+     "base": {
+      "bg_strength": 242.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       7.0
+      ]
+     },
+     "care": {
+      "bg_strength": 247.0,
+      "bg_rgb": [
+       250.0,
+       3.0,
+       251.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   }
+  ],
+  "tool": "tools/petart/extract.py",
+  "reference": {
+   "file": "ref-pr7.png",
+   "sha256": "4fd8f2293ad1e4815c578a84fed0a4dbe3eeb0cd40627bca25c60ab167bde2ff",
+   "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/red-panda/v1/source-sheet.png (PR #7)"
+  },
+  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+ },
+ "files": {
+  "s1/b00.webp": "12a3328b7cb5ac60c9e447d923dbaacb58d13e04f1210fdcd45c7b23d1314e4d",
+  "s1/b01.webp": "0fcf04a1460ddab48cc8571251f39205eb24e9b18ee7b7278a657b25db982067",
+  "s1/b02.webp": "621fb8e4a950545097f3d06a812b0f55888afb060589848c4a51e32cca687d38",
+  "s1/b03.webp": "99e2cc6f84f8785b8c7cb99ca00ebc6122fc02f841b943402ff24a30953407be",
+  "s1/b04.webp": "7f14b8ba3f4e6cd158f3052946e280f86612dc01d408099698c0886125c8a519",
+  "s1/b05.webp": "8bcd3256ee0a71a60af8fec71ee67124e3cc6ea2f9071631babfbe3591bbe15e",
+  "s1/b06.webp": "53ffc90e3bb57aae9a62e667935b07c901c974b8a484c7cbf13660aceb7c604c",
+  "s1/b07.webp": "384ae7e3901e2adae0ca5c4dc5518077f28b44346ef5bf463b158590b97732ac",
+  "s1/b08.webp": "11f469ec84a852902590fe42c239ea13869fa247d95f60f5020e3641d140334c",
+  "s1/b09.webp": "b3eb3ce30d42b310c33388c104ff7e54dc8119f8ebd9272c4a918158fa6ab8b7",
+  "s1/b10.webp": "7d6b26432c5befe67fcd802643040cc7da0c533342ae60acfa819b1a188c09f1",
+  "s1/b11.webp": "d6ab352ce8cd9e7067079d0ef5dd79d768e757c7fc558554d37ea8ed74c8818f",
+  "s1/c00.webp": "2bb59be9846b1e14bd9f28364f6e7856ee242bd5b2e26c6e1f4bfb71e0e90d89",
+  "s1/c01.webp": "17a8b68b974d621d736eb75a7c14e4fdaa828cf24ef2dfb67e41303d8fe4f0f3",
+  "s1/c02.webp": "f9697b1a0ccec3564cd5ce9efd0f0c9760abbf2a9b72302632ddba2960553426",
+  "s1/c03.webp": "f8a8f1faef6bd8eb0a370c6f44bfdab42560af54638050176837aba95aa4e3de",
+  "s1/c04.webp": "d23cc91a1aee1a617ebceed7bc52badbdbecd38877bf1f4c892090abc8cff55a",
+  "s1/c05.webp": "7dd8273faceba66808a2f0e1b72fd844456216cf20bb1fb8d1a7244c491c9f47",
+  "s1/c06.webp": "050f6c9703cbf4a2b5029895e4a5a2ba9ac6ce5728df5e734a786ac3566da363",
+  "s1/c07.webp": "ff4e00d5ec48cc880c09b7d4e9651b3ce4030052322192c4a94c04520af205de",
+  "s1/c08.webp": "3f5a362fa04983cc826b9b43a28fe23a3bfa948beb56c4d1038902c60ee26d3e",
+  "s1/c09.webp": "f5d2686fcac06a69aaaae03816ac5d8ec35c414ba4f11dcc047e1340bdd6ad9b",
+  "s1/c10.webp": "67e4e37262c6550dcf0ba972fddd769878aec25a45bd7f2a28320f55d3df90a9",
+  "s1/c11.webp": "7c20a393bcd679ef40b1d0d08d4d1039c8175165fc06f7adcd5aef1e17f62ce8",
+  "s2/b00.webp": "053525ffeff276107c67fcb7428f3bd50ded262128949099f357bd00763bfc70",
+  "s2/b01.webp": "81f92a1382c06736d1921e2f45e6db172d2476716844f06ea5b602ad47b4a7b3",
+  "s2/b02.webp": "9de07910a2a583a864cae8682ec6793177bc1d65cb62af057b50fa2f6f279a4d",
+  "s2/b03.webp": "8b1c029e5e7e687039139effd7bce9a59a9e1932fe012a535b82806ff523e305",
+  "s2/b04.webp": "6ee1c902780a6a2ca3419dfc038e550b8ae8d5e80acccc25adb158750614e6c5",
+  "s2/b05.webp": "e544147e5048983fee0b01dfd6d408217b4b4606db217f3990a783abfcdaf9ae",
+  "s2/b06.webp": "881688ea8ab6f7b47df9cd8c53cae1421308b7b8a7c3f8c326c8e5ef79d858c8",
+  "s2/b07.webp": "7e2c679d250134eaf713cd40eb5ab6655e439a07c66866f8dffaad05bb1ceceb",
+  "s2/b08.webp": "879229731242182c09c782328481afb10087218221ccd3ec83dade367784e34b",
+  "s2/b09.webp": "4f2635ff6c0b2c8a96325fe41705de94597926d64f7a2ce48ce5df1f8e1dc60f",
+  "s2/b10.webp": "afba1e2378679de78d6c3fa0694051756b52861db7dc9b7a0f1460a9faf356ef",
+  "s2/b11.webp": "cd9f26cb5c1d843f75cfd44ac70997c407f109e40063a5075f43818911866257",
+  "s2/c00.webp": "6b4949b00f520d3ee7edeb463cd04d9928c34a4aff74b629d5c10f40b224995e",
+  "s2/c01.webp": "f7ed58875c24b6edf2acc04be81780d76ae0e90feb8b9dfbe08535fee70ee1c9",
+  "s2/c02.webp": "9a781397e4b1ebae90390ffaa0eef2689336ac9627a1df387b8d68b0029981ae",
+  "s2/c03.webp": "4f4c66014c298a1344cdf6589703ecb37d63fff38e7354286d15fbe7cf986389",
+  "s2/c04.webp": "4bdedf44bf889b24da519f4d96ac099c5bc65f40e5f2b353c200ee8ff8a28669",
+  "s2/c05.webp": "98556b5b5cb12d29ece6d6c585a97dff643145435be0ba37aa85713f74bc61e2",
+  "s2/c06.webp": "072223f29e6da18ae6feadd79c50f06b4dd83378dd101994bf1e099f8234b8cd",
+  "s2/c07.webp": "c148f3329cfa97939e64d58102ad1f2a96c8b7d5e9de4261241c9d05b384946d",
+  "s2/c08.webp": "4aee9b624ca106036eef5a13e8895746b6dddac33e9c03438758f73cc4a012ca",
+  "s2/c09.webp": "3e4046ca7d8709b4e213e5c7d8c91547a3cbac320612720f54fae42d20bd0d48",
+  "s2/c10.webp": "4f56d959ba6880fbd05b8c1b72df0690dee41b363d11ea3592a95f6f09683280",
+  "s2/c11.webp": "ff8e71108b1eb2cd9fcea573062eda748322fc3e44ea5ed9f6fb5ea56456d6e0",
+  "s3/b00.webp": "d1a7ca744d534da6d0950a12b1b2281d7f45e665622cfdc213b124376f8ecae3",
+  "s3/b01.webp": "57668db30e4b7574db183a4884dd4959594154fab049370b206fd1dace988833",
+  "s3/b02.webp": "459f6a958ce0b0c53d0348b3d6746f5c5b9b4112712cd37a51ce795e21a97103",
+  "s3/b03.webp": "cf33ab51e0eb5e2c67284ddb982ac9601c88a0134643cc1ff28dc76358d7d2f6",
+  "s3/b04.webp": "b10e5771f813a8c5dfac5bf9aaa19e1516c17ea3fef3d89f809e8fd66ea6efc6",
+  "s3/b05.webp": "2c67b320fb66695d4457020108dc63b47e11340f3abe6b3a2652e9744d67bbda",
+  "s3/b06.webp": "327502c1dfe5ef54f84d050d035358d4bd3b39c133c1d78ba50a67e111c45cac",
+  "s3/b07.webp": "2f29618b459cb09fd1d15e96bae2baf5ec52f019abc35596e69820d05ae2899a",
+  "s3/b08.webp": "72204a82336860ae12139e2efedecd029c5491b180377674a9a80d90cb870e04",
+  "s3/b09.webp": "4f091de3835ad58387a5b8d000f9c4e352d01ab0e4637c9877e71c41fdcfc89b",
+  "s3/b10.webp": "9407b946b38f2867fcf297def2d493ebdba8924506034de0919cb6f0da6b56d3",
+  "s3/b11.webp": "a31c404624706b2b4cbac190b31667802ba4d4d7e3ff22eed00769d68f27913d",
+  "s3/c00.webp": "7ae492f50b19b272164f0585ab4406e05f28ea1f162c9af88a307b777d4b01fc",
+  "s3/c01.webp": "fc5173f61b740b3e3d32c8400cd4645b59920984fcc5e60fba823a71a69cf6f9",
+  "s3/c02.webp": "912d3dc071848c351d8e21edd35af58231e2e9c6cceee6ff6c43c0a527cc6390",
+  "s3/c03.webp": "6295adf3891d73aa23af0dc9127fa662ae41cf884778bdc4cda14bf2e02daf27",
+  "s3/c04.webp": "8fbba9bd6e410cda02e501c65837cee67342aac2bb55652f1d087e3133f674e4",
+  "s3/c05.webp": "a3bb738b7ac3d990878e3bf87588eca9ba30d5b7f03ca653062696e48fb3b031",
+  "s3/c06.webp": "84022bc2d4e1d4f1cc9f88ccdac5ed5351261db7facd1a89dee5549c98a30ca8",
+  "s3/c07.webp": "09804414c036a90a7f4b762433e7ed8c8d60ebe2d1cba75de80a308510de06eb",
+  "s3/c08.webp": "11042c4b97671cca684f80482c40c5a8cfee09ff05ac35891039dd5e346b3860",
+  "s3/c09.webp": "e7a28e4027f7c2a8670880ab35064b4209d33cd50bf2d99121c093a2a18dc75e",
+  "s3/c10.webp": "e552ac6609e1dc964ad7fa88566b6a9e747d7c46d7125e2ef0fb1b39bbb5fed8",
+  "s3/c11.webp": "087146b1d87c1253e34f19b4dffaf77673977f112816decbfda2a157227b5755",
+  "thumb-s1.webp": "fe433eb8178d3405d15249442e420822bd1f3e7a6c563720f03f8f036c114868",
+  "thumb-s2.webp": "11220d7ef9c2c7f58930d4620ceb9888acf4dfd6dd05a98d7edc36b67885c2b0",
+  "thumb-s3.webp": "74598d18b8ce5f7ad3070103037fcc06c8c027dc5306677be19603085514e099"
+ }
+}

@@ -1,0 +1,614 @@
+{
+ "schemaVersion": 1,
+ "id": "axolotl",
+ "displayName": "Axolotl",
+ "defaultName": "Lotus",
+ "personality": "the cheerful tank gardener",
+ "habitat": "aquatic",
+ "assetRevision": "0.2.0",
+ "license": "MIT",
+ "provenance": "../PROVENANCE.md#axolotl",
+ "careLabels": {
+  "food": "Pellet snap",
+  "water": "Water refresh",
+  "play": "Plant tunnel",
+  "wash": "Cleaning bubbles",
+  "bathroom": "Filter clean",
+  "sleep": "Hide rest"
+ },
+ "careHints": {
+  "water": "Axolotls don't drink from bowls; this refreshes the tank water.",
+  "bathroom": "Cleans the filter; the axolotl stays in its plant hide.",
+  "sleep": "Axolotls rest with their eyes open."
+ },
+ "stages": [
+  {
+   "stage": 1,
+   "key": "young",
+   "name": "Gillbud",
+   "minLevel": 1
+  },
+  {
+   "stage": 2,
+   "key": "grown",
+   "name": "Tankstrider",
+   "minLevel": 2
+  },
+  {
+   "stage": 3,
+   "key": "mature",
+   "name": "Crowngill",
+   "minLevel": 4
+  }
+ ],
+ "stageNamesSource": "provenance.json",
+ "placeholder": false,
+ "geometry": {
+  "viewBox": [
+   0,
+   0,
+   192,
+   192
+  ],
+  "canvas": 192,
+  "pivot": [
+   96,
+   184
+  ],
+  "groundY": 184,
+  "hitBox": [
+   4,
+   65,
+   185,
+   119
+  ],
+  "stageHitBoxes": {
+   "1": [
+    20,
+    87,
+    151,
+    97
+   ],
+   "2": [
+    11,
+    75,
+    170,
+    109
+   ],
+   "3": [
+    4,
+    65,
+    185,
+    119
+   ]
+  },
+  "safeBounds": [
+   2,
+   2,
+   188,
+   188
+  ],
+  "propAnchor": [
+   181,
+   176
+  ],
+  "badgeAnchor": [
+   178,
+   71
+  ],
+  "roams": false,
+  "water": {
+   "outer": [
+    4,
+    65,
+    185,
+    119
+   ],
+   "waterLineY": 84,
+   "swimBounds": [
+    34,
+    90,
+    126,
+    69
+   ],
+   "approximate": true
+  }
+ },
+ "locomotion": {
+  "style": "bottom_walk_glide",
+  "pxPerTick": 0,
+  "pauseTicks": [
+   40,
+   90
+  ]
+ },
+ "states": {
+  "idle": {
+   "frames": [
+    "b00.webp",
+    "b00.webp",
+    "b01.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 0,
+   "interrupt": "any",
+   "fallback": null,
+   "airborneFrames": []
+  },
+  "locomotion": {
+   "frames": [
+    "b08.webp",
+    "b09.webp",
+    "b10.webp",
+    "b11.webp"
+   ],
+   "frameMs": 200,
+   "mode": "while_moving",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 20,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "food": {
+   "frames": [
+    "b03.webp",
+    "c00.webp",
+    "c01.webp",
+    "c00.webp",
+    "c01.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": false,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "water": {
+   "frames": [
+    "b03.webp",
+    "c02.webp",
+    "c03.webp",
+    "c02.webp",
+    "c03.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": false,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "play": {
+   "frames": [
+    "b03.webp",
+    "c04.webp",
+    "c05.webp",
+    "c04.webp",
+    "c05.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": false,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "wash": {
+   "frames": [
+    "b00.webp",
+    "c06.webp",
+    "c07.webp",
+    "c06.webp",
+    "c07.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": false,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "bathroom": {
+   "frames": [
+    "b03.webp",
+    "c08.webp",
+    "c08.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": false,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "sleep_enter": {
+   "frames": [
+    "c09.webp",
+    "b07.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": false,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "sleep": {
+   "frames": [
+    "b07.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 85,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "breathing": {
+    "maxScale": 0.02,
+    "maxUpdatesPerSecond": 1,
+    "reducedMotion": false
+   }
+  },
+  "sleep_exit": {
+   "frames": [
+    "c10.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": false,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "celebrate": {
+   "frames": [
+    "c11.webp",
+    "b04.webp",
+    "c11.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 60,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": [],
+   "totalMs": 1600
+  },
+  "working": {
+   "frames": [
+    "b04.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 40,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "waiting": {
+   "frames": [
+    "b02.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 35,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "needs_care": {
+   "frames": [
+    "b05.webp"
+   ],
+   "frameMs": 800,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 50,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "error": {
+   "frames": [
+    "b06.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 100,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": []
+  }
+ },
+ "framePattern": "s{stage}/{frame}",
+ "thumbnailPattern": "thumb-s{stage}.webp",
+ "source": {
+  "dir": "axolotl",
+  "sheets": [
+   {
+    "stage": 1,
+    "kind": "base",
+    "file": "stage1-base.png",
+    "sha256": "d40957834f32ca3aef26023f0b9a7548ae91557205f6f93c284d129d848873c0",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 1,
+    "kind": "care",
+    "file": "stage1-care.png",
+    "sha256": "2489c40798b279c5b4ef18717567b0b06615a44bad680009c585d25d94e9116a",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 2,
+    "kind": "base",
+    "file": "stage2-base.png",
+    "sha256": "56f8be3848c290f73b71fe9fcac6c113cb3c76757807e858bc1dd59ebe76589a",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 2,
+    "kind": "care",
+    "file": "stage2-care.png",
+    "sha256": "5d05ed82c4df592f56b0b3e0b345861719684454ad728b837e4eaf688035f188",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 3,
+    "kind": "base",
+    "file": "stage3-base.png",
+    "sha256": "386bf8a16ddeb1bc8945edd68839052c6ea348e74ecb72081669892c2d7cfa73",
+    "chromaHex": "#00FF00"
+   },
+   {
+    "stage": 3,
+    "kind": "care",
+    "file": "stage3-care.png",
+    "sha256": "25932dc3497dcc1cf7a857d1f52c9ae6f45e9c95b06a9b124636e7e938b587da",
+    "chromaHex": "#00FF00"
+   }
+  ],
+  "extraction": [
+   {
+    "stage": 1,
+    "fitScale": 0.509589,
+    "stageFactor": 0.82,
+    "scale": 0.417863,
+    "key": {
+     "base": {
+      "bg_strength": 246.0,
+      "bg_rgb": [
+       4.0,
+       250.0,
+       2.0
+      ]
+     },
+     "care": {
+      "bg_strength": 246.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       2.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 2,
+    "fitScale": 0.510989,
+    "stageFactor": 0.92,
+    "scale": 0.47011,
+    "key": {
+     "base": {
+      "bg_strength": 246.0,
+      "bg_rgb": [
+       3.0,
+       249.0,
+       2.0
+      ]
+     },
+     "care": {
+      "bg_strength": 245.0,
+      "bg_rgb": [
+       3.0,
+       248.0,
+       2.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   },
+   {
+    "stage": 3,
+    "fitScale": 0.510989,
+    "stageFactor": 1.0,
+    "scale": 0.510989,
+    "key": {
+     "base": {
+      "bg_strength": 245.0,
+      "bg_rgb": [
+       4.0,
+       249.0,
+       1.0
+      ]
+     },
+     "care": {
+      "bg_strength": 247.0,
+      "bg_rgb": [
+       3.0,
+       250.0,
+       1.0
+      ]
+     }
+    },
+    "overrides": {},
+    "sheetScales": {}
+   }
+  ],
+  "tool": "tools/petart/extract.py",
+  "reference": {
+   "file": "ref-pr7.png",
+   "sha256": "19dd4e4a8c334be04f4e469b6c68276076e8eeb279cba6c9f95f247e88143377",
+   "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/axolotl/v2/source-sheet.png (PR #7)"
+  },
+  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+ },
+ "files": {
+  "s1/b00.webp": "50310b7d3c30d110c497fcbcc63957e07042239b3fc3b12f77922919828756cc",
+  "s1/b01.webp": "4523591737743a73be0f5f7880f0987750944639784e13346a1e2ea0efacb541",
+  "s1/b02.webp": "e15e3240abed2060f7e61609879c57a683955da08336f13ac9e4a6ed94b60349",
+  "s1/b03.webp": "628eb33db007e5af9a8dd80c5081b182bf5f2511586bc6e24634b86a2dc09ed0",
+  "s1/b04.webp": "68dc46d2831a60d185535afd10357407325da8fe8b4ba91ca637e46d0a093b0d",
+  "s1/b05.webp": "3b2967cc41b11d6cc549e13d99efca348f0babf35da775bcfffe76bb83a37caf",
+  "s1/b06.webp": "27a8afc8342285ab910a33b81e45f8de979d81c271d119a17d498c25099369df",
+  "s1/b07.webp": "86e5ae68a23b21deb6d76b5dc2d72ec1ac59fc7a4d6cb8ace968a4eaead4a360",
+  "s1/b08.webp": "adf49c463556c8578022c7f0cbabf4d9fea77d95471dfc36a5ec08c1e0c57ab7",
+  "s1/b09.webp": "c30bf55212510d0519dc30e0157ed93e2b26d1fc3d45c418ce2c0ae90aee70c0",
+  "s1/b10.webp": "5d471c0672e8527886ad0147e25457eb12b515a028d0675721e4b1ed74a656f4",
+  "s1/b11.webp": "675e116b37785c48ffbb041170398aa8a59971d527b74d5c525711acfd5e0707",
+  "s1/c00.webp": "166e51cdf8b742544dd1e2b39d11cde03068a7a818372598f0b8314184caf37a",
+  "s1/c01.webp": "82abd80ccdf228b868f9520af8f3d6c385c51b29d8d6ada9d0760824edda8823",
+  "s1/c02.webp": "9738da759fad9ef7b8752ceff761230a8ccb237674cef6234c57ba457f00da72",
+  "s1/c03.webp": "3b5e579dfc11ba9d74aad6aae24d24b9043daca655e12d4d0f173090b257aea7",
+  "s1/c04.webp": "216c8653199fc07eb4c26ee3d12251cc47642cc690e80a66c736ed187397cf48",
+  "s1/c05.webp": "4ff1ebf14312391584e91de7d4bc65907a606cbd78329238fcde9b771c609cba",
+  "s1/c06.webp": "7a8c977bd276ae61197b07410559fad0ace26eb55a01cf08a4a77c1231c6ce1b",
+  "s1/c07.webp": "8da79d8e67aae15f96a128bcbf93fca956f82c788582f93f6aece8460f28dbe7",
+  "s1/c08.webp": "8096c998c6df6030e772dc4384611c0d7632ba0c004d316759d65f5c2eb5168e",
+  "s1/c09.webp": "93a5f40bf9ff074b719d8787692340d3f6eaaa3181a2947e30b0cd502e68ebfb",
+  "s1/c10.webp": "42821115f1c1e143b2fe808f0e10b9df896375af973e494825939fd97196104c",
+  "s1/c11.webp": "081317ae7f9bb897bfd1cb60bc394f8d47c99bdb298fdb48fc660324c6ac6f66",
+  "s2/b00.webp": "c6a376e557603de5fd8530bd8315d491866ae9575aadb87e16a23bfe850444b5",
+  "s2/b01.webp": "bd5ebfc99ba20dab9dc55f0177049dd32eef82f274047e54318c2ac1670aca16",
+  "s2/b02.webp": "b4d582254f294be463e295b8b2ae8fb23631b34f2def4a480b3041de22303347",
+  "s2/b03.webp": "45c442d4dcd897b73f7f7b013aa33a1df61c361833b8548a01f0e459f9985ad9",
+  "s2/b04.webp": "452757c012e40310978f1da2be84d7232208284e963e001f2f1eafb0cdce1e3a",
+  "s2/b05.webp": "143e70c317fddee8b914d243b02d002ee4b22f3cb2be9a0a6d6befe2dabf0acd",
+  "s2/b06.webp": "3dc1e53b608c82eb4b90ea6e074167a7b9f408abb861f17f1b8e8a87e3fa28fb",
+  "s2/b07.webp": "4970a71423a8d1261e0ccf9db213fdb67b0adb89b952cfc8b766420b6cd755c1",
+  "s2/b08.webp": "9129ae723a8f7080f6ffb075841fe47483a62ac1b58f52adcb70e2398edaa6d5",
+  "s2/b09.webp": "7b95f5493ec5d4bb7c8d2a2571274f7c067de919aef2690dde226e0539300e46",
+  "s2/b10.webp": "0d03583c2698a6ee36cb7c9b1e0e07c3fab69a36c7a8de5f5ea0017e8781180b",
+  "s2/b11.webp": "e5dffe5f50a881c2f131a273a2817bee167cb69296644a1d58996fe6f25ea8c1",
+  "s2/c00.webp": "fe38bc17610b0094a5f72dd6d5ebac0029016745526d6b244983f6671ce5d26c",
+  "s2/c01.webp": "1938225c5dd9ab8c5fe0d8c8e719b2b0089c8a860c37c99ea3b46d16950271ef",
+  "s2/c02.webp": "207f07ade964916d98710422badebabe5e2313d9f92e5ccda93f6dfe900d4c31",
+  "s2/c03.webp": "61c2911a43898fde587424a7e238692e10a8876fc299ad79be0cfee6100ac8e7",
+  "s2/c04.webp": "872768a5f0cc18e2e7698613b9446e38fd2884abd4994dccc1874b5184ac9721",
+  "s2/c05.webp": "35625051a73cecd0c4d3cb6a6ee8ca48085ac12426345f5f47448443a1bd3ee0",
+  "s2/c06.webp": "3a9ca621921eb20c624c1518586a5d548496c76d6cb3758c90b3d4221d871624",
+  "s2/c07.webp": "02770318cb5cf3a23c7c6f6e00f2066f74e4d1456ccebe33e6b8879a8130a71e",
+  "s2/c08.webp": "1dbc6f1abaddaa5b45b6e554dacf90599b9b9038d1906fac56aff78942ba5b79",
+  "s2/c09.webp": "1e7e1c58b70b6b0a20e21d706a02ff387d446a73cfde89f67b8e95debbb3d99b",
+  "s2/c10.webp": "abeb283c290fd2e825e4320ffece4db4163d81f10c1b05a9d11a3b09b17e3ace",
+  "s2/c11.webp": "93555e28f1fd57ae4998f10f23952a8707b5a3fb2dcf0fe7c46f342b58d434bd",
+  "s3/b00.webp": "d1a8b45d2b701dcc474a2011cb2a6ecec9693414f3eb899596e15623f3eab4e6",
+  "s3/b01.webp": "c81b086204820eab4e62089cbab5202bca1b95f0c939f7c845b8af52ea992649",
+  "s3/b02.webp": "1ffc2248da9d1a2dfca99034c4046ef95fa14ee58865340c152cb68c8191ad17",
+  "s3/b03.webp": "20c69f575c6e72efd096ab6a116eb662676b737d6f5ce86e9243cd31220c6484",
+  "s3/b04.webp": "318761bb438787c7b8b30899483ec993fafae154aaab0ebd437591c9119912af",
+  "s3/b05.webp": "78026009953c1170cae704c4fd33fe1224842017be916234bea5c48976fcf438",
+  "s3/b06.webp": "03928a96631ed5e8d82d8e7dea050b56ce02d8bacdb037a02d461a073026e479",
+  "s3/b07.webp": "92bd9afd05092660faa6f04eefb92df55f1f54c96633abdf481b831e1f86f9f1",
+  "s3/b08.webp": "17bce933deaa42765675681886e5df6f9ed3dd4aaedfa4486f0993aeede4c122",
+  "s3/b09.webp": "34283e6f16187f00c566d5d004dc6226175b5235f7e1e57ab2ba902aaaf0c0b6",
+  "s3/b10.webp": "8489b2ed5166a4018f10521b00c3fd0c09364680f066361e35d8074cd39c2560",
+  "s3/b11.webp": "187cfe452122f9def746f0dfeee6b75eb6d0187ddd644b80279fb1834336de69",
+  "s3/c00.webp": "0b8b6e7c272c4eab6761db330028baecc8c58631592187127f1ffc4913471307",
+  "s3/c01.webp": "3deaf7a15833cb355df89797b08b5c73573230d8226d4d9220d00d0a6f3a51bb",
+  "s3/c02.webp": "b42dc35eeb5172b726adc4e42fb46a71d36d2266e3e4e16893d6967adf823ae1",
+  "s3/c03.webp": "8f34d36950f51c2be450b214231e8df1cce2c7baf4eb9e84681efa111e414e72",
+  "s3/c04.webp": "32147c24dc33dd8c5a70a767284a4110149aa4e060dd4355363c50fc9ab3fc09",
+  "s3/c05.webp": "0d939ac6fea5d31b5918ae76dddb39dcad2d3e2f16cb5db839fda5e9f00e32b0",
+  "s3/c06.webp": "04e8521a03a7ddc492f1502308e3b479ca5c37999ac3e3a9899b7837c9c106d4",
+  "s3/c07.webp": "1728d44656c76e414f5e8ae0a5555e3e838cae091a3f484eda9727cc301e0fa8",
+  "s3/c08.webp": "d52329aab6364cabf675148907cc19045044d98cf9cbaaf713b82d32a8f9a50f",
+  "s3/c09.webp": "88bdc9228562755479aa3133e85ab3af5654ec49bc2e02ac48a84de140bef986",
+  "s3/c10.webp": "c1d9b5abf3237f0366b477101fb42c1b1a5c4c28638677ad615d38d9e3a8a178",
+  "s3/c11.webp": "2711af7decac99aa545bf4300658b6b7094b21f0646588d0ce2fd6a9c12a2f34",
+  "thumb-s1.webp": "a2652387686bf442d3cc884a05c9d48b83ed6517628a6e04b1095fdf277ee4ec",
+  "thumb-s2.webp": "687392fe7f2b8a0abc128a656582a69b096b0d7f73a158ea94711748ad2950f0",
+  "thumb-s3.webp": "a0a37eef6b9f343cc594c3d5620d5750fee0bf6ef88a9dfcc2c1514ddb1d6447"
+ }
+}
