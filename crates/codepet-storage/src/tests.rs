@@ -1349,6 +1349,7 @@ fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
 
         let recovered = store.recover().unwrap();
         assert_eq!(recovered.changed[0].to, State::RecoveryRequired);
+        assert_eq!(recovered.repaired, vec![id.clone()]);
         let review = recovered
             .active_task
             .unwrap()
@@ -1391,7 +1392,8 @@ fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
         // The replacement metadata is durable and is never treated as a new sealed result.
         drop(store);
         let mut store = env.open();
-        assert!(store.recover().unwrap().changed.is_empty());
+        let again = store.recover().unwrap();
+        assert!(again.changed.is_empty() && again.repaired.is_empty());
         let task = store.review(&id).unwrap();
         assert_eq!(task.state, State::RecoveryRequired);
         assert_eq!(task.review.as_ref().unwrap().digest, review.digest);
@@ -1454,6 +1456,7 @@ fn recover_replaces_digests_that_task_discard_could_never_accept() {
 
         let recovered = store.recover().unwrap();
         assert_eq!(recovered.changed[0].to, State::RecoveryRequired);
+        assert_eq!(recovered.repaired, vec![id.clone()]);
         let review = recovered.active_task.unwrap().review.unwrap();
         assert_ne!(review.digest, damaged);
         assert_eq!(review.digest.len(), 64);
@@ -1508,6 +1511,8 @@ fn recover_repairs_already_stranded_recovery_metadata() {
     let seq = store.last_seq().unwrap();
     let recovered = store.recover().unwrap();
     assert!(recovered.changed.is_empty());
+    // No state changed, but the result reports the repair so the UI can explain it.
+    assert_eq!(recovered.repaired, vec![id.clone()]);
     // The repair is a mutation, so it appends one same-state event.
     assert_eq!(store.last_seq().unwrap(), seq + 1);
     let page = store.events_after(seq, None).unwrap();
@@ -1516,7 +1521,8 @@ fn recover_repairs_already_stranded_recovery_metadata() {
     assert_eq!(page.events[0].data.from, Some(State::RecoveryRequired));
     assert_eq!(page.events[0].data.state, State::RecoveryRequired);
     // Running recovery again finds nothing left to repair.
-    assert!(store.recover().unwrap().changed.is_empty());
+    let again = store.recover().unwrap();
+    assert!(again.changed.is_empty() && again.repaired.is_empty());
     assert_eq!(store.last_seq().unwrap(), seq + 1);
     let active = recovered.active_task.unwrap();
     assert_eq!(active.state, State::RecoveryRequired);

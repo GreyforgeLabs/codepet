@@ -1097,6 +1097,7 @@ impl Store {
             &[],
         )?;
         let mut changed = Vec::new();
+        let mut repaired = Vec::new();
         for t in &tasks {
             let to = if t.state == State::ReviewReady {
                 (!review_intact(&tx, t)?).then_some(State::RecoveryRequired)
@@ -1144,6 +1145,7 @@ impl Store {
                     // same-state event: history shows that this task's review changed.
                     append_event(&tx, &t.id, Some(t.state), t.state, t.revision, at.wall)?;
                 }
+                repaired.push(t.id.clone());
             }
             if let Some(to) = to {
                 transition(&tx, t, to, &at)?;
@@ -1158,6 +1160,7 @@ impl Store {
         tx.commit()?;
         Ok(RecoverResult {
             changed,
+            repaired,
             active_task,
         })
     }

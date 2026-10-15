@@ -251,7 +251,9 @@ Receipt: `{"task_id","category","amount_hundredths":2000,"verification","overrid
 - `task.accept_artifact` params: `task_id review_digest acknowledged override_reason?`
   (request envelope `id` is the idempotency key) → `{"receipt":{…},"duplicate":false}`.
 - `task.discard` params: `task_id review_digest` → task summary.
-- `task.recover` params: `{}` → `{"changed":[{"task_id","from","to"}],"active_task":brief|null}`.
+- `task.recover` params: `{}` → `{"changed":[{"task_id","from","to"}],"repaired":["task_id"],"active_task":brief|null}`.
+  `repaired` lists tasks whose review metadata recovery replaced so they can be abandoned,
+  including a `recovery_required` task whose state did not change.
 - `events.subscribe` params: `after_seq limit?(≤100)` → `{"events":[event…],"last_seq"}`.
 - `history.list` params: `before_ms? before_task_id? limit?(≤50)` →
   `{"tasks":[brief…],"next":{"before_ms","before_task_id"}|null}`. Pass `next` back as the

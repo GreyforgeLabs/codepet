@@ -57,6 +57,18 @@ ColumnLayout {
         taskForm.reset()
         root.view = "form"
     }
+    // Plain summary of a task.recover result. A metadata repair can leave the state
+    // unchanged, so it is reported separately rather than as "nothing found".
+    function recoverNotice(result) {
+        var changed = Array.isArray(result.changed) ? result.changed.length : 0
+        var repaired = Array.isArray(result.repaired) ? result.repaired.length : 0
+        var parts = []
+        if (changed > 0)
+            parts.push(changed + " task(s) marked after recovery. Nothing was resumed.")
+        if (repaired > 0)
+            parts.push("Recovery metadata restored for " + repaired + " task(s); use Resolve recovery to abandon without a reward.")
+        return parts.length > 0 ? parts.join(" ") : "No interrupted tasks found."
+    }
     function openReview(taskId) {
         root.view = "review"
         taskReview.load(taskId)
@@ -157,6 +169,14 @@ ColumnLayout {
                     wrapMode: Text.Wrap
                 }
                 Label {
+                    objectName: "panel.recoveryMetadataHint"
+                    Layout.fillWidth: true
+                    visible: root.activeTask !== null && root.activeTask.state === "recovery_required" && !root.activeTask.review
+                    text: "The saved review metadata is missing, so this task cannot be abandoned yet. Use \"Check interrupted tasks\" to restore it; nothing is resumed."
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                }
+                Label {
                     Layout.fillWidth: true
                     visible: root.activeTask !== null && root.cancellable.indexOf(root.activeTask.state) !== -1
                     text: root.host && root.host.supervisorActive === true
@@ -206,10 +226,8 @@ ColumnLayout {
                         text: "Check interrupted tasks"
                         enabled: !root.hostBusy && root.snap !== null
                         onClicked: root.act("task.recover", {}, function (resp) {
-                            if (resp.ok && resp.result && resp.result.changed)
-                                root.notice = resp.result.changed.length === 0
-                                    ? "No interrupted tasks found."
-                                    : resp.result.changed.length + " task(s) marked after recovery. Nothing was resumed."
+                            if (resp.ok && resp.result)
+                                root.notice = root.recoverNotice(resp.result)
                         })
                     }
                 }

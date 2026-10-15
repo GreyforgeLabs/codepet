@@ -127,6 +127,14 @@ Item {
             case 16:
                 top.check(panel.activeTask !== null && panel.activeTask.state === "recovery_required", "recovery_required fixture loaded")
                 top.check(top.find(panel, "panel.resolveRecovery").visible, "Resolve recovery button shown")
+                top.check(!top.find(panel, "panel.recoveryMetadataHint").visible, "no missing-metadata hint when the review is present")
+                top.check(panel.recoverNotice({ "changed": [], "repaired": [] }) === "No interrupted tasks found.", "empty recovery result")
+                top.check(panel.recoverNotice({ "changed": [], "repaired": ["preview-recovery"] }).indexOf("Recovery metadata restored") === 0,
+                          "a metadata-only repair is reported, not 'no interrupted tasks found'")
+                top.check(top.review.missingReviewNotice("preview-recovery", { "ok": false, "error": { "code": "INVALID_STATE" } })
+                          .indexOf("Check interrupted tasks") !== -1, "task.review without metadata points to recovery")
+                top.check(top.review.missingReviewNotice("preview-recovery", { "ok": false, "error": { "code": "NOT_FOUND" } }) === "",
+                          "other review errors get no recovery hint")
                 panel.openReview("preview-recovery")
                 break
             case 18:

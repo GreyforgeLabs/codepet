@@ -469,7 +469,7 @@ fn other_methods_round_trip() {
     );
     assert_eq!(
         env.ok("task.recover", json!({})),
-        json!({"changed": [], "active_task": null})
+        json!({"changed": [], "repaired": [], "active_task": null})
     );
     let mut bad = env.draft("thirst", 0, "passed");
     assert_eq!(env.err("task.create", bad.clone()), "INVALID_PARAMS");

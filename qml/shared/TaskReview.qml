@@ -16,6 +16,9 @@ ColumnLayout {
     property var receipt: null
     property bool duplicate: false
     property string outcome: ""
+    // Guidance when task.review fails, e.g. a recovery_required task whose saved review
+    // metadata is missing (Rust answers INVALID_STATE "task has no review").
+    property string loadNotice: ""
     // Idempotency key for acceptance: reused only for an identical retry.
     property string acceptKey: ""
     property string acceptKeyParams: ""
@@ -71,6 +74,7 @@ ColumnLayout {
         root.receipt = null
         root.duplicate = false
         root.outcome = ""
+        root.loadNotice = ""
         root.acceptKey = ""
         root.acceptKeyParams = ""
         ackBox.checked = false
@@ -79,8 +83,18 @@ ColumnLayout {
         root.host.request("task.review", { "task_id": taskId }, function (resp) {
             if (resp.ok)
                 root.task = resp.result
+            else
+                root.loadNotice = root.missingReviewNotice(taskId, resp)
             root.host.request("state.get", {}, function () {})
         })
+    }
+    function missingReviewNotice(taskId, resp) {
+        var snap = root.host ? root.host.snapshot : null
+        var active = snap && snap.active_task ? snap.active_task : null
+        var code = resp && resp.error ? String(resp.error.code) : ""
+        if (code === "INVALID_STATE" && active && active.task_id === taskId && active.state === "recovery_required")
+            return "This task's saved review metadata is missing, so it cannot be abandoned yet. Go back and use \"Check interrupted tasks\" to restore it, then Resolve recovery. Nothing is resumed."
+        return ""
     }
     function acceptClicked() {
         if (!root.canDecide || !ackBox.checked || root.hostBusy)
@@ -139,6 +153,15 @@ ColumnLayout {
         visible: root.task === null
         text: root.hostBusy ? "Loading review…" : "No review loaded."
         textFormat: Text.PlainText
+    }
+    Label {
+        objectName: "taskReview.loadNotice"
+        Layout.fillWidth: true
+        visible: root.task === null && root.loadNotice !== ""
+        text: root.loadNotice
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        font.bold: true
     }
 
     ColumnLayout {

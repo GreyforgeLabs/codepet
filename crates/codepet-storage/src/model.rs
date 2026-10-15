@@ -274,6 +274,9 @@ pub struct RecoveryChange {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct RecoverResult {
     pub changed: Vec<RecoveryChange>,
+    /// Tasks whose missing or malformed review metadata was replaced with abandonment
+    /// metadata, including tasks whose state did not change. They can now be abandoned.
+    pub repaired: Vec<String>,
     pub active_task: Option<TaskBrief>,
 }
 
