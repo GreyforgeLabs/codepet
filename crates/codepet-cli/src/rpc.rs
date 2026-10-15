@@ -103,6 +103,18 @@ fn dispatch(req: Request) -> Outcome {
             ErrorCode::InvalidState,
             NOT_IMPLEMENTED_MESSAGE,
         )),
+        // Integration placeholder until WP-4 wires the v0.2 lifecycle methods.
+        Method::PetSelect
+        | Method::PetAdopt
+        | Method::PetRules
+        | Method::PetConfigureLife
+        | Method::PetRetire
+        | Method::PetEventsSeen
+        | Method::PetMemorial
+        | Method::LifecycleRules => Err(Failure::new(
+            ErrorCode::InvalidState,
+            NOT_IMPLEMENTED_MESSAGE,
+        )),
         Method::Hello => {
             let h: HelloParams = parse_params(p)?;
             if h.versions.is_some_and(|v| !v.contains(&PROTOCOL_VERSION)) {
