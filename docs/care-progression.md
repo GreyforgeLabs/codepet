@@ -47,6 +47,15 @@ and still requires the outstanding rest. Settlement is command-driven, with cons
 clock handling and no per-second writes, idle Rust process or automatic job resumption.
 UI countdowns are presentation only; the next command reconciles authoritative state.
 
+`state.get` (and `codepet state`) is therefore not always a pure read. When a nap is in
+progress or a live supervisor is running or verifying, it takes the writer lock, settles
+the persisted rest, and checkpoints the execution segment; the protocol classifies it as
+mutating. Recording execution, whether by a snapshot checkpoint or a supervisor step,
+never invalidates preflight approvals (the busy slot already blocks other starts and Start
+re-checks readiness, as with the start debit) and moves the care revision only when it
+makes a nap due. With nothing to settle, `state.get` is a plain WAL read
+that does not wait for the writer lock.
+
 ## Progression boundaries
 
 Real and demo progression are separate. Existing mock work uses the small 20-XP template.

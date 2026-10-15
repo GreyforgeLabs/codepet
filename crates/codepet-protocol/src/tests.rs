@@ -114,9 +114,9 @@ fn every_method_parses_and_round_trips() {
 
 #[test]
 fn mutating_and_implemented_classification() {
+    // state.get may settle a persisted nap or checkpoint live execution, so it is not a read.
     let reads = [
         Method::Hello,
-        Method::StateGet,
         Method::EventsSubscribe,
         Method::ProvidersInspect,
         Method::TaskGet,
@@ -135,6 +135,7 @@ fn mutating_and_implemented_classification() {
         .is_ok());
     }
     assert!(Method::TaskRecover.is_implemented());
+    assert!(Method::StateGet.is_mutating());
     assert!(Method::TaskAcceptArtifact.is_mutating());
     assert!(Method::TaskPreflight.is_mutating());
 }

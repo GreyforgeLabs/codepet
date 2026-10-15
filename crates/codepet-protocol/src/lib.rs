@@ -213,11 +213,11 @@ impl Method {
         Self::ALL.into_iter().find(|m| m.as_str() == s)
     }
     /// True when the method may change durable state (including preflight tokens).
+    /// `state.get` counts: it may settle a persisted nap or checkpoint live execution.
     pub fn is_mutating(self) -> bool {
         !matches!(
             self,
             Self::Hello
-                | Self::StateGet
                 | Self::EventsSubscribe
                 | Self::ProvidersInspect
                 | Self::TaskGet

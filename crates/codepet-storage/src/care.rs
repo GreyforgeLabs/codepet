@@ -278,11 +278,24 @@ pub(crate) fn transition(
         ],
     )?;
     if elapsed > 0 {
+        let before: i64 =
+            c.query_row("SELECT execution_ms FROM pet_care WHERE id = 1", [], |r| {
+                r.get(0)
+            })?;
         c.execute(
             "UPDATE pet_care SET execution_ms = MIN(execution_ms + ?1, ?2) WHERE id = 1",
             params![elapsed, EXECUTION_LIMIT_MS],
         )?;
-        bump(c)?;
+        if before < EXECUTION_LIMIT_MS && before.saturating_add(elapsed) >= EXECUTION_LIMIT_MS {
+            // Recording execution (a snapshot checkpoint or a supervisor step) never
+            // invalidates other tasks' approvals: the slot is busy, and Start re-checks
+            // readiness under the writer lock, like the start debit. Only accrual that
+            // makes a nap due changes readiness, so only it moves the care revision.
+            c.execute(
+                "UPDATE pet_care SET revision = revision + 1 WHERE id = 1",
+                [],
+            )?;
+        }
     }
     if !newly_executed
         && !refunded
@@ -308,9 +321,8 @@ pub(crate) fn transition(
     Ok(())
 }
 
-/// An explicit snapshot may checkpoint a live supervisor, but never extrapolates
-/// execution after a crash. Persisted segment cursors make later transitions idempotent.
-pub(crate) fn checkpoint_running(c: &Connection, at: &TimeMark) -> Result<()> {
+/// The running or verifying task whose supervisor is still alive, if any.
+fn live_execution(c: &Connection) -> Result<Option<(String, State)>> {
     type RunningRow = (String, String, u32, i64);
     let row: Option<RunningRow> = c
         .query_row(
@@ -321,12 +333,35 @@ pub(crate) fn checkpoint_running(c: &Connection, at: &TimeMark) -> Result<()> {
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()?;
-    if let Some((id, state, pid, start_time)) = row {
-        let start_time = u64::try_from(start_time).map_err(|_| StorageError::Corrupt)?;
-        if (crate::Supervisor { pid, start_time }).is_alive() {
-            let state = State::parse(&state).ok_or(StorageError::Corrupt)?;
-            transition(c, &id, state, state, at)?;
-        }
+    let Some((id, state, pid, start_time)) = row else {
+        return Ok(None);
+    };
+    let start_time = u64::try_from(start_time).map_err(|_| StorageError::Corrupt)?;
+    if !(crate::Supervisor { pid, start_time }).is_alive() {
+        return Ok(None);
+    }
+    Ok(Some((
+        id,
+        State::parse(&state).ok_or(StorageError::Corrupt)?,
+    )))
+}
+
+/// True when a snapshot has persisted state to settle: a nap in progress or a live
+/// supervised execution segment. Otherwise `state.get` stays a plain read.
+pub(crate) fn snapshot_needs_settlement(c: &Connection) -> Result<bool> {
+    let sleeping: bool = c.query_row(
+        "SELECT sleep_started_at_ms IS NOT NULL FROM pet_care WHERE id = 1",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(sleeping || live_execution(c)?.is_some())
+}
+
+/// An explicit snapshot may checkpoint a live supervisor, but never extrapolates
+/// execution after a crash. Persisted segment cursors make later transitions idempotent.
+pub(crate) fn checkpoint_running(c: &Connection, at: &TimeMark) -> Result<()> {
+    if let Some((id, state)) = live_execution(c)? {
+        transition(c, &id, state, state, at)?;
     }
     Ok(())
 }

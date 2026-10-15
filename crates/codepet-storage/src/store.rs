@@ -217,14 +217,24 @@ impl Store {
 
     // ---- reads -------------------------------------------------------------------------
 
-    /// The exact `state.get` result.
+    /// The exact `state.get` result. It settles persisted rest and checkpoints a live
+    /// execution segment when either exists (so `state.get` is classified as mutating);
+    /// otherwise it is a plain WAL read that never waits for the writer lock. A checkpoint
+    /// never invalidates preflight approvals.
     pub fn snapshot(&self) -> Result<Snapshot> {
-        // A snapshot is an explicit short command. Take the writer lock before settling
-        // sleep so concurrent commands cannot spend the same elapsed credit twice.
-        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        let at = care::TimeMark::new(self.clock.as_ref());
-        care::settle_sleep(&tx, &at)?;
-        care::checkpoint_running(&tx, &at)?;
+        let read = self.read()?;
+        let tx = if care::snapshot_needs_settlement(&read)? {
+            read.commit()?;
+            // Take the writer lock before settling so concurrent commands cannot spend
+            // the same elapsed credit twice. Settlement re-reads under the lock.
+            let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+            let at = care::TimeMark::new(self.clock.as_ref());
+            care::settle_sleep(&tx, &at)?;
+            care::checkpoint_running(&tx, &at)?;
+            tx
+        } else {
+            read
+        };
         let (meters, paused) = load_pet(&tx)?;
         let settings = load_settings(&tx)?;
         let active_task = active_task(&tx)?;

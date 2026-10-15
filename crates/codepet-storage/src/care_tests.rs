@@ -615,3 +615,55 @@ fn older_transition_timestamp_cannot_rewind_newer_execution_checkpoint() {
     assert_eq!(env.count("SELECT execution_ms FROM pet_care"), 200);
     assert_eq!(env.count("SELECT execution_ms FROM task_care_usage"), 200);
 }
+
+#[test]
+fn snapshot_checkpoints_never_invalidate_other_approvals() {
+    let env = Env::new();
+    let mut s = env.open();
+    let id = started(&mut s, &env, Category::Hunger, sup());
+    s.supervisor_step(&id, sup(), State::Preparing, State::Running)
+        .unwrap();
+    // A draft prepared while the slot is busy keeps its approval across refreshes.
+    let draft = s.create_task(&env.input(Category::Thirst)).unwrap();
+    s.preflight(&draft.task_id, 1).unwrap();
+    let pending = "SELECT count(*) FROM preflight_tokens WHERE status='pending'";
+    let revision = s.snapshot().unwrap().care.revision;
+    for _ in 0..3 {
+        env.clock.advance(60_000);
+        let state = s.snapshot().unwrap();
+        assert_eq!(state.care.revision, revision);
+        assert!(!state.care.sleep_due);
+    }
+    assert_eq!(s.snapshot().unwrap().care.execution_ms, 180_000);
+    assert_eq!(env.count(pending), 1);
+    // A supervisor step that records execution leaves approvals alone too.
+    env.clock.advance(1_000);
+    s.supervisor_step(&id, sup(), State::Running, State::Verifying)
+        .unwrap();
+    assert_eq!(s.snapshot().unwrap().care.execution_ms, 181_000);
+    assert_eq!(s.snapshot().unwrap().care.revision, revision);
+    assert_eq!(env.count(pending), 1);
+    // Crossing the execution limit changes readiness, so only the revision moves.
+    env.clock.advance(EXECUTION_LIMIT_MS);
+    let state = s.snapshot().unwrap();
+    assert!(state.care.sleep_due);
+    assert_eq!(state.care.execution_ms, EXECUTION_LIMIT_MS);
+    assert_eq!(state.care.revision, revision + 1);
+    assert_eq!(s.snapshot().unwrap().care.revision, revision + 1);
+    assert_eq!(env.count(pending), 1);
+}
+
+#[test]
+fn idle_snapshot_is_a_plain_read_that_never_waits_for_the_writer_lock() {
+    let env = Env::new();
+    let mut s = env.open();
+    make_ready(&mut s, &env);
+    let holder = env.raw();
+    holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let began = std::time::Instant::now();
+    let state = s.snapshot().unwrap();
+    // The store's busy timeout is 5 s; a writer-lock wait would exceed this bound.
+    assert!(began.elapsed() < std::time::Duration::from_secs(2));
+    assert!(state.care.ready_to_work);
+    holder.execute_batch("ROLLBACK").unwrap();
+}
