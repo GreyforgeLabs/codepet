@@ -34,13 +34,31 @@ printf '%s' "$(basename "$0")" >> "$HOME/calls.log"
 for a in "$@"; do printf ' %s' "$a" >> "$HOME/calls.log"; done
 echo >> "$HOME/calls.log"
 """
+# Like the real shell, the stub learns of a new plugin folder only when a rescan has been
+# requested ($HOME/rescanned): until then `plugin list` omits it and `plugin enable` fails
+# as "not known", which is the race a first install must wait out. $HOME/shell-down makes
+# every shell call fail (no running shell); $HOME/enable-fails refuses the enable itself.
 OMARCHY = STUB + """
+known() { [ -e "$HOME/rescanned" ] && [ -f "$XDG_CONFIG_HOME/omarchy/plugins/$1/manifest.json" ]; }
 case "$1 $2" in
   "plugin validate")
     [ -f "$3/manifest.json" ] || { echo "no manifest" >&2; exit 1; }
     if [ -n "$(find "$3" -type l)" ]; then echo "symlink" >&2; exit 1; fi
     exit 0 ;;
+  "shell shell")
+    [ -e "$HOME/shell-down" ] && { echo "shell is not running" >&2; exit 1; }
+    [ "$3" = rescanPlugins ] && : > "$HOME/rescanned"
+    exit 0 ;;
+  "plugin list")
+    [ -e "$HOME/shell-down" ] && exit 1
+    printf '['
+    if known greyforge.codepet; then printf '{"id":"greyforge.codepet","enabled":false}'; fi
+    echo ']'
+    exit 0 ;;
   "plugin enable")
+    [ -e "$HOME/shell-down" ] && exit 1
+    known "$3" || { echo "omarchy-plugin-enable: plugin '$3' is not known; run: omarchy-shell shell rescanPlugins" >&2; exit 1; }
+    [ -e "$HOME/enable-fails" ] && { echo "omarchy-plugin-enable: refused" >&2; exit 1; }
     mkdir -p "$XDG_CONFIG_HOME/omarchy"
     printf '{"bar":{"layout":{"right":[{"id":"%s"},{"id":"omarchy.tray"}]}}}\\n' "$3" > "$XDG_CONFIG_HOME/omarchy/shell.json"
     exit 0 ;;
@@ -207,7 +225,14 @@ class InstallForReal(unittest.TestCase):
         calls = e.calls()
         self.assertFalse(any(c.startswith(("cargo", "systemd-run")) for c in calls), "prebuilt: no build")
         self.assertTrue(any(c.startswith("omarchy plugin validate ") and "/stage-" in c for c in calls), calls)
-        self.assertIn("omarchy plugin enable greyforge.codepet --section right --before omarchy.tray", calls)
+        enable = "omarchy plugin enable greyforge.codepet --section right --before omarchy.tray"
+        self.assertIn(enable, calls)
+        # The shell is asked to rescan and has listed the plugin before the enable is sent.
+        rescan = calls.index("omarchy shell shell rescanPlugins")
+        listed = calls.index("omarchy plugin list --json")
+        self.assertLess(rescan, listed)
+        self.assertLess(listed, calls.index(enable))
+        self.assertIn("plugin: enabled in the right section", r.stdout)
         self.assertEqual(e.state_tree(), state0, "the pet state is never touched")
         self.assertEqual([p.name for p in (e.cache / "codepet").iterdir()], [], "the stage is moved, not left")
 
@@ -257,6 +282,25 @@ class InstallForReal(unittest.TestCase):
         self.assertTrue((moved[0] / "releases" / VERSION / "qml/shell.qml").is_file())
         self.assertTrue((bin_dir / "codepet").is_file())
         self.assertEqual(e.state_tree(), state0, "uninstall never touches the pet state")
+
+    def test_without_a_running_shell_the_enable_command_is_printed(self):
+        e = Env(self)
+        (e.home / "shell-down").write_text("")
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue((e.config / "omarchy/plugins/greyforge.codepet/manifest.json").is_file())
+        self.assertFalse(any(c.startswith("omarchy plugin enable") for c in e.calls()), e.calls())
+        self.assertIn("has not discovered greyforge.codepet yet", r.stdout)
+        self.assertIn("  omarchy plugin enable greyforge.codepet --section right --before omarchy.tray", r.stdout)
+        self.assertIn("state: ", r.stdout.splitlines()[-1], "the install runs to the end")
+
+    def test_a_refused_enable_prints_the_command_and_finishes(self):
+        e = Env(self)
+        (e.home / "enable-fails").write_text("")
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("plugin: not enabled; enable it with:", r.stdout)
+        self.assertIn("state: ", r.stdout.splitlines()[-1])
 
     def test_no_plugin_install_needs_no_omarchy(self):
         e = Env(self)

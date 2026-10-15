@@ -15,7 +15,9 @@
 #      byte, no symlinks) under ~/.cache/codepet, run `omarchy plugin validate`, and
 #      move it into ~/.config/omarchy/plugins/greyforge.codepet with one rename
 #      (`mv --exchange` on update), so the shell sees one change and hot-reloads once;
-#      enable it once (right section, before the tray) if shell.json does not list it;
+#      enable it once (right section, before the tray) if shell.json does not list it,
+#      after asking the running shell to rescan and waiting until it lists the plugin
+#      (without a running shell, the enable command is printed instead);
 #   5. on update, print restart advice for a running overlay and the shell.
 #
 # It never reads, writes, moves or deletes $XDG_STATE_HOME/codepet (the pet's data):
@@ -201,6 +203,26 @@ mv -T -- "$RUNTIME/.current-$TS" "$RUNTIME/current"
 echo "runtime: $RUNTIME/current -> releases/$VERSION"
 
 # 4. bar plugin
+ENABLE_HINT="omarchy plugin enable $PLUGIN_ID --section right --before omarchy.tray"
+# discovered: ask the running shell to rescan, then wait (up to about 2 s) until it lists
+# the plugin, as omarchy-plugin-add does. The shell otherwise learns of a new folder only
+# after a file-watch debounce and an asynchronous scan, and an enable sent before that
+# fails as "not known". False when the shell is not running or never lists the id.
+discovered() {
+    local attempt list
+    "$OMARCHY" shell shell rescanPlugins >/dev/null 2>&1 || return 1
+    for ((attempt = 0; attempt < 40; attempt++)); do
+        if list=$("$OMARCHY" plugin list --json 2>/dev/null); then
+            if command -v jq >/dev/null 2>&1; then
+                jq -e --arg id "$PLUGIN_ID" 'any(.[]; .id == $id)' >/dev/null 2>&1 <<<"$list" && return 0
+            else
+                grep -q "\"$PLUGIN_ID\"" <<<"$list" && return 0
+            fi
+        fi
+        sleep 0.05
+    done
+    return 1
+}
 if [ "$NO_PLUGIN" -eq 0 ]; then
     command -v "$OMARCHY" >/dev/null 2>&1 || die "omarchy not found; rerun with --no-plugin"
     stage="$WORK/stage-$TS/$PLUGIN_ID"
@@ -225,9 +247,14 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
     rmdir -- "$WORK/stage-$TS" 2>/dev/null || true
     if [ -f "$SHELL_JSON" ] && grep -q "\"$PLUGIN_ID\"" "$SHELL_JSON"; then
         echo "plugin: already listed in $SHELL_JSON"
-    else
-        "$OMARCHY" plugin enable "$PLUGIN_ID" --section right --before omarchy.tray
+    elif ! discovered; then
+        echo "plugin: the running shell has not discovered $PLUGIN_ID yet; once it has, enable it with:"
+        echo "  $ENABLE_HINT"
+    elif "$OMARCHY" plugin enable "$PLUGIN_ID" --section right --before omarchy.tray; then
         echo "plugin: enabled in the right section"
+    else
+        echo "plugin: not enabled; enable it with:"
+        echo "  $ENABLE_HINT"
     fi
 fi
 

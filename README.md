@@ -76,7 +76,9 @@ The installer builds `codepet` (or uses `CODEPET_BIN_SOURCE`), installs `codepet
 `~/.local/share/codepet/releases/<version>/` behind a `current` symlink, validates the
 plugin with `omarchy plugin validate`, moves it into
 `~/.config/omarchy/plugins/greyforge.codepet` in one rename and enables it once in the
-right section. `--no-plugin` skips the bar plugin. It never touches the pet's data in
+right section, after asking the running shell to rescan and waiting until it lists the
+plugin. Without a running shell it prints the enable command instead of failing.
+`--no-plugin` skips the bar plugin. It never touches the pet's data in
 `$XDG_STATE_HOME/codepet`: the first `codepet state` migrates the database and keeps a
 backup. It never restarts the shell or the overlay and never arms a pet.
 
