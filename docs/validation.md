@@ -6,7 +6,35 @@ third-party notices, the plain-text and child-process fixes, public documentatio
 
 ## Automated gates (this run)
 
-GATES_PLACEHOLDER
+Local workstation (Arch Linux, kernel 7.2.5-3-omarchy): rustc/cargo 1.98.1 and 1.85.0
+(MSRV), PySide6 6.11.2 / Qt 6.11.2 and the CI pin PySide6 6.8.3, Quickshell 0.3.1, Node
+26.8.1. Cargo ran one build at a time in a 4 GiB memory-capped scope with `-j 2 --offline`.
+
+- `cargo fmt --all --check`: passed (stable and 1.85.0)
+- `cargo test --workspace --locked`: 340 passed, 0 failed, 0 ignored (codepet unit 5, care 10,
+  cli 10, crash 9, lifecycle 10, presence 6, rpc 17; codepet-core 55; codepet-protocol 55;
+  codepet-storage 163); the same 340 with `cargo +1.85.0`
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed (stable and 1.85.0)
+- `codepet mock-demo` and `codepet --version` (`codepet 0.2.1`): passed
+- Offscreen QML smokes (`qml/tests/run_qml.py`) under PySide6 6.11.2 and 6.8.3, all 0
+  failures: CareFlowSmoke 42 checks, CareSmoke 34, ChooserSmoke 44, FilteredDraftSmoke 8,
+  LifeSmoke 241, OverlaySmoke 107, PetSpriteSmoke 21, PreviewSmoke 193, TimelineSmoke 11
+- `test_overlay_windows.py` (7 checks), `test_quickshell_host.py` (40 tests, including the
+  real-RPC harness with `CODEPET_TEST_BIN`), `test_bar_plugin.py` (29 tests, plus
+  `omarchy plugin validate` on a staged copy), `test_sprite_assets.py`, `test_pet_assets.py`
+  (15 of 15 packs, strict), `test_pet_assets_invalid.py`, `test_pet_distinctness.py`,
+  `test_install_scripts.py` (20 tests), `copy_lint.py` (0 findings), `test_ci_matrix.py`,
+  `test_release_docs.py` (10 tests): passed; shellcheck on the packaging and release
+  scripts: passed
+- `node --test qml/tests/*.mjs`: 139 passed
+- `python3 -I docs/art-library/verify.py` and `test_verify.py` (22 tests): passed
+- `pyside6-qmllint` 6.8.3 (the CI command): exit 0, one existing warning
+  (`devicePixelRatio` on `QQuickWindow` in `PetSprite.qml`)
+- `python3 tools/petart/extract.py --check` against the cleaned v0.2.1 source-sheet asset:
+  the committed frames are byte-identical to a fresh extraction
+- `tools/release/package.sh`: the archive's binary is stripped and has no home-directory
+  paths, every entry is owned by 0/0, every relative Markdown link resolves, and the
+  extracted archive passed a dry run, an install and an uninstall in a throwaway HOME
 
 Offscreen and isolated-Quickshell runs prove QML loading and the request/file contracts.
 They are not Wayland, compositor, input, focus or resource validation.

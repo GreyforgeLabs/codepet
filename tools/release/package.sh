@@ -141,7 +141,11 @@ case "$1 $2" in
   *) exit 1 ;;
 esac
 STUB
-printf '#!/bin/sh\n[ "$1" = list ] && { echo "No running instances."; exit 0; }\nexit 1\n' > "$GATE/stubs/qs"
+cat > "$GATE/stubs/qs" <<'STUB'
+#!/bin/sh
+[ "$1" = list ] && { echo "No running instances."; exit 0; }
+exit 1
+STUB
 chmod 0755 "$GATE/stubs/omarchy" "$GATE/stubs/qs"
 H="$GATE/home"
 gate() {
