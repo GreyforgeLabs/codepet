@@ -28,6 +28,8 @@ Paths below are relative to this directory. The [manifest](manifest.json) record
 
 Created with OpenAI image generation for CodePet. Original generation/edit prompts are retained in the manifest; no third-party game asset pack is imported here. This records generation provenance, not a legal conclusion about copyright or exclusivity.
 
+**Licence.** The project owner distributes these sheets under the repository [MIT licence](../../LICENSE), like the rest of CodePet. They are AI-generated with OpenAI image generation and include no third-party asset. Each PNG carries OpenAI-signed C2PA Content Credentials, preserved by the byte-for-byte copy policy. Copyright and distribution suitability have not been legally reviewed. The manifest's `license` field records the same statement.
+
 Only the 15 preferred versions are committed: cat v1 uses the previously delivered alpha edit; axolotl v2 supersedes v1. Unselected and pre-edit originals (the cat sheet before its background edit, axolotl v1) are not in this repository; their hashes and storage location were not recorded, so each `imagegen_edit` step in the manifest records `edit_source_sha256: "not in repository; hash unavailable"`. The PNGs are byte-for-byte copies, with no resampling, optimization or pixel edits performed for publication.
 
 ## QA limitations and next steps

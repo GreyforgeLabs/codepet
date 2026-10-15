@@ -2,7 +2,7 @@
 
 Original CodePet code is licensed under MIT (see LICENSE). No third-party visual assets are vendored. Original ginger-cat pose frames and care props are MIT licensed; see [asset provenance](../qml/assets/PROVENANCE.md) and the reproduced license. No upstream sounds or catalog assets are included.
 
-The [source-art library](art-library/README.md) contains AI-generated concept/pose sheets created for CodePet; its manifest records generation/edit prompts and provenance. Copyright, exclusivity and distribution suitability of these outputs have not been legally reviewed.
+The [source-art library](art-library/README.md) contains AI-generated concept/pose sheets created for CodePet; its manifest records generation/edit prompts and provenance. **Licence:** the PNGs under `docs/art-library/source/` are distributed under the repository MIT licence (LICENSE) by the project owner. They were AI-generated with OpenAI image generation and contain no third-party asset. Each PNG carries OpenAI-signed C2PA Content Credentials, which the byte-for-byte copy policy preserves. Copyright, exclusivity and distribution suitability of these outputs have not been legally reviewed.
 
 ## Rust dependencies
 

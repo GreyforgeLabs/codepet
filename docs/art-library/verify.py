@@ -70,6 +70,11 @@ def verify(root, check_alpha=False):
         checks.require(False, f"manifest.json unreadable: {error}")
         return checks.errors, 0, 0
 
+    licence = manifest.get("license")
+    checks.require(
+        isinstance(licence, str) and "MIT" in licence and "not legally reviewed" in licence.lower(),
+        "manifest license must state the MIT grant and that it is not legally reviewed",
+    )
     assets = manifest.get("assets")
     if not checks.require(isinstance(assets, list), "manifest assets must be a list"):
         return checks.errors, 0, 0

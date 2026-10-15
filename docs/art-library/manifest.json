@@ -5,6 +5,7 @@
   "selected_png_count": 15,
   "intended_pose_count": 180,
   "status": "source artwork; not validated runtime animation assets",
+  "license": "Distributed under the repository MIT licence (see LICENSE) by the project owner. AI-generated with OpenAI image generation for CodePet; no third-party asset is included. Not legally reviewed.",
   "total_selected_png_bytes": 30327657,
   "limitations": [
     "Pose roles describe prompts, not certified semantic conformance.",

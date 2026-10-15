@@ -181,6 +181,10 @@ class VerifyCorruptionTest(unittest.TestCase):
         self.edit_manifest(lambda m: m["assets"][0]["alpha"].update(fully_opaque_pixels=1))
         self.assert_fails_in_every_mode("alpha statistics", args=["--alpha"])
 
+    def test_missing_licence_statement_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m.pop("license"))
+        self.assert_fails_in_every_mode("manifest license must state")
+
     def test_unknown_argument_is_rejected(self):
         result = self.run_verify(["-I"], {}, ["--skip-hashes"])
         self.assertEqual(result.returncode, 2)
