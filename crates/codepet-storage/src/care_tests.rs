@@ -588,8 +588,10 @@ fn older_transition_timestamp_cannot_rewind_newer_execution_checkpoint() {
         .unwrap();
     let mark = |elapsed| crate::care::TimeMark {
         wall: T0 + elapsed,
-        boot: Some("same-boot".into()),
-        steady: Some(elapsed),
+        boot: None,
+        steady: None,
+        run_clock: Some("same-boot".into()),
+        run_steady: Some(elapsed),
     };
     // Reproduce the former interleaving deterministically: a snapshot checkpoints t=100,
     // then a supervisor transition arrives carrying t=50 from before its lock wait.
@@ -666,4 +668,95 @@ fn idle_snapshot_is_a_plain_read_that_never_waits_for_the_writer_lock() {
     assert!(began.elapsed() < std::time::Duration::from_secs(2));
     assert!(state.care.ready_to_work);
     holder.execute_batch("ROLLBACK").unwrap();
+}
+
+/// Boot time advances during suspend; monotonic time does not.
+#[derive(Default)]
+struct SuspendClock {
+    wall: std::sync::atomic::AtomicI64,
+    boot: std::sync::atomic::AtomicI64,
+    monotonic: std::sync::atomic::AtomicI64,
+}
+impl SuspendClock {
+    fn run(&self, ms: i64) {
+        use std::sync::atomic::Ordering::SeqCst;
+        self.wall.fetch_add(ms, SeqCst);
+        self.boot.fetch_add(ms, SeqCst);
+        self.monotonic.fetch_add(ms, SeqCst);
+    }
+    fn suspend(&self, ms: i64) {
+        use std::sync::atomic::Ordering::SeqCst;
+        self.wall.fetch_add(ms, SeqCst);
+        self.boot.fetch_add(ms, SeqCst);
+    }
+}
+impl Clock for SuspendClock {
+    fn now_ms(&self) -> i64 {
+        T0 + self.wall.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn steady_time(&self) -> Option<(String, i64)> {
+        Some((
+            "boot-a".into(),
+            self.boot.load(std::sync::atomic::Ordering::SeqCst),
+        ))
+    }
+    fn execution_time(&self) -> Option<(String, i64)> {
+        Some((
+            "boot-a/monotonic".into(),
+            self.monotonic.load(std::sync::atomic::Ordering::SeqCst),
+        ))
+    }
+}
+
+#[test]
+fn suspend_is_never_charged_as_execution_but_counts_as_rest() {
+    let env = Env::new();
+    let clock = Arc::new(SuspendClock::default());
+    let mut s = Store::open(&env.paths, clock.clone()).unwrap();
+    let id = started(&mut s, &env, Category::Hunger, sup());
+    s.supervisor_step(&id, sup(), State::Preparing, State::Running)
+        .unwrap();
+    clock.run(60_000);
+    assert_eq!(s.snapshot().unwrap().care.execution_ms, 60_000);
+    // The laptop sleeps for an hour mid-run: no execution and no forced nap.
+    clock.suspend(3_600_000);
+    let state = s.snapshot().unwrap();
+    assert_eq!(state.care.execution_ms, 60_000);
+    assert!(!state.care.sleep_due);
+    clock.run(30_000);
+    s.supervisor_step(&id, sup(), State::Running, State::Verifying)
+        .unwrap();
+    clock.suspend(3_600_000);
+    match s
+        .seal_review(&id, sup(), ARTIFACT, Verification::NotVerified, true)
+        .unwrap()
+    {
+        SealOutcome::Sealed { .. } => {}
+        SealOutcome::Cancelling => panic!("unexpected cancel"),
+    }
+    assert_eq!(s.snapshot().unwrap().care.execution_ms, 90_000);
+    assert_eq!(
+        env.count("SELECT execution_ms FROM task_care_usage"),
+        90_000
+    );
+    let review = s.review(&id).unwrap().review.unwrap();
+    s.discard(&id, &review.digest).unwrap();
+
+    // A nap is rest, so time spent suspended does count toward it.
+    s.sleep("nap").unwrap();
+    clock.suspend(SLEEP_MS);
+    let state = s.snapshot().unwrap();
+    assert!(!state.care.sleeping);
+    assert!(!state.care.sleep_due);
+}
+
+#[test]
+fn system_clock_measures_execution_without_suspended_time() {
+    let (boot_id, boottime) = SystemClock.steady_time().unwrap();
+    let (run_id, monotonic) = SystemClock.execution_time().unwrap();
+    // Distinct identities: execution cursors are never compared with boottime cursors.
+    assert_eq!(run_id, format!("{boot_id}/monotonic"));
+    // CLOCK_MONOTONIC excludes suspend, so it never runs ahead of CLOCK_BOOTTIME
+    // (allowing for /proc/uptime's 10 ms resolution).
+    assert!(monotonic > 0 && monotonic <= boottime + 20);
 }

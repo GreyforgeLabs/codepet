@@ -69,6 +69,7 @@ dependencies = [
  "codepet-core",
  "codepet-protocol",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

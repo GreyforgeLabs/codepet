@@ -46,6 +46,9 @@ Closing an awake pet does not put it to bed. Early wake preserves remaining slee
 and still requires the outstanding rest. Settlement is command-driven, with conservative
 clock handling and no per-second writes, idle Rust process or automatic job resumption.
 UI countdowns are presentation only; the next command reconciles authoritative state.
+Naps are measured with CLOCK_BOOTTIME, so time the computer spends suspended counts as
+rest. Execution accounting uses CLOCK_MONOTONIC, which excludes suspend, so suspending a
+laptop mid-run is never charged as supervised execution or forces a nap.
 
 `state.get` (and `codepet state`) is therefore not always a pure read. When a nap is in
 progress or a live supervisor is running or verifying, it takes the writer lock, settles

@@ -11,36 +11,67 @@ pub const SESSION_LIMIT: u32 = 3;
 pub const BATHROOM_LIMIT: u32 = 2;
 pub const DEMO_XP: u32 = 20;
 
+/// One command's time sample. `boot`/`steady` is CLOCK_BOOTTIME (includes suspend) and
+/// settles naps; `run_clock`/`run_steady` is CLOCK_MONOTONIC (excludes suspend) and
+/// measures supervised execution, so a suspended laptop is never charged as work.
 #[derive(Clone)]
 pub(crate) struct TimeMark {
     pub wall: i64,
     pub boot: Option<String>,
     pub steady: Option<i64>,
+    pub run_clock: Option<String>,
+    pub run_steady: Option<i64>,
 }
 impl TimeMark {
     pub fn new(clock: &dyn Clock) -> Self {
-        let (boot, steady) = match clock.steady_time() {
-            Some((boot, ms)) => (Some(boot), Some(ms)),
+        let split = |t: Option<(String, i64)>| match t {
+            Some((id, ms)) => (Some(id), Some(ms)),
             None => (None, None),
         };
+        let (boot, steady) = split(clock.steady_time());
+        let (run_clock, run_steady) = split(clock.execution_time());
         Self {
             wall: clock.now_ms(),
             boot,
             steady,
+            run_clock,
+            run_steady,
         }
     }
-    /// Prefer same-boot monotonic time. Across boots use bounded wall time, never
-    /// negative elapsed time. The caller preserves high-water marks after rollback.
-    fn elapsed(&self, wall: i64, boot: Option<&str>, steady: Option<i64>, cap: i64) -> i64 {
-        let delta = if self.boot.as_deref().is_some() && self.boot.as_deref() == boot {
-            self.steady.zip(steady).map(|(a, b)| a.saturating_sub(b))
-        } else {
-            None
-        };
-        delta
-            .unwrap_or_else(|| self.wall.saturating_sub(wall))
-            .clamp(0, cap)
+    /// Rest elapsed since a nap cursor, counting suspended time.
+    fn rest_elapsed(&self, wall: i64, boot: Option<&str>, steady: Option<i64>, cap: i64) -> i64 {
+        elapsed(
+            (self.wall, self.boot.as_deref(), self.steady),
+            (wall, boot, steady),
+            cap,
+        )
     }
+    /// Execution elapsed since a segment cursor, excluding suspended time.
+    fn run_elapsed(&self, wall: i64, clock: Option<&str>, steady: Option<i64>, cap: i64) -> i64 {
+        elapsed(
+            (self.wall, self.run_clock.as_deref(), self.run_steady),
+            (wall, clock, steady),
+            cap,
+        )
+    }
+}
+
+/// Prefer the same clock identity's monotonic delta. Otherwise (another boot, or no
+/// monotonic source) use bounded wall time, never negative elapsed time. The caller
+/// preserves high-water marks after rollback.
+fn elapsed(
+    (now_wall, now_id, now_steady): (i64, Option<&str>, Option<i64>),
+    (wall, id, steady): (i64, Option<&str>, Option<i64>),
+    cap: i64,
+) -> i64 {
+    let delta = if now_id.is_some() && now_id == id {
+        now_steady.zip(steady).map(|(a, b)| a.saturating_sub(b))
+    } else {
+        None
+    };
+    delta
+        .unwrap_or_else(|| now_wall.saturating_sub(wall))
+        .clamp(0, cap)
 }
 
 pub(crate) fn invalidate(c: &Connection) -> Result<()> {
@@ -71,7 +102,7 @@ pub(crate) fn settle_sleep(c: &Connection, at: &TimeMark) -> Result<bool> {
         return Ok(false);
     }
     let wall = wall.ok_or(StorageError::Corrupt)?;
-    let elapsed = at.elapsed(wall, boot.as_deref(), steady, remaining);
+    let elapsed = at.rest_elapsed(wall, boot.as_deref(), steady, remaining);
     if elapsed == 0 {
         return Ok(false);
     }
@@ -241,7 +272,7 @@ pub(crate) fn transition(
     let running = matches!(to, State::Running | State::Verifying);
     let elapsed = if to != State::Interrupted && matches!(from, State::Running | State::Verifying) {
         wall.map_or(0, |w| {
-            at.elapsed(
+            at.run_elapsed(
                 w,
                 boot.as_deref(),
                 steady,
@@ -255,13 +286,13 @@ pub(crate) fn transition(
     // Preserve a high-water cursor even for an older caller timestamp. The writer
     // samples after locking, but this also fails conservatively on clock regression.
     let next_wall = running.then_some(at.wall.max(wall.unwrap_or(at.wall)));
-    let next_steady = if running && at.boot.as_deref() == boot.as_deref() {
-        match (at.steady, steady) {
+    let next_steady = if running && at.run_clock.as_deref() == boot.as_deref() {
+        match (at.run_steady, steady) {
             (Some(a), Some(b)) => Some(a.max(b)),
             (a, b) => a.or(b),
         }
     } else if running {
-        at.steady
+        at.run_steady
     } else {
         None
     };
@@ -272,7 +303,11 @@ pub(crate) fn transition(
             newly_executed,
             elapsed,
             next_wall,
-            if running { at.boot.as_deref() } else { None },
+            if running {
+                at.run_clock.as_deref()
+            } else {
+                None
+            },
             next_steady,
             task_id
         ],

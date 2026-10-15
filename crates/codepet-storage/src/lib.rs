@@ -179,26 +179,50 @@ impl From<std::io::Error> for StorageError {
 /// Wall clock in Unix milliseconds; injectable so tests can expire tokens.
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> i64;
-    /// Monotonic milliseconds and a boot identity, when available. A missing identity
-    /// uses bounded wall-clock reconciliation instead, useful for deterministic tests.
+    /// Milliseconds since boot *including* suspend (CLOCK_BOOTTIME) and a clock identity,
+    /// when available. Used for nap settlement, where suspended time counts as rest. A
+    /// missing identity uses bounded wall-clock reconciliation instead, useful for
+    /// deterministic tests.
     fn steady_time(&self) -> Option<(String, i64)> {
         None
     }
+    /// Monotonic milliseconds *excluding* suspend (CLOCK_MONOTONIC) and a clock identity,
+    /// when available. Used for execution accounting, where a suspended laptop must not
+    /// be charged as supervised execution. Same fallback as `steady_time`.
+    fn execution_time(&self) -> Option<(String, i64)> {
+        None
+    }
 }
+
+fn boot_id() -> Option<String> {
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    Some(boot.trim().to_owned())
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;
 impl Clock for SystemClock {
     fn steady_time(&self) -> Option<(String, i64)> {
-        let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+        let boot = boot_id()?;
         let uptime = std::fs::read_to_string("/proc/uptime").ok()?;
         let seconds = uptime.split_whitespace().next()?;
         let (whole, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
         let millis: i64 = whole.parse::<i64>().ok()?.checked_mul(1000)?;
         let fraction = format!("{fraction:0<3}");
         Some((
-            boot.trim().to_owned(),
+            boot,
             millis.checked_add(fraction[..3].parse::<i64>().ok()?)?,
         ))
+    }
+    fn execution_time(&self) -> Option<(String, i64)> {
+        let now = rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
+        let millis = now
+            .tv_sec
+            .checked_mul(1000)?
+            .checked_add(now.tv_nsec / 1_000_000)?;
+        // A distinct identity keeps CLOCK_MONOTONIC values from ever being compared with
+        // CLOCK_BOOTTIME cursors written by an earlier build.
+        Some((format!("{}/monotonic", boot_id()?), millis))
     }
     fn now_ms(&self) -> i64 {
         SystemTime::now()
