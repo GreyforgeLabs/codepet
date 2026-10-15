@@ -81,9 +81,10 @@ ShellRoot {
 
         readonly property var petInput: OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)
         readonly property var menuInput: OverlayPolicy.clipHit(pet.menuHit, width, height, shell.surfaceActive)
-        readonly property var propsInput: OverlayPolicy.clipHit(pet.propsHit, width, height, shell.surfaceActive)
 
-        // Empty parent + three Combine regions = union of visible hit boxes.
+        // Empty parent + two Combine regions = union of the interactive hit boxes.
+        // Care props are decorative (no handler), so they stay click-through: the bed
+        // can remain visible for a whole nap and must not become a dead click zone.
         // Never use the full scene Item as a mask, or a null mask while hidden.
         mask: Region {
             intersection: Intersection.Combine
@@ -95,11 +96,6 @@ ShellRoot {
             Region {
                 x: overlay.menuInput.x; y: overlay.menuInput.y
                 width: overlay.menuInput.width; height: overlay.menuInput.height
-                intersection: Intersection.Combine
-            }
-            Region {
-                x: overlay.propsInput.x; y: overlay.propsInput.y
-                width: overlay.propsInput.width; height: overlay.propsInput.height
                 intersection: Intersection.Combine
             }
         }

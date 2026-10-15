@@ -29,15 +29,18 @@ class HostContract(unittest.TestCase):
         self.assertNotIn('WlrKeyboardFocus.OnDemand', CODE)
         self.assertNotIn('WlrKeyboardFocus.Exclusive', CODE)
 
-    def test_hit_mask_has_only_three_bounded_regions(self):
+    def test_hit_mask_has_only_the_interactive_bounded_regions(self):
         mask = CODE.split('mask: Region {', 1)[1].split('DesktopPet {', 1)[0]
-        self.assertEqual(mask.count('Region {'), 3)
-        self.assertEqual(mask.count('Intersection.Combine'), 4)
+        self.assertEqual(mask.count('Region {'), 2)
+        self.assertEqual(mask.count('Intersection.Combine'), 3)
         self.assertNotIn('item:', mask)
         self.assertNotIn('mask: null', CODE)
-        for name in ('pet', 'menu', 'props'):
+        for name in ('pet', 'menu'):
             self.assertIn(f'OverlayPolicy.clipHit(pet.{name}Hit, width, height, shell.surfaceActive)', CODE)
             self.assertIn(f'width: overlay.{name}Input.width', mask)
+        # Decorative props have no handler; a prop region would be a dead click zone.
+        self.assertNotIn('propsHit', CODE)
+        self.assertNotIn('propsInput', CODE)
 
     def test_single_screen_and_shared_transport(self):
         self.assertEqual(CODE.count('PanelWindow {'), 1)

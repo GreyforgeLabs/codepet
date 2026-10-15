@@ -161,7 +161,8 @@ Item {
             fillMode: Image.PreserveAspectFit
             sourceSize.width: 152; sourceSize.height: 128
         }
-        // Props are decorative; hosts may exclude propsHit from the input region.
+        // Props are decorative and have no handler, so hosts keep them out of the input
+        // region (click-through). propsHit is reported for layout/tests only.
     }
     Rectangle {
         id: menu

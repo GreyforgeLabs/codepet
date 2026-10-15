@@ -26,8 +26,9 @@ API references. Set `CODEPET_SCREEN` to an exact monitor name to prefer it;
 otherwise the compositor's first connected screen owns the single pet.
 
 The full-screen transparent PanelWindow uses top layer, zero exclusive zone and
-keyboard focus None. Its input mask is the clipped union of visible pet, menu and
-prop bounds, never the scene rectangle. Regions are bounding boxes, not
+keyboard focus None. Its input mask is the clipped union of the visible pet and open
+menu bounds, never the scene rectangle. Decorative care props have no handler and stay
+click-through. Regions are bounding boxes, not
 per-pixel alpha silhouettes: small transparent corners within those boxes can
 still intercept a click. Outside the regions, clicks must pass through; this
 requires live compositor validation. Informational hover meters do not capture
@@ -58,7 +59,7 @@ advertise all-Linux overlay support based on this preview.
 - Short screen-local cosmetic steps with 8–22 second pauses; no desktop climbing,
   window-content inspection, screen capture or task discovery
 - Hidden, suppressed, sleeping and reduced-motion states stop cosmetic scheduling
-- Explicit hide removes pet/menu/props and their input regions; show is explicit
+- Explicit hide removes pet/menu/props and the pet/menu input regions; show is explicit
 - Optional suppression inputs handle trusted lock/suspend/fullscreen signals
 - Automatic detection is NOT wired in this entry. An external locker is not
   observed by creating `WlSessionLock`, which would instead try to lock the session
@@ -76,7 +77,8 @@ remain disabled. No sounds are imported or played.
 ## Live validation checklist (not performed in the cloud)
 
 - Record compositor, Qt and Quickshell versions, scaling and monitor arrangement
-- Click behind every empty area and around pet/menu/prop bounding boxes
+- Click behind every empty area, through visible care props, and around pet/menu
+  bounding boxes
 - Type in another application while the pet idles, walks and opens its care menu;
   verify the overlay never steals keyboard focus
 - Open tasks explicitly, type/tab/scroll/review, close and reopen; verify task state
