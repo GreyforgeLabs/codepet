@@ -10,7 +10,7 @@ def out(obj):
 if mode == "ok":
     m = req["method"]
     if m == "state.get":
-        out({"v":1,"id":rid,"ok":True,"result":{"meters":{"hunger":7000,"thirst":7000,"mental_health":9000,"hygiene":7000},"echo_params":req["params"]}})
+        out({"v":1,"id":rid,"ok":True,"result":{"state_version":2,"meters":{"hunger":7000,"thirst":7000,"mental_health":9000,"hygiene":7000},"echo_params":req["params"]}})
     elif m == "task.start":
         out({"v":1,"id":rid,"ok":True,"result":{"task_id":req["params"]["task_id"],"state":"preparing","seq":3}})
         time.sleep(1.5)
