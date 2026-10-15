@@ -310,6 +310,21 @@ class SourceContract(unittest.TestCase):
         self.assertNotIn("Text.RichText", self.all_qml)
         self.assertNotIn("Text.StyledText", self.all_qml)
 
+    def test_every_text_element_is_plain_text(self):
+        # A Text without textFormat is AutoText, which renders a pet name such as
+        # "<b>Pip</b>" as rich text. Every Text (and every component based on it) must
+        # opt out explicitly, including the bar cell's Label.
+        found = 0
+        for name, text in self.qml.items():
+            for m in re.finditer(r"(?:component\s+\w+\s*:\s*)?\bText\s*\{", text):
+                block = block_after(text, m.start())
+                found += 1
+                self.assertIn("textFormat: Text.PlainText", block, f"{name}: {block[:120]}")
+        self.assertGreaterEqual(found, 4)
+        bw = self.qml["BarWidget.qml"]
+        label = block_after(bw, bw.index("component Label: Text"))
+        self.assertIn("textFormat: Text.PlainText", label)
+
     def test_js_libraries_are_pure(self):
         for js in JS_FILES:
             text = js.read_text()

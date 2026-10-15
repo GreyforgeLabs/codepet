@@ -293,11 +293,13 @@ BarWidget {
     Accessible.role: Accessible.Button
     Accessible.name: root.summary.accessibleName
 
+    // The label can be the user-chosen pet name: always plain text, never rich text.
     component Label: Text {
         color: root.fg
         font.family: root.fam
         font.pixelSize: Style.font.body
         renderType: Text.NativeRendering
+        textFormat: Text.PlainText
     }
 
     Grid {

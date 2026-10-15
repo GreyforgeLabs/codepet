@@ -120,6 +120,7 @@ PopupCard {
                     anchors.centerIn: parent
                     visible: !headerThumb.visible
                     text: "CP"
+                    textFormat: Text.PlainText
                     color: Color.popups.text
                     font.bold: true
                     font.pixelSize: Style.font.body
