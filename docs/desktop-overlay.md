@@ -19,8 +19,13 @@ quickshell -p qml/shell.qml
 The entry is `qml/shell.qml`, not a file under `qml/omarchy/`: Quickshell only loads
 QML inside the entry's folder, so `shared/`, `omarchy/` and `assets/` must sit below it.
 
-This is a runnable entry file targeting Quickshell 0.3.1 APIs, not an installed
-Omarchy plugin/package. No autostart or desktop settings are changed. See
+For daily use, `packaging/omarchy/install.sh` installs the runtime under
+`~/.local/share/codepet/current/` and the `codepet-overlay` launcher
+(`show|hide|toggle|tasks|care|companion|life|refresh|status`), which finds a running
+overlay instead of starting a second one; the bar plugin drives the overlay only through
+it. The installer checks the installed binary with `codepet --version`, which prints
+`codepet <version>` without opening the state directory. It adds no autostart; the bar
+setting `overlayOnLoad` (off by default) shows the overlay once when the bar loads. See
 [host details](../qml/omarchy/README.md) for control commands and authoritative
 API references. Set `CODEPET_SCREEN` to an exact monitor name to prefer it;
 otherwise the compositor's first connected screen owns the single pet.
@@ -51,6 +56,28 @@ standalone native overlay host yet. In particular, ordinary Wayland windows
 cannot promise global positioning or always-on-top behavior. X11 input-shape,
 window-manager behavior and native transport remain unimplemented. Do not
 advertise all-Linux overlay support based on this preview.
+
+## v0.2: companions, life tabs, passive state and presence
+
+- The pet is one of 15 raster companions (192×192 WebP frames per stage, explicit frame
+  lists per state). Aquatic companions (goldfish, axolotl) stay in their habitat and never
+  roam. Switching looks is cosmetic and only reloads that species' frames.
+- The focusable window has the tabs **Care · Tasks · Companion · Life**. Adoption,
+  retirement by typed name and other text input live there, never on the click-through
+  overlay.
+- **Passive state.** After every successful mutating `codepet rpc` request (including a
+  settling `state.get`), after `codepet state` and after each committed mock-supervisor
+  step, the CLI republishes `$XDG_STATE_HOME/codepet/bar-state.json` from committed state,
+  atomically and only forward (per database `db_id`). A failed export leaves the response
+  unchanged and prints `codepet: bar-state.json not updated: <reason>` on stderr; the file
+  then catches up on the next successful command. The overlay's `BarStateWatcher` watches
+  the file without polling and merges a strictly newer copy into its snapshot, so care
+  done from the bar shows on the pet. **Neither the watcher nor the merge ever issues
+  RPC**; task details refresh only on explicit actions.
+- **Presence is not recorded here.** Only the bar plugin's leader writes `presence.json`
+  (attended 60-second ticks, stopping on idle, lock and fullscreen). With the overlay alone
+  the companion's time is frozen: nothing decays and no countdown runs. See
+  [lifecycle.md](lifecycle.md) and [omarchy-plugin.md](omarchy-plugin.md).
 
 ## Visibility and resource behavior
 

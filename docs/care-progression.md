@@ -27,6 +27,12 @@ A start that fails before entering Running refunds its debit/session exactly onc
 that entered Running uses the session even if it fails, is cancelled or interrupted.
 There is no absence decay, sickness, death, daily streak, guilt or missed-day penalty.
 
+> **Superseded in v0.2.0 (2026-10-15).** Armed v0.2 lives decay during attended time and can
+> become critical; in permadeath mode neglect can end a life, in gentle mode the companion
+> faints. There is still no offline or overnight decay, sickness, streak, guilt or
+> missed-day penalty. See [lifecycle.md](lifecycle.md) and
+> [decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md).
+
 ## Durable commands
 
 All use the existing v1 JSON envelope. New methods:

@@ -25,7 +25,7 @@ Rust owns all task state and rewards. QML renders what Rust returns and sends ex
 
 - Paths are checked lexically by core and, at preflight and start, against the home directory and the CodePet state directory (resolved through symlinks). There is no staging, canonical scope check, ownership or mount policy for project folders, because nothing reads or writes them yet.
 - Supervisor liveness is PID plus start time from `/proc`; there is no containment, cgroup or transient unit. A mock supervisor that is a child of the UI process may stop with it; recovery then marks the task `interrupted`.
-- Settings are stored and validated; decay is not computed.
+- Settings are stored and validated; decay is not computed. *(Superseded in v0.2.0: armed lives decay during attended time settled by storage; see below.)*
 - History is kept indefinitely; there is no retention, export or deletion yet.
 - There is no event streaming. Clients poll nothing on their own; they refresh after explicit actions and may read persisted events with `events.subscribe`.
 
@@ -34,3 +34,12 @@ Future target (spec): explicit short commands plus one per-job supervisor that o
 ## Care and progression
 
 Schema v2 adds independent care/rest counters, per-task start debit/execution accounting and a task-keyed demo XP ledger. Rust snapshots expose readiness and separate real/demo progression; QML never computes authoritative rewards or grants readiness. See [care-progression.md](care-progression.md).
+
+## v0.2.0 additions
+
+- `codepet-core` gains pure `species`, `evolution`, `lifecycle` (ruleset `lifecycle-v1`, the integer `advance()` engine) and `presence` (sidecar validation) modules, with vector fixtures shared with the JavaScript models.
+- `codepet-storage` migrates to schema v4 (lives, life events, vitals, presence ledger and cursor, rulesets). Every write runs settle presence → settle sleep → command → finalize a due end → `state_version++` → commit. `Store::export_bar_state()` writes the bar-safe `bar-state.json` under the writer lock, only forward.
+- The CLI adds `--version` and the eight life methods, and republishes `bar-state.json` after every successful mutating request, after `codepet state` and after each committed mock-supervisor step.
+- The Omarchy bar plugin (`omarchy-plugin/`, id `greyforge.codepet`) reads `bar-state.json`, records attended presence (leader only) and sends requests only after explicit clicks. The overlay merges the same file as data and never launches Rust because it changed.
+
+Rules: [lifecycle.md](lifecycle.md). Decisions: [decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md). Plugin: [omarchy-plugin.md](omarchy-plugin.md).

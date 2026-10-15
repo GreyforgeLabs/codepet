@@ -1,7 +1,9 @@
 # v0.2.0 validation: release branch after review fixes, greyarch, 2026-10-15
 
-Branch `release/v0.2.0` with WP-5 (pet art) merged and the confirmed review findings fixed
-in separate `Fix review finding:` commits. Local workstation (Arch Linux, kernel
+Branch `release/v0.2.0` with WP-5 (pet art) merged, the confirmed review findings fixed
+in separate `Fix review finding:` commits, the WP-5 art QA fixes merged (re-extracted
+frames) and the WP-INT cleanups (death-pending copy, review-digest hint, CI art checks,
+docs). The gates below were rerun after those last changes. Local workstation (Arch Linux, kernel
 7.2.5-3-omarchy, AMD Ryzen 5 3600): rustc/cargo 1.98.1, PySide6 6.11.2 / Qt 6.11.2,
 Quickshell 0.3.1, Node 26.8.1. Cargo ran one build at a time in a 4 GiB memory-capped scope
 with `-j 2 --offline`.
@@ -14,18 +16,22 @@ with `-j 2 --offline`.
   codepet-storage 162)
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed
 - `codepet mock-demo` and `codepet --version` (`codepet 0.2.0`): passed
+- MSRV: the same fmt, test (338 passed), strict clippy, `mock-demo` and `--version` with
+  `cargo +1.85.0` in a separate target directory: passed
 - Offscreen QML smokes (`qml/tests/run_qml.py`), all 0 failures: CareFlowSmoke 42 checks,
   CareSmoke 34, ChooserSmoke 44, FilteredDraftSmoke 8, LifeSmoke 239, OverlaySmoke 107,
-  PetSpriteSmoke 21, PreviewSmoke 182, TimelineSmoke 11
+  PetSpriteSmoke 21, PreviewSmoke 193, TimelineSmoke 11
 - `test_overlay_windows.py` (7 checks), `test_quickshell_host.py` (38 tests, plus the
   real-RPC harness with `CODEPET_TEST_BIN`), `test_bar_plugin.py` (27 tests, plus
   `omarchy plugin validate` on a staged copy), `test_sprite_assets.py` (36 legacy SVGs),
   `test_pet_assets.py` (15 of 15 packs, strict), `test_pet_assets_invalid.py` (10 broken-pack
-  cases rejected), `test_pet_distinctness.py` (max cross-species idle IoU 0.793),
+  cases rejected), `test_pet_distinctness.py` (max cross-species idle IoU 0.753, capybara/owl),
   `test_install_scripts.py` (11 tests; temporary HOME with stub tools), `copy_lint.py`
   (0 findings), `test_ci_matrix.py`, `test_release_docs.py`: passed. Skipped here only:
   `shellcheck` (not installed).
-- `node --test qml/tests/*.mjs`: 135 passed
+- `node --test qml/tests/*.mjs`: 136 passed
+- `python3 -I docs/art-library/verify.py` (15 source PNGs) and
+  `python3 -I docs/art-library/test_verify.py` (22 tests): passed
 - Qt 6 `qmllint -I qml` on `qml/shared`, `qml/standalone` and every `*Smoke.qml`: no output
 - `python3 tools/petart/extract.py --check` (needs the source sheets; local only): the
   committed frames are byte-identical to a fresh extraction

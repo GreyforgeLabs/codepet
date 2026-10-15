@@ -3,9 +3,20 @@
 All notable changes to CodePet. Real providers stay disabled; every task is a mock
 (simulation) task.
 
-## 0.2.0 (testing prerelease, private)
+## 0.2.0 - 2026-10-15 (testing prerelease, private)
 
-Closes issues #5 and #6. Decisions: [docs/decisions/0001-v0.2-lifecycle.md](docs/decisions/0001-v0.2-lifecycle.md).
+Closes issues #5 (15 companions with evolution) and #6 (lifecycle, evolution and
+permadeath). Decisions: [docs/decisions/0001-v0.2-lifecycle.md](docs/decisions/0001-v0.2-lifecycle.md).
+
+### Pull requests included
+- #1 Invalidate core preflight approvals after settings updates.
+- #2 Unblock explicit abandonment of damaged saved reviews (review-metadata recovery).
+- #3 Interactive care, mandatory naps and isolated demo progression; acceptance no longer
+  refills care.
+- #4 Transparent desktop pet overlay replacing the garden UI.
+- #7 Generated source-art library and provenance catalog (`docs/art-library/`), with its
+  review findings fixed: `verify.py` uses explicit checks that also fail under `-O`, plus
+  bit-depth, grid, path, inventory, C2PA and alpha-254 checks and a licence statement.
 
 ### Companions and evolution (#5)
 - 15 companions, each with three stages (young, grown at level 2, mature at level 4) and
@@ -29,7 +40,18 @@ Closes issues #5 and #6. Decisions: [docs/decisions/0001-v0.2-lifecycle.md](docs
   presence recording) and the separate desktop overlay with Care, Tasks, Companion and
   Life tabs.
 - `packaging/omarchy/install.sh` / `uninstall.sh` and `tools/measure-overlay.sh`.
-- `codepet --version`.
+- `codepet --version`; the CLI republishes `bar-state.json` after every successful mutating
+  request and reports a failed export on one stderr line without changing the response.
+
+### Fixes and polish
+- A companion whose grace has run out while a task is open is described the same way in
+  the bar and the life panel: it will pass away once the current task is finished.
+- The review screen keeps Accept, Discard and Abandon disabled for a saved review digest
+  outside the protocol's 1 to 128 bytes and points to "Check interrupted tasks"; an
+  `INVALID_PARAMS` refusal shows the same hint.
+- The life UI's built-in roster now uses the registry's stage names for owl, red panda and
+  axolotl, so the overlay and the bar name stages alike.
+- CI runs the source-art verifier and its regression test.
 
 ### Known limits
 - Live desktop QA, resource measurements and the contact-sheet human review are recorded in

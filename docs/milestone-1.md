@@ -1,3 +1,11 @@
+# v0.2.0 note
+
+v0.2.0 adds the companion lifecycle, presence settlement (the decay settlement this
+milestone excluded) and `bar-state.json`. See [lifecycle.md](lifecycle.md),
+[decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md) and
+[architecture.md](architecture.md). The method shapes below remain valid for the v0.1
+methods.
+
 # Care/progression update
 
 The care/progression feature supersedes the original acceptance meter-refill rules below.
