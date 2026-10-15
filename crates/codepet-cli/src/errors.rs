@@ -97,6 +97,7 @@ mod tests {
         let cases: Vec<(StorageError, ErrorCode, bool)> = vec![
             (StorageError::Busy, ErrorCode::Busy, true),
             (StorageError::NoActivePet, ErrorCode::NoActivePet, false),
+            (StorageError::PassedAway, ErrorCode::NoActivePet, false),
             (
                 StorageError::InvalidState("x"),
                 ErrorCode::InvalidState,

@@ -139,6 +139,8 @@ Every write transaction runs, in this order:
 
 `Store::write()` does steps 1 and 2. `store::finish()` (or `seal()` plus commit, when an outcome must reflect the end) does steps 4 to 6. As a result, XP granted by an acceptance always lands before an end finalized in the same transaction. The end is guarded by `UPDATE lives … WHERE status = 'critical'`, so it happens exactly once.
 
+When steps 1 and 2 themselves run a grace out with the slot free, the end is final whatever the command body would decide. `Store::write()` then runs steps 4 to 6 at once, commits the end on its own, and continues the command in a fresh transaction (re-sampling time under the writer lock). A body that then refuses cannot roll the end back. Care, sleep, pause, rules, appearance, leniency and retirement refuse with `NO_ACTIVE_PET` and the message that the companion passed away; an adoption sent in that same request is refused the same way, so the memorial is seen first. The CLI republishes `bar-state.json` after a refused write as well as after a successful one.
+
 `state.get` keeps its plain-read fast path when nothing needs settling: no nap, no live supervised execution, no presence file, and no end that is due. Otherwise it takes the writer lock, runs the same prologue and epilogue, and may commit a settlement or an end.
 
 An ending touches only `lives`, `life_events`, `life_vitals`, `meta`, the presence tables, the same transaction's `pet_state` meters and the care revision (`pet_care.revision` and pending `preflight_tokens`). Tasks, events, artifacts, checks, acceptances, rewards, demo XP rows, receipts, settings and project folders are never changed. The lifecycle modules contain no `DELETE FROM` (a test checks this).

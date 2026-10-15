@@ -89,6 +89,9 @@ pub enum StorageError {
     Busy,
     /// No living companion: care, sleep, pause and selection need one.
     NoActivePet,
+    /// `NO_ACTIVE_PET` for a command whose own settlement made a pending end final: the
+    /// end is committed and the command refused.
+    PassedAway,
     InvalidState(&'static str),
     StaleRevision,
     UnsupportedProvider,
@@ -119,7 +122,7 @@ impl StorageError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Busy => "BUSY",
-            Self::NoActivePet => "NO_ACTIVE_PET",
+            Self::NoActivePet | Self::PassedAway => "NO_ACTIVE_PET",
             Self::InvalidState(_) => "INVALID_STATE",
             Self::StaleRevision => "STALE_REVISION",
             Self::UnsupportedProvider => "UNSUPPORTED_PROVIDER",
@@ -155,6 +158,10 @@ impl fmt::Display for StorageError {
             Self::Busy => f.write_str("Another task occupies the active slot."),
             Self::NoActivePet => f.write_str(
                 "No companion is living. Adopt a companion whenever you're ready.",
+            ),
+            Self::PassedAway => f.write_str(
+                "Your companion's grace time ran out and they have passed away. \
+                 Their memorial is kept; adopt a companion whenever you're ready.",
             ),
             Self::InvalidState(why) => write!(f, "Invalid task state: {why}."),
             Self::StaleRevision => f.write_str("The revision changed. Reload and review it."),

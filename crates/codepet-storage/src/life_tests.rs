@@ -730,7 +730,8 @@ fn configure_lenient_extends_running_grace() {
         (crit.grace_ms, crit.elapsed_ms, crit.remaining_ms),
         (10 * HOUR_MS, HOUR_MS, 9 * HOUR_MS)
     );
-    // Pending: refused.
+    // Pending with a free slot: the end is final before the body runs, so no leniency can
+    // undo it; the refusal says the companion passed away and the end stays committed.
     c.execute("UPDATE life_vitals SET death_pending = 1", [])
         .unwrap();
     assert!(matches!(
@@ -743,8 +744,9 @@ fn configure_lenient_extends_running_grace() {
                 ..Leniency::default()
             }
         ),
-        Err(StorageError::InvalidState(_))
+        Err(StorageError::PassedAway)
     ));
+    assert!(store.snapshot().unwrap().life.is_none());
 }
 
 #[test]

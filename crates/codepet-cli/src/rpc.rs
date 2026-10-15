@@ -137,7 +137,16 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
             }
             (response, job)
         }
-        Err(f) => (f.into_response(Some(id)), None),
+        Err(f) => {
+            // A refused write may still have committed its settlement (a nap, presence, or
+            // an end that became final): republish so the bar never keeps a stale state.
+            if method.is_mutating() {
+                if let Some(store) = ctx.store.as_ref() {
+                    publish_bar_state(store);
+                }
+            }
+            (f.into_response(Some(id)), None)
+        }
     }
 }
 

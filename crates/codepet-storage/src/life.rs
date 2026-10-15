@@ -12,7 +12,7 @@ use crate::model::{
     MetersView, NeedView, NextStageView, RulesView, UnseenEvent,
 };
 use crate::schema::SLOT_STATES;
-use crate::store::{replay_or_run, seal};
+use crate::store::{passed_away_if, replay_or_run, seal};
 use crate::{fault, sys, Result, StorageError, Store};
 use codepet_core::evolution::{
     level_for_xp, next_level_xp, next_stage, stage_for_xp, stage_key, stages_crossed,
@@ -703,12 +703,18 @@ impl Store {
         body: impl FnOnce(&Connection, &TimeMark) -> Result<bool>,
     ) -> Result<LifeOutcome> {
         let sha = sys::sha256_hex(params.as_bytes());
-        let (tx, at) = self.write()?;
+        let (tx, at, ended) = self.write_settled()?;
         let (outcome, replayed) = replay_or_run(&tx, request_id, method, &sha, at.wall, || {
+            // A request made while the companion was still living never adopts over an end
+            // that only this command's settlement made final: the memorial comes first.
+            if ended && method == "pet.adopt" {
+                return Err(StorageError::PassedAway);
+            }
             let changed = body(&tx, &at)?;
             seal(&tx, &at)?;
             Self::life_outcome(&tx, request_id, changed)
-        })?;
+        })
+        .map_err(|e| passed_away_if(ended, e))?;
         if replayed {
             return Ok(outcome);
         }

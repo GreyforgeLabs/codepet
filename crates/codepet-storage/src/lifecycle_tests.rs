@@ -620,7 +620,7 @@ fn care_versus_death_ordering_on_two_handles() {
         // never revive a life that ended, nor run on a pending one.
         assert!(matches!(
             care,
-            Err(StorageError::NoActivePet | StorageError::InvalidState(_))
+            Err(StorageError::NoActivePet | StorageError::PassedAway)
         ));
         assert_eq!(status(&env, &id), "dead");
         assert_eq!(
@@ -720,5 +720,77 @@ fn death_never_commits_while_a_task_holds_the_slot() {
                 ) <= 1
             );
         }
+    }
+}
+
+/// Review finding: a grace that runs out during a write's own settlement used to be rolled
+/// back when the command body then refused, and the refusal named a task that did not
+/// exist. Now the end commits first and every command refuses with `PassedAway`.
+#[test]
+fn an_end_that_settles_due_inside_a_refused_write_is_committed() {
+    type Command = fn(&mut Store, &str) -> Result<()>;
+    let commands: [(&str, Command); 6] = [
+        ("care", |s, _| s.care("late-water", "water").map(drop)),
+        ("sleep", |s, _| s.sleep("late-sleep").map(drop)),
+        ("pause", |s, _| s.set_paused(true).map(drop)),
+        ("rules", |s, id| {
+            s.set_rules("late-rules", id, Mode::Gentle, true).map(drop)
+        }),
+        ("select", |s, id| {
+            s.select_appearance("late-select", id, "dog").map(drop)
+        }),
+        ("adopt", |s, _| {
+            let req = AdoptRequest {
+                species: "cat",
+                name: None,
+                mode: Mode::Permadeath,
+                pace: codepet_core::lifecycle::Pace::Steady,
+                acknowledge_rules: true,
+            };
+            s.adopt("late-adopt", &req).map(drop)
+        }),
+    ];
+    for (what, command) in commands {
+        let env = Env::with_boot();
+        let (mut store, id) = armed(&env);
+        let mut f = Feeder::new();
+        f.feed(&env, &store, &id, 8 * HOUR_MS);
+        let s = f.feed(&env, &store, &id, 3 * HOUR_MS);
+        assert_eq!(s.life.as_ref().unwrap().status, "critical", "{what}");
+        // The whole grace is attended, but nothing has settled it yet.
+        env.pass(6 * HOUR_MS);
+        env.write_presence("bar-late-0001", &id, 6 * HOUR_MS);
+        let err = command(&mut store, &id).expect_err(what);
+        assert!(matches!(err, StorageError::PassedAway), "{what}: {err:?}");
+        assert_eq!(err.code(), "NO_ACTIVE_PET", "{what}");
+        assert!(err.to_string().contains("passed away"), "{what}: {err}");
+        // The end is committed, not rolled back with the refused body.
+        assert_eq!(status(&env, &id), "dead", "{what}");
+        assert_eq!(
+            env.count(
+                "SELECT count(*) FROM life_vitals WHERE life_id IS NULL AND death_pending = 0"
+            ),
+            1,
+            "{what}"
+        );
+        let s = store.snapshot().unwrap();
+        assert!(s.life.is_none(), "{what}");
+        assert_eq!(s.memorial.count, 1, "{what}");
+        let m = s.memorial.latest.unwrap();
+        assert_eq!(
+            (m.end_cause.as_str(), m.attended_ms),
+            ("neglect:thirst", 17 * HOUR_MS),
+            "{what}: the claim is charged exactly once"
+        );
+        assert_eq!(
+            events(&env, &id).iter().filter(|k| *k == "died").count(),
+            1,
+            "{what}"
+        );
+        // Afterwards the ordinary answer applies.
+        assert!(matches!(
+            store.care("later-water", "water"),
+            Err(StorageError::NoActivePet)
+        ));
     }
 }

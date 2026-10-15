@@ -1,7 +1,8 @@
 //! Durable task engine. Every mutation is one `BEGIN IMMEDIATE` transaction; every task state
 //! change appends a `task_events` row in that same transaction. Every write transaction runs
 //! the fixed order (spec §8.1): settle presence → settle sleep → command body →
-//! `finalize_if_due` → `state_version++` → commit.
+//! `finalize_if_due` → `state_version++` → commit. An end that the settlement itself makes
+//! due is sealed and committed first, on its own, so a refusing body cannot roll it back.
 use crate::care;
 use crate::life;
 use crate::lifecycle_store;
@@ -205,16 +206,23 @@ impl Store {
     /// `BEGIN IMMEDIATE`, then the time sample, then the settlement prologue. Every
     /// mutating method ends in [`finish`] (or [`seal`] + commit).
     pub(crate) fn write(&mut self) -> Result<(Transaction<'_>, care::TimeMark)> {
-        let clock = self.clock.clone();
-        let paths = self.paths.clone();
-        let tx = self
-            .conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // Sample only after acquiring the writer lock. A contending command must not
-        // overwrite a newer sleep/execution checkpoint with an earlier timestamp.
-        let at = care::TimeMark::new(clock.as_ref());
-        settle_all(&tx, &paths, &at)?;
-        Ok((tx, at))
+        self.write_settled().map(|(tx, at, _)| (tx, at))
+    }
+
+    /// [`write`](Self::write), also reporting whether a pending end became final in the
+    /// prologue. A grace that runs out while the prologue settles elapsed time is final
+    /// whatever the command body then decides, so the end is sealed and committed on its
+    /// own first (a refusing body would otherwise roll it back) and the command continues
+    /// in a fresh transaction, re-sampled under the writer lock.
+    pub(crate) fn write_settled(&mut self) -> Result<(Transaction<'_>, care::TimeMark, bool)> {
+        let (clock, paths) = (self.clock.as_ref(), &self.paths);
+        let (tx, at) = begin_settled(&self.conn, clock, paths)?;
+        if !life::finalize_if_due(&tx, &at)? {
+            return Ok((tx, at, false));
+        }
+        finish(tx, &at)?;
+        let (tx, at) = begin_settled(&self.conn, clock, paths)?;
+        Ok((tx, at, true))
     }
 
     fn read(&self) -> Result<Transaction<'_>> {
@@ -833,11 +841,12 @@ impl Store {
     ) -> Result<CareOutcome> {
         validate_request_id(request_id)?;
         let params_sha256 = sha256_hex(action.as_bytes());
-        let (tx, at) = self.write()?;
+        let (tx, at, ended) = self.write_settled()?;
         let (result, replayed) =
             replay_or_run(&tx, request_id, method, &params_sha256, at.wall, || {
                 care_body(&tx, &at, request_id, action)
-            })?;
+            })
+            .map_err(|e| passed_away_if(ended, e))?;
         if !replayed {
             tx.commit()?;
         }
@@ -1035,9 +1044,10 @@ impl Store {
     /// Pause/Travel for the living companion: freezes decay, neglect and grace; grants
     /// and refills nothing; never blocks care or Start. Journaled when it changes.
     pub fn set_paused(&mut self, paused: bool) -> Result<PauseView> {
-        let (tx, at) = self.write()?;
+        let (tx, at, ended) = self.write_settled()?;
         let now = at.wall;
-        let life = life::active_life(&tx)?.ok_or(StorageError::NoActivePet)?;
+        let life = life::active_life(&tx)?
+            .ok_or_else(|| passed_away_if(ended, StorageError::NoActivePet))?;
         if lifecycle_store::load(&tx)?.death_pending {
             return Err(StorageError::InvalidState(
                 "the companion cannot be paused right now",
@@ -1126,6 +1136,20 @@ impl TaskRow {
     }
 }
 
+/// `BEGIN IMMEDIATE`, the time sample, then [`settle_all`]. Sample only after acquiring
+/// the writer lock: a contending command must not overwrite a newer sleep/execution
+/// checkpoint with an earlier timestamp.
+fn begin_settled<'c>(
+    conn: &'c Connection,
+    clock: &dyn Clock,
+    paths: &StatePaths,
+) -> Result<(Transaction<'c>, care::TimeMark)> {
+    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let at = care::TimeMark::new(clock);
+    settle_all(&tx, paths, &at)?;
+    Ok((tx, at))
+}
+
 /// The settlement prologue of every write (and of a settling snapshot): attended presence
 /// first, then rest. Presence reads the nap state before `settle_sleep` changes it.
 pub(crate) fn settle_all(tx: &Connection, paths: &StatePaths, at: &care::TimeMark) -> Result<()> {
@@ -1143,6 +1167,15 @@ pub(crate) fn seal(tx: &Connection, at: &care::TimeMark) -> Result<()> {
         [],
     )?;
     Ok(())
+}
+
+/// A command whose prologue just made a pending end final refuses with
+/// [`StorageError::PassedAway`] instead of the plain "no companion" answer.
+pub(crate) fn passed_away_if(ended: bool, e: StorageError) -> StorageError {
+    match e {
+        StorageError::NoActivePet if ended => StorageError::PassedAway,
+        e => e,
+    }
 }
 
 /// The single ordering helper every mutating method ends in (spec §8.1).
