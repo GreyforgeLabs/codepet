@@ -1,0 +1,202 @@
+#!/bin/sh
+# codepet-overlay: verb launcher for the CodePet desktop overlay (Quickshell).
+#
+#   codepet-overlay show|hide|toggle|tasks|care|companion|life|refresh|status
+#
+# The overlay is one separate, detached `qs` process. This script finds a running
+# instance and sends it an IPC verb; it never starts a second copy. `hide`,
+# `refresh` and `status` never start the overlay. There is no quit verb.
+#
+# Exit status: 0 success (status: running), 1 failure (status: not running),
+# 2 usage error.
+#
+# Environment (all optional):
+#   CODEPET_OVERLAY_QML  entry file (default: the installed current release)
+#   CODEPET_BIN          codepet binary for the overlay (default ~/.local/bin/codepet)
+#   CODEPET_QS           Quickshell CLI (default: qs)
+#   XDG_DATA_HOME, XDG_STATE_HOME are passed through unchanged.
+#
+# POSIX sh. Every expansion is quoted; nothing is evaluated.
+set -u
+
+PROG=codepet-overlay
+TOKEN="codepet-overlay"
+
+usage() {
+    echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status" >&2
+    exit 2
+}
+
+[ "$#" -eq 1 ] || usage
+VERB=$1
+case "$VERB" in
+    show|hide|toggle|tasks|care|companion|life|refresh|status) ;;
+    -h|--help) echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status"; exit 0 ;;
+    *) usage ;;
+esac
+
+if [ -z "${HOME:-}" ]; then
+    echo "$PROG: HOME is not set" >&2
+    exit 1
+fi
+
+DATA_HOME=${XDG_DATA_HOME:-}
+case "$DATA_HOME" in
+    /*) ;;
+    *) DATA_HOME="$HOME/.local/share" ;;
+esac
+CODEPET_DATA="$DATA_HOME/codepet"
+QML=${CODEPET_OVERLAY_QML:-"$CODEPET_DATA/current/qml/shell.qml"}
+BIN=${CODEPET_BIN:-"$HOME/.local/bin/codepet"}
+QS=${CODEPET_QS:-qs}
+
+if ! command -v "$QS" >/dev/null 2>&1; then
+    echo "$PROG: Quickshell ($QS) is not installed" >&2
+    exit 1
+fi
+
+# Instance addressing: `-p <entry>` when the entry answers ping, otherwise
+# `--pid <pid>` for an instance found by `qs list`.
+TARGET_FLAG=
+TARGET_VALUE=
+
+# `--` is required: without it Quickshell 0.3.1 parses a function named like an
+# ipc subcommand (`show`) as that subcommand and only lists the targets.
+#
+# ping <flag> <value>: true when that instance answers with the CodePet token.
+ping_target() {
+    reply=$("$QS" ipc "$1" "$2" call -- codepet ping 2>/dev/null) || return 1
+    case "$reply" in
+        "$TOKEN"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Prints the pid of the first running CodePet overlay whose config path is under
+# $CODEPET_DATA/current/ or $CODEPET_DATA/releases/ (an overlay started from an
+# older release, or one too old to answer ping). `qs list --all --json` prints a
+# JSON array with one "key": value per line, or "No running instances.".
+find_listed_pid() {
+    "$QS" list --all --json 2>/dev/null | CP_DATA="$CODEPET_DATA" awk '
+        BEGIN {
+            cur = ENVIRON["CP_DATA"] "/current/"
+            rel = ENVIRON["CP_DATA"] "/releases/"
+        }
+        /^[ \t]*\{/ { path = ""; pid = "" }
+        /"config_path"[ \t]*:/ {
+            line = $0
+            sub(/^[^:]*:[ \t]*"/, "", line)
+            sub(/",?[ \t]*$/, "", line)
+            path = line
+        }
+        /"pid"[ \t]*:/ {
+            line = $0
+            sub(/^[^:]*:[ \t]*/, "", line)
+            sub(/,?[ \t]*$/, "", line)
+            if (line ~ /^[0-9]+$/) pid = line
+        }
+        /^[ \t]*\}/ {
+            if (pid != "" && (index(path, cur) == 1 || index(path, rel) == 1)) {
+                print pid
+                exit
+            }
+        }'
+}
+
+# Sets TARGET_FLAG/TARGET_VALUE and succeeds when an overlay is running.
+running() {
+    if [ -f "$QML" ] && ping_target -p "$QML"; then
+        TARGET_FLAG=-p
+        TARGET_VALUE=$QML
+        return 0
+    fi
+    pid=$(find_listed_pid)
+    if [ -n "$pid" ]; then
+        TARGET_FLAG=--pid
+        TARGET_VALUE=$pid
+        return 0
+    fi
+    return 1
+}
+
+# call <function>: sends one IPC verb to the selected instance.
+call() {
+    out=$("$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet "$1" 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "$PROG: $1 failed: $out" >&2
+        return 1
+    fi
+    case "$out" in
+        "Function not found."*)
+            echo "$PROG: the running overlay is from an older CodePet release and has no '$1'." >&2
+            echo "$PROG: restart it once no task is executing." >&2
+            return 1 ;;
+    esac
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return 0
+}
+
+start_overlay() {
+    if [ ! -f "$QML" ]; then
+        echo "$PROG: CodePet overlay is not installed ($QML is missing)" >&2
+        return 1
+    fi
+    case "$VERB" in
+        tasks|care|companion|life) open=$VERB ;;
+        *) open= ;;
+    esac
+    # -n refuses a duplicate of this config even if two launchers race.
+    CODEPET_BIN="$BIN" CODEPET_OPEN="$open" "$QS" -n -d -p "$QML" >/dev/null 2>&1 || {
+        echo "$PROG: could not start the overlay" >&2
+        return 1
+    }
+    # Bounded readiness wait: 30 x 0.1 s.
+    n=0
+    while [ "$n" -lt 30 ]; do
+        if ping_target -p "$QML"; then
+            TARGET_FLAG=-p
+            TARGET_VALUE=$QML
+            return 0
+        fi
+        sleep 0.1
+        n=$((n + 1))
+    done
+    echo "$PROG: the overlay did not answer within 3 s; see: $QS log -p $QML" >&2
+    return 1
+}
+
+case "$VERB" in
+    status)
+        if running; then
+            if [ "$TARGET_FLAG" = --pid ]; then
+                echo "running (pid $TARGET_VALUE, older release path)"
+            else
+                echo "running"
+            fi
+            "$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet status 2>/dev/null || true
+            exit 0
+        fi
+        echo "not running"
+        exit 1 ;;
+    hide|refresh)
+        if running; then
+            call "$VERB"
+            exit $?
+        fi
+        echo "$PROG: overlay is not running; nothing to $VERB" >&2
+        exit 0 ;;
+    *)
+        if running; then
+            call "$VERB"
+            exit $?
+        fi
+        start_overlay || exit 1
+        # A fresh overlay is already shown and has opened CODEPET_OPEN; a toggle
+        # from "not running" therefore means show.
+        case "$VERB" in
+            toggle) call show ;;
+            *) call "$VERB" ;;
+        esac
+        exit $? ;;
+esac
