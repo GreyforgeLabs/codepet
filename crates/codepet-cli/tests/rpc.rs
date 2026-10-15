@@ -432,11 +432,17 @@ fn other_methods_round_trip() {
         ),
         "INVALID_PARAMS"
     );
-    assert_eq!(
-        env.ok("pet.pause", json!({"paused": true})),
-        json!({"paused": true})
-    );
+    let paused = env.ok("pet.pause", json!({"paused": true}));
+    assert_eq!(paused["paused"], true);
+    assert_eq!(paused.as_object().unwrap().len(), 2, "{paused}");
     let s = env.state();
+    assert_eq!(
+        paused["life_id"], s["life"]["life_id"],
+        "pause names the living life"
+    );
+    assert!(paused["life_id"]
+        .as_str()
+        .is_some_and(|id| id.starts_with("life-")));
     assert_eq!(s["decay"], json!({"enabled": true, "paused": true}));
     assert_eq!(s["settings"]["revision"], 2);
 
