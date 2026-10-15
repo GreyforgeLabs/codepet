@@ -1,6 +1,10 @@
 //! Pure, in-memory mock model. No filesystem, network, provider, or process IO.
 //! Receipts and snapshots are NOT durable storage or an IPC security boundary.
+pub mod evolution;
+pub mod lifecycle;
+pub mod presence;
 mod privacy;
+pub mod species;
 pub use privacy::redact_display_text;
 
 use std::collections::{BTreeMap, VecDeque};
@@ -695,5 +699,7 @@ impl Engine {
     }
 }
 
+#[cfg(test)]
+mod lifecycle_tests;
 #[cfg(test)]
 mod tests;
