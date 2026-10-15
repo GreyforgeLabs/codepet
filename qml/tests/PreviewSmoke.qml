@@ -181,6 +181,34 @@ Item {
                                 "artifact": "", "simulated": false }, "receipt": null }
                 top.check(top.review.verificationText().indexOf("not a sealed review") !== -1,
                           "repaired review metadata is never shown as a sealed result, even after discard")
+                // Malformed non-null digests would be refused with INVALID_PARAMS: no button
+                // sends them, and a hint points to recovery instead.
+                var abandonBtn = top.find(top.review, "taskReview.abandon")
+                var digestHint = top.find(top.review, "taskReview.digestNotice")
+                var badDigests = ["", "f".repeat(129), "中".repeat(43), 42]
+                for (var bd = 0; bd < badDigests.length; bd++) {
+                    top.review.task = { "task_id": "preview-bad-digest", "state": "recovery_required",
+                        "review": { "digest": badDigests[bd], "verification": "not_verified", "artifact": "", "simulated": true },
+                        "receipt": null }
+                    top.find(top.review, "taskReview.abandonAck").checked = true
+                    top.check(top.review.canAbandon && !top.review.digestUsable && !abandonBtn.enabled,
+                              "malformed digest #" + bd + " keeps Abandon disabled")
+                    top.check(digestHint.visible && digestHint.text.indexOf("Check interrupted tasks") !== -1,
+                              "malformed digest #" + bd + " shows the recovery hint")
+                }
+                top.review.task = { "task_id": "preview-bad-digest", "state": "review_ready",
+                    "review": { "digest": "f".repeat(129), "verification": "passed", "artifact": "", "simulated": true },
+                    "receipt": null }
+                top.find(top.review, "taskReview.ack").checked = true
+                top.check(!top.find(top.review, "taskReview.accept").enabled && !top.find(top.review, "taskReview.discard").enabled,
+                          "malformed digest keeps Accept and Discard disabled")
+                top.review.task = { "task_id": "preview-ok-digest", "state": "recovery_required",
+                    "review": { "digest": "a".repeat(128), "verification": "not_verified", "artifact": "", "simulated": true },
+                    "receipt": null }
+                top.check(top.review.digestUsable && !digestHint.visible, "a 128-byte digest is usable and shows no hint")
+                top.find(top.review, "taskReview.abandonAck").checked = false
+                top.check(top.review.missingReviewNotice("preview-recovery", { "ok": false, "error": { "code": "INVALID_PARAMS" } })
+                          .indexOf("Check interrupted tasks") !== -1, "an INVALID_PARAMS refusal points to recovery")
                 top.review.task = shown
                 panel.view = "home"
                 top.form.loadDraftById("preview-draft", function (ok) {

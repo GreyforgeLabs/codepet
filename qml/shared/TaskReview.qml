@@ -30,6 +30,15 @@ ColumnLayout {
     readonly property bool needsOverride: verification !== "passed"
     readonly property bool canDecide: task !== null && review !== null && task.state === "review_ready" && receipt === null
     readonly property bool canAbandon: task !== null && review !== null && task.state === "recovery_required"
+    // The protocol bounds review_digest to 1..=128 UTF-8 bytes (codepet-protocol check_token);
+    // a saved digest outside that range would be refused with INVALID_PARAMS, so the
+    // accept, discard and abandon buttons stay disabled and digestNotice explains why.
+    readonly property int maxDigestBytes: 128
+    readonly property bool digestUsable: review !== null && typeof review.digest === "string"
+        && review.digest.length > 0 && utf8Bytes(review.digest) <= maxDigestBytes
+    readonly property string digestNotice: review !== null && !digestUsable ? root.damagedDigestText : ""
+    readonly property string damagedDigestText: "This task's saved review digest is damaged, so CodePet cannot use it to end the task. "
+        + "Go back and use \"Check interrupted tasks\" to restore the review metadata, then open the task again. Nothing is resumed."
     readonly property int maxReasonBytes: 512
     readonly property int reasonBytes: utf8Bytes(reasonField.text.trim())
     readonly property bool reasonOk: reasonBytes <= maxReasonBytes
@@ -94,10 +103,13 @@ ColumnLayout {
         var code = resp && resp.error ? String(resp.error.code) : ""
         if (code === "INVALID_STATE" && active && active.task_id === taskId && active.state === "recovery_required")
             return "This task's saved review metadata is missing, so it cannot be abandoned yet. Go back and use \"Check interrupted tasks\" to restore it, then Resolve recovery. Nothing is resumed."
+        // A malformed digest echoed back to task.discard/accept is refused as INVALID_PARAMS.
+        if (code === "INVALID_PARAMS")
+            return root.damagedDigestText
         return ""
     }
     function acceptClicked() {
-        if (!root.canDecide || !ackBox.checked || root.hostBusy)
+        if (!root.canDecide || !root.digestUsable || !ackBox.checked || root.hostBusy)
             return
         var reason = reasonField.text.trim()
         if (!root.reasonOk)
@@ -128,13 +140,15 @@ ColumnLayout {
         }, root.acceptKey)
     }
     function discardClicked() {
-        if (!root.canDecide || root.hostBusy)
+        if (!root.canDecide || !root.digestUsable || root.hostBusy)
             return
         var params = { "task_id": root.task.task_id, "review_digest": root.review.digest }
         root.host.request("task.discard", params, function (resp) {
             if (resp.ok) {
                 root.task = resp.result
                 root.outcome = "Discarded. No reward was granted and no project files were changed."
+            } else {
+                root.loadNotice = root.missingReviewNotice(params.task_id, resp)
             }
             root.host.request("state.get", {}, function () {})
         })
@@ -142,7 +156,7 @@ ColumnLayout {
 
     // Explicit no-reward abandonment of a recovery_required task, after acknowledgement.
     function abandonClicked() {
-        if (!root.canAbandon || !abandonAck.checked || root.hostBusy)
+        if (!root.canAbandon || !root.digestUsable || !abandonAck.checked || root.hostBusy)
             return
         var params = { "task_id": root.task.task_id, "review_digest": root.review.digest }
         abandonAck.checked = false
@@ -150,6 +164,8 @@ ColumnLayout {
             if (resp.ok) {
                 root.task = resp.result
                 root.outcome = "Abandoned. No reward was granted. CodePet did not restore, change or delete any files."
+            } else {
+                root.loadNotice = root.missingReviewNotice(params.task_id, resp)
             }
             root.host.request("state.get", {}, function () {})
         })
@@ -167,6 +183,16 @@ ColumnLayout {
         Layout.fillWidth: true
         visible: root.task === null && root.loadNotice !== ""
         text: root.loadNotice
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        font.bold: true
+    }
+    // Loaded review whose digest cannot be sent (or a request refused with INVALID_PARAMS).
+    Label {
+        objectName: "taskReview.digestNotice"
+        Layout.fillWidth: true
+        visible: root.task !== null && text !== ""
+        text: root.digestNotice !== "" ? root.digestNotice : root.loadNotice
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         font.bold: true
@@ -261,13 +287,13 @@ ColumnLayout {
                 Button {
                     objectName: "taskReview.accept"
                     text: "Accept artifact"
-                    enabled: root.canDecide && ackBox.checked && !root.hostBusy && root.reasonOk
+                    enabled: root.canDecide && root.digestUsable && ackBox.checked && !root.hostBusy && root.reasonOk
                     onClicked: root.acceptClicked()
                 }
                 Button {
                     objectName: "taskReview.discard"
                     text: "Discard (no reward)"
-                    enabled: root.canDecide && !root.hostBusy
+                    enabled: root.canDecide && root.digestUsable && !root.hostBusy
                     onClicked: root.discardClicked()
                 }
             }
@@ -294,7 +320,7 @@ ColumnLayout {
         Button {
             objectName: "taskReview.abandon"
             text: "Abandon (no reward)"
-            enabled: root.canAbandon && abandonAck.checked && !root.hostBusy
+            enabled: root.canAbandon && root.digestUsable && abandonAck.checked && !root.hostBusy
             onClicked: root.abandonClicked()
         }
     }
