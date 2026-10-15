@@ -23,6 +23,7 @@ The core loop is:
 5. Watch progress or cancel
 6. Review changes, verification evidence, and any remaining uncertainty
 7. Explicitly apply or accept the result; receive one care reward
+   *(Superseded for the implemented build: acceptance grants isolated demo XP for eligible mock results and never refills care; Start is gated on full care and required rest. See [care-progression.md](care-progression.md). Pending operator confirmation, see §4.)*
 
 Use Rust because the on-demand controller is predominantly process supervision, file handling, local IPC, and small amounts of state. Retain QML because Omarchy already provides the UI host, and reuse portable Qt Quick components in a standalone lightweight window elsewhere. Rust runs for an active task or a short explicit state/control command, never as an idle daemon. Do not add Electron, Chromium, a webview, a local HTTP server, or a second UI framework.
 
@@ -52,7 +53,7 @@ Upstream Omagotchi supplies an existing needs-oriented QML interface, small orig
 | RUN-04 | Stop the entire contained process tree on cancellation or deadline |
 | DATA-01 | Apply only reviewed changes, with baseline conflict checks, recovery journal, and backups |
 | DATA-02 | Refuse detected baseline conflicts; require a quiescent destination and disclose concurrent-writer limits |
-| DATA-03 | A reward is recorded once, transactionally, after the user's explicit acceptance |
+| DATA-03 | A reward is recorded once, transactionally, after the user's explicit acceptance. *(Implemented build: the reward is the isolated demo XP ledger row, not a meter refill; see [care-progression.md](care-progression.md).)* |
 | SEC-01 | Treat repository instructions, generated output, filenames, and test scripts as untrusted input |
 | SEC-02 | Do not grant home-directory, host filesystem, secret, privileged, or network access implicitly |
 | SEC-03 | No telemetry, project uploading by the app, app account, or app-owned API key requirement |
@@ -83,6 +84,17 @@ A task may run tests and edit project code. It must not run `sudo`, administer t
 
 ## 4. Care categories and reward rules
 
+> **Supersession note (2026-10-15, pending operator confirmation).** The implemented build
+> follows [care-progression.md](care-progression.md) instead of the meter-reward rules in this section:
+> acceptance no longer refills a care meter; care is filled only by explicit care clicks;
+> Start requires all four meters full, no bathroom break due and no nap due, then debits
+> care once; eligible mock acceptance grants isolated demo XP in the category's mastery
+> track. REW-01, REW-03, REW-04 and the exactly-once/idempotency parts of REW-02 and
+> REW-05 still apply, with "reward" meaning that XP ledger row. Whether gating every Start
+> on full care plus bathroom and nap is the intended product direction for real providers
+> has not been confirmed by the operator; confirm it before real providers rely on it.
+> The table and REW-06 below are the earlier target, kept for history.
+
 All meters represent **well-being**, from 0 to 100: larger is better. UI labels should say “Hunger satisfied,” “Hydration,” “Mental health,” and “Cleanliness,” or display the four requested names with an unambiguous high-is-good legend. Start at 70 each. Use integer hundredths internally and clamp after each update.
 
 | Category | User-selected task | Required evidence | Base reward |
@@ -100,7 +112,7 @@ All meters represent **well-being**, from 0 to 100: larger is better. UI labels 
 
 **REW-04:** Missing verification is labelled “Not verified.” A user may explicitly accept a useful unverified result after acknowledging the missing evidence; record `verification_override=true` and their short reason. This does not change the check result or present it as verified. Known failing checks require the same explicit override and visible failure warning.
 
-**REW-05:** Use a SQLite unique constraint on `rewards.task_id`, with acceptance and meter update in the same database transaction. Requests are idempotent across double clicks, IPC reconnects, and crashes. Reject duplicate acceptance with the recorded result.
+**REW-05:** Use a SQLite unique constraint on `rewards.task_id`, with acceptance and meter update in the same database transaction. *(Implemented build: the unique ledger is `demo_xp_rewards.task_id`, committed with the acceptance; meters are not updated.)* Requests are idempotent across double clicks, IPC reconnects, and crashes. Reject duplicate acceptance with the recorded result.
 
 **REW-06:** A rollback changes the original reward to reversed and removes the granted increment, clamped at zero, in the same transaction recording successful rollback. Do not rewrite subsequent rewards. Explain that meter decay and later rewards can make the resulting balance different from the pre-task balance.
 
@@ -617,9 +629,9 @@ Do not implement excluded features before these gates pass. A safe one-provider 
 | T02 | Double-click Start and replay request/token | Exactly one launch; MAN-02, IPC-01 |
 | T03 | Change scope after preflight | Start rejected until new review; UI-02 |
 | T04 | Attempt second task while running or review pending | BUSY; no queue; MAN-02 |
-| T05 | Successful bug fix with runner-owned regression check | Review then explicit apply/accept; one hunger reward |
+| T05 | Successful bug fix with runner-owned regression check | Review then explicit apply/accept; one hunger reward *(implemented build: one Bugfix-track XP grant, no meter refill; see §4 note)* |
 | T06 | Provider says “tests passed” but check fails | Failure shown; no automatic reward; REW-01 |
-| T07 | Useful learning artifact, no code changes | Explicit artifact acceptance grants mental-health reward once |
+| T07 | Useful learning artifact, no code changes | Explicit artifact acceptance grants mental-health reward once *(implemented build: one Learning & Specification XP grant, no meter refill; see §4 note)* |
 | T08 | Provider exits 0 without useful result | No automatic acceptance/reward |
 | T09 | Repeated accept, reconnect, crash after acceptance commit | Same receipt returned; no duplicate meter change |
 | T10 | Cancel leader that forked/detached children | Entire cgroup empty before cancelled; RUN-04 |
