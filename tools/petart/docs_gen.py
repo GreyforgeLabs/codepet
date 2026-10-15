@@ -197,6 +197,14 @@ def pets_md(manifests):
     w("## Limits")
     w("")
     w("- Extraction quality was reviewed on contact sheets, not in the running overlay.")
+    w("- **One shared timing table.** Issue #5 asks every type for its own key poses and "
+      "timing, not the cat rig recoloured. v0.2 ships each species' own drawn poses (12 base "
+      "and 12 care cells per stage), but every species plays them through the one A4 state "
+      "table above: the same frame order, `frameMs` and mode, apart from the per-species frame "
+      "lists noted there. Per-species pace exists only in locomotion (`pxPerTick`, pause "
+      "ranges, hopper lift). Per-species idle and care timing and choreography (a slower "
+      "capybara or turtle, quicker rabbit and frog beats) are deferred to a later pass that "
+      "can review the motion in the running overlay.")
     w("- Sheet poses are generator output: frame-to-frame continuity of the locomotion "
       "cycles and care sequences is only as good as the sheets.")
     w("- Thin details thinner than one source pixel against the key (single whiskers) may be "

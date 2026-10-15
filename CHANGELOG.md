@@ -54,6 +54,9 @@ permadeath). Decisions: [docs/decisions/0001-v0.2-lifecycle.md](docs/decisions/0
 - CI runs the source-art verifier and its regression test.
 
 ### Known limits
+- Every companion plays its own drawn poses through one shared state timing table (same
+  frame order, frame time and mode); per-species idle and care timing, asked for in #5, is
+  deferred ([docs/pets.md](docs/pets.md), Limits).
 - Live desktop QA, resource measurements and the contact-sheet human review are recorded in
   [docs/validation.md](docs/validation.md); anything not yet run there is marked untested.
 - Presence is not tamper-proof; neglect accrues only while the bar plugin runs on Omarchy.

@@ -117,6 +117,7 @@ Sources default to `~/Media/codepet-art/v0.2` (`--src` or `CODEPET_ART_SRC` to o
 ## Limits
 
 - Extraction quality was reviewed on contact sheets, not in the running overlay.
+- **One shared timing table.** Issue #5 asks every type for its own key poses and timing, not the cat rig recoloured. v0.2 ships each species' own drawn poses (12 base and 12 care cells per stage), but every species plays them through the one A4 state table above: the same frame order, `frameMs` and mode, apart from the per-species frame lists noted there. Per-species pace exists only in locomotion (`pxPerTick`, pause ranges, hopper lift). Per-species idle and care timing and choreography (a slower capybara or turtle, quicker rabbit and frog beats) are deferred to a later pass that can review the motion in the running overlay.
 - Sheet poses are generator output: frame-to-frame continuity of the locomotion cycles and care sequences is only as good as the sheets.
 - Thin details thinner than one source pixel against the key (single whiskers) may be dropped by the despill and fringe erode.
 - Floor poses are centred on the alpha centroid of their lowest 30 %; a pose too lopsided to centre that way (a leap, a long tail) is slid sideways just enough to stay inside the 2 px margin, so its feet may sit off-centre.
