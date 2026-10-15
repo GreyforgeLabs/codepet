@@ -369,6 +369,24 @@ Item {
                 test.check(foreign === 0, "over 200 switches only the current pack is referenced")
                 test.check(fake.seq === test.requestBaseline, "switching looks in the snapshot issues no request")
                 fake.snapshot = test.snap({})
+                // A hopper (airborne frames in states.locomotion, as the shipped registry
+                // lists them) moves only on those frames.
+                var hopReg = JSON.parse(JSON.stringify(FixtureRegistry.REGISTRY))
+                hopReg.species.cat.states.locomotion.airborneFrames = [2]
+                delete hopReg.species.cat.locomotion.airborneFrames
+                PetCatalog.install(hopReg, test.base)
+                fake.snapshot = test.snap({life: test.lifeWith({appearance: "goldfish"})}) // re-read the gait
+                fake.snapshot = test.snap({})
+                pet.selected = false; pet.clearTransients()
+                pet.walking = true; pet.facingLeft = false; pet.destination = 600; pet.petX = 100
+                pet.baseElapsedMs = 0; pet.timerInterval = 200
+                var hops = []
+                for (i = 0; i < 8; i++) { var x0 = pet.petX; pet.cosmeticTick(); hops.push(pet.petX - x0) }
+                test.check(hops.join(",") === "0,0,4,0,0,0,4,0", "a hopper moves only on its airborne frames: " + hops.join(","))
+                pet.stopMoving()
+                PetCatalog.install(FixtureRegistry.REGISTRY, test.base)
+                fake.snapshot = test.snap({life: test.lifeWith({appearance: "goldfish"})})
+                fake.snapshot = test.snap({})
                 // A lower transient queues behind a running one and plays afterwards.
                 pet.startTransient("food", 0)
                 pet.startTransient("celebrate", 0)

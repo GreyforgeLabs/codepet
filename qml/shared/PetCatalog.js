@@ -250,13 +250,22 @@ function roams(id) {
 }
 
 // Gait parameters: pixels per 200 ms tick (canvas px at a 192 display), the pause
-// range in ticks between walks, and the frames that move (hoppers).
+// range in ticks between walks, and the frames that move (hoppers). The airborne frames
+// live in `states.locomotion.airborneFrames` (§11.3, measured from the extracted art by
+// tools/petart); an older top-level `locomotion.airborneFrames`, then the roster's
+// `locomotion.pxFrames`, are fallbacks.
+function frameIndexList(v) {
+    return Array.isArray(v) ? v.filter(function (n) { return typeof n === "number" && n >= 0 && Math.floor(n) === n }) : []
+}
 function locomotion(id) {
     var s = species(id)
     var l = s && s.locomotion ? s.locomotion : {}
     var pause = Array.isArray(l.pauseTicks) && l.pauseTicks.length === 2
         && l.pauseTicks[0] >= 1 && l.pauseTicks[1] >= l.pauseTicks[0] ? l.pauseTicks.slice() : [40, 110]
-    var airborne = Array.isArray(l.airborneFrames) ? l.airborneFrames.filter(function (n) { return typeof n === "number" }) : []
+    var stateLoco = s && s.states && s.states.locomotion ? s.states.locomotion : {}
+    var airborne = frameIndexList(stateLoco.airborneFrames)
+    if (airborne.length === 0) airborne = frameIndexList(l.airborneFrames)
+    if (airborne.length === 0) airborne = frameIndexList(l.pxFrames)
     var px = Number(l.pxPerTick)
     return {
         style: typeof l.style === "string" ? l.style : (isAquatic(id) ? "swim_in_habitat" : "walk"),

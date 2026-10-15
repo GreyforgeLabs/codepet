@@ -398,3 +398,22 @@ test('PetCare timers never launch a request (spec §1), directly or through a fu
     assert.equal((fns.startRoutine.match(/perform\(/g) || []).length, 1);
     assert.match(src, /onTriggered: root\.playRoutineStep\(\)/);
 });
+
+test('hoppers move only on the airborne frames the shipped registry lists', () => {
+    const REAL = JSON.parse(read('../assets/pets/registry.json'));
+    const R = loadLibrary('../shared/PetCatalog.js', { PetRegistry: { REGISTRY: REAL } });
+    for (const id of ['frog', 'rabbit', 'owl']) {
+        const listed = REAL.species[id].states.locomotion.airborneFrames;
+        assert.ok(listed.length > 0 && listed.length < 4, `${id} is a hopper`);
+        assert.deepEqual([...R.locomotion(id).airborneFrames], listed, `${id} airborne frames come from states.locomotion`);
+    }
+    assert.deepEqual([...R.locomotion('cat').airborneFrames], [], 'walkers move on every frame');
+    assert.deepEqual([...R.locomotion('goldfish').airborneFrames], []);
+    // Fallbacks: a top-level airborneFrames, then the roster's pxFrames.
+    const reg = (loco, stateAirborne) => ({ schemaVersion: 1, order: ['x'], species: { x: {
+        habitat: 'floor', locomotion: loco, states: { locomotion: { airborneFrames: stateAirborne } } } } });
+    const F1 = loadLibrary('../shared/PetCatalog.js', { PetRegistry: { REGISTRY: reg({ airborneFrames: [3], pxFrames: [1] }, []) } });
+    assert.deepEqual([...F1.locomotion('x').airborneFrames], [3]);
+    const F2 = loadLibrary('../shared/PetCatalog.js', { PetRegistry: { REGISTRY: reg({ pxFrames: [1] }, undefined) } });
+    assert.deepEqual([...F2.locomotion('x').airborneFrames], [1]);
+});
