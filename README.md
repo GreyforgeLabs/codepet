@@ -163,9 +163,12 @@ The shipped companions are raster frames: 192×192 lossy WebP with alpha under
 sheets generated through the operator's ChatGPT subscription and anchored on the source
 catalog below. Every source-sheet and frame SHA-256 is in the manifests and
 [qml/assets/pets/PROVENANCE.md](qml/assets/pets/PROVENANCE.md). The extraction sheets
-(about 200 MB) are not committed; they are the release asset
-`codepet-art-sources-v0.2.tar`, and `extract.py --check` reproduces the committed frames
-byte for byte from them.
+(about 200 MB) are not committed. They are a planned release asset,
+`codepet-art-sources-v0.2.tar`; until it is attached, the sheets exist only on the
+operator's workstation, which is the only place `extract.py --check` (a byte-for-byte
+rebuild of the committed frames) can run. Raster art departs from issue #5's SVG-generator
+contract; the decision and its consequences are in
+[docs/decisions/0002-v0.2-raster-pet-art.md](docs/decisions/0002-v0.2-raster-pet-art.md).
 
 The [generated art library](docs/art-library/README.md) keeps the 15 original concept/pose
 sheets from PR #7 in Git as the style anchor, with prompts, hashes, C2PA fields, QA notes
@@ -176,6 +179,7 @@ ginger-cat sprites remain under `qml/assets/` with their own provenance record.
 
 - [Companions](docs/pets.md) and [asset provenance](qml/assets/pets/PROVENANCE.md)
 - [Lifecycle rules](docs/lifecycle.md) and [v0.2 decisions](docs/decisions/0001-v0.2-lifecycle.md)
+- [Raster pet art decision](docs/decisions/0002-v0.2-raster-pet-art.md)
 - [Omarchy bar plugin](docs/omarchy-plugin.md)
 - [Desktop overlay](docs/desktop-overlay.md) and [Quickshell host](qml/omarchy/README.md)
 - [QML UI and host contract](qml/README.md)

@@ -7,6 +7,9 @@ All notable changes to CodePet. Real providers stay disabled; every task is a mo
 
 Closes issues #5 (15 companions with evolution) and #6 (lifecycle, evolution and
 permadeath). Decisions: [docs/decisions/0001-v0.2-lifecycle.md](docs/decisions/0001-v0.2-lifecycle.md).
+Issue #5 is closed with one recorded departure: the companions ship as raster WebP frames
+extracted from AI-generated sheets, not as SVG generators
+([docs/decisions/0002-v0.2-raster-pet-art.md](docs/decisions/0002-v0.2-raster-pet-art.md)).
 
 ### Pull requests included
 - #1 Invalidate core preflight approvals after settings updates.

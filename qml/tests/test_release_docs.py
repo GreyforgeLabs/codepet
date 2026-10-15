@@ -31,6 +31,19 @@ class ReleaseDocs(unittest.TestCase):
             self.assertIn(req, adr)
         self.assertIn("(../lifecycle.md)", adr)
 
+    def test_raster_art_departure_from_issue_5_is_recorded(self):
+        adr = read("docs/decisions/0002-v0.2-raster-pet-art.md")
+        flat = " ".join(adr.split())
+        for phrase in ("issue #5", "SVG", "not in Git", "codepet-art-sources-v0.2.tar",
+                       "extract.py --check", "have not been legally reviewed"):
+            self.assertIn(phrase, flat, phrase)
+        self.assertIn("docs/decisions/0002-v0.2-raster-pet-art.md", read("CHANGELOG.md"))
+        readme = read("README.md")
+        self.assertIn("docs/decisions/0002-v0.2-raster-pet-art.md", readme)
+        # The source tar is planned, not attached: no doc may say it already is the asset.
+        self.assertNotIn("they are the release asset", readme)
+        self.assertIn("planned release asset", read("qml/assets/pets/PROVENANCE.md"))
+
     def test_no_death_text_is_superseded_with_pointers(self):
         spec = read("docs/implementation-spec.md")
         for anchor in ("complex pet breeding or death mechanics.", "### 4.1 Decay and pauses"):
