@@ -1,11 +1,13 @@
 #!/bin/sh
 # codepet-overlay: verb launcher for the CodePet desktop overlay (Quickshell).
 #
-#   codepet-overlay show|hide|toggle|tasks|care|companion|life|refresh|status
+#   codepet-overlay show|hide|toggle|tasks|care|companion|life|refresh|status|quit
 #
 # The overlay is one separate, detached `qs` process. This script finds a running
 # instance and sends it an IPC verb; it never starts a second copy. `hide`,
-# `refresh` and `status` never start the overlay. There is no quit verb.
+# `refresh`, `status` and `quit` never start the overlay. `hide` only hides the pet;
+# `quit` ends the overlay process (`qs kill`), for example before an uninstall; it
+# refuses while a simulation task is executing.
 #
 # Exit status: 0 success (status: running), 1 failure (status: not running),
 # 2 usage error.
@@ -23,15 +25,15 @@ PROG=codepet-overlay
 TOKEN="codepet-overlay"
 
 usage() {
-    echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status" >&2
+    echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status|quit" >&2
     exit 2
 }
 
 [ "$#" -eq 1 ] || usage
 VERB=$1
 case "$VERB" in
-    show|hide|toggle|tasks|care|companion|life|refresh|status) ;;
-    -h|--help) echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status"; exit 0 ;;
+    show|hide|toggle|tasks|care|companion|life|refresh|status|quit) ;;
+    -h|--help) echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status|quit"; exit 0 ;;
     *) usage ;;
 esac
 
@@ -179,6 +181,23 @@ case "$VERB" in
         fi
         echo "not running"
         exit 1 ;;
+    quit)
+        if running; then
+            # Ending the overlay would interrupt a running simulation task's supervisor.
+            st=$("$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet status 2>/dev/null) || st=
+            case "$st" in
+                *'"supervisor":true'*)
+                    echo "$PROG: a simulation task is executing; quit once it has finished" >&2
+                    exit 1 ;;
+            esac
+            if "$QS" kill "$TARGET_FLAG" "$TARGET_VALUE" >/dev/null 2>&1; then
+                exit 0
+            fi
+            echo "$PROG: could not stop the overlay ($QS kill $TARGET_FLAG $TARGET_VALUE failed)" >&2
+            exit 1
+        fi
+        echo "$PROG: overlay is not running; nothing to quit" >&2
+        exit 0 ;;
     hide|refresh)
         if running; then
             call "$VERB"

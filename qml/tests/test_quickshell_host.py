@@ -618,17 +618,22 @@ class LauncherStatic(unittest.TestCase):
         self.assertIn('CODEPET_BIN="$BIN" CODEPET_OPEN="$open" "$QS" -n -d -p "$QML"', LAUNCHER)
         self.assertIn('"$QS" list --all --json', LAUNCHER)
         # `call --` keeps qs 0.3.1 from parsing the `show` verb as `qs ipc show`.
-        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 3)
+        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 4)
         self.assertNotRegex(re.sub(r'#[^\n]*', '', LAUNCHER), r'call codepet')
         self.assertIn('/current/qml/shell.qml', LAUNCHER)
         self.assertIn('${XDG_DATA_HOME:-}', LAUNCHER)
         # hide/refresh/status branches never reach start_overlay.
         dispatch = LAUNCHER[LAUNCHER.index('case "$VERB" in\n    status)'):]
-        for verb in ('status)', 'hide|refresh)'):
+        for verb in ('status)', 'hide|refresh)', 'quit)'):
             branch = dispatch[dispatch.index(verb):]
-            branch = branch[:branch.index(';;')]
+            branch = branch[:branch.index('    hide|refresh)' if verb == 'quit)' else ';;')]
             self.assertNotIn('start_overlay', branch, verb)
-        self.assertNotIn('kill', re.sub(r'#[^\n]*', '', LAUNCHER))
+        # `qs kill` appears only in the quit branch, after the running-task check.
+        code = re.sub(r'#[^\n]*', '', LAUNCHER)
+        self.assertEqual(code.count('kill'), 2, "one `$QS kill` call and its error message")
+        quit_branch = dispatch[dispatch.index('quit)'):dispatch.index('    hide|refresh)')]
+        self.assertIn('"$QS" kill "$TARGET_FLAG" "$TARGET_VALUE"', quit_branch)
+        self.assertLess(quit_branch.index('"supervisor":true'), quit_branch.index('"$QS" kill'))
 
     @unittest.skipUnless(shutil.which('shellcheck'), 'shellcheck unavailable')
     def test_shellcheck(self):
@@ -657,6 +662,12 @@ if args[:1] == ["list"]:
     else:
         print("No running instances.")
     sys.exit(0)
+if args[:1] == ["kill"]:
+    st["kills"] = st.get("kills", 0) + 1
+    st["running"] = False
+    st["listed"] = []
+    save()
+    sys.exit(0)
 if args[:1] == ["ipc"]:
     if args[3:5] != ["call", "--"]:
         print("target codepet")  # what real qs 0.3.1 does for `call codepet show`
@@ -675,7 +686,7 @@ if args[:1] == ["ipc"]:
     if fn == "ping":
         print("codepet-overlay shown")
     elif fn == "status":
-        print('{{"pet":"shown"}}')
+        print('{{"pet":"shown","supervisor":%s}}' % ("true" if st.get("supervisor") else "false"))
     sys.exit(0)
 if args[:3] == ["-n", "-d", "-p"]:
     st["launches"] += 1
@@ -737,13 +748,13 @@ class LauncherBehaviour(unittest.TestCase):
                 if c["argv"][:1] == ["ipc"] and c["argv"][6] != "ping"]
 
     def test_usage_errors(self):
-        for argv in ([], ["quit"], ["show", "extra"], ["--pid"]):
+        for argv in ([], ["stop"], ["show", "extra"], ["--pid"]):
             r, calls = self.run_launcher(*argv)
             self.assertEqual(r.returncode, 2, argv)
             self.assertEqual(calls, [], argv)
 
     def test_not_running_status_hide_refresh_never_start(self):
-        for verb, code in (("status", 1), ("hide", 0), ("refresh", 0)):
+        for verb, code in (("status", 1), ("hide", 0), ("refresh", 0), ("quit", 0)):
             r, calls = self.run_launcher(verb)
             self.assertEqual(r.returncode, code, (verb, r.stdout, r.stderr))
             self.assertEqual(self.launches(calls), [], verb)
@@ -793,7 +804,22 @@ class LauncherBehaviour(unittest.TestCase):
         r, calls = self.run_launcher("status")
         self.assertEqual(r.returncode, 0)
         self.assertIn("running", r.stdout)
-        self.assertIn('{"pet":"shown"}', r.stdout)
+        self.assertIn('{"pet":"shown","supervisor":false}', r.stdout)
+
+    def test_quit_ends_a_running_overlay_but_not_a_running_task(self):
+        self.set_state(running=True, supervisor=True)
+        r, calls = self.run_launcher("quit")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("simulation task is executing", r.stderr)
+        self.assertFalse([c for c in calls if c["argv"][:1] == ["kill"]])
+        self.set_state(running=True)
+        r, calls = self.run_launcher("quit")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([c["argv"] for c in calls if c["argv"][:1] == ["kill"]],
+                         [["kill", "-p", str(self.qml)]])
+        self.assertEqual(self.launches(calls), [])
+        r, _ = self.run_launcher("status")
+        self.assertEqual(r.returncode, 1, "stopped")
 
     def test_older_release_instance_is_found_by_pid(self):
         older = str(self.data / "codepet/releases/0.1.9/qml/shell.qml")

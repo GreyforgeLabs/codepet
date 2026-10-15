@@ -106,6 +106,7 @@ ShellRoot {
                 "window": taskWindow.visible,
                 "view": shell.panelView,
                 "busy": hostAdapter.busy,
+                "supervisor": hostAdapter.supervisorActive,
                 "state_version": snap && snap.state_version !== undefined ? snap.state_version : null,
                 "appearance": snap && snap.life ? snap.life.appearance : null,
                 "stage": snap && snap.life ? snap.life.stage : null

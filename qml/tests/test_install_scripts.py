@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -26,7 +27,7 @@ INSTALL = REPO / "packaging/omarchy/install.sh"
 UNINSTALL = REPO / "packaging/omarchy/uninstall.sh"
 MEASURE = REPO / "tools/measure-overlay.sh"
 PLUGIN = REPO / "omarchy-plugin"
-VERSION = "0.2.0"
+VERSION = tomllib.loads((REPO / "Cargo.toml").read_text())["workspace"]["package"]["version"]
 
 STUB = """#!/bin/sh
 # Test stub: logs its name and arguments, never does real work.
@@ -42,6 +43,7 @@ OMARCHY = STUB + """
 known() { [ -e "$HOME/rescanned" ] && [ -f "$XDG_CONFIG_HOME/omarchy/plugins/$1/manifest.json" ]; }
 case "$1 $2" in
   "plugin validate")
+    [ "$3" = --help ] && { [ -e "$HOME/no-plugin-api" ] && exit 1; exit 0; }
     [ -f "$3/manifest.json" ] || { echo "no manifest" >&2; exit 1; }
     if [ -n "$(find "$3" -type l)" ]; then echo "symlink" >&2; exit 1; fi
     exit 0 ;;
@@ -62,7 +64,9 @@ case "$1 $2" in
     mkdir -p "$XDG_CONFIG_HOME/omarchy"
     printf '{"bar":{"layout":{"right":[{"id":"%s"},{"id":"omarchy.tray"}]}}}\\n' "$3" > "$XDG_CONFIG_HOME/omarchy/shell.json"
     exit 0 ;;
-  "plugin disable") exit 0 ;;
+  "plugin disable")
+    [ -e "$HOME/disable-fails" ] && { echo "omarchy-plugin-disable: plugin '$3' is not known" >&2; exit 1; }
+    exit 0 ;;
 esac
 exit 3
 """
@@ -224,7 +228,11 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual((plugin / "LifeText.js").read_bytes(), (REPO / "qml/shared/LifeText.js").read_bytes())
         calls = e.calls()
         self.assertFalse(any(c.startswith(("cargo", "systemd-run")) for c in calls), "prebuilt: no build")
-        self.assertTrue(any(c.startswith("omarchy plugin validate ") and "/stage-" in c for c in calls), calls)
+        # Staged beside plugins/ (same filesystem, outside the watched folder).
+        self.assertTrue(any(c.startswith(f"omarchy plugin validate {e.config}/omarchy/.codepet-stage-")
+                            for c in calls), calls)
+        self.assertEqual([p.name for p in (e.config / "omarchy").iterdir() if p.name.startswith(".codepet-stage")],
+                         [], "the stage directory is removed")
         enable = "omarchy plugin enable greyforge.codepet --section right --before omarchy.tray"
         self.assertIn(enable, calls)
         # The shell is asked to rescan and has listed the plugin before the enable is sent.
@@ -269,7 +277,7 @@ class InstallForReal(unittest.TestCase):
         wrong.chmod(0o755)
         r = e.run(INSTALL, "--no-plugin", CODEPET_BIN_SOURCE=str(wrong))
         self.assertEqual(r.returncode, 1)
-        self.assertIn("expected 'codepet 0.2.0'", r.stderr)
+        self.assertIn(f"expected 'codepet {VERSION}'", r.stderr)
 
         # Uninstall dry run: lists the moves, changes nothing.
         def home_tree():  # the stubs' own log aside
@@ -295,6 +303,65 @@ class InstallForReal(unittest.TestCase):
         self.assertTrue((bin_dir / "codepet").is_file())
         self.assertEqual(e.state_tree(), state0, "uninstall never touches the pet state")
 
+    def test_first_install_prints_next_steps(self):
+        e = Env(self)
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Next: click CodePet on the bar", r.stdout)
+        self.assertIn("Desktop pet: codepet-overlay show", r.stdout)
+        # An update without a live signature prints a pasteable restart line.
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("<", r.stdout)
+        self.assertIn("  omarchy restart shell", r.stdout)
+        self.assertNotIn("Next: click", r.stdout)
+
+    def test_older_release_trees_are_pruned(self):
+        e = Env(self)
+        releases = e.data / "codepet/releases"
+        for old in ("0.1.0", "0.1.5"):
+            (releases / old / "qml").mkdir(parents=True)
+        (e.data / "codepet/current").symlink_to("releases/0.1.5")
+        (releases / ".staging-leftover").mkdir()
+        r = e.run(INSTALL, "--no-plugin", CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sorted(p.name for p in releases.iterdir()),
+                         sorted([".staging-leftover", "0.1.5", VERSION]))
+        self.assertIn(f"removed older release: {releases}/0.1.0", r.stdout)
+
+    def test_uninstall_continues_when_disable_fails(self):
+        e = Env(self)
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        state0 = e.state_tree()
+        (e.home / "disable-fails").write_text("")
+        r = e.run(UNINSTALL)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("warning: could not disable greyforge.codepet", r.stderr)
+        self.assertIn("omarchy plugin disable greyforge.codepet", r.stdout)
+        self.assertFalse((e.config / "omarchy/plugins/greyforge.codepet").exists())
+        self.assertFalse((e.data / "codepet/releases").exists())
+        moved = list((e.cache / "codepet").glob("uninstall-*"))
+        self.assertEqual(len(moved), 1)
+        self.assertTrue((moved[0] / "plugin-greyforge.codepet/manifest.json").is_file())
+        self.assertEqual(e.state_tree(), state0)
+
+    def test_uninstall_refuses_while_the_overlay_runs_and_names_quit(self):
+        e = Env(self)
+        r = e.run(INSTALL, "--no-plugin", CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        launcher = e.home / ".local/bin/codepet-overlay"
+        launcher.write_text("#!/bin/sh\n[ \"$1\" = status ] && [ ! -e \"$HOME/quit\" ] && exit 0\nexit 1\n")
+        r = e.run(UNINSTALL)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("codepet-overlay quit", r.stderr)
+        self.assertNotIn("hide", r.stderr)
+        self.assertTrue((e.data / "codepet/current").is_symlink())
+        (e.home / "quit").write_text("")  # what `codepet-overlay quit` achieves
+        r = e.run(UNINSTALL)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse((e.data / "codepet/current").is_symlink())
+
     def test_without_a_running_shell_the_enable_command_is_printed(self):
         e = Env(self)
         (e.home / "shell-down").write_text("")
@@ -314,6 +381,15 @@ class InstallForReal(unittest.TestCase):
         self.assertIn("plugin: not enabled; enable it with:", r.stdout)
         self.assertIn("state: ", r.stdout.splitlines()[-1])
 
+    def test_without_plugin_support_nothing_is_installed(self):
+        e = Env(self)
+        (e.home / "no-plugin-api").write_text("")
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Omarchy 4 or later is required", r.stderr)
+        self.assertFalse((e.home / ".local/bin").exists())
+        self.assertFalse((e.data / "codepet").exists())
+
     def test_no_plugin_install_needs_no_omarchy(self):
         e = Env(self)
         (e.bin / "omarchy").unlink()  # CODEPET_OMARCHY now names a missing command
@@ -323,6 +399,54 @@ class InstallForReal(unittest.TestCase):
         r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
         self.assertEqual(r.returncode, 1)
         self.assertIn("rerun with --no-plugin", r.stderr)
+
+
+def archive_tree(root):
+    """The release archive layout (tools/release/package.sh): no Cargo.toml or crates/."""
+    for rel in ("LICENSE", "README.md", "packaging", "omarchy-plugin", "qml/shell.qml",
+                "qml/shared", "qml/omarchy", "qml/assets"):
+        src, dst = REPO / rel, root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        (shutil.copytree if src.is_dir() else shutil.copy2)(src, dst)
+    (root / "VERSION").write_text(VERSION + "\n")
+    (root / "bin").mkdir()
+
+
+class InstallFromArchive(unittest.TestCase):
+    """An extracted release archive installs its bundled binary and never runs cargo."""
+
+    def test_archive_dry_run_and_install_use_the_bundled_binary(self):
+        e = Env(self)
+        (e.bin / "cargo").unlink()  # cargo is not needed (and not on PATH) for an archive
+        with tempfile.TemporaryDirectory(prefix="codepet-archive-") as tmp:
+            root = Path(tmp) / f"codepet-{VERSION}-x86_64-linux"
+            archive_tree(root)
+            shutil.copy2(e.fake, root / "bin/codepet")
+            script = root / "packaging/omarchy/install.sh"
+            r = e.run(script, "--dry-run")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn(f"CodePet {VERSION} install plan", r.stdout)
+            self.assertIn(f"would use prebuilt: {root}/bin/codepet", r.stdout)
+            r = e.run(script)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual((e.home / ".local/bin/codepet").read_bytes(), e.fake.read_bytes())
+            self.assertEqual(os.readlink(e.data / "codepet/current"), f"releases/{VERSION}")
+            self.assertFalse(any(c.startswith(("cargo", "systemd-run")) for c in e.calls()))
+            r = e.run(root / "packaging/omarchy/uninstall.sh")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_archive_without_a_binary_or_version_fails_cleanly(self):
+        e = Env(self)
+        with tempfile.TemporaryDirectory(prefix="codepet-archive-") as tmp:
+            root = Path(tmp)
+            archive_tree(root)
+            r = e.run(root / "packaging/omarchy/install.sh", "--no-plugin")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("no codepet binary at", r.stderr)
+            (root / "VERSION").unlink()
+            r = e.run(root / "packaging/omarchy/install.sh", "--dry-run")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("found neither Cargo.toml", r.stderr)
 
 
 class Static(unittest.TestCase):

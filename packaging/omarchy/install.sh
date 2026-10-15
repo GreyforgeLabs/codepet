@@ -3,25 +3,34 @@
 #
 #   packaging/omarchy/install.sh [--dry-run] [--no-plugin]
 #
+# It runs from a source checkout (Cargo.toml present: the version comes from the
+# workspace and `codepet` is built) or from an extracted release archive (VERSION and
+# bin/codepet present, no Cargo.toml: the bundled binary is installed, nothing is built).
+#
 # Steps, all idempotent:
 #   1. build the `codepet` binary (memory-capped), unless CODEPET_BIN_SOURCE names a
-#      prebuilt one (release archives);
+#      prebuilt one or this is a release archive (its bin/codepet);
 #   2. install `codepet` and `codepet-overlay` into ~/.local/bin atomically
 #      (temporary name, then rename) and check `codepet --version`;
 #   3. record whether an overlay is running, copy qml/{shell.qml,shared,omarchy,assets}
 #      to ~/.local/share/codepet/releases/<version>/qml and atomically repoint the
 #      `current` symlink there (it lives outside the plugin folder);
 #   4. stage the bar plugin (omarchy-plugin/ plus qml/shared/LifeText.js, byte for
-#      byte, no symlinks) under ~/.cache/codepet, run `omarchy plugin validate`, and
+#      byte, no symlinks) beside the plugins folder (~/.config/omarchy/.codepet-stage-*,
+#      the same filesystem, outside the watched folder), run `omarchy plugin validate`, and
 #      move it into ~/.config/omarchy/plugins/greyforge.codepet with one rename
 #      (`mv --exchange` on update), so the shell sees one change and hot-reloads once;
 #      enable it once (right section, before the tray) if shell.json does not list it,
 #      after asking the running shell to rescan and waiting until it lists the plugin
 #      (without a running shell, the enable command is printed instead);
-#   5. on update, print restart advice for a running overlay and the shell.
+#   5. on update, print restart advice for a running overlay and the shell; on a first
+#      install, print how to meet the companion.
 #
 # An update keeps the replaced release tree and plugin under ~/.cache/codepet as
 # release-backup-<version>-<ts> and plugin-backup-<ts>; only the newest of each is kept.
+# Under ~/.local/share/codepet/releases it keeps the new release and the one `current`
+# pointed to before; older release trees are removed, unless an overlay is running
+# (it may still read its own release tree).
 #
 # It never reads, writes, moves or deletes $XDG_STATE_HOME/codepet (the pet's data):
 # the first `codepet state` after install migrates the database itself and keeps a
@@ -65,9 +74,21 @@ done
 case "$HOME" in /*) ;; *) die "HOME must be absolute" ;; esac
 
 REPO=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
-VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-    "$REPO/Cargo.toml" | head -n 1)
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "cannot read the workspace version from Cargo.toml"
+# A source checkout has Cargo.toml; a release archive has VERSION and bin/codepet.
+ARCHIVE=0
+if [ -f "$REPO/Cargo.toml" ]; then
+    VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+        "$REPO/Cargo.toml" | head -n 1) || VERSION=
+    VERSION_FROM="the workspace version in Cargo.toml"
+elif [ -f "$REPO/VERSION" ]; then
+    ARCHIVE=1
+    VERSION=$(head -n 1 -- "$REPO/VERSION") || VERSION=
+    VERSION_FROM="the release archive's VERSION file"
+else
+    die "found neither Cargo.toml (source checkout) nor VERSION (release archive) in $REPO"
+fi
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "cannot read $VERSION_FROM"
+ARCHIVE_BIN="$REPO/bin/codepet"
 
 xdg() { # xdg <value> <default>: an absolute XDG value, else the default
     case "${1:-}" in /*) printf '%s\n' "$1" ;; *) printf '%s\n' "$2" ;; esac
@@ -127,6 +148,8 @@ if [ "$DRY" -eq 1 ]; then
     echo "CodePet $VERSION install plan (dry run: nothing is built, installed or changed)"
     if [ -n "${CODEPET_BIN_SOURCE:-}" ]; then
         echo "would use prebuilt: $CODEPET_BIN_SOURCE"
+    elif [ "$ARCHIVE" -eq 1 ]; then
+        echo "would use prebuilt: $ARCHIVE_BIN"
     else
         echo "would build: cargo build --release --locked -p codepet -j 2 (memory-capped scope)"
     fi
@@ -154,9 +177,25 @@ fi
 UPDATE=0
 { [ -e "$RUNTIME/current" ] || [ -L "$RUNTIME/current" ] || [ -e "$PLUGIN_DIR" ]; } && UPDATE=1
 
+# Preflight, before anything is installed: the bar plugin needs Omarchy 4's plugin CLI.
+if [ "$NO_PLUGIN" -eq 0 ]; then
+    command -v "$OMARCHY" >/dev/null 2>&1 || die "omarchy not found; rerun with --no-plugin"
+    "$OMARCHY" plugin validate --help >/dev/null 2>&1 ||
+        die "this omarchy has no plugin support (Omarchy 4 or later is required); rerun with --no-plugin"
+fi
+# The pet sprites are WebP: without Qt's WebP image plugin they render blank.
+webp_plugin=0
+for d in /usr/lib/qt6/plugins /usr/lib64/qt6/plugins /usr/lib/x86_64-linux-gnu/qt6/plugins; do
+    [ -e "$d/imageformats/libqwebp.so" ] && webp_plugin=1
+done
+[ "$webp_plugin" -eq 1 ] ||
+    echo "$PROG: warning: Qt's WebP image plugin (qt6-imageformats) was not found; the pet will render blank without it" >&2
+
 # 1. build (or use a prebuilt binary)
 if [ -n "${CODEPET_BIN_SOURCE:-}" ]; then
     BIN_SRC=$CODEPET_BIN_SOURCE
+elif [ "$ARCHIVE" -eq 1 ]; then
+    BIN_SRC=$ARCHIVE_BIN
 else
     command -v cargo >/dev/null 2>&1 || die "cargo not found (or set CODEPET_BIN_SOURCE to a built codepet)"
     if command -v systemd-run >/dev/null 2>&1; then
@@ -168,7 +207,7 @@ else
     BIN_SRC="${CARGO_TARGET_DIR:-$REPO/target}/release/codepet"
 fi
 if [ ! -f "$BIN_SRC" ] || [ -L "$BIN_SRC" ]; then
-    die "no built codepet binary at $BIN_SRC"
+    die "no codepet binary at $BIN_SRC"
 fi
 
 # prune_backups <prefix> <kept>: after a successful swap, remove this script's earlier
@@ -202,6 +241,8 @@ OVERLAY_RUNNING=0
 if [ "$UPDATE" -eq 1 ] && "$BIN_DIR/codepet-overlay" status >/dev/null 2>&1; then
     OVERLAY_RUNNING=1
 fi
+PREVIOUS=$(readlink -- "$RUNTIME/current" 2>/dev/null || true)
+PREVIOUS=${PREVIOUS#releases/}
 mkdir -p -- "$RUNTIME/releases" "$WORK"
 next="$RUNTIME/releases/.$VERSION.new-$TS"
 stage_runtime "$next"
@@ -222,6 +263,21 @@ fi
 ln -s -- "releases/$VERSION" "$RUNTIME/.current-$TS"
 mv -T -- "$RUNTIME/.current-$TS" "$RUNTIME/current"
 echo "runtime: $RUNTIME/current -> releases/$VERSION"
+# Keep the new release and the previous one; remove older release trees, but never
+# while an overlay runs (it may be reading an older tree).
+for old in "$RUNTIME/releases/"*; do
+    name=${old##*/}
+    if [ "$name" = "$VERSION" ] || [ "$name" = "$PREVIOUS" ] || [ -L "$old" ] || [ ! -d "$old" ] ||
+        ! [[ "$name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        continue
+    fi
+    if [ "$OVERLAY_RUNNING" -eq 1 ]; then
+        echo "runtime: kept older release $old while the overlay runs"
+        continue
+    fi
+    rm -rf -- "$old"
+    echo "removed older release: $old"
+done
 
 # 4. bar plugin
 ENABLE_HINT="omarchy plugin enable $PLUGIN_ID --section right --before omarchy.tray"
@@ -245,8 +301,10 @@ discovered() {
     return 1
 }
 if [ "$NO_PLUGIN" -eq 0 ]; then
-    command -v "$OMARCHY" >/dev/null 2>&1 || die "omarchy not found; rerun with --no-plugin"
-    stage="$WORK/stage-$TS/$PLUGIN_ID"
+    # Staged beside plugins/ (same filesystem, so every move below is one rename) but
+    # outside it, so the shell's plugin watcher never sees a partial tree.
+    stage_root="$CONFIG_HOME/omarchy/.codepet-stage-$TS"
+    stage="$stage_root/$PLUGIN_ID"
     stage_plugin "$stage"
     no_symlinks "$stage"
     "$OMARCHY" plugin validate "$stage" || die "omarchy plugin validate refused the staged plugin ($stage)"
@@ -254,7 +312,7 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
     if [ -e "$PLUGIN_DIR" ]; then
         # One rename swaps old and new; the old tree, now at the stage path, is kept.
         if ! mv --exchange -T -- "$stage" "$PLUGIN_DIR" 2>/dev/null; then
-            echo "$PROG: mv --exchange unavailable; replacing the plugin with two renames" >&2
+            echo "$PROG: atomic exchange failed (unsupported by mv or the filesystem); replacing the plugin with two renames" >&2
             mv -T -- "$PLUGIN_DIR" "$stage.old"
             mv -T -- "$stage" "$PLUGIN_DIR"
             stage="$stage.old"
@@ -266,7 +324,7 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
         mv -T -- "$stage" "$PLUGIN_DIR"
         echo "plugin: installed $PLUGIN_DIR"
     fi
-    rmdir -- "$WORK/stage-$TS" 2>/dev/null || true
+    rmdir -- "$stage_root" 2>/dev/null || true
     if [ -f "$SHELL_JSON" ] && grep -q "\"$PLUGIN_ID\"" "$SHELL_JSON"; then
         echo "plugin: already listed in $SHELL_JSON"
     elif ! discovered; then
@@ -284,11 +342,23 @@ fi
 if [ "$UPDATE" -eq 1 ]; then
     if [ "$OVERLAY_RUNNING" -eq 1 ]; then
         echo "The desktop overlay is still running the previous release. Once no task is executing:"
-        echo "  codepet-overlay hide && codepet-overlay show"
+        echo "  codepet-overlay quit && codepet-overlay show"
     fi
     if [ "$NO_PLUGIN" -eq 0 ]; then
         echo "If the bar does not pick up the plugin by itself (never while the session is locked):"
-        echo "  HYPRLAND_INSTANCE_SIGNATURE=${HYPRLAND_INSTANCE_SIGNATURE:-<live signature>} omarchy restart shell"
+        if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+            echo "  HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE omarchy restart shell"
+        else
+            echo "  omarchy restart shell   # from a terminal inside your Hyprland session"
+        fi
     fi
+else
+    if [ "$NO_PLUGIN" -eq 0 ]; then
+        echo "Next: click CodePet on the bar (right section) to meet your companion. Its clock stays"
+        echo "unarmed until you choose Set up… and pick permadeath or gentle."
+    else
+        echo "Next: without the bar widget the companion's time stays frozen (see the README)."
+    fi
+    echo "Desktop pet: codepet-overlay show"
 fi
 echo "state: $STATE_HOME/codepet was not touched"
