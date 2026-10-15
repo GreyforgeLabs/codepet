@@ -13,8 +13,11 @@ scheduler launches, retries, resumes, accepts or rewards work.
 Build `codepet` and put it on PATH, then explicitly run:
 
 ```sh
-quickshell -p qml/omarchy/shell.qml
+quickshell -p qml/shell.qml
 ```
+
+The entry is `qml/shell.qml`, not a file under `qml/omarchy/`: Quickshell only loads
+QML inside the entry's folder, so `shared/`, `omarchy/` and `assets/` must sit below it.
 
 This is a runnable entry file targeting Quickshell 0.3.1 APIs, not an installed
 Omarchy plugin/package. No autostart or desktop settings are changed. See

@@ -5,11 +5,14 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import "../shared"
-import "OverlayPolicy.js" as OverlayPolicy
+import "shared"
+import "omarchy"
+import "omarchy/OverlayPolicy.js" as OverlayPolicy
 
-// Quickshell 0.3.1 host. Launch explicitly; this file installs no autostart.
-// Only this host imports compositor APIs. See README.md in this directory for
+// Quickshell 0.3.1 host entry. Quickshell only loads QML inside the config folder
+// (this file's directory), so the entry lives at qml/ where shared/, omarchy/ and
+// assets/ are all inside it. Launch explicitly; this file installs no autostart.
+// Only this host and omarchy/ import compositor APIs. See omarchy/README.md for
 // supported behavior, integration inputs and the live-Wayland validation gate.
 ShellRoot {
     id: shell

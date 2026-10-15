@@ -26,13 +26,15 @@ See [overlay capabilities and live validation](../docs/desktop-overlay.md) and
 - `shared/TaskTimeline.qml`: bounded, explicitly loaded durable task-state events
 - `shared/WellbeingMeter.qml`, `shared/StatusBadge.qml`: textual values and states
 - `standalone/Main.qml`, `standalone/PreviewHost.qml`: pure-QML fixed-fixture preview
-- `omarchy/shell.qml`: transparent non-focusable layer-shell entry and independent
+- `shell.qml`: Quickshell host entry (at `qml/` so `shared/`, `omarchy/` and `assets/` are
+  inside its config folder): transparent non-focusable layer-shell overlay and independent
   explicit-open task/review window (live compositor validation outstanding)
 - `standalone/OverlayPreview.qml`: fixture-only scene preview in a normal window
 - `omarchy/HostAdapter.qml`: Quickshell transport, one `codepet rpc` process/request
 - `tests/`: headless UI/transport harnesses, not product runtime code
 
-Quickshell imports remain confined to the Omarchy adapter and its test harnesses.
+Quickshell imports remain confined to the host entry `shell.qml`, the Omarchy adapter
+and its test harnesses.
 The real standalone QProcess launcher is still not implemented. The optional
 Python test runner is a test dependency, not a replacement product architecture.
 

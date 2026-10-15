@@ -9,7 +9,7 @@ import subprocess
 import unittest
 
 QML = Path(__file__).resolve().parents[1]
-SHELL = (QML / "omarchy/shell.qml").read_text()
+SHELL = (QML / "shell.qml").read_text()
 CODE = re.sub(r"//[^\n]*", "", SHELL)
 POLICY = (QML / "omarchy/OverlayPolicy.js").read_text().replace(".pragma library", "")
 

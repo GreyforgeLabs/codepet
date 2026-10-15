@@ -6,7 +6,7 @@ A manually controlled coding companion, built toward **Linux portability with Om
 
 The default presentation is a small, transparent desktop pet, with short cosmetic walks and long pauses. Hover for well-being bars; click for compact care controls. Food, water, tree and bed appear only for the interaction. Task and review controls open in a separate focusable window after an explicit action. Cosmetic movement never starts a task.
 
-- Omarchy/Quickshell: `quickshell -p qml/omarchy/shell.qml` (put the built `codepet` CLI on PATH first)
+- Omarchy/Quickshell: `quickshell -p qml/shell.qml` (put the built `codepet` CLI on PATH first; the entry sits at `qml/` because Quickshell only loads QML inside the entry's folder)
 - Portable scene preview: `PYTHONPATH=/path/to/PySide6 QT_QUICK_CONTROLS_STYLE=Basic python qml/tests/run_qml.py qml/standalone/OverlayPreview.qml` (the smoke runner exits after 20 seconds)
 - The portable preview is a normal fixture window, not a Wayland/X11 overlay implementation
 

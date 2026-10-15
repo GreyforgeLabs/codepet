@@ -19,7 +19,7 @@ Rust owns all task state and rewards. QML renders what Rust returns and sends ex
 
 ## QML
 
-`qml/shared` holds the panel, task form and review components. They take a `host` object with `snapshot`, `busy`, `lastError` and `request()`. `qml/standalone/PreviewHost.qml` is a pure-QML host with fixed fixtures; it refuses every state-changing method and is not connected to Rust. `qml/omarchy/HostAdapter.qml` is the Quickshell host: one `codepet rpc` process per request, argv only, no shell. It has been exercised against a test stub, not the real binary. Quickshell imports appear only under `qml/omarchy` and its test harness. See [qml/README.md](../qml/README.md).
+`qml/shared` holds the panel, task form and review components. They take a `host` object with `snapshot`, `busy`, `lastError` and `request()`. `qml/standalone/PreviewHost.qml` is a pure-QML host with fixed fixtures; it refuses every state-changing method and is not connected to Rust. `qml/omarchy/HostAdapter.qml` is the Quickshell host: one `codepet rpc` process per request, argv only, no shell. It has been exercised against a test stub, not the real binary. Quickshell imports appear only in the host entry `qml/shell.qml`, under `qml/omarchy` and in its test harness. See [qml/README.md](../qml/README.md).
 
 ## Limits of this milestone
 

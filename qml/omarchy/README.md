@@ -1,14 +1,16 @@
 # Quickshell desktop overlay host
 
-`shell.qml` is the real host entry, targeting **Quickshell 0.3.1** on a Wayland compositor that supports `wlr-layer-shell` (including Hyprland/Omarchy). It uses the existing `HostAdapter` and real `codepet rpc`, whose sole provider remains the non-executing mock. It is not an Omarchy plugin installation. No autostart, packages, compositor rules or lock hooks are installed.
+[`../shell.qml`](../shell.qml) (`qml/shell.qml`) is the real host entry, targeting **Quickshell 0.3.1** on a Wayland compositor that supports `wlr-layer-shell` (including Hyprland/Omarchy). It uses the existing `HostAdapter` and real `codepet rpc`, whose sole provider remains the non-executing mock. It is not an Omarchy plugin installation. No autostart, packages, compositor rules or lock hooks are installed.
 
 ## Explicit launch
 
 With Quickshell already installed and a built `codepet` on PATH, from the repository root:
 
 ```sh
-PATH="$PWD/target/debug:$PATH" qs -p "$PWD/qml/omarchy/shell.qml"
+PATH="$PWD/target/debug:$PATH" qs -p "$PWD/qml/shell.qml"
 ```
+
+The entry lives at `qml/`, not in this directory: Quickshell 0.3.1 only loads QML inside the entry's folder (its qmlscanner refuses `../shared`), so `shared/`, `omarchy/` and `assets/` must all be below it. `HostAdapter.qml` and `OverlayPolicy.js` stay here and are imported as `omarchy`.
 
 For isolated testing, set `XDG_STATE_HOME` to a temporary directory before launching. Startup performs one `state.get`; no idle RPC polling or autonomous Start is added. `CODEPET_SCREEN=DP-1` selects an exact output name; if absent/disconnected, the first currently connected screen is used. No screens means a hidden overlay. `CODEPET_REDUCED_MOTION=1` disables scene motion.
 
