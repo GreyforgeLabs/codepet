@@ -25,17 +25,22 @@ fn abort_before_accept_commit_grants_nothing_and_retry_succeeds_once() {
         Some("accept_before_commit"),
     );
     assert_aborted_silently(&r);
-    assert_eq!(env.meter("hunger"), 7000);
+    assert_eq!(env.meter("hunger"), 9000);
+    assert_eq!(env.state()["progression"]["demo"]["lifetime_xp"], 0);
     let t = env.task(&id);
     assert_eq!(t["state"], "review_ready");
     assert_eq!(t["receipt"], Value::Null);
 
     let first = env.ok_with("acc-1", "task.accept_artifact", params.clone());
     assert_eq!(first["duplicate"], false);
-    assert_eq!(first["receipt"]["amount_hundredths"], 2000);
+    assert_eq!(first["receipt"]["amount_hundredths"], 0);
+    assert_eq!(first["receipt"]["demo_xp"], 20);
+    assert_eq!(first["receipt"]["real_xp"], 0);
+    assert_eq!(env.state()["progression"]["demo"]["lifetime_xp"], 20);
     assert_eq!(env.meter("hunger"), 9000);
     assert_eq!(env.ok_with("acc-1", "task.accept_artifact", params), first);
     assert_eq!(env.meter("hunger"), 9000);
+    assert_eq!(env.state()["progression"]["demo"]["lifetime_xp"], 20);
 }
 
 #[test]
@@ -54,6 +59,8 @@ fn abort_after_accept_commit_keeps_exactly_one_reward() {
     // Committed before the abort: reward, acceptance and state are all durable.
     assert_eq!(env.meter("thirst"), 9000);
     assert_eq!(env.task(&id)["state"], "accepted_artifact");
+    assert_eq!(env.state()["progression"]["demo"]["lifetime_xp"], 20);
+    assert_eq!(env.state()["progression"]["real"]["lifetime_xp"], 0);
 
     let retry = env.ok_with("acc-1", "task.accept_artifact", params.clone());
     assert_eq!(
@@ -65,12 +72,18 @@ fn abort_after_accept_commit_keeps_exactly_one_reward() {
     let other = env.ok_with("acc-2", "task.accept_artifact", params);
     assert_eq!(other["duplicate"], true);
     assert_eq!(other["receipt"], retry["receipt"]);
-    assert_eq!(env.meter("thirst"), 9000, "+2000 exactly once");
+    assert_eq!(env.meter("thirst"), 9000, "acceptance never refills care");
+    assert_eq!(
+        env.state()["progression"]["demo"]["lifetime_xp"],
+        20,
+        "20 demo XP exactly once"
+    );
     assert_eq!(env.task(&id)["receipt"], retry["receipt"]);
 }
 
 /// Starts with a fault armed; returns (task_id, reply).
 fn start_with_fault(env: &Env, fault: &str) -> (String, common::Reply) {
+    env.care_routine();
     let id = env.create("hygiene", 0, "artifact");
     let token = env.preflight(&id, 1);
     let r = env.call_with(
@@ -100,7 +113,14 @@ fn recover_interrupts(env: &Env, id: &str, from: &str) {
     assert_eq!(t["state"], "interrupted");
     assert_eq!(t["review"], Value::Null);
     assert_eq!(env.states(id).last().unwrap(), "interrupted");
-    assert_eq!(env.meter("hygiene"), 7000);
+    assert_eq!(
+        env.meter("hygiene"),
+        if from == "preparing" { 10000 } else { 9000 }
+    );
+    assert_eq!(
+        env.state()["care"]["work_sessions"],
+        if from == "preparing" { 0 } else { 1 }
+    );
     assert!(!env.folder().exists());
     // Slot released: a fresh task can be started explicitly.
     let (next, _) = env.reviewed("hunger", "artifact");

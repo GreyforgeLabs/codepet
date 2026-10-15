@@ -6,7 +6,7 @@ Rust owns all task state and rewards. QML renders what Rust returns and sends ex
 
 - `codepet-core`: pure enums with stable string forms, draft validation (lexical paths, byte limits), the state transition table, reward arithmetic and the shared override-reason limit. It also keeps the earlier in-memory `Engine` used by `mock-demo` and core tests. No IO.
 - `codepet-protocol`: request/response/event envelopes (v1), method names, error codes, typed params with `deny_unknown_fields`, and a bounded frame reader/writer (64 KiB, no NUL, valid UTF-8, trailing newline). No transport and no state.
-- `codepet-storage`: the durable task engine on SQLite (bundled). It checks and creates the state directory (`$XDG_STATE_HOME/codepet`, 0700, owned by the effective UID, no symlink), opens the database with WAL and `synchronous=FULL`, migrates by `user_version` (backing up an older version first) and refuses newer or corrupt databases without modifying them. Every mutation is one `BEGIN IMMEDIATE` transaction that also appends a `task_events` row. It owns preflight tokens, the single active slot (a partial unique index), review digests, the acceptance/reward ledger with request idempotency, explicit recovery and debug-only fault injection points.
+- `codepet-storage`: the durable task engine on SQLite (bundled). It checks and creates the state directory (`$XDG_STATE_HOME/codepet`, 0700, owned by the effective UID, no symlink), opens the database with WAL and `synchronous=FULL`, migrates by `user_version` (backing up an older version first) and refuses newer or corrupt databases without modifying them. Every mutation is one `BEGIN IMMEDIATE` transaction; task state changes append a `task_events` row. Explicit care/rest mutations have idempotent receipts, and snapshot commands settle persisted sleep without a resident timer. It owns preflight tokens, the single active slot (a partial unique index), review digests, the acceptance/reward ledger with request idempotency, explicit recovery and debug-only fault injection points.
 - `codepet` (CLI): `providers`, `state`, `rpc`, `mock-demo` and help. `rpc` reads one frame from stdin, dispatches it to storage, prints one frame and exits 0 or 1. The mock supervisor lives here.
 
 ## Request flow
@@ -30,3 +30,7 @@ Rust owns all task state and rewards. QML renders what Rust returns and sends ex
 - There is no event streaming. Clients poll nothing on their own; they refresh after explicit actions and may read persisted events with `events.subscribe`.
 
 Future target (spec): explicit short commands plus one per-job supervisor that owns staging, containment, execution and review; an optional job-scoped event helper; Omarchy/Quickshell as a host adapter separate from a plain Qt standalone launcher.
+
+## Care and progression
+
+Schema v2 adds independent care/rest counters, per-task start debit/execution accounting and a task-keyed demo XP ledger. Rust snapshots expose readiness and separate real/demo progression; QML never computes authoritative rewards or grants readiness. See [care-progression.md](care-progression.md).

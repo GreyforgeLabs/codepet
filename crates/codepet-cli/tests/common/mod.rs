@@ -181,8 +181,13 @@ impl Env {
     pub fn start(&self, task_id: &str, revision: u64, token: &str) -> Value {
         self.ok("task.start", Self::start_params(task_id, revision, token))
     }
-    /// create → preflight → start; returns (task_id, review digest).
+    /// Explicitly fill care before tests that exercise work rather than care policy.
+    pub fn care_routine(&self) -> Value {
+        self.ok("pet.care", json!({"action": "routine"}))
+    }
+    /// care → create → preflight → start; returns (task_id, review digest).
     pub fn reviewed(&self, category: &str, outcome: &str) -> (String, String) {
+        self.care_routine();
         let id = self.create(category, 0, outcome);
         let token = self.preflight(&id, 1);
         let s = self.start(&id, 1, &token);
@@ -283,5 +288,47 @@ pub fn wait_output(mut child: Child) -> Output {
         status,
         stdout: stdout.join().unwrap(),
         stderr: stderr.join().unwrap(),
+    }
+}
+
+/// Verify containment without relying on CONFIG_CHECKPOINT_RESTORE's optional
+/// `/proc/PID/task/TID/children` interface, absent in some Linux test sandboxes.
+pub fn assert_no_child_processes(pid: u32) {
+    let tasks = std::fs::read_dir(format!("/proc/{pid}/task")).unwrap();
+    let mut needs_parent_scan = false;
+    for task in tasks {
+        let path = task.unwrap().path().join("children");
+        match std::fs::read_to_string(&path) {
+            Ok(children) => assert!(children.trim().is_empty(), "{pid} has children: {children}"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => needs_parent_scan = true,
+            Err(e) => panic!("cannot inspect {}: {e}", path.display()),
+        }
+    }
+    if needs_parent_scan {
+        for process in std::fs::read_dir("/proc").unwrap() {
+            let process = process.unwrap();
+            let Some(child_pid) = process
+                .file_name()
+                .to_str()
+                .and_then(|n| n.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let status = match std::fs::read_to_string(process.path().join("status")) {
+                Ok(status) => status,
+                // Unrelated processes can exit between listing and inspection.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => panic!("cannot inspect process {child_pid}: {e}"),
+            };
+            let parent = status
+                .lines()
+                .find_map(|line| line.strip_prefix("PPid:"))
+                .and_then(|value| value.trim().parse::<u32>().ok())
+                .expect("Linux process status contains PPid");
+            assert_ne!(
+                parent, pid,
+                "mock supervisor {pid} spawned child {child_pid}"
+            );
+        }
     }
 }

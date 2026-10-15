@@ -5,9 +5,10 @@ use crate::supervisor::{self, Job};
 use codepet_core::{Category, Draft, Provider, Settings, PROTOCOL_VERSION};
 use codepet_protocol::{
     parse_params, parse_request, read_frame, DraftParams, EmptyParams, ErrorCode,
-    EventsSubscribeParams, HelloParams, HistoryListParams, Method, PetPauseParams, ProtocolError,
-    Request, Response, SettingsUpdateParams, TaskAcceptArtifactParams, TaskDiscardParams,
-    TaskIdParams, TaskPreflightParams, TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
+    EventsSubscribeParams, HelloParams, HistoryListParams, Method, PetCareParams, PetPauseParams,
+    ProtocolError, Request, Response, SettingsUpdateParams, TaskAcceptArtifactParams,
+    TaskDiscardParams, TaskIdParams, TaskPreflightParams, TaskStartParams, TaskUpdateParams,
+    NOT_IMPLEMENTED_MESSAGE,
 };
 use codepet_storage::{
     AcceptRequest, MockOptions, MockOutcome, ProviderInfo, StatePaths, Store, Supervisor,
@@ -226,6 +227,18 @@ fn dispatch(req: Request) -> Outcome {
             encode(serde_json::to_value(
                 open()?.update_settings(expected, &settings)?,
             ))
+        }
+        Method::PetCare => {
+            let c: PetCareParams = parse_params(p)?;
+            encode(serde_json::to_value(open()?.care(&req.id, &c.action)?))
+        }
+        Method::PetSleep => {
+            let _: EmptyParams = parse_params(p)?;
+            encode(serde_json::to_value(open()?.sleep(&req.id)?))
+        }
+        Method::PetWake => {
+            let _: EmptyParams = parse_params(p)?;
+            encode(serde_json::to_value(open()?.wake(&req.id)?))
         }
         Method::PetPause => {
             let s: PetPauseParams = parse_params(p)?;

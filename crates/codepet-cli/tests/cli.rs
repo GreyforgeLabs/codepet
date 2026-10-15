@@ -65,10 +65,15 @@ fn state_command_prints_the_snapshot() {
     let text = String::from_utf8(output.stdout).unwrap();
     assert_eq!(text.lines().count(), 1);
     let s: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(s["schema_version"], 1);
+    assert_eq!(s["schema_version"], 2);
     assert_eq!(s["protocol_version"], 1);
     assert_eq!(s["meters"]["hunger"], 7000);
     assert_eq!(s["active_task"], serde_json::Value::Null);
+    assert_eq!(s["care"]["ready_to_work"], false);
+    assert_eq!(s["care"]["sleeping"], false);
+    assert_eq!(s["care"]["work_sessions"], 0);
+    assert_eq!(s["progression"]["real"]["lifetime_xp"], 0);
+    assert_eq!(s["progression"]["demo"]["lifetime_xp"], 0);
     assert_eq!(s["providers"].as_array().unwrap().len(), 5);
     assert_eq!(s, env.state(), "state matches rpc state.get");
 }

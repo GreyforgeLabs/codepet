@@ -6,8 +6,8 @@ A manually controlled coding companion, built toward **Linux portability with Om
 
 - Rust workspace with four crates: `codepet-core` (pure rules and the older in-memory model), `codepet-protocol` (versioned, bounded JSON envelopes), `codepet-storage` (SQLite state) and the `codepet` CLI
 - Durable state in SQLite under `$XDG_STATE_HOME/codepet` (fallback `~/.local/state/codepet`): explicit migrations, ownership/mode checks on the state directory, WAL, and one `BEGIN IMMEDIATE` transaction per mutation
-- Four high-is-good care meters (start 70), +20 per accepted artifact, clamped at 100. Acceptance, reward row, meter update, state change and idempotency record commit in one transaction; a repeated acceptance returns the stored receipt without a second reward
-- One task owns the active slot, enforced by a unique index across processes; one-use, 5-minute preflight tokens tied to the exact draft revision and settings revision
+- Four high-is-good care meters (start 70), explicit food/water/play/wash/tree interactions, transactional full-care Start gates, and persisted mandatory two-minute naps after three sessions or 45 execution minutes. Acceptance no longer refills care; accepted mock artifacts earn isolated demo XP exactly once. See [care and progression](docs/care-progression.md)
+- One task owns the active slot, enforced by a unique index across processes; one-use, 5-minute preflight tokens tied to the exact draft revision and settings revision, invalidated by care/rest changes
 - `codepet rpc`: one request frame on stdin, one response frame on stdout (64 KiB frames, typed error codes). `codepet state` prints the snapshot
 - A per-job **mock supervisor**: after an explicit `task.start`, the same process steps the task to review (or failure) and honors cancellation from another process. It spawns no process and never reads or writes the selected folder
 - Review digests over the stored artifact, rechecked at review, acceptance and recovery; explicit recovery that marks dead jobs `interrupted` and damaged reviews `recovery_required`, and never resumes work
@@ -16,7 +16,7 @@ A manually controlled coding companion, built toward **Linux portability with Om
 
 ## Try it
 
-Requires Rust 1.85+ as declared; this milestone was built and tested locally with Rust 1.98.1 only (see [validation](docs/validation.md)). Dependencies: serde, serde_json, rusqlite with bundled SQLite (needs a C compiler), sha2, and tempfile for tests. `--locked` builds need these crates from crates.io or an already populated Cargo registry cache.
+Requires Rust 1.85+; the care/progression slice was tested in the cloud with Rust 1.85.0 and 1.99.0 (see [validation](docs/validation.md)). Dependencies: serde, serde_json, rusqlite with bundled SQLite (needs a C compiler), sha2, and tempfile for tests. `--locked` builds need these crates from crates.io or an already populated Cargo registry cache.
 
 ```sh
 cargo test --workspace --locked
@@ -46,6 +46,7 @@ The desired architecture has **no permanently resident Rust daemon**: short expl
 
 ## Documentation
 
+- [Care, rest and isolated demo progression](docs/care-progression.md)
 - [Milestone 1 contract and deviations](docs/milestone-1.md)
 - [Full target specification](docs/implementation-spec.md): design, not completed implementation
 - [Architecture and milestone boundaries](docs/architecture.md)

@@ -12,7 +12,7 @@ Item {
     property var form: null
     property var review: null
 
-    PreviewHost { id: host }
+    PreviewHost { id: host; fixture: "ready" }
     Panel { id: panel; width: 680; host: host }
 
     function find(obj, name) {
@@ -53,7 +53,7 @@ Item {
                 panel.refresh()
                 break
             case 2:
-                top.check(host.snapshot !== null && host.snapshot.meters.hunger === 7000, "state.get fixture loaded")
+                top.check(host.snapshot !== null && host.snapshot.meters.hunger === 10000, "ready state.get fixture loaded")
                 top.initialMeters = top.meters()
                 top.form = top.find(panel, "panel.taskForm")
                 top.review = top.find(panel, "panel.taskReview")
@@ -91,6 +91,7 @@ Item {
                 panel.refresh()
                 break
             case 9:
+                top.initialMeters = top.meters()
                 panel.openReview("preview-review")
                 break
             case 11:

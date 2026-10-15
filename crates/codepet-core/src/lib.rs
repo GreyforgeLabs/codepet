@@ -1,5 +1,8 @@
 //! Pure, in-memory mock model. No filesystem, network, provider, or process IO.
 //! Receipts and snapshots are NOT durable storage or an IPC security boundary.
+mod privacy;
+pub use privacy::redact_display_text;
+
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Component, Path};
 use std::sync::atomic::{AtomicU64, Ordering};

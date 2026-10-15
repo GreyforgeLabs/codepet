@@ -7,24 +7,27 @@ use std::fmt;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod care;
 mod model;
 mod paths;
 mod schema;
 mod store;
 mod sys;
 
+pub use care::{BATHROOM_LIMIT, DEMO_XP, EXECUTION_LIMIT_MS, SESSION_LIMIT, SLEEP_MS};
 pub use model::{
-    AcceptOutcome, DecayView, Event, EventData, EventsPage, HistoryCursor, HistoryPage, MetersView,
-    MockOptions, MockOutcome, PauseView, PreflightResult, PreflightSummary, ProviderInfo,
-    ReceiptView, RecoverResult, RecoveryChange, ReviewBrief, ReviewView, SettingsView, Snapshot,
-    StartResult, TaskBrief, TaskInput, TaskSummary,
+    AcceptOutcome, CareOutcome, CareView, DecayView, Event, EventData, EventsPage, HistoryCursor,
+    HistoryPage, MasteryView, MetersView, MockOptions, MockOutcome, PauseView, PreflightResult,
+    PreflightSummary, ProgressionView, ProviderInfo, ReceiptView, RecoverResult, RecoveryChange,
+    ReviewBrief, ReviewView, SettingsView, Snapshot, StartResult, TaskBrief, TaskInput,
+    TaskSummary, XpView,
 };
 pub use paths::StatePaths;
 pub use store::{AcceptRequest, SealOutcome, Step, Store};
 pub use sys::Supervisor;
 
 /// Current SQLite `user_version`.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 pub const DB_FILE: &str = "codepet.sqlite3";
 pub const TOKEN_TTL_MS: i64 = 5 * 60 * 1000;
 /// Responses must fit one 64 KiB frame, so stored text is bounded by its JSON-encoded size
@@ -176,10 +179,27 @@ impl From<std::io::Error> for StorageError {
 /// Wall clock in Unix milliseconds; injectable so tests can expire tokens.
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> i64;
+    /// Monotonic milliseconds and a boot identity, when available. A missing identity
+    /// uses bounded wall-clock reconciliation instead, useful for deterministic tests.
+    fn steady_time(&self) -> Option<(String, i64)> {
+        None
+    }
 }
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;
 impl Clock for SystemClock {
+    fn steady_time(&self) -> Option<(String, i64)> {
+        let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+        let uptime = std::fs::read_to_string("/proc/uptime").ok()?;
+        let seconds = uptime.split_whitespace().next()?;
+        let (whole, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
+        let millis: i64 = whole.parse::<i64>().ok()?.checked_mul(1000)?;
+        let fraction = format!("{fraction:0<3}");
+        Some((
+            boot.trim().to_owned(),
+            millis.checked_add(fraction[..3].parse::<i64>().ok()?)?,
+        ))
+    }
     fn now_ms(&self) -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

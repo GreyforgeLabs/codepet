@@ -85,7 +85,18 @@ fn dead_sup() -> Supervisor {
     }
 }
 
+fn make_ready(store: &mut Store, env: &Env) {
+    let state = store.snapshot().unwrap();
+    if state.care.sleep_due && state.active_task.is_none() {
+        store.sleep(&sys::uuid_v4().unwrap()).unwrap();
+        env.clock.advance(SLEEP_MS);
+        store.snapshot().unwrap();
+    }
+    store.care(&sys::uuid_v4().unwrap(), "routine").unwrap();
+}
+
 fn ready(store: &mut Store, env: &Env, category: Category) -> (String, i64, String) {
+    make_ready(store, env);
     let t = store.create_task(&env.input(category)).unwrap();
     let p = store.preflight(&t.task_id, t.revision).unwrap();
     (t.task_id, t.revision, p.preflight_token)
@@ -178,7 +189,7 @@ fn fresh_open_has_defaults_and_safe_modes() {
     assert_eq!(s.settings.timeout_seconds, d.timeout_seconds);
     assert_eq!(
         (s.schema_version, s.protocol_version, s.last_seq),
-        (1, 1, 0)
+        (SCHEMA_VERSION, 1, 0)
     );
     assert!(s.active_task.is_none() && s.recent.is_empty());
     assert_eq!(s.providers.len(), 5);
@@ -210,6 +221,8 @@ fn snapshot_json_shape_matches_contract() {
             "protocol_version",
             "last_seq",
             "meters",
+            "care",
+            "progression",
             "decay",
             "settings",
             "active_task",
@@ -327,13 +340,14 @@ fn snapshot_json_shape_matches_contract() {
     assert_eq!(
         a["receipt"],
         serde_json::json!({"task_id": id, "category": "mental_health",
-            "amount_hundredths": 2000, "verification": "not_verified",
+            "amount_hundredths": 0, "demo_xp": 20, "real_xp": 0,
+            "progression_track": "learning_specification", "verification": "not_verified",
             "override_reason": "useful", "request_id": "req-1", "accepted_at_ms": T0})
     );
     let v = serde_json::to_value(store.snapshot().unwrap()).unwrap();
     assert!(v["active_task"].is_null());
     assert_eq!(v["recent"][0]["receipt"], a["receipt"]);
-    assert_eq!(v["meters"]["mental_health"], 9000);
+    assert_eq!(v["meters"]["mental_health"], 9500);
 }
 
 #[test]
@@ -361,7 +375,7 @@ fn reopen_persists_meters_tasks_and_settings() {
     let store = env.open();
     let snap = store.snapshot().unwrap();
     assert_eq!(snap.meters.hygiene, 9000);
-    assert_eq!(snap.meters.hunger, 7000);
+    assert_eq!(snap.meters.hunger, 9000);
     assert!(snap.decay.paused && snap.decay.enabled);
     assert_eq!(snap.settings.revision, 2);
     let t = store.task(&id).unwrap();
@@ -377,6 +391,7 @@ fn reopen_persists_meters_tasks_and_settings() {
 fn stale_revisions_are_refused() {
     let env = Env::new();
     let mut store = env.open();
+    make_ready(&mut store, &env);
     let t = store.create_task(&env.input(Category::Hunger)).unwrap();
     let p = store.preflight(&t.task_id, 1).unwrap();
     let u = store
@@ -791,7 +806,13 @@ fn single_active_slot_across_states_and_handles() {
     ));
     assert_eq!(b.snapshot().unwrap().active_task.unwrap().task_id, x);
     b.discard(&x, &digest).unwrap();
-    b.start(&y, ry, &ty, sup()).unwrap();
+    assert!(matches!(
+        b.start(&y, ry, &ty, sup()),
+        Err(StorageError::InvalidState(_))
+    ));
+    make_ready(&mut b, &env);
+    let token = b.preflight(&y, ry).unwrap();
+    b.start(&y, ry, &token.preflight_token, sup()).unwrap();
     assert_eq!(a.snapshot().unwrap().active_task.unwrap().task_id, y);
 }
 
@@ -858,7 +879,7 @@ fn acceptance_rewards_exactly_once() {
     );
     let first = accept(&mut store, &id, &digest, "req-1", Some("useful")).unwrap();
     assert!(!first.duplicate);
-    assert_eq!(meters(&store).mental_health, 9000);
+    assert_eq!(meters(&store).mental_health, 9500);
     // Same request id: the stored response, byte for byte.
     let again = accept(&mut store, &id, &digest, "req-1", Some("useful")).unwrap();
     assert_eq!(again, first);
@@ -869,10 +890,13 @@ fn acceptance_rewards_exactly_once() {
     let mut other = env.open();
     let dup2 = accept(&mut other, &id, &digest, "req-3", Some("x")).unwrap();
     assert_eq!(dup2.receipt, first.receipt);
-    assert_eq!(meters(&store).mental_health, 9000);
-    assert_eq!(env.count("SELECT count(*) FROM rewards"), 1);
+    assert_eq!(meters(&store).mental_health, 9500);
+    assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 1);
     assert_eq!(env.count("SELECT count(*) FROM acceptances"), 1);
-    assert_eq!(env.count("SELECT count(*) FROM request_results"), 3);
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE method = 'task.accept_artifact'"),
+        3
+    );
     // Wrong digest or missing acknowledgement still fail for an accepted task.
     assert!(matches!(
         accept(&mut store, &id, "00", "req-4", Some("x")),
@@ -882,9 +906,8 @@ fn acceptance_rewards_exactly_once() {
     assert!(env
         .raw()
         .execute(
-            "INSERT INTO rewards (task_id, category, amount_hundredths, applied_hundredths,
-                meter_before, meter_after, status, granted_at_ms)
-             VALUES (?1, 'hunger', 2000, 0, 0, 0, 'granted', 0)",
+            "INSERT INTO demo_xp_rewards (task_id, track, amount, granted_at_ms)
+             VALUES (?1, 'bugfix', 20, 0)",
             [&id],
         )
         .is_err());
@@ -931,7 +954,7 @@ fn idempotency_conflict_on_changed_params() {
         ));
     }
     accept(&mut store, &id2, &digest2, &"a".repeat(128), Some("ok")).unwrap();
-    assert_eq!(meters(&store).thirst, 10000);
+    assert_eq!(meters(&store).thirst, 9000);
 }
 
 #[test]
@@ -978,8 +1001,11 @@ fn override_rules_mirror_core() {
         codepet_core::MAX_OVERRIDE_REASON_BYTES
     );
     // Failed attempts store nothing and grant nothing.
-    assert_eq!(env.count("SELECT count(*) FROM request_results"), 0);
-    assert_eq!(meters(&store).hunger, 7000);
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE method = 'task.accept_artifact'"),
+        0
+    );
+    assert_eq!(meters(&store).hunger, 9000);
     let max = format!("  {}  ", "y".repeat(MAX_OVERRIDE_REASON_BYTES));
     let out = accept(&mut store, &id, &digest, "c", Some(&max)).unwrap();
     assert_eq!(
@@ -996,13 +1022,14 @@ fn override_rules_mirror_core() {
     ));
     let out = accept(&mut store, &id, &digest, "e", None).unwrap();
     assert_eq!(out.receipt.override_reason, None);
-    assert_eq!(meters(&store).hunger, 10000);
+    assert_eq!(meters(&store).hunger, 9000);
 }
 
 #[test]
 fn discard_failure_and_cancel_never_reward() {
     let env = Env::new();
     let mut store = env.open();
+    make_ready(&mut store, &env);
     let before = meters(&store);
     // Discard.
     let (id, digest) = reviewed(
@@ -1066,31 +1093,27 @@ fn discard_failure_and_cancel_never_reward() {
 }
 
 #[test]
-fn reward_clamps_at_one_hundred() {
+fn acceptance_does_not_refill_care() {
     let env = Env::new();
     let mut store = env.open();
-    let mut expected = [9000, 10000, 10000];
-    for (i, want) in expected.iter_mut().enumerate() {
+    for i in 0..3 {
         let (id, digest) = reviewed(
             &mut store,
             &env,
             Category::Hygiene,
             Verification::NotVerified,
         );
+        let before = meters(&store);
         let r = accept(&mut store, &id, &digest, &format!("r{i}"), Some("ok")).unwrap();
-        assert_eq!(r.receipt.amount_hundredths, 2000);
-        assert_eq!(meters(&store).hygiene, *want);
+        assert_eq!(r.receipt.amount_hundredths, 0);
+        assert_eq!(r.receipt.demo_xp, 20);
+        assert_eq!(meters(&store), before);
     }
-    let applied: Vec<i64> = env
-        .raw()
-        .prepare("SELECT applied_hundredths FROM rewards ORDER BY id")
-        .unwrap()
-        .query_map([], |r| r.get(0))
-        .unwrap()
-        .map(|r| r.unwrap())
-        .collect();
-    assert_eq!(applied, [2000, 1000, 0]);
-    assert_eq!(meters(&store).hunger, 7000);
+    assert_eq!(env.count("SELECT count(*) FROM rewards"), 0);
+    assert_eq!(
+        store.snapshot().unwrap().progression.demo.mastery.cleanup,
+        60
+    );
 }
 
 #[test]
@@ -1255,7 +1278,10 @@ fn recover_flags_tampered_review() {
         accept(&mut store, &id, &digest, "a", Some("x")),
         Err(StorageError::ReviewDamaged)
     ));
-    assert_eq!(env.count("SELECT count(*) FROM request_results"), 0);
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE method = 'task.accept_artifact'"),
+        0
+    );
     assert_eq!(env.count("SELECT count(*) FROM rewards"), 0);
     assert_eq!(store.task(&id).unwrap().state, State::ReviewReady);
     let r = store.recover().unwrap();
@@ -1278,7 +1304,7 @@ fn recover_flags_tampered_review() {
     // Explicit abandonment frees the slot without a reward.
     assert_eq!(store.discard(&id, &digest).unwrap().state, State::Discarded);
     store.start(&x, rx, &tx, sup()).unwrap();
-    assert_eq!(meters(&store).hunger, 7000);
+    assert_eq!(meters(&store).hunger, 9000);
 }
 
 #[test]
@@ -1462,13 +1488,13 @@ fn newer_schema_is_refused_untouched() {
     env.paths.prepare().unwrap();
     {
         let c = env.raw();
-        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 2;")
+        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 3;")
             .unwrap();
     }
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(2))
+        Err(StorageError::SchemaUnsupported(3))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     assert_eq!(fs::read_dir(&env.paths.state_dir).unwrap().count(), 1);
@@ -1523,7 +1549,7 @@ fn corrupt_database_is_refused_untouched() {
 
 #[test]
 fn migration_backs_up_older_versions_first() {
-    fn v2(tx: &rusqlite::Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
+    fn v3(tx: &rusqlite::Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
         tx.execute_batch("CREATE TABLE extra (x INTEGER)")
     }
     let env = Env::new();
@@ -1534,34 +1560,34 @@ fn migration_backs_up_older_versions_first() {
             .unwrap()
             .task_id
     };
-    let migrations: &[schema::Migration] = &[schema::MIGRATIONS[0], v2];
+    let migrations: &[schema::Migration] = &[schema::MIGRATIONS[0], schema::MIGRATIONS[1], v3];
     env.clock.set(T0 + 42);
     let store = Store::open_with(&env.paths, env.clock.clone(), migrations).unwrap();
     assert_eq!(store.task(&id).unwrap().task_id, id);
     drop(store);
-    assert_eq!(env.count("PRAGMA user_version"), 2);
+    assert_eq!(env.count("PRAGMA user_version"), 3);
     assert_eq!(env.count("SELECT count(*) FROM extra"), 0);
     let backup = env
         .paths
         .state_dir
-        .join(format!("codepet.sqlite3.bak-v1-{}", T0 + 42));
+        .join(format!("codepet.sqlite3.bak-v2-{}", T0 + 42));
     assert_eq!(mode(&backup), 0o600);
     let b = Connection::open(&backup).unwrap();
     let v: i64 = b
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(v, 1);
+    assert_eq!(v, 2);
     let n: i64 = b
         .query_row("SELECT count(*) FROM tasks WHERE id = ?1", [&id], |r| {
             r.get(0)
         })
         .unwrap();
     assert_eq!(n, 1);
-    // This build (v1) now refuses the upgraded file without touching it.
+    // This build (v2) now refuses the upgraded file without touching it.
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(2))
+        Err(StorageError::SchemaUnsupported(3))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     // Reopening at the same version neither migrates nor backs up again.
@@ -1713,10 +1739,14 @@ fn injected_crash_before_commit_leaves_no_trace() {
     }
     let mut store = env.open();
     assert_eq!(store.task(&id).unwrap().state, State::ReviewReady);
-    assert_eq!(meters(&store).thirst, 7000);
-    for table in ["rewards", "acceptances", "request_results"] {
+    assert_eq!(meters(&store).thirst, 9000);
+    for table in ["rewards", "acceptances", "demo_xp_rewards"] {
         assert_eq!(env.count(&format!("SELECT count(*) FROM {table}")), 0);
     }
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE method = 'task.accept_artifact'"),
+        0
+    );
     let out = accept(&mut store, &id, &digest, "crash", Some("ok")).unwrap();
     assert!(!out.duplicate);
     assert_eq!(meters(&store).thirst, 9000);
@@ -1749,7 +1779,7 @@ fn injected_crash_after_commit_keeps_single_reward() {
     assert!(!again.duplicate);
     assert_eq!(again.receipt.request_id, "crash");
     assert_eq!(meters(&store).thirst, 9000);
-    assert_eq!(env.count("SELECT count(*) FROM rewards"), 1);
+    assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 1);
 }
 
 #[test]
@@ -1958,7 +1988,7 @@ fn concurrent_accepts_reward_once() {
     assert_eq!(outcomes.iter().filter(|o| !o.duplicate).count(), 1);
     assert!(outcomes.windows(2).all(|w| w[0].receipt == w[1].receipt));
     assert_eq!(meters(&env.open()).hunger, 9000);
-    assert_eq!(env.count("SELECT count(*) FROM rewards"), 1);
+    assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 1);
 }
 
 /// Builds the largest draft the store accepts: JSON-hostile instructions (quotes and control
@@ -1983,6 +2013,7 @@ fn max_input(env: &Env) -> TaskInput {
 
 /// A maximal draft carried to review with a maximal artifact.
 fn max_review(store: &mut Store, env: &Env) -> (String, String) {
+    make_ready(store, env);
     let t = store.create_task(&max_input(env)).unwrap();
     let p = store.preflight(&t.task_id, 1).unwrap();
     let s = sup();
@@ -1993,7 +2024,7 @@ fn max_review(store: &mut Store, env: &Env) -> (String, String) {
     store
         .supervisor_step(&t.task_id, s, State::Running, State::Verifying)
         .unwrap();
-    let artifact = "\u{2}".repeat((MAX_ARTIFACT_JSON_BYTES - 2) / 6);
+    let artifact = "\"".repeat((MAX_ARTIFACT_JSON_BYTES - 2) / 2);
     match store
         .seal_review(&t.task_id, s, &artifact, Verification::NotVerified, true)
         .unwrap()
@@ -2042,7 +2073,7 @@ fn draft_budget_is_json_encoded_size() {
 fn maximal_tasks_can_always_be_read_reviewed_and_released() {
     let env = Env::new();
     let mut store = env.open();
-    let reason = "\u{1}".repeat(MAX_OVERRIDE_REASON_BYTES);
+    let reason = "\"".repeat(MAX_OVERRIDE_REASON_BYTES);
     // Ten accepted maximal tasks with maximal receipts fill `recent`.
     for i in 0..RECENT_TASKS {
         let (id, digest) = max_review(&mut store, &env);
@@ -2080,9 +2111,9 @@ fn maximal_tasks_can_always_be_read_reviewed_and_released() {
 fn history_pages_stop_at_the_byte_budget() {
     let env = Env::new();
     let mut store = env.open();
-    let reason = "\u{1}".repeat(MAX_OVERRIDE_REASON_BYTES);
+    let reason = "\"".repeat(MAX_OVERRIDE_REASON_BYTES);
     let mut accepted = Vec::new();
-    for i in 0..14 {
+    for i in 0..40 {
         let (id, digest) = reviewed(&mut store, &env, Category::Thirst, Verification::Failed);
         accept(
             &mut store,
@@ -2130,3 +2161,6 @@ fn json_prefix_matches_serde_encoding() {
         }
     }
 }
+
+#[path = "care_tests.rs"]
+mod care_cases;

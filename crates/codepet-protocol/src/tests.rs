@@ -96,6 +96,9 @@ fn every_method_parses_and_round_trips() {
         "history.list",
         "settings.update",
         "pet.pause",
+        "pet.care",
+        "pet.sleep",
+        "pet.wake",
     ];
     assert_eq!(Method::ALL.len(), names.len());
     for name in names {
@@ -737,4 +740,41 @@ fn end_to_end_request_to_params() {
         .to_frame()
         .unwrap()
         .starts_with("{\"v\":1,\"id\":\"acc-1\",\"ok\":true"));
+}
+
+#[test]
+fn care_sleep_and_wake_have_strict_params() {
+    for action in ["food", "water", "play", "wash", "bathroom", "routine"] {
+        let p: PetCareParams = parse_params(json!({"action": action})).unwrap();
+        assert_eq!(p.action, action);
+        assert_eq!(serde_json::to_value(p).unwrap(), json!({"action": action}));
+    }
+    for params in [
+        json!({}),
+        json!({"action": "sleep"}),
+        json!({"action": "Food"}),
+        json!({"action": ""}),
+        json!({"action": "food", "amount": 100}),
+        json!({"action": "food", "request_id": "injected"}),
+        json!({"action": null}),
+        json!({"action": ["food", "water"]}),
+        json!({"action": "f".repeat(MAX_FRAME_BYTES)}),
+    ] {
+        assert_eq!(
+            parse_params::<PetCareParams>(params).unwrap_err().code,
+            ErrorCode::InvalidParams
+        );
+    }
+    for method in [Method::PetSleep, Method::PetWake] {
+        assert!(method.is_mutating());
+        assert!(method.is_implemented());
+        let request = req(&format!(
+            r#"{{"v":1,"id":"rest-1","method":"{method}","params":{{}}}}"#
+        ))
+        .unwrap();
+        let _: EmptyParams = parse_params(request.params).unwrap();
+    }
+    assert!(parse_params::<PetSleepParams>(json!({"duration_ms": 1})).is_err());
+    assert!(parse_params::<PetWakeParams>(json!({"force": true})).is_err());
+    assert!(parse_params::<PetCareParams>(Value::Null).is_err());
 }
