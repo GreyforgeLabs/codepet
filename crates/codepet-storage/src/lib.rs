@@ -23,6 +23,8 @@ mod sys;
 
 pub use bar_export::{BAR_SCHEMA, MAX_BAR_STATE_BYTES, MAX_READINESS_REASONS, MAX_REASON_BYTES};
 pub use care::{BATHROOM_LIMIT, DEMO_XP, EXECUTION_LIMIT_MS, SESSION_LIMIT, SLEEP_MS};
+/// Lifecycle enums used by the life API, re-exported for callers of `adopt`/`set_rules`.
+pub use codepet_core::lifecycle::{Mode, Pace};
 pub use life::{
     lifecycle_rules_json, lifecycle_rules_sha256, AdoptRequest, Leniency, MAX_MEMORIAL_PAGE,
 };
