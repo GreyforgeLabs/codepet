@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Regression tests for verify.py: corruption must fail even under -O.
+
+Each case corrupts a temporary copy of the catalog, never the checked-in files.
+Run from the repository root: python3 -I docs/art-library/test_verify.py
+"""
+
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+try:
+    import PIL  # noqa: F401
+except ImportError:  # the default verifier needs only the stdlib
+    HAVE_PILLOW = False
+else:
+    HAVE_PILLOW = True
+
+CATALOG = Path(__file__).resolve().parent
+# Plain, -O, -OO and the environment form that the README's command inherits.
+MODES = (
+    ("plain", ["-I"], {}),
+    ("-O", ["-I", "-O"], {}),
+    ("-OO", ["-I", "-OO"], {}),
+    ("PYTHONOPTIMIZE", [], {"PYTHONOPTIMIZE": "2"}),
+)
+
+
+class VerifyCorruptionTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix="codepet-art-verify-")
+        cls.root = Path(cls.temp.name) / "art-library"
+        shutil.copytree(CATALOG, cls.root, ignore=shutil.ignore_patterns("__pycache__"))
+        cls.manifest_text = (cls.root / "manifest.json").read_text(encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def tearDown(self):
+        (self.root / "manifest.json").write_text(self.manifest_text, encoding="utf-8")
+        for path in self.restore:
+            path.unlink(missing_ok=True)
+            shutil.copy2(CATALOG / path.relative_to(self.root), path)
+        for path in self.remove:
+            path.unlink(missing_ok=True)
+
+    def setUp(self):
+        self.restore = []
+        self.remove = []
+
+    def run_verify(self, flags, extra_env, args=()):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
+        env.update(extra_env)
+        return subprocess.run(
+            [sys.executable, *flags, str(self.root / "verify.py"), *args],
+            cwd=self.root.parent,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+
+    def edit_manifest(self, change):
+        manifest = json.loads(self.manifest_text)
+        change(manifest)
+        (self.root / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    def assert_fails_in_every_mode(self, expected, args=()):
+        for name, flags, env in MODES:
+            with self.subTest(mode=name):
+                result = self.run_verify(flags, env, args)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertNotIn("PASS", result.stdout)
+                self.assertIn(expected, result.stderr)
+
+    def test_clean_copy_passes_in_every_mode(self):
+        for name, flags, env in MODES:
+            with self.subTest(mode=name):
+                result = self.run_verify(flags, env)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PASS: 15 source PNGs", result.stdout)
+
+    def test_zeroed_sha256_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][0].update(sha256="0" * 64))
+        self.assert_fails_in_every_mode("SHA-256 does not match")
+
+    def test_flipped_pixel_byte_fails_under_optimization(self):
+        manifest = json.loads(self.manifest_text)
+        path = self.root / manifest["assets"][3]["relative_path"]
+        self.restore.append(path)
+        data = bytearray(path.read_bytes())
+        data[len(data) // 2] ^= 0xFF
+        path.write_bytes(bytes(data))
+        self.assert_fails_in_every_mode("SHA-256 does not match")
+
+    def test_missing_png_fails_without_traceback(self):
+        manifest = json.loads(self.manifest_text)
+        path = self.root / manifest["assets"][5]["relative_path"]
+        self.restore.append(path)
+        path.unlink()
+        for name, flags, env in MODES:
+            with self.subTest(mode=name):
+                result = self.run_verify(flags, env)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("unreadable", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_runtime_ready_true_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][1].update(runtime_ready=True))
+        self.assert_fails_in_every_mode("runtime_ready must be false")
+
+    def test_escaping_path_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][2].update(relative_path="../outside.png"))
+        self.assert_fails_in_every_mode("path must be relative")
+
+    def test_edit_step_without_source_hash_fails_under_optimization(self):
+        def drop(manifest):
+            cat = next(a for a in manifest["assets"] if a["species"] == "cat")
+            del next(s for s in cat["provenance"] if s["kind"] == "imagegen_edit")[
+                "edit_source_sha256"
+            ]
+
+        self.edit_manifest(drop)
+        self.assert_fails_in_every_mode("edit_source_sha256 must be")
+
+    def test_dangling_edit_source_path_fails_under_optimization(self):
+        def dangle(manifest):
+            axolotl = next(a for a in manifest["assets"] if a["species"] == "axolotl")
+            step = next(s for s in axolotl["provenance"] if s["kind"] == "imagegen_edit")
+            step["edit_source"] = "source/axolotl/v1/source-sheet.png"
+
+        self.edit_manifest(dangle)
+        self.assert_fails_in_every_mode("does not exist in the catalog")
+
+    def test_unlisted_png_fails_under_optimization(self):
+        stray = self.root / "source" / "stray.png"
+        self.remove.append(stray)
+        shutil.copy2(self.root / json.loads(self.manifest_text)["assets"][0]["relative_path"], stray)
+        self.assert_fails_in_every_mode("differ from the manifest")
+
+
+    def test_uppercase_or_other_binary_fails_under_optimization(self):
+        source = self.root / json.loads(self.manifest_text)["assets"][0]["relative_path"]
+        for name in ("STRAY.PNG", "stray.webp", "notes.txt"):
+            with self.subTest(file=name):
+                stray = self.root / "source" / name
+                self.remove.append(stray)
+                shutil.copy2(source, stray)
+                self.assert_fails_in_every_mode("unlisted=")
+                stray.unlink()
+
+    def test_mode_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][4].update(mode="RGB"))
+        self.assert_fails_in_every_mode("IHDR colour type 6 does not match mode 'RGB'")
+
+    def test_grid_roles_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][6]["intended_grid"]["roles"].pop())
+        self.assert_fails_in_every_mode("grid roles, columns x rows and pose_count disagree")
+
+    def test_intended_pose_total_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m.update(intended_pose_count=179))
+        self.assert_fails_in_every_mode("not intended_pose_count")
+
+    def test_species_path_mismatch_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][7].update(species="ferret"))
+        self.assert_fails_in_every_mode("path must be source/<species>/<version>/<file>")
+
+    @unittest.skipUnless(HAVE_PILLOW, "the optional --alpha recheck needs Pillow")
+    def test_alpha_recheck_passes_and_catches_wrong_statistics(self):
+        result = self.run_verify(["-I", "-O"], {}, ["--alpha"])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("alpha statistics recomputed", result.stdout)
+        self.edit_manifest(lambda m: m["assets"][0]["alpha"].update(fully_opaque_pixels=1))
+        self.assert_fails_in_every_mode("alpha statistics", args=["--alpha"])
+
+    def test_missing_licence_statement_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m.pop("license"))
+        self.assert_fails_in_every_mode("manifest license must state")
+
+    def test_inconsistent_tool_label_fails_under_optimization(self):
+        self.edit_manifest(
+            lambda m: m["assets"][5]["provenance"][0].update(tool="built-in image_gen__imagegen")
+        )
+        self.assert_fails_in_every_mode("tool must be 'built-in image_gen.imagegen'")
+
+    def test_missing_model_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][8].pop("model"))
+        self.assert_fails_in_every_mode("model must be 'gpt-image'")
+
+    def test_wrong_c2pa_manifest_id_fails_under_optimization(self):
+        self.edit_manifest(
+            lambda m: m["assets"][9]["c2pa"].update(
+                manifest_id="urn:c2pa:00000000-0000-0000-0000-000000000000"
+            )
+        )
+        self.assert_fails_in_every_mode("c2pa manifest_id")
+
+    def test_old_qa_key_is_rejected_under_optimization(self):
+        def rename(manifest):
+            asset = manifest["assets"][10]
+            asset["visual_qa_from_generator"] = asset.pop("visual_qa_notes")
+
+        self.edit_manifest(rename)
+        self.assert_fails_in_every_mode("visual_qa_notes are required")
+
+    def test_undisclosed_alpha_ceiling_fails_under_optimization(self):
+        def strip_note(manifest):
+            dog = next(a for a in manifest["assets"] if a["species"] == "dog")
+            dog["visual_qa_notes"] = [
+                n for n in dog["visual_qa_notes"] if "maximum alpha" not in n.lower()
+            ]
+
+        self.edit_manifest(strip_note)
+        self.assert_fails_in_every_mode("QA notes must disclose maximum alpha 254")
+
+    def test_unknown_argument_is_rejected(self):
+        result = self.run_verify(["-I"], {}, ["--skip-hashes"])
+        self.assertEqual(result.returncode, 2)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

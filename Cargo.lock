@@ -41,7 +41,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "codepet"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "codepet-core",
  "codepet-protocol",
@@ -52,11 +52,14 @@ dependencies = [
 
 [[package]]
 name = "codepet-core"
-version = "0.1.0"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "codepet-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -64,10 +67,12 @@ dependencies = [
 
 [[package]]
 name = "codepet-storage"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "codepet-core",
+ "codepet-protocol",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

@@ -46,8 +46,10 @@ fn every_error_code_serializes_screaming_snake() {
         "STORAGE_UNAVAILABLE",
         "SCHEMA_UNSUPPORTED",
         "INTERNAL",
+        "NO_ACTIVE_PET",
     ];
     assert_eq!(ErrorCode::ALL.len(), expected.len());
+    assert_eq!(ErrorCode::ALL.len(), 29);
     for (code, name) in ErrorCode::ALL.into_iter().zip(expected) {
         assert_eq!(serde_json::to_value(code).unwrap(), json!(name));
         assert_eq!(code.as_str(), name);
@@ -96,8 +98,20 @@ fn every_method_parses_and_round_trips() {
         "history.list",
         "settings.update",
         "pet.pause",
+        "pet.care",
+        "pet.sleep",
+        "pet.wake",
+        "pet.select",
+        "pet.adopt",
+        "pet.rules",
+        "pet.configure_life",
+        "pet.retire",
+        "pet.events_seen",
+        "pet.memorial",
+        "lifecycle.rules",
     ];
     assert_eq!(Method::ALL.len(), names.len());
+    assert_eq!(Method::ALL.len(), 31);
     for name in names {
         let m = Method::parse(name).unwrap();
         assert_eq!(m.as_str(), name);
@@ -111,15 +125,17 @@ fn every_method_parses_and_round_trips() {
 
 #[test]
 fn mutating_and_implemented_classification() {
+    // state.get may settle a persisted nap or checkpoint live execution, so it is not a read.
     let reads = [
         Method::Hello,
-        Method::StateGet,
         Method::EventsSubscribe,
         Method::ProvidersInspect,
         Method::TaskGet,
         Method::TaskReview,
         Method::TaskLogs,
         Method::HistoryList,
+        Method::PetMemorial,
+        Method::LifecycleRules,
     ];
     for m in Method::ALL {
         assert_eq!(m.is_mutating(), !reads.contains(&m), "{m}");
@@ -132,6 +148,7 @@ fn mutating_and_implemented_classification() {
         .is_ok());
     }
     assert!(Method::TaskRecover.is_implemented());
+    assert!(Method::StateGet.is_mutating());
     assert!(Method::TaskAcceptArtifact.is_mutating());
     assert!(Method::TaskPreflight.is_mutating());
 }
@@ -737,4 +754,498 @@ fn end_to_end_request_to_params() {
         .to_frame()
         .unwrap()
         .starts_with("{\"v\":1,\"id\":\"acc-1\",\"ok\":true"));
+}
+
+#[test]
+fn care_sleep_and_wake_have_strict_params() {
+    for action in ["food", "water", "play", "wash", "bathroom", "routine"] {
+        let p: PetCareParams = parse_params(json!({"action": action})).unwrap();
+        assert_eq!(p.action, action);
+        assert_eq!(serde_json::to_value(p).unwrap(), json!({"action": action}));
+    }
+    for params in [
+        json!({}),
+        json!({"action": "sleep"}),
+        json!({"action": "Food"}),
+        json!({"action": ""}),
+        json!({"action": "food", "amount": 100}),
+        json!({"action": "food", "request_id": "injected"}),
+        json!({"action": null}),
+        json!({"action": ["food", "water"]}),
+        json!({"action": "f".repeat(MAX_FRAME_BYTES)}),
+    ] {
+        assert_eq!(
+            parse_params::<PetCareParams>(params).unwrap_err().code,
+            ErrorCode::InvalidParams
+        );
+    }
+    for method in [Method::PetSleep, Method::PetWake] {
+        assert!(method.is_mutating());
+        assert!(method.is_implemented());
+        let request = req(&format!(
+            r#"{{"v":1,"id":"rest-1","method":"{method}","params":{{}}}}"#
+        ))
+        .unwrap();
+        let _: EmptyParams = parse_params(request.params).unwrap();
+    }
+    assert!(parse_params::<PetSleepParams>(json!({"duration_ms": 1})).is_err());
+    assert!(parse_params::<PetWakeParams>(json!({"force": true})).is_err());
+    assert!(parse_params::<PetCareParams>(Value::Null).is_err());
+}
+
+// ---- v0.2 lifecycle protocol ----
+
+const NEW_METHODS: [(&str, bool); 8] = [
+    ("pet.select", true),
+    ("pet.adopt", true),
+    ("pet.rules", true),
+    ("pet.configure_life", true),
+    ("pet.retire", true),
+    ("pet.events_seen", true),
+    ("pet.memorial", false),
+    ("lifecycle.rules", false),
+];
+
+#[test]
+fn protocol_version_stays_one_and_changes_are_additive() {
+    assert_eq!(PROTOCOL_VERSION, 1);
+    // The 23 v0.1 methods and 28 v0.1 codes keep their positions; new entries are appended.
+    assert_eq!(Method::ALL[..23].last(), Some(&Method::PetWake));
+    assert_eq!(Method::ALL[0], Method::Hello);
+    assert_eq!(ErrorCode::ALL[27], ErrorCode::Internal);
+    assert_eq!(ErrorCode::ALL[28], ErrorCode::NoActivePet);
+    for (i, (name, _)) in NEW_METHODS.iter().enumerate() {
+        assert_eq!(Method::ALL[23 + i].as_str(), *name);
+    }
+    let mut seen = std::collections::HashSet::new();
+    assert!(Method::ALL.iter().all(|m| seen.insert(m.as_str())));
+    let mut seen = std::collections::HashSet::new();
+    assert!(ErrorCode::ALL.iter().all(|c| seen.insert(c.as_str())));
+}
+
+#[test]
+fn is_mutating_table_for_every_method() {
+    // The full classification, written out so any change is a visible test edit.
+    let table = [
+        ("hello", false),
+        ("state.get", true),
+        ("events.subscribe", false),
+        ("providers.inspect", false),
+        ("task.create", true),
+        ("task.get", false),
+        ("task.update", true),
+        ("task.preflight", true),
+        ("task.start", true),
+        ("task.cancel", true),
+        ("task.review", false),
+        ("task.logs", false),
+        ("task.apply", true),
+        ("task.accept_artifact", true),
+        ("task.discard", true),
+        ("task.rollback", true),
+        ("task.recover", true),
+        ("history.list", false),
+        ("settings.update", true),
+        ("pet.pause", true),
+        ("pet.care", true),
+        ("pet.sleep", true),
+        ("pet.wake", true),
+        ("pet.select", true),
+        ("pet.adopt", true),
+        ("pet.rules", true),
+        ("pet.configure_life", true),
+        ("pet.retire", true),
+        ("pet.events_seen", true),
+        ("pet.memorial", false),
+        ("lifecycle.rules", false),
+    ];
+    assert_eq!(table.len(), Method::ALL.len());
+    for (m, (name, mutating)) in Method::ALL.into_iter().zip(table) {
+        assert_eq!(m.as_str(), name);
+        assert_eq!(m.is_mutating(), mutating, "{name}");
+    }
+}
+
+#[test]
+fn new_methods_parse_and_are_implemented() {
+    for (name, mutating) in NEW_METHODS {
+        let m = Method::parse(name).unwrap();
+        assert_eq!(m.is_mutating(), mutating, "{name}");
+        assert!(m.is_implemented(), "{name}");
+        let r = req(&format!(
+            r#"{{"v":1,"id":"life-1","method":"{name}","params":{{}}}}"#
+        ))
+        .unwrap();
+        assert_eq!(r.method, m);
+        assert_eq!(
+            r.to_frame().unwrap(),
+            format!("{{\"v\":1,\"id\":\"life-1\",\"method\":\"{name}\",\"params\":{{}}}}\n")
+        );
+    }
+    for near in [
+        "pet.Select",
+        "pet.configure-life",
+        "pet.memorials",
+        "lifecycle.rule",
+        "life.rules",
+    ] {
+        assert_eq!(
+            code_of(&format!(r#"{{"v":1,"id":"a","method":"{near}"}}"#)),
+            (ErrorCode::UnknownMethod, Some("a".into())),
+            "{near}"
+        );
+    }
+}
+
+#[test]
+fn no_active_pet_code_shape() {
+    let c = ErrorCode::NoActivePet;
+    assert_eq!(c.as_str(), "NO_ACTIVE_PET");
+    assert!(!c.retryable());
+    assert_eq!(ErrorCode::parse("NO_ACTIVE_PET"), Some(c));
+    let r = Response::err(Some("care-1".into()), c, "No companion is living.");
+    assert_eq!(
+        serde_json::to_value(&r).unwrap(),
+        json!({"v":1,"id":"care-1","ok":false,"error":{"code":"NO_ACTIVE_PET","message":"No companion is living.","retryable":false}})
+    );
+    let back: Response = serde_json::from_str(&r.to_frame().unwrap()).unwrap();
+    assert_eq!(back, r);
+}
+
+fn invalid<T: serde::de::DeserializeOwned + Validate + std::fmt::Debug>(v: Value) -> String {
+    let e = parse_params::<T>(v).unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidParams);
+    assert!(e.message.len() < 300, "{}", e.message);
+    e.message
+}
+
+#[test]
+fn pet_ids_are_the_fifteen_companions() {
+    assert_eq!(PET_IDS.len(), 15);
+    assert_eq!(PET_IDS[0], "cat");
+    let mut seen = std::collections::HashSet::new();
+    for id in PET_IDS {
+        assert!(seen.insert(id), "{id}");
+        assert!(is_pet_id(id));
+        assert!(
+            id.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'),
+            "{id}"
+        );
+    }
+    for bad in [
+        "",
+        "Cat",
+        "red-panda",
+        "goldfish-in-jar",
+        "ginger",
+        " cat",
+        "cat ",
+    ] {
+        assert!(!is_pet_id(bad), "{bad}");
+    }
+}
+
+#[test]
+fn pet_select_params() {
+    for id in PET_IDS {
+        let p: PetSelectParams = parse_params(json!({"life_id":"life-1","pet_id":id})).unwrap();
+        assert_eq!(p.pet_id, id);
+        assert_eq!(
+            serde_json::to_value(&p).unwrap(),
+            json!({"life_id":"life-1","pet_id":id})
+        );
+    }
+    assert!(
+        invalid::<PetSelectParams>(json!({"life_id":"life-1","pet_id":"dragon"}))
+            .contains("pet_id")
+    );
+    assert!(
+        invalid::<PetSelectParams>(json!({"life_id":"life-1","pet_id":"red-panda"}))
+            .contains("pet_id")
+    );
+    assert!(invalid::<PetSelectParams>(json!({"life_id":"","pet_id":"cat"})).contains("life_id"));
+    invalid::<PetSelectParams>(json!({"life_id":"l".repeat(129),"pet_id":"cat"}));
+    invalid::<PetSelectParams>(json!({"pet_id":"cat"}));
+    invalid::<PetSelectParams>(json!({"life_id":"life-1"}));
+    invalid::<PetSelectParams>(json!({"life_id":"life-1","pet_id":"cat","stage":2}));
+    invalid::<PetSelectParams>(json!({"life_id":"life-1","pet_id":null}));
+    invalid::<PetSelectParams>(json!({"life_id":7,"pet_id":"cat"}));
+    let huge = "q".repeat(100_000);
+    invalid::<PetSelectParams>(json!({"life_id":"life-1","pet_id":huge}));
+}
+
+#[test]
+fn pet_adopt_params() {
+    let p: PetAdoptParams = parse_params(json!({"species":"axolotl","mode":"permadeath",
+        "acknowledge_rules":true}))
+    .unwrap();
+    assert_eq!(p.name, None);
+    assert_eq!(p.pace, None);
+    assert_eq!(p.pace_or_default(), "steady");
+    let full = json!({"species":"red_panda","name":"Maple","mode":"gentle","pace":"playtest",
+        "acknowledge_rules":true});
+    let p: PetAdoptParams = parse_params(full.clone()).unwrap();
+    assert_eq!(p.pace_or_default(), "playtest");
+    assert_eq!(serde_json::to_value(&p).unwrap(), full);
+    // A missing acknowledgement is well-formed: storage answers ACKNOWLEDGEMENT_REQUIRED.
+    let p: PetAdoptParams = parse_params(json!({"species":"cat","mode":"permadeath",
+        "acknowledge_rules":false}))
+    .unwrap();
+    assert!(!p.acknowledge_rules);
+    // Explicit nulls mean "use the default".
+    let p: PetAdoptParams = parse_params(json!({"species":"cat","name":null,"pace":null,
+        "mode":"gentle","acknowledge_rules":true}))
+    .unwrap();
+    assert_eq!((p.name, p.pace), (None, None));
+    // A name may carry spaces and non-ASCII text; core normalizes it.
+    assert!(
+        parse_params::<PetAdoptParams>(json!({"species":"cat","name":"  Señor Ñoño ",
+        "mode":"gentle","acknowledge_rules":true}))
+        .is_ok()
+    );
+    let base = json!({"species":"cat","mode":"permadeath","acknowledge_rules":true});
+    let with = |k: &str, v: Value| {
+        let mut o = base.clone();
+        o[k] = v;
+        o
+    };
+    assert!(invalid::<PetAdoptParams>(with("species", json!("dragon"))).contains("species"));
+    assert!(invalid::<PetAdoptParams>(with("species", json!("Cat"))).contains("species"));
+    assert!(invalid::<PetAdoptParams>(with("mode", json!("hardcore"))).contains("mode"));
+    assert!(invalid::<PetAdoptParams>(with("mode", json!("Permadeath"))).contains("mode"));
+    assert!(invalid::<PetAdoptParams>(with("pace", json!("fast"))).contains("pace"));
+    assert!(invalid::<PetAdoptParams>(with("name", json!(""))).contains("name"));
+    assert!(invalid::<PetAdoptParams>(with("name", json!("   "))).contains("name"));
+    assert!(invalid::<PetAdoptParams>(with("name", json!("a\u{0}b"))).contains("name"));
+    invalid::<PetAdoptParams>(with(
+        "name",
+        json!("n".repeat(MAX_PET_NAME_INPUT_BYTES + 1)),
+    ));
+    assert!(parse_params::<PetAdoptParams>(with(
+        "name",
+        json!("n".repeat(MAX_PET_NAME_INPUT_BYTES))
+    ))
+    .is_ok());
+    invalid::<PetAdoptParams>(with("acknowledge_rules", json!("yes")));
+    invalid::<PetAdoptParams>(with("ordinal", json!(2)));
+    invalid::<PetAdoptParams>(with("xp", json!(400)));
+    invalid::<PetAdoptParams>(json!({"species":"cat","acknowledge_rules":true}));
+    invalid::<PetAdoptParams>(json!({"species":"cat","mode":"gentle"}));
+    invalid::<PetAdoptParams>(json!({"mode":"gentle","acknowledge_rules":true}));
+}
+
+#[test]
+fn pet_rules_params() {
+    for mode in LIFE_MODES {
+        for ack in [true, false] {
+            let p: PetRulesParams =
+                parse_params(json!({"life_id":"life-1","mode":mode,"acknowledge_rules":ack}))
+                    .unwrap();
+            assert_eq!((p.mode.as_str(), p.acknowledge_rules), (mode, ack));
+        }
+    }
+    assert!(
+        invalid::<PetRulesParams>(json!({"life_id":"life-1","mode":"standard",
+        "acknowledge_rules":true}))
+        .contains("mode")
+    );
+    invalid::<PetRulesParams>(json!({"life_id":"","mode":"gentle","acknowledge_rules":true}));
+    invalid::<PetRulesParams>(json!({"life_id":"life-1","acknowledge_rules":true}));
+    invalid::<PetRulesParams>(json!({"life_id":"life-1","mode":"gentle"}));
+    invalid::<PetRulesParams>(
+        json!({"life_id":"life-1","mode":"gentle","acknowledge_rules":true,
+        "pace":"playtest"}),
+    );
+}
+
+#[test]
+fn pet_configure_life_params() {
+    let ok = |v| parse_params::<PetConfigureLifeParams>(v);
+    let p = ok(json!({"life_id":"life-1","expected_revision":4,"grace_hours":12})).unwrap();
+    assert_eq!(
+        (p.grace_hours, p.critical_after_hours, p.decay_percent),
+        (Some(12), None, None)
+    );
+    let p = ok(
+        json!({"life_id":"life-1","expected_revision":0,"grace_hours":48,
+        "critical_after_hours":24,"decay_percent":25}),
+    )
+    .unwrap();
+    assert_eq!(p.expected_revision, 0);
+    for v in [
+        json!({"grace_hours":1}),
+        json!({"critical_after_hours":1}),
+        json!({"decay_percent":100}),
+        json!({"decay_percent":25}),
+    ] {
+        let mut o = json!({"life_id":"life-1","expected_revision":1});
+        o.as_object_mut()
+            .unwrap()
+            .extend(v.as_object().unwrap().clone());
+        assert!(ok(o.clone()).is_ok(), "{o}");
+    }
+    let bad = |extra: Value| {
+        let mut o = json!({"life_id":"life-1","expected_revision":1});
+        o.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        invalid::<PetConfigureLifeParams>(o)
+    };
+    assert!(bad(json!({})).contains("at least one"));
+    assert!(bad(json!({"grace_hours":null,"decay_percent":null})).contains("at least one"));
+    assert!(bad(json!({"grace_hours":0})).contains("grace_hours"));
+    assert!(bad(json!({"grace_hours":49})).contains("grace_hours"));
+    assert!(bad(json!({"critical_after_hours":0})).contains("critical_after_hours"));
+    assert!(bad(json!({"critical_after_hours":25})).contains("critical_after_hours"));
+    assert!(bad(json!({"decay_percent":24})).contains("decay_percent"));
+    assert!(bad(json!({"decay_percent":101})).contains("decay_percent"));
+    assert!(bad(json!({"decay_percent":0})).contains("decay_percent"));
+    // Out of the wire types entirely.
+    bad(json!({"decay_percent":256}));
+    bad(json!({"grace_hours":-1}));
+    bad(json!({"grace_hours":70000}));
+    bad(json!({"grace_hours":1.5}));
+    // Raw millisecond fields and strictness knobs are not part of the request.
+    bad(json!({"grace_ms":3_600_000}));
+    bad(json!({"decay_per_hour":[1,1,1,1]}));
+    invalid::<PetConfigureLifeParams>(json!({"life_id":"life-1","grace_hours":12}));
+    invalid::<PetConfigureLifeParams>(json!({"life_id":"life-1","expected_revision":-1,
+        "grace_hours":12}));
+    invalid::<PetConfigureLifeParams>(json!({"expected_revision":1,"grace_hours":12}));
+    assert_eq!(MAX_GRACE_HOURS as i64 * 3_600_000, 172_800_000);
+    assert_eq!(MAX_CRITICAL_AFTER_HOURS as i64 * 3_600_000, 86_400_000);
+}
+
+#[test]
+fn pet_retire_params() {
+    let p: PetRetireParams =
+        parse_params(json!({"life_id":"life-1","confirm_name":"Ginger"})).unwrap();
+    assert_eq!(p.confirm_name, "Ginger");
+    // Name matching (case, whitespace) is storage's call; protocol only bounds the input.
+    assert!(
+        parse_params::<PetRetireParams>(json!({"life_id":"life-1","confirm_name":"ginger "}))
+            .is_ok()
+    );
+    assert!(
+        invalid::<PetRetireParams>(json!({"life_id":"life-1","confirm_name":""}))
+            .contains("confirm_name")
+    );
+    invalid::<PetRetireParams>(json!({"life_id":"life-1","confirm_name":" \t "}));
+    invalid::<PetRetireParams>(json!({"life_id":"life-1","confirm_name":"G\u{0}"}));
+    invalid::<PetRetireParams>(
+        json!({"life_id":"life-1","confirm_name":"x".repeat(MAX_PET_NAME_INPUT_BYTES + 1)}),
+    );
+    invalid::<PetRetireParams>(json!({"life_id":"life-1"}));
+    invalid::<PetRetireParams>(json!({"confirm_name":"Ginger"}));
+    invalid::<PetRetireParams>(json!({"life_id":"life-1","confirm_name":"Ginger","force":true}));
+}
+
+#[test]
+fn pet_events_seen_params() {
+    for seq in [0, 1, 88, i64::MAX] {
+        let p: PetEventsSeenParams =
+            parse_params(json!({"life_id":"life-1","through_seq":seq})).unwrap();
+        assert_eq!(p.through_seq, seq);
+    }
+    assert!(
+        invalid::<PetEventsSeenParams>(json!({"life_id":"life-1","through_seq":-1}))
+            .contains("through_seq")
+    );
+    invalid::<PetEventsSeenParams>(json!({"life_id":"life-1","through_seq":"88"}));
+    invalid::<PetEventsSeenParams>(json!({"life_id":"life-1","through_seq":u64::MAX}));
+    invalid::<PetEventsSeenParams>(json!({"life_id":"life-1"}));
+    invalid::<PetEventsSeenParams>(json!({"through_seq":1}));
+    invalid::<PetEventsSeenParams>(json!({"life_id":"life-1","through_seq":1,"seen_at_ms":0}));
+}
+
+#[test]
+fn pet_memorial_params() {
+    let p: PetMemorialParams = parse_params(json!({})).unwrap();
+    assert_eq!(p, PetMemorialParams::default());
+    assert_eq!(p.limit_or_default(), MAX_MEMORIAL_LIMIT);
+    assert_eq!(MAX_MEMORIAL_LIMIT, 20);
+    let p: PetMemorialParams = parse_params(json!({"before_ordinal":7,"limit":1})).unwrap();
+    assert_eq!((p.before_ordinal, p.limit_or_default()), (Some(7), 1));
+    assert!(parse_params::<PetMemorialParams>(json!({"limit":20})).is_ok());
+    assert!(parse_params::<PetMemorialParams>(json!({"limit":null,"before_ordinal":null})).is_ok());
+    assert!(invalid::<PetMemorialParams>(json!({"limit":0})).contains("limit"));
+    assert!(invalid::<PetMemorialParams>(json!({"limit":21})).contains("limit"));
+    invalid::<PetMemorialParams>(json!({"before_ordinal":-1}));
+    invalid::<PetMemorialParams>(json!({"before_ordinal":u64::from(u32::MAX) + 1}));
+    invalid::<PetMemorialParams>(json!({"life_id":"life-1"}));
+}
+
+#[test]
+fn lifecycle_rules_params_are_empty() {
+    let _: LifecycleRulesParams = parse_params(json!({})).unwrap();
+    invalid::<LifecycleRulesParams>(json!({"pace":"playtest"}));
+    invalid::<LifecycleRulesParams>(json!({"ruleset":"lifecycle-v1"}));
+}
+
+#[test]
+fn new_params_reject_non_objects_and_duplicates() {
+    for v in [json!([]), json!(null), json!("cat"), json!(1)] {
+        invalid::<PetSelectParams>(v.clone());
+        invalid::<PetAdoptParams>(v.clone());
+        invalid::<PetMemorialParams>(v);
+    }
+    let e = req(r#"{"v":1,"id":"a","method":"pet.select","params":{"life_id":"l","pet_id":"cat","pet_id":"dog"}}"#)
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidRequest);
+}
+
+#[test]
+fn lifecycle_requests_end_to_end() {
+    let cases = [
+        (
+            r#"{"v":1,"id":"sel-1","method":"pet.select","params":{"life_id":"life-1","pet_id":"owl"}}"#,
+            true,
+        ),
+        (
+            r#"{"v":1,"id":"adopt-1","method":"pet.adopt","params":{"species":"frog","mode":"permadeath","acknowledge_rules":true}}"#,
+            true,
+        ),
+        (
+            r#"{"v":1,"id":"rules-1","method":"pet.rules","params":{"life_id":"life-1","mode":"gentle","acknowledge_rules":true}}"#,
+            true,
+        ),
+        (
+            r#"{"v":1,"id":"cfg-1","method":"pet.configure_life","params":{"life_id":"life-1","expected_revision":3,"decay_percent":50}}"#,
+            true,
+        ),
+        (
+            r#"{"v":1,"id":"ret-1","method":"pet.retire","params":{"life_id":"life-1","confirm_name":"Ginger"}}"#,
+            true,
+        ),
+        (
+            r#"{"v":1,"id":"seen-1","method":"pet.events_seen","params":{"life_id":"life-1","through_seq":88}}"#,
+            true,
+        ),
+        (
+            r#"{"v":1,"id":"mem-1","method":"pet.memorial","params":{"limit":5}}"#,
+            false,
+        ),
+        (
+            r#"{"v":1,"id":"rules-2","method":"lifecycle.rules"}"#,
+            false,
+        ),
+    ];
+    for (line, mutating) in cases {
+        let mut cur = frames(format!("{line}\n").as_bytes());
+        let request = parse_request(&read_frame(&mut cur).unwrap().unwrap()).unwrap();
+        assert_eq!(request.method.is_mutating(), mutating, "{line}");
+        let p = request.params.clone();
+        let ok = match request.method {
+            Method::PetSelect => parse_params::<PetSelectParams>(p).is_ok(),
+            Method::PetAdopt => parse_params::<PetAdoptParams>(p).is_ok(),
+            Method::PetRules => parse_params::<PetRulesParams>(p).is_ok(),
+            Method::PetConfigureLife => parse_params::<PetConfigureLifeParams>(p).is_ok(),
+            Method::PetRetire => parse_params::<PetRetireParams>(p).is_ok(),
+            Method::PetEventsSeen => parse_params::<PetEventsSeenParams>(p).is_ok(),
+            Method::PetMemorial => parse_params::<PetMemorialParams>(p).is_ok(),
+            Method::LifecycleRules => parse_params::<LifecycleRulesParams>(p).is_ok(),
+            other => panic!("unexpected {other}"),
+        };
+        assert!(ok, "{line}");
+    }
 }

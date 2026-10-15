@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -13,11 +14,18 @@ ApplicationWindow {
     minimumHeight: 480
     visible: true
     title: "CodePet (preview, not connected)"
+    readonly property var views: ["home", "care", "tasks", "companion", "life"]
 
-    PreviewHost { id: previewHost }
+    PreviewHost {
+        id: previewHost
+        onCompanionRequested: panel.openCompanion()
+        onLifeRequested: panel.openLife()
+    }
 
     header: ToolBar {
+        implicitHeight: headerLayout.implicitHeight + 16
         ColumnLayout {
+            id: headerLayout
             anchors.fill: parent
             anchors.margins: 8
             Label {
@@ -37,8 +45,26 @@ ApplicationWindow {
                     Accessible.name: "Preview fixture"
                     onActivated: {
                         previewHost.fixture = currentText
-                        panel.view = "home"
+                        if (window.views.indexOf(panel.view) < 0)
+                            panel.view = "home"
                         panel.refresh()
+                    }
+                }
+            }
+            // Home · Care · Tasks · Companion · Life, as in the overlay's task window.
+            TabBar {
+                id: viewTabs
+                objectName: "viewTabs"
+                Layout.fillWidth: true
+                currentIndex: Math.max(0, window.views.indexOf(panel.view))
+                Repeater {
+                    model: ["Home", "Care", "Tasks", "Companion", "Life"]
+                    TabButton {
+                        required property string modelData
+                        required property int index
+                        text: modelData
+                        Accessible.name: modelData + " tab"
+                        onClicked: panel.view = window.views[index]
                     }
                 }
             }

@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell.Io
+import "BarState.js" as BarState
 
 // Quickshell host for the shared CodePet panel. Each request starts one short
 // `codepet rpc` process, writes one JSON request line to its stdin, and reads one
@@ -13,11 +14,32 @@ import Quickshell.Io
 //   SplitParser: splitMarker, read(data)
 // Closing stdin by setting stdinEnabled=false after write() follows existing local usage;
 // `codepet rpc` reads one newline-terminated frame and does not need EOF.
+//
+// Host contract additions for v0.2 (SPEC §12): `clientTag` prefixes request ids,
+// `presentationLocks` counts running presentation sequences (PetCare routines),
+// `openCompanion()` / `openLife()` ask the host to show those views. The passive
+// `bar-state.json` subset is merged by `applyBarState()`, which never issues RPC.
 QtObject {
     id: root
     property var snapshot: null
     property bool busy: false
     property string lastError: ""
+    // Request-id prefix so the overlay's ids are distinguishable from the bar's.
+    property string clientTag: "qs"
+    // Shared components increment this while a presentation sequence runs.
+    property int presentationLocks: 0
+    // Last newer-than-ever bar-state.json subset (see BarStateWatcher.qml).
+    property var lastBarState: null
+
+    // View requests from shared components; the host entry decides what to open.
+    signal companionRequested()
+    signal lifeRequested()
+    // Emitted after an authoritative state.get replaced the snapshot.
+    signal snapshotReplaced()
+    // Emitted by the UI that performed an acceptance (TaskReview), with the real
+    // `task.accept_artifact` result ({receipt, duplicate}), after its follow-up state.get.
+    // DesktopPet celebrates new growth from it (spec D11); nothing here issues RPC.
+    signal taskAccepted(var outcome)
     readonly property bool supervisorActive: liveSupervisors > 0
     property int liveSupervisors: 0
 
@@ -41,16 +63,52 @@ QtObject {
     }
     function newId() {
         root.seq += 1
-        return "qs-" + Date.now().toString(36) + "-" + root.seq
+        return root.clientTag + "-" + Date.now().toString(36) + "-" + root.seq
     }
     function clientError(id, code, message) {
         return { "v": 1, "id": id, "ok": false, "error": { "code": code, "message": message, "retryable": false } }
     }
+    function openCompanion() {
+        root.companionRequested()
+    }
+    function openLife() {
+        root.lifeRequested()
+    }
+    // Merges a parsed, strictly newer bar-state.json into the presentation snapshot.
+    // Pure data: never requests, so a file event can never launch Rust. A subset that
+    // arrives before the first state.get is kept and applied once a snapshot exists.
+    function applyBarState(bar) {
+        if (!bar || typeof bar.state_version !== "number")
+            return false
+        // Versions are ordered only within one database (db_id): a file from a
+        // restored, recreated or swapped database is taken, never ignored as "older".
+        if (root.lastBarState && BarState.sameFileDatabase(root.lastBarState, bar)
+                && bar.state_version <= root.lastBarState.state_version)
+            return false
+        root.lastBarState = bar
+        if (root.snapshot === null)
+            return false
+        if (BarState.replacesDatabase(root.snapshot, bar)) {
+            root.snapshot = BarState.merge(root.snapshot, bar, true)
+            return true
+        }
+        if (!BarState.isNewer(root.snapshot, bar))
+            return false
+        root.snapshot = BarState.merge(root.snapshot, bar)
+        return true
+    }
     // Completes the in-flight request exactly once.
     function finish(method, resp, callback) {
         root.busy = false
-        if (resp.ok === true && method === "state.get")
-            root.snapshot = resp.result
+        if (resp.ok === true && method === "state.get") {
+            var snap = resp.result
+            // A newer passive subset (for example bar care committed while this
+            // state.get was in flight) stays visible over the older full snapshot.
+            if (snap && root.lastBarState && BarState.isNewer(snap, root.lastBarState))
+                snap = BarState.merge(snap, root.lastBarState)
+            root.snapshot = snap
+            root.snapshotReplaced()
+        }
         if (resp.ok !== true) {
             var e = resp.error || {}
             root.lastError = String(e.code || "ERROR") + ": " + String(e.message || "")

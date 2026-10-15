@@ -1,0 +1,320 @@
+{
+ "_doc": "Per-species extraction fixes, applied by tools/petart/extract.py and copied into PROVENANCE.md. Every entry needs a why; unknown keys are rejected. cells: keys 's<stage>/<bNN|cNN>' or '*/<bNN|cNN>' with any of source (render this file from another cell of the same stage), flip (mirror horizontally), dx/dy (canvas px nudge; dy<0 raises), scale (size multiplier for this cell), fit_exclude (shrink only this cell if it would not fit), grounded (hopper locomotion frame stays on the ground line and out of airborneFrames), erase_src (list of [x0,y0,x1,y1] source-sheet rects, one stage only) with optional erase_when ('g>r+10 && g>b+60'): matching source pixels are repainted with the key colour before keying. sheets: keys 's<stage>/<base|care>' with scale (relative size multiplier for every cell of that sheet, used when the generator drew one sheet of a stage at a different character size than the other), keying options (below) and reassign (list of {near:[x,y], to:cell}: move the detached component nearest that sheet point to another cell). keying: species-wide keying options for all six sheets, overridden per sheet: clear_share, pocket_share, pocket_clear, despill ('band'|'full'), spill_gamut (see keying.key_sheet).",
+ "species": {
+  "dog": {
+   "keying": {
+    "spill_gamut": true,
+    "why": "golden fur edges blend with the green key into a yellow-olive fringe; cap fringe green at the sheet own fur gamut",
+    "clear_share": 0.45,
+    "pocket_share": 0.3
+   },
+   "cells": {
+    "s3/c00": {
+     "flip": true,
+     "why": "stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)"
+    },
+    "s3/c01": {
+     "flip": true,
+     "why": "stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)"
+    },
+    "s3/c02": {
+     "flip": true,
+     "why": "stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)"
+    },
+    "s3/c03": {
+     "flip": true,
+     "why": "stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)"
+    },
+    "s3/c04": {
+     "flip": true,
+     "why": "stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)"
+    },
+    "s3/c05": {
+     "flip": true,
+     "why": "stage3-care sheet draws eat/drink/play poses facing left; A4 requires right-facing frames (golden coat has no asymmetric markings)"
+    },
+    "*/b07": {
+     "flip": true,
+     "why": "asleep pose faces left; frames face right (A4)"
+    },
+    "s3/c09": {
+     "flip": true,
+     "why": "stage-3 settle pose faces left; match the flipped asleep frame b07"
+    }
+   }
+  },
+  "capybara": {
+   "sheets": {
+    "s1/care": {
+     "scale": 1.3,
+     "why": "magenta key specks trapped between reed tips of the c08 privacy screen; capybara and its props have no magenta paint, so the whole sheet may be despilled",
+     "despill": "full"
+    }
+   },
+   "cells": {
+    "*/b07": {
+     "flip": true,
+     "why": "asleep pose faces left; match c09 and the A4 right-facing convention"
+    },
+    "s3/c11": {
+     "scale": 1.2,
+     "why": "generator drew the yuzu-toss cell ~0.8x of the base size (body ~105 vs ~135 px for b04); fit_exclude so the enlarged cell does not shrink the stage",
+     "fit_exclude": true
+    }
+   }
+  },
+  "penguin": {
+   "sheets": {
+    "s2/care": {
+     "scale": 0.78,
+     "why": "The stage-2 care sheet draws the penguin about 1.28x larger than its base sheet (standing heights of b00 vs upright care poses); normalised so care frames match the idle size."
+    },
+    "s3/care": {
+     "scale": 0.8,
+     "why": "The stage-3 care sheet draws the penguin about 1.25x larger than its base sheet; normalised to the idle size."
+    }
+   }
+  },
+  "robot": {
+   "sheets": {
+    "s2/care": {
+     "scale": 1.22,
+     "why": "The stage-2 care sheet draws the robot about 0.8x the size of its base sheet (b00 vs c10 standing heights to the antenna tip); normalised to the idle size."
+    },
+    "s3/care": {
+     "scale": 1.25,
+     "why": "The stage-3 care sheet draws the robot about 0.79x the size of its base sheet; normalised to the idle size."
+    }
+   },
+   "cells": {
+    "s3/b00": {
+     "erase_src": [
+      [
+       124,
+       244,
+       141,
+       285
+      ]
+     ],
+     "erase_when": "g>r+10 && g>b+60",
+     "why": "generator painted a yellow-green glow line on the key between arm and hip"
+    },
+    "*/c03": {
+     "source": "c02",
+     "dy": -2,
+     "why": "side-view c03 reads as spinning in the water loop; interim front-facing sip (c02) raised 2 px as a bob until the care sheets are regenerated"
+    },
+    "s3/c03": {
+     "dy": -1,
+     "why": "the stage-3 sip pose is the stage height limiter; only 1 px of headroom for the bob"
+    }
+   }
+  },
+  "iguana": {
+   "cells": {
+    "*/c00": {
+     "flip": true,
+     "why": "care sheet drew food/water facing left; flip to match the right-facing b03 entry frame"
+    },
+    "*/c01": {
+     "flip": true,
+     "why": "care sheet drew food/water facing left; flip to match the right-facing b03 entry frame"
+    },
+    "*/c02": {
+     "flip": true,
+     "why": "care sheet drew food/water facing left; flip to match the right-facing b03 entry frame"
+    },
+    "*/c03": {
+     "flip": true,
+     "why": "care sheet drew food/water facing left; flip to match the right-facing b03 entry frame"
+    }
+   }
+  },
+  "spider": {
+   "keying": {
+    "clear_share": 0.3,
+    "why": "dark-green key pockets between legs and behind props survive as opaque paint; the spider prompt forbids any green on the spider or its props"
+   },
+   "cells": {
+    "s1/b10": {
+     "dx": -6,
+     "why": "centre the body across the walk cycle (b10 lurches 9 px forward)"
+    },
+    "s1/b11": {
+     "dx": -3,
+     "why": "centre the body across the walk cycle"
+    },
+    "s3/b08": {
+     "dx": 3,
+     "why": "centre the body across the walk cycle"
+    }
+   }
+  },
+  "snake": {
+   "sheets": {
+    "s1/care": {
+     "reassign": [
+      {
+       "near": [
+        1380,
+        714
+       ],
+       "to": 11
+      }
+     ],
+     "why": "a confetti chip of the celebrate cell sits just above the row gutter and was assigned to the wash cell c07"
+    }
+   }
+  },
+  "goldfish": {
+   "cells": {
+    "*/c09": {
+     "source": "b00",
+     "why": "c09 (settle to sleep) shows closed eyes and a yawn in every stage, against the careHint 'Fish rest with their eyes open.'; sleep_enter settles from the open-eyed idle pose (b00) until the care sheets are regenerated"
+    }
+   }
+  },
+  "rabbit": {
+   "sheets": {
+    "s1/care": {
+     "clear_share": 0.45,
+     "pocket_share": 0.3,
+     "why": "chroma-green pockets trapped between hay strands and legs; the rabbit and its props contain no green"
+    },
+    "s2/care": {
+     "clear_share": 0.45,
+     "pocket_share": 0.3,
+     "why": "chroma-green pockets trapped between hay strands and legs; the rabbit and its props contain no green"
+    },
+    "s3/care": {
+     "clear_share": 0.45,
+     "pocket_share": 0.3,
+     "why": "chroma-green pockets trapped between hay strands and legs; the rabbit and its props contain no green"
+    }
+   },
+   "cells": {
+    "s1/c11": {
+     "dy": -6,
+     "why": "binky is airborne (prompted all four feet off the ground); stays within the ground check tolerance for the motion lines"
+    },
+    "s2/c11": {
+     "dy": -5,
+     "why": "binky is airborne (prompted all four feet off the ground)"
+    }
+   }
+  },
+  "turtle": {
+   "cells": {
+    "s2/c02": {
+     "flip": true,
+     "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+    },
+    "s2/c03": {
+     "flip": true,
+     "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+    },
+    "s3/c02": {
+     "flip": true,
+     "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+    },
+    "s3/c03": {
+     "flip": true,
+     "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+    },
+    "*/b04": {
+     "flip": true,
+     "why": "three-quarter happy pose faces left; flip so celebrate/care end frames face right"
+    },
+    "*/b06": {
+     "flip": true,
+     "why": "error pose faces left; the stars circle the head and stay correct when mirrored"
+    }
+   },
+   "sheets": {
+    "s1/care": {
+     "pocket_share": 0.3,
+     "why": "a magenta key streak is trapped between two leaves of the c08 rock alcove"
+    }
+   }
+  },
+  "frog": {
+   "sheets": {
+    "s1/care": {
+     "clear_share": 0.45,
+     "pocket_share": 0.3,
+     "why": "glowing fly and shower mist were painted semi-transparent over the magenta key and extract as a pink/violet halo"
+    },
+    "s2/care": {
+     "clear_share": 0.45,
+     "pocket_share": 0.3,
+     "why": "glowing fly and shower mist were painted semi-transparent over the magenta key and extract as a pink/violet halo"
+    },
+    "s3/care": {
+     "clear_share": 0.45,
+     "pocket_share": 0.3,
+     "why": "glowing fly and shower mist were painted semi-transparent over the magenta key and extract as a pink/violet halo"
+    }
+   }
+  },
+  "owl": {
+   "sheets": {
+    "s3/care": {
+     "scale": 1.16,
+     "why": "stage-3 care sheet draws the owl ~0.86x its base size (b00 177 vs c09 151 px standing)"
+    },
+    "s2/care": {
+     "scale": 1.13,
+     "why": "stage-2 care sheet ~0.88x base (b00 145 vs c09 129 px standing)"
+    }
+   },
+   "cells": {
+    "s3/c11": {
+     "fit_exclude": true,
+     "why": "wide celebration wings; shrink only this cell"
+    },
+    "s2/c11": {
+     "fit_exclude": true,
+     "why": "wide celebration wings; shrink only this cell"
+    },
+    "*/b08": {
+     "grounded": true,
+     "why": "crouch is a ground contact frame, not airborne"
+    }
+   }
+  },
+  "red_panda": {
+   "sheets": {
+    "s2/care": {
+     "scale": 1.1,
+     "why": "stage-2 care sheet ~0.9x base (b00 153 vs c09 136 px sitting)"
+    },
+    "s3/care": {
+     "scale": 1.08,
+     "why": "stage-3 care ~0.91x base (b00 159 vs c09 142 px)"
+    }
+   },
+   "cells": {
+    "s2/c04": {
+     "fit_exclude": true,
+     "why": "tall hanging-leaf play pose would limit the stage scale after the care-sheet scale"
+    },
+    "s2/c05": {
+     "fit_exclude": true,
+     "why": "wide play pose would limit the stage scale after the care-sheet scale"
+    },
+    "s3/c03": {
+     "fit_exclude": true,
+     "why": "wide drink pose would limit the stage scale after the care-sheet scale"
+    },
+    "s3/c04": {
+     "fit_exclude": true,
+     "why": "tall hanging-leaf play pose would limit the stage scale after the care-sheet scale"
+    },
+    "s3/c05": {
+     "fit_exclude": true,
+     "why": "wide play pose would limit the stage scale after the care-sheet scale"
+    }
+   }
+  }
+ }
+}

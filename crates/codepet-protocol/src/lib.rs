@@ -52,9 +52,11 @@ pub enum ErrorCode {
     StorageUnavailable,
     SchemaUnsupported,
     Internal,
+    /// No living companion: care, sleep, wake, pause and life methods need one.
+    NoActivePet,
 }
 impl ErrorCode {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::Busy,
         Self::InvalidState,
         Self::StaleRevision,
@@ -83,6 +85,7 @@ impl ErrorCode {
         Self::StorageUnavailable,
         Self::SchemaUnsupported,
         Self::Internal,
+        Self::NoActivePet,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -114,6 +117,7 @@ impl ErrorCode {
             Self::StorageUnavailable => "STORAGE_UNAVAILABLE",
             Self::SchemaUnsupported => "SCHEMA_UNSUPPORTED",
             Self::Internal => "INTERNAL",
+            Self::NoActivePet => "NO_ACTIVE_PET",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -152,9 +156,20 @@ pub enum Method {
     HistoryList,
     SettingsUpdate,
     PetPause,
+    PetCare,
+    PetSleep,
+    PetWake,
+    PetSelect,
+    PetAdopt,
+    PetRules,
+    PetConfigureLife,
+    PetRetire,
+    PetEventsSeen,
+    PetMemorial,
+    LifecycleRules,
 }
 impl Method {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 31] = [
         Self::Hello,
         Self::StateGet,
         Self::EventsSubscribe,
@@ -175,6 +190,17 @@ impl Method {
         Self::HistoryList,
         Self::SettingsUpdate,
         Self::PetPause,
+        Self::PetCare,
+        Self::PetSleep,
+        Self::PetWake,
+        Self::PetSelect,
+        Self::PetAdopt,
+        Self::PetRules,
+        Self::PetConfigureLife,
+        Self::PetRetire,
+        Self::PetEventsSeen,
+        Self::PetMemorial,
+        Self::LifecycleRules,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -198,24 +224,60 @@ impl Method {
             Self::HistoryList => "history.list",
             Self::SettingsUpdate => "settings.update",
             Self::PetPause => "pet.pause",
+            Self::PetCare => "pet.care",
+            Self::PetSleep => "pet.sleep",
+            Self::PetWake => "pet.wake",
+            Self::PetSelect => "pet.select",
+            Self::PetAdopt => "pet.adopt",
+            Self::PetRules => "pet.rules",
+            Self::PetConfigureLife => "pet.configure_life",
+            Self::PetRetire => "pet.retire",
+            Self::PetEventsSeen => "pet.events_seen",
+            Self::PetMemorial => "pet.memorial",
+            Self::LifecycleRules => "lifecycle.rules",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|m| m.as_str() == s)
     }
     /// True when the method may change durable state (including preflight tokens).
+    /// `state.get` counts: it may settle presence, a persisted nap, a due death or
+    /// checkpoint live execution. Every method is classified explicitly, so a new
+    /// variant cannot compile without a decision here.
     pub fn is_mutating(self) -> bool {
-        !matches!(
-            self,
+        match self {
             Self::Hello
-                | Self::StateGet
-                | Self::EventsSubscribe
-                | Self::ProvidersInspect
-                | Self::TaskGet
-                | Self::TaskReview
-                | Self::TaskLogs
-                | Self::HistoryList
-        )
+            | Self::EventsSubscribe
+            | Self::ProvidersInspect
+            | Self::TaskGet
+            | Self::TaskReview
+            | Self::TaskLogs
+            | Self::HistoryList
+            | Self::PetMemorial
+            | Self::LifecycleRules => false,
+            Self::StateGet
+            | Self::TaskCreate
+            | Self::TaskUpdate
+            | Self::TaskPreflight
+            | Self::TaskStart
+            | Self::TaskCancel
+            | Self::TaskApply
+            | Self::TaskAcceptArtifact
+            | Self::TaskDiscard
+            | Self::TaskRollback
+            | Self::TaskRecover
+            | Self::SettingsUpdate
+            | Self::PetPause
+            | Self::PetCare
+            | Self::PetSleep
+            | Self::PetWake
+            | Self::PetSelect
+            | Self::PetAdopt
+            | Self::PetRules
+            | Self::PetConfigureLife
+            | Self::PetRetire
+            | Self::PetEventsSeen => true,
+        }
     }
     /// False for methods that parse but are refused with `INVALID_STATE` in this milestone.
     pub fn is_implemented(self) -> bool {

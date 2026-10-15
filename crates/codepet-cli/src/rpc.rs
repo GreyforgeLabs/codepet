@@ -1,23 +1,74 @@
 //! `codepet rpc`: one request frame in, one response frame out. Malformed or unimplemented
 //! requests are refused before the state directory is touched.
+//!
+//! After every successful mutating method (including `state.get`, which may settle) the
+//! command republishes `bar-state.json` from committed state before it answers. The export
+//! takes the database writer lock itself and only ever moves the file forward; a failed
+//! export is reported on one bounded stderr line and never changes the response or exit
+//! code.
 use crate::errors::Failure;
 use crate::supervisor::{self, Job};
+use codepet_core::lifecycle::{Mode, Pace};
 use codepet_core::{Category, Draft, Provider, Settings, PROTOCOL_VERSION};
 use codepet_protocol::{
     parse_params, parse_request, read_frame, DraftParams, EmptyParams, ErrorCode,
-    EventsSubscribeParams, HelloParams, HistoryListParams, Method, PetPauseParams, ProtocolError,
-    Request, Response, SettingsUpdateParams, TaskAcceptArtifactParams, TaskDiscardParams,
-    TaskIdParams, TaskPreflightParams, TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
+    EventsSubscribeParams, HelloParams, HistoryListParams, LifecycleRulesParams, Method,
+    PetAdoptParams, PetCareParams, PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams,
+    PetPauseParams, PetRetireParams, PetRulesParams, PetSelectParams, ProtocolError, Request,
+    Response, SettingsUpdateParams, TaskAcceptArtifactParams, TaskDiscardParams, TaskIdParams,
+    TaskPreflightParams, TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
 };
 use codepet_storage::{
-    AcceptRequest, MockOptions, MockOutcome, ProviderInfo, StatePaths, Store, Supervisor,
-    SystemClock, TaskInput,
+    lifecycle_rules_json, AcceptRequest, AdoptRequest, Leniency, MockOptions, MockOutcome,
+    ProviderInfo, StatePaths, Store, Supervisor, SystemClock, TaskInput,
 };
 use serde_json::{json, Value};
 use std::io::{self, Write};
 use std::sync::Arc;
 
 type Outcome = Result<(Value, Option<Job>), Failure>;
+
+/// Bytes of an export failure quoted on stderr.
+const MAX_EXPORT_ERROR_BYTES: usize = 200;
+
+/// Republishes `bar-state.json` from committed state. Never fails the caller: an error
+/// becomes one bounded, single-line stderr message. `Ok(false)` (the file already holds
+/// this or a newer state) is silent.
+pub fn publish_bar_state(store: &Store) {
+    if let Err(e) = store.export_bar_state() {
+        let line = export_error_line(&e.to_string());
+        let mut err = io::stderr().lock();
+        let _ = writeln!(err, "{line}").and_then(|()| err.flush());
+    }
+}
+
+/// `codepet: bar-state.json not updated: <reason>`, on one line, the reason cut to
+/// [`MAX_EXPORT_ERROR_BYTES`] at a character boundary.
+pub fn export_error_line(reason: &str) -> String {
+    let flat: String = reason
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let mut end = flat.len().min(MAX_EXPORT_ERROR_BYTES);
+    while !flat.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("codepet: bar-state.json not updated: {}", &flat[..end])
+}
+
+/// The storage handle of one request, opened only when a method needs it.
+#[derive(Default)]
+struct Ctx {
+    store: Option<Store>,
+}
+impl Ctx {
+    fn store(&mut self) -> Result<&mut Store, Failure> {
+        if self.store.is_none() {
+            self.store = Some(open()?);
+        }
+        Ok(self.store.as_mut().expect("store was just opened"))
+    }
+}
 
 /// Reads one frame from stdin, answers it on stdout and, after a successful `task.start`,
 /// continues as that task's mock supervisor. Returns the process exit code.
@@ -49,9 +100,13 @@ pub fn run() -> i32 {
     }
 }
 
-/// `codepet state`: the `state.get` result, or a typed failure.
+/// `codepet state`: the `state.get` result, or a typed failure. A successful snapshot
+/// (which may have settled presence, a nap or a due end) republishes `bar-state.json`.
 pub fn state_get() -> Result<Value, Failure> {
-    Ok(serde_json::to_value(open()?.snapshot()?)?)
+    let store = open()?;
+    let value = serde_json::to_value(store.snapshot()?)?;
+    publish_bar_state(&store);
+    Ok(value)
 }
 
 /// Parses and dispatches one frame (without its newline).
@@ -62,8 +117,16 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
     };
     let id = request.id.clone();
     let method = request.method;
-    match dispatch(request) {
+    let mut ctx = Ctx::default();
+    match dispatch(request, &mut ctx) {
         Ok((result, job)) => {
+            // Publish before answering, so a client that sees this response finds the
+            // passive state file at least as new. A started task's store moved into its job.
+            if method.is_mutating() {
+                if let Some(store) = job.as_ref().map(|j| &j.store).or(ctx.store.as_ref()) {
+                    publish_bar_state(store);
+                }
+            }
             let response = Response::ok(id.clone(), result);
             // Storage bounds every result to fit one frame (tested); if that ever fails
             // after a mutation, say the change may have been applied instead of implying
@@ -74,7 +137,16 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
             }
             (response, job)
         }
-        Err(f) => (f.into_response(Some(id)), None),
+        Err(f) => {
+            // A refused write may still have committed its settlement (a nap, presence, or
+            // an end that became final): republish so the bar never keeps a stale state.
+            if method.is_mutating() {
+                if let Some(store) = ctx.store.as_ref() {
+                    publish_bar_state(store);
+                }
+            }
+            (f.into_response(Some(id)), None)
+        }
     }
 }
 
@@ -94,7 +166,7 @@ fn encode(value: serde_json::Result<Value>) -> Outcome {
     done(value?)
 }
 
-fn dispatch(req: Request) -> Outcome {
+fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
     let p = req.params;
     match req.method {
         // Parsed but refused before any params or state are touched.
@@ -110,7 +182,7 @@ fn dispatch(req: Request) -> Outcome {
                     "no common protocol version; this build speaks v1",
                 ));
             }
-            let last_seq = open()?.last_seq()?;
+            let last_seq = ctx.store()?.last_seq()?;
             done(json!({
                 "protocol_version": PROTOCOL_VERSION,
                 "supervisor": null,
@@ -119,7 +191,7 @@ fn dispatch(req: Request) -> Outcome {
         }
         Method::StateGet => {
             let _: EmptyParams = parse_params(p)?;
-            done(state_get()?)
+            encode(serde_json::to_value(ctx.store()?.snapshot()?))
         }
         Method::ProvidersInspect => {
             let _: EmptyParams = parse_params(p)?;
@@ -129,12 +201,13 @@ fn dispatch(req: Request) -> Outcome {
             let e: EventsSubscribeParams = parse_params(p)?;
             let after = to_i64(e.after_seq, "after_seq")?;
             encode(serde_json::to_value(
-                open()?.events_after(after, Some(e.limit_or_default()))?,
+                ctx.store()?
+                    .events_after(after, Some(e.limit_or_default()))?,
             ))
         }
         Method::HistoryList => {
             let h: HistoryListParams = parse_params(p)?;
-            encode(serde_json::to_value(open()?.history(
+            encode(serde_json::to_value(ctx.store()?.history(
                 h.before_ms,
                 h.before_task_id.as_deref(),
                 Some(h.limit_or_default()),
@@ -142,42 +215,43 @@ fn dispatch(req: Request) -> Outcome {
         }
         Method::TaskGet => {
             let t: TaskIdParams = parse_params(p)?;
-            encode(serde_json::to_value(open()?.task(&t.task_id)?))
+            encode(serde_json::to_value(ctx.store()?.task(&t.task_id)?))
         }
         Method::TaskCreate => {
             let d: DraftParams = parse_params(p)?;
             let input = task_input(&d)?;
-            encode(serde_json::to_value(open()?.create_task(&input)?))
+            encode(serde_json::to_value(ctx.store()?.create_task(&input)?))
         }
         Method::TaskUpdate => {
             let u: TaskUpdateParams = parse_params(p)?;
             let input = task_input(&u.draft())?;
             let expected = to_i64(u.expected_revision, "expected_revision")?;
             encode(serde_json::to_value(
-                open()?.update_task(&u.task_id, expected, &input)?,
+                ctx.store()?.update_task(&u.task_id, expected, &input)?,
             ))
         }
         Method::TaskPreflight => {
             let t: TaskPreflightParams = parse_params(p)?;
             let revision = to_i64(t.revision, "revision")?;
             encode(serde_json::to_value(
-                open()?.preflight(&t.task_id, revision)?,
+                ctx.store()?.preflight(&t.task_id, revision)?,
             ))
         }
         Method::TaskStart => {
             let t: TaskStartParams = parse_params(p)?;
             let revision = to_i64(t.revision, "revision")?;
-            let mut store = open()?;
             let supervisor = Supervisor::current().map_err(|e| {
                 Failure::new(
                     ErrorCode::Internal,
                     format!("cannot identify supervisor: {e}"),
                 )
             })?;
-            let started = store.start(&t.task_id, revision, &t.preflight_token, supervisor)?;
+            let started =
+                ctx.store()?
+                    .start(&t.task_id, revision, &t.preflight_token, supervisor)?;
             let value = serde_json::to_value(&started)?;
             let job = Job {
-                store,
+                store: ctx.store.take().expect("start opened the store"),
                 task_id: started.task_id,
                 supervisor,
             };
@@ -185,11 +259,11 @@ fn dispatch(req: Request) -> Outcome {
         }
         Method::TaskCancel => {
             let t: TaskIdParams = parse_params(p)?;
-            encode(serde_json::to_value(open()?.cancel(&t.task_id)?))
+            encode(serde_json::to_value(ctx.store()?.cancel(&t.task_id)?))
         }
         Method::TaskReview => {
             let t: TaskIdParams = parse_params(p)?;
-            encode(serde_json::to_value(open()?.review(&t.task_id)?))
+            encode(serde_json::to_value(ctx.store()?.review(&t.task_id)?))
         }
         Method::TaskAcceptArtifact => {
             let a: TaskAcceptArtifactParams = parse_params(p)?;
@@ -200,17 +274,19 @@ fn dispatch(req: Request) -> Outcome {
                 acknowledged: a.acknowledged,
                 override_reason: a.override_reason.as_deref(),
             };
-            encode(serde_json::to_value(open()?.accept_artifact(&request)?))
+            encode(serde_json::to_value(
+                ctx.store()?.accept_artifact(&request)?,
+            ))
         }
         Method::TaskDiscard => {
             let d: TaskDiscardParams = parse_params(p)?;
             encode(serde_json::to_value(
-                open()?.discard(&d.task_id, &d.review_digest)?,
+                ctx.store()?.discard(&d.task_id, &d.review_digest)?,
             ))
         }
         Method::TaskRecover => {
             let _: EmptyParams = parse_params(p)?;
-            encode(serde_json::to_value(open()?.recover()?))
+            encode(serde_json::to_value(ctx.store()?.recover()?))
         }
         Method::SettingsUpdate => {
             let s: SettingsUpdateParams = parse_params(p)?;
@@ -224,14 +300,101 @@ fn dispatch(req: Request) -> Outcome {
                 .validate()
                 .map_err(|_| Failure::invalid_params("settings out of range"))?;
             encode(serde_json::to_value(
-                open()?.update_settings(expected, &settings)?,
+                ctx.store()?.update_settings(expected, &settings)?,
             ))
+        }
+        Method::PetCare => {
+            let c: PetCareParams = parse_params(p)?;
+            encode(serde_json::to_value(ctx.store()?.care(&req.id, &c.action)?))
+        }
+        Method::PetSleep => {
+            let _: EmptyParams = parse_params(p)?;
+            encode(serde_json::to_value(ctx.store()?.sleep(&req.id)?))
+        }
+        Method::PetWake => {
+            let _: EmptyParams = parse_params(p)?;
+            encode(serde_json::to_value(ctx.store()?.wake(&req.id)?))
         }
         Method::PetPause => {
             let s: PetPauseParams = parse_params(p)?;
-            encode(serde_json::to_value(open()?.set_paused(s.paused)?))
+            encode(serde_json::to_value(ctx.store()?.set_paused(s.paused)?))
+        }
+        Method::PetSelect => {
+            let s: PetSelectParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?
+                    .select_appearance(&req.id, &s.life_id, &s.pet_id)?,
+            ))
+        }
+        Method::PetAdopt => {
+            let a: PetAdoptParams = parse_params(p)?;
+            let request = AdoptRequest {
+                species: &a.species,
+                name: a.name.as_deref(),
+                mode: mode(&a.mode)?,
+                pace: Pace::parse(a.pace_or_default())
+                    .ok_or_else(|| Failure::invalid_params("pace must be steady or playtest"))?,
+                acknowledge_rules: a.acknowledge_rules,
+            };
+            encode(serde_json::to_value(ctx.store()?.adopt(&req.id, &request)?))
+        }
+        Method::PetRules => {
+            let r: PetRulesParams = parse_params(p)?;
+            let mode = mode(&r.mode)?;
+            encode(serde_json::to_value(ctx.store()?.set_rules(
+                &req.id,
+                &r.life_id,
+                mode,
+                r.acknowledge_rules,
+            )?))
+        }
+        Method::PetConfigureLife => {
+            let c: PetConfigureLifeParams = parse_params(p)?;
+            let expected = to_i64(c.expected_revision, "expected_revision")?;
+            let leniency = Leniency {
+                grace_hours: c.grace_hours,
+                critical_after_hours: c.critical_after_hours,
+                decay_percent: c.decay_percent,
+            };
+            encode(serde_json::to_value(
+                ctx.store()?
+                    .configure_life(&req.id, &c.life_id, expected, &leniency)?,
+            ))
+        }
+        Method::PetRetire => {
+            let r: PetRetireParams = parse_params(p)?;
+            encode(serde_json::to_value(ctx.store()?.retire(
+                &req.id,
+                &r.life_id,
+                &r.confirm_name,
+            )?))
+        }
+        Method::PetEventsSeen => {
+            let e: PetEventsSeenParams = parse_params(p)?;
+            encode(serde_json::to_value(ctx.store()?.events_seen(
+                &req.id,
+                &e.life_id,
+                e.through_seq,
+            )?))
+        }
+        Method::PetMemorial => {
+            let m: PetMemorialParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?
+                    .memorial(m.before_ordinal, Some(m.limit_or_default()))?,
+            ))
+        }
+        // Static ruleset text: answered without opening (or creating) the state directory.
+        Method::LifecycleRules => {
+            let _: LifecycleRulesParams = parse_params(p)?;
+            encode(serde_json::from_str(&lifecycle_rules_json()))
         }
     }
+}
+
+/// Validates a life mode with core's parser (protocol already checked the closed set).
+fn mode(value: &str) -> Result<Mode, Failure> {
+    Mode::parse(value).ok_or_else(|| Failure::invalid_params("mode must be permadeath or gentle"))
 }
 
 fn to_i64(v: u64, field: &str) -> Result<i64, Failure> {
@@ -268,4 +431,35 @@ fn task_input(d: &DraftParams) -> Result<TaskInput, Failure> {
         },
         mock,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_errors_are_one_bounded_line() {
+        assert_eq!(
+            export_error_line("Storage unavailable: disk full"),
+            "codepet: bar-state.json not updated: Storage unavailable: disk full"
+        );
+        let long = format!("a\nb\r{}", "é".repeat(400));
+        let line = export_error_line(&long);
+        assert!(!line.contains('\n') && !line.contains('\r'), "{line}");
+        let prefix = "codepet: bar-state.json not updated: ";
+        assert!(line.starts_with(prefix));
+        assert!(line.len() - prefix.len() <= MAX_EXPORT_ERROR_BYTES);
+        assert!(line.len() - prefix.len() >= MAX_EXPORT_ERROR_BYTES - 1);
+    }
+
+    #[test]
+    fn lifecycle_rules_answer_without_storage() {
+        let frame = r#"{"v":1,"id":"r","method":"lifecycle.rules","params":{}}"#;
+        let (response, job) = handle(frame);
+        assert!(job.is_none());
+        assert!(response.ok, "{response:?}");
+        let result = response.result.unwrap();
+        assert_eq!(result.to_string(), lifecycle_rules_json());
+        assert_eq!(result["id"], "lifecycle-v1");
+    }
 }

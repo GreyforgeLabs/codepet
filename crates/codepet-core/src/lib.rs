@@ -1,5 +1,12 @@
 //! Pure, in-memory mock model. No filesystem, network, provider, or process IO.
 //! Receipts and snapshots are NOT durable storage or an IPC security boundary.
+pub mod evolution;
+pub mod lifecycle;
+pub mod presence;
+mod privacy;
+pub mod species;
+pub use privacy::redact_display_text;
+
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Component, Path};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -415,6 +422,9 @@ impl Engine {
     pub fn set_settings(&mut self, settings: Settings) -> Result<(), Error> {
         settings.validate()?;
         self.settings = settings;
+        // Preflight approval includes execution settings, not just the draft revision.
+        // Match the durable store: even an identical settings update needs new approval.
+        self.tokens.clear();
         Ok(())
     }
     pub fn task(&self, id: JobId) -> Result<&Task, Error> {
@@ -689,5 +699,7 @@ impl Engine {
     }
 }
 
+#[cfg(test)]
+mod lifecycle_tests;
 #[cfg(test)]
 mod tests;

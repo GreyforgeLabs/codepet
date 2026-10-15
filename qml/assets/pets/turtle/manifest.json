@@ -1,0 +1,642 @@
+{
+ "schemaVersion": 1,
+ "id": "turtle",
+ "displayName": "Turtle",
+ "defaultName": "Atlas",
+ "personality": "the steadfast planner",
+ "habitat": "floor",
+ "assetRevision": "0.2.0",
+ "license": "MIT",
+ "provenance": "../PROVENANCE.md#turtle",
+ "careLabels": {
+  "food": "Leaf tug",
+  "water": "Shallow sip",
+  "play": "Pebble push",
+  "wash": "Shell brush",
+  "bathroom": "Rock alcove",
+  "sleep": "Shell tuck"
+ },
+ "careHints": {},
+ "stages": [
+  {
+   "stage": 1,
+   "key": "young",
+   "name": "Pebble",
+   "minLevel": 1
+  },
+  {
+   "stage": 2,
+   "key": "grown",
+   "name": "Trailshell",
+   "minLevel": 2
+  },
+  {
+   "stage": 3,
+   "key": "mature",
+   "name": "Mossback Sage",
+   "minLevel": 4
+  }
+ ],
+ "stageNamesSource": "provenance.json",
+ "placeholder": false,
+ "geometry": {
+  "viewBox": [
+   0,
+   0,
+   192,
+   192
+  ],
+  "canvas": 192,
+  "pivot": [
+   96,
+   184
+  ],
+  "groundY": 184,
+  "hitBox": [
+   4,
+   20,
+   186,
+   164
+  ],
+  "stageHitBoxes": {
+   "1": [
+    27,
+    69,
+    153,
+    115
+   ],
+   "2": [
+    19,
+    57,
+    171,
+    127
+   ],
+   "3": [
+    4,
+    20,
+    186,
+    164
+   ]
+  },
+  "safeBounds": [
+   2,
+   2,
+   188,
+   188
+  ],
+  "propAnchor": [
+   182,
+   176
+  ],
+  "badgeAnchor": [
+   178,
+   26
+  ],
+  "roams": true
+ },
+ "locomotion": {
+  "style": "diagonal_steps",
+  "pxPerTick": 1.5,
+  "pauseTicks": [
+   125,
+   250
+  ]
+ },
+ "states": {
+  "idle": {
+   "frames": [
+    "b00.webp",
+    "b00.webp",
+    "b01.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 0,
+   "interrupt": "any",
+   "fallback": null,
+   "airborneFrames": []
+  },
+  "locomotion": {
+   "frames": [
+    "b08.webp",
+    "b09.webp",
+    "b10.webp",
+    "b11.webp"
+   ],
+   "frameMs": 200,
+   "mode": "while_moving",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 20,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "food": {
+   "frames": [
+    "b03.webp",
+    "c00.webp",
+    "c01.webp",
+    "c00.webp",
+    "c01.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "water": {
+   "frames": [
+    "b03.webp",
+    "c02.webp",
+    "c03.webp",
+    "c02.webp",
+    "c03.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "play": {
+   "frames": [
+    "b03.webp",
+    "c04.webp",
+    "c05.webp",
+    "c04.webp",
+    "c05.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "wash": {
+   "frames": [
+    "b00.webp",
+    "c06.webp",
+    "c07.webp",
+    "c06.webp",
+    "c07.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "bathroom": {
+   "frames": [
+    "b03.webp",
+    "c08.webp",
+    "c08.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 70,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 2400
+  },
+  "sleep_enter": {
+   "frames": [
+    "c09.webp",
+    "b07.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "sleep": {
+   "frames": [
+    "b07.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 85,
+   "interrupt": "higher",
+   "fallback": null,
+   "airborneFrames": [],
+   "breathing": {
+    "maxScale": 0.02,
+    "maxUpdatesPerSecond": 1,
+    "reducedMotion": false
+   }
+  },
+  "sleep_exit": {
+   "frames": [
+    "c10.webp",
+    "b00.webp"
+   ],
+   "frameMs": 600,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 1,
+   "mirror": true,
+   "priority": 90,
+   "interrupt": "none",
+   "fallback": null,
+   "airborneFrames": [],
+   "totalMs": 1200
+  },
+  "celebrate": {
+   "frames": [
+    "c11.webp",
+    "b04.webp",
+    "c11.webp",
+    "b04.webp"
+   ],
+   "frameMs": 400,
+   "mode": "once",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 60,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": [],
+   "totalMs": 1600
+  },
+  "working": {
+   "frames": [
+    "b04.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 40,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "waiting": {
+   "frames": [
+    "b02.webp",
+    "b00.webp"
+   ],
+   "frameMs": 800,
+   "mode": "loop",
+   "loop": true,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 35,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "needs_care": {
+   "frames": [
+    "b05.webp"
+   ],
+   "frameMs": 800,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": true,
+   "priority": 50,
+   "interrupt": "any",
+   "fallback": "idle",
+   "airborneFrames": []
+  },
+  "error": {
+   "frames": [
+    "b06.webp"
+   ],
+   "frameMs": 1000,
+   "mode": "hold",
+   "loop": false,
+   "repeats": 1,
+   "reducedFrame": 0,
+   "mirror": false,
+   "priority": 100,
+   "interrupt": "higher",
+   "fallback": "idle",
+   "airborneFrames": []
+  }
+ },
+ "framePattern": "s{stage}/{frame}",
+ "thumbnailPattern": "thumb-s{stage}.webp",
+ "source": {
+  "dir": "turtle",
+  "sheets": [
+   {
+    "stage": 1,
+    "kind": "base",
+    "file": "stage1-base.png",
+    "sha256": "d0c18a1403533b4f8a489131d75a90a1fb3e7b3436a0fe3add0882682500a7cc",
+    "chromaHex": "#FF00FF"
+   },
+   {
+    "stage": 1,
+    "kind": "care",
+    "file": "stage1-care.png",
+    "sha256": "28bf03c5825c7e7532084bbdbe54775d2ca003566df68aa0f9ba02bf8f504713",
+    "chromaHex": "#FF00FF"
+   },
+   {
+    "stage": 2,
+    "kind": "base",
+    "file": "stage2-base.png",
+    "sha256": "323b8fcb26e5cd74c3c249f2b159a223a6389a4fc210ffdf4f70cd8c808f61ba",
+    "chromaHex": "#FF00FF"
+   },
+   {
+    "stage": 2,
+    "kind": "care",
+    "file": "stage2-care.png",
+    "sha256": "5390644dd74d64ac648eaa0deffe74668aabe2641e3ce370d5dd32659e493b49",
+    "chromaHex": "#FF00FF"
+   },
+   {
+    "stage": 3,
+    "kind": "base",
+    "file": "stage3-base.png",
+    "sha256": "2c096ce2a164320ddc089d6e6cc972b0aef73a44517ff9fd65a2457490288c1c",
+    "chromaHex": "#FF00FF"
+   },
+   {
+    "stage": 3,
+    "kind": "care",
+    "file": "stage3-care.png",
+    "sha256": "b1077d09f5fecedba5a5a25e4fb0797824f7f0ae3a981605cb028b454b15c877",
+    "chromaHex": "#FF00FF"
+   }
+  ],
+  "extraction": [
+   {
+    "stage": 1,
+    "fitScale": 0.537572,
+    "stageFactor": 0.82,
+    "scale": 0.440809,
+    "key": {
+     "base": {
+      "bg_strength": 247.0,
+      "bg_rgb": [
+       250.0,
+       3.0,
+       250.0
+      ]
+     },
+     "care": {
+      "bg_strength": 244.0,
+      "bg_rgb": [
+       248.0,
+       4.0,
+       249.0
+      ]
+     }
+    },
+    "overrides": {
+     "b04": {
+      "flip": true,
+      "why": "three-quarter happy pose faces left; flip so celebrate/care end frames face right"
+     },
+     "b06": {
+      "flip": true,
+      "why": "error pose faces left; the stars circle the head and stay correct when mirrored"
+     }
+    },
+    "sheetScales": {
+     "s1/care": {
+      "pocket_share": 0.3,
+      "why": "a magenta key streak is trapped between two leaves of the c08 rock alcove"
+     }
+    }
+   },
+   {
+    "stage": 2,
+    "fitScale": 0.502703,
+    "stageFactor": 0.92,
+    "scale": 0.462486,
+    "key": {
+     "base": {
+      "bg_strength": 247.0,
+      "bg_rgb": [
+       250.0,
+       3.0,
+       250.0
+      ]
+     },
+     "care": {
+      "bg_strength": 246.0,
+      "bg_rgb": [
+       250.0,
+       3.0,
+       250.0
+      ]
+     }
+    },
+    "overrides": {
+     "b04": {
+      "flip": true,
+      "why": "three-quarter happy pose faces left; flip so celebrate/care end frames face right"
+     },
+     "b06": {
+      "flip": true,
+      "why": "error pose faces left; the stars circle the head and stay correct when mirrored"
+     },
+     "c02": {
+      "flip": true,
+      "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+     },
+     "c03": {
+      "flip": true,
+      "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+     }
+    },
+    "sheetScales": {}
+   },
+   {
+    "stage": 3,
+    "fitScale": 0.509589,
+    "stageFactor": 1.0,
+    "scale": 0.509589,
+    "key": {
+     "base": {
+      "bg_strength": 243.0,
+      "bg_rgb": [
+       249.0,
+       6.0,
+       249.0
+      ]
+     },
+     "care": {
+      "bg_strength": 245.0,
+      "bg_rgb": [
+       249.0,
+       3.0,
+       250.0
+      ]
+     }
+    },
+    "overrides": {
+     "b04": {
+      "flip": true,
+      "why": "three-quarter happy pose faces left; flip so celebrate/care end frames face right"
+     },
+     "b06": {
+      "flip": true,
+      "why": "error pose faces left; the stars circle the head and stay correct when mirrored"
+     },
+     "c02": {
+      "flip": true,
+      "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+     },
+     "c03": {
+      "flip": true,
+      "why": "source drinking poses face left; frames must face right (A4); the bowl is symmetric"
+     }
+    },
+    "sheetScales": {}
+   }
+  ],
+  "tool": "tools/petart/extract.py",
+  "reference": {
+   "file": "ref-pr7.png",
+   "sha256": "c0d6d5107d8b573b6aaa9bcba013b9c2be7f5aefdc0cd55c01e2233aad432557",
+   "source": "origin/art/generated-source-library:docs/art-library/source/turtle/v1/source-sheet.png"
+  },
+  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+ },
+ "files": {
+  "s1/b00.webp": "55d247c33d2209bbdf48ec1fa4776a8e6fb6760ab8a98887da0ba7f5bcab770c",
+  "s1/b01.webp": "e9dba47ff3937571d70f0194c55aa30f76a1ef5b8291929be1f55aa5980ad162",
+  "s1/b02.webp": "bb7ba1a02d81088548c88930288e9d230060c674079743177345858372a8bb04",
+  "s1/b03.webp": "7ef9a5c316c1fe004a5322e01d4b1da644aa11cb6beefb64cd24f20cba48dee0",
+  "s1/b04.webp": "f12b786b60cfb157887c2c40944042bf071ebcfa5397295a0b9dac5ca6d641df",
+  "s1/b05.webp": "75c3e01ea12c23986bc883a8c5a8f3d549fdcbfb4905f51137de8c92d0632db1",
+  "s1/b06.webp": "730acb2668031c080e819b5c315582e098d2f5d84f46deef7051c2acbedeb7f7",
+  "s1/b07.webp": "cce75efd36825897434c8e19fdabadfbabf9476fba1fe790e4edb159ddaf80c3",
+  "s1/b08.webp": "f723b154e45d5ad911d40296eb84f4ba7fe3b697d4e244325f6f84eec81dc89b",
+  "s1/b09.webp": "9c3096abdbc6fc5dab2894aa5de934b3d6d4f5f2e70e7774f6193f7a777e78e9",
+  "s1/b10.webp": "a4a9fee4e12742666b09a668b4e10e9c1f95815e3fd6416f64c82225de2c981b",
+  "s1/b11.webp": "d967c0d2c6978bef5e51c0f224fda897c84e7bd1317ccd907abf0387cc9206d4",
+  "s1/c00.webp": "b8d85376b297601e160753b6a3a9d19ed3d0070d0de51ceae41f298512363930",
+  "s1/c01.webp": "f06f731d96cddd94d006c3d794e3348800afbf71f9e6f72446ed398030e06743",
+  "s1/c02.webp": "947adaad3e36f647c84b6c9361579acb513528cfda95023aa12f957470b0e8ee",
+  "s1/c03.webp": "ea5825d7d9690cf9eebcac1fc3ce9045bf66c862e210ab7cba7cf626ed8a3518",
+  "s1/c04.webp": "af3e0fe05e5532cb44963207a8807ebf35685b37c9b30de3df5c0504f6eb481c",
+  "s1/c05.webp": "fb821c2a1dfbb88219bc946ae629518ed6282d6b1bae7475a92e7075f4783aee",
+  "s1/c06.webp": "d6586ef68f4ec68b1b44cc7abfb795672080d70deba5254d38143f390cb7860d",
+  "s1/c07.webp": "4d2833a6e8e01a3fe72187868cd86083c825c28991853bc86e59fabde09cd6b5",
+  "s1/c08.webp": "f2854d4d27c769e1f216eb359f1a2a4d4ebc1577d7a228edbbbc834e44df0380",
+  "s1/c09.webp": "390f6c055a76c6daf3823e9a5771f6052e431525fa2bbd6c50c1d58482f84bf6",
+  "s1/c10.webp": "de55471f62873546c4c3b0373f2e4f40146709dd64124b113457a0c6b9a205f0",
+  "s1/c11.webp": "1d308c1e473e44c55296f632ee9285b61506a81ea43319ce4cf72096e369d78a",
+  "s2/b00.webp": "92cf9a26d75451405fd4d5988eabdeba71bbae7aed8061734576d517f9dd1806",
+  "s2/b01.webp": "89e4cc7ef3e8a30418d8a502d64ff7f009a539cf088e72b674d61f7fd83217bd",
+  "s2/b02.webp": "9a0f5dae691ac15eb54d1a7c1362173dde3ec9be13616f14b3bca6495b557670",
+  "s2/b03.webp": "936adde71dfbcf14b4a09ff30f4dbee44cf6edac26fd6d29ef697faf829035a3",
+  "s2/b04.webp": "b5fbbe59ecaac1e9e7c0118f11ac5ff0c210e5a5bf57f773968218b24d08d0d7",
+  "s2/b05.webp": "9ab0c72904cccecfb2bff6ef42298ecdd84938c3e710735acee9830e34620957",
+  "s2/b06.webp": "f43973de2b8104fd8ec1e9088fa9bc94cd7f4011c2559cef0d8691144242d357",
+  "s2/b07.webp": "4e4471a9ee552079fc8fc7a16004e5e6cad49aad22abf347dd761c38e86ee05b",
+  "s2/b08.webp": "da66730ae2812f448327e5a138b20acca7f2a2e7bb563eeaf0204283d8315704",
+  "s2/b09.webp": "b625fe51b2c81951d0ea824e6cd324d4d5eb7f49b231c15eb1bbfd244a37eea5",
+  "s2/b10.webp": "ad2f5ed1c60cd69b4a0b0cb26a92e4d4d8040722746ffc51f016fb1f3ce633ef",
+  "s2/b11.webp": "08d0923d4e18d802bfa50f6d441f9d9fe4d26f777391e267f57fcfa8345e2396",
+  "s2/c00.webp": "a7b56f73ebcf241c7be35d11c56c5ead141d8472ef7850bfef302434cd58f72f",
+  "s2/c01.webp": "06a2f05d9e791f944d773b349354eb612fb0482c2841beb5218abac654c96500",
+  "s2/c02.webp": "125d1ce71e28118460ee0e635cb3de9c8deaf40d115d86dc37754552814372a6",
+  "s2/c03.webp": "0e980d919a8d1ec8e27a247089f8e8b3175d818e2a3af0b193427f4b71a22d08",
+  "s2/c04.webp": "64187ee0bffe5e1ce5160d5c0465306adc197db8a4a160c2fa71b5fe452311bb",
+  "s2/c05.webp": "0a133cf39987c29349cb4977eeb46e132a367db92eb95855eb17565fa1ddfc30",
+  "s2/c06.webp": "6e83cf07255f4d26e50ee17b87ff7e1631e658c25b234a70b5d0681c1ab45b1b",
+  "s2/c07.webp": "d67317e7c89e20e3b5829675cc49514167357ee2735a08f7a5b9fa340b517a7c",
+  "s2/c08.webp": "d3516af11b70d4f96dd0548eed7f16fd0db05904cd62d902aa50680e3f6adaf8",
+  "s2/c09.webp": "07745015bb86d3c3af7b6ddc53c1e013c65bd6c6c580adc6d96a07e2c915460e",
+  "s2/c10.webp": "b711be593d0f9d91acf0da47c078a11f9d069be69d799dcd075f79fd2eaeffe8",
+  "s2/c11.webp": "1a742f499419d0849c8fee253e449a333276e200074ecd838df15f69b47a7199",
+  "s3/b00.webp": "5bf12a2c1f112e65813d4f99bb9d1b88972e459f2670106ea54d4226c51e26aa",
+  "s3/b01.webp": "f8182da67b804e216dad926a4f15d09596c6c0a1bf376dbd125eace26b120bc8",
+  "s3/b02.webp": "72f954e624c8c250ef06d2a82159c74c5f0b76f5e2ccc30118b7dd8ea45f4005",
+  "s3/b03.webp": "d200417ed254f6561e59857ff614dd7163a3c9e9c2531eb3c9805277fc70dfe9",
+  "s3/b04.webp": "bb6819f95d6789fa512a4b402720af0231f2a833e954f51e0f43624685455936",
+  "s3/b05.webp": "13a7c29e1029721fad5aafd93477d60e1b42a946bad9a98b11d6c19d4cd8377c",
+  "s3/b06.webp": "8953c5847faadfa07b80b0b5ed761d15db65cec36631582b4b7963f4b1f690fe",
+  "s3/b07.webp": "aa6da688a822de7291ee38baeeb2a08f6164db120fd7551600f9c8beff619bd1",
+  "s3/b08.webp": "7136815040f85b0e6484dbbeb1b66df2a122d9945f9fb19ed288e1ac7fd2bd00",
+  "s3/b09.webp": "e37fe77e79937beb3042116cc8a4993eb1e93773676abeaaff125d9935e89fd6",
+  "s3/b10.webp": "0d22dd9b97f4f6113e71110d458a9c9f84e4cb7a7221cce8f51f3d61b1d540b4",
+  "s3/b11.webp": "ef0187d37bbc1818f20f262e41448a52b5bcf870347b35578af66fd8ba84837a",
+  "s3/c00.webp": "2eb955db215729706f3bbb557d9eacaf9ab1a50fd9a6af786074f14870655a51",
+  "s3/c01.webp": "335088f27ccc68b8e71a1ba3a85b3d81a89057c8d5a5f5c9afed237973b5421b",
+  "s3/c02.webp": "017f4d398afc7d36014c011f26f3bacad60e4a30f853bdf39a92d688f9943e42",
+  "s3/c03.webp": "28922c2c73f9fbb318252f8edf15ea708514089cfe0742a63432caf0dda68f30",
+  "s3/c04.webp": "d48615907a2d1d84d7f08c1e67872bb32e0bb91b357718476b35acd85960b745",
+  "s3/c05.webp": "1541ea1dad04791946b90564315c92f699c4a6029b1f39136ca98b1a287011c7",
+  "s3/c06.webp": "094d5a7c60385ea391a6ef1e4c8009caa13862ca0c96b0f2130437bbf18d0393",
+  "s3/c07.webp": "0bb924be6248e7490b67957750927fd845f6232606d567f22287ade3e50dd694",
+  "s3/c08.webp": "f5081b2023efc1506f2cf7bb0fe68f7bae63de33508635aa7fab16d32c3efd7b",
+  "s3/c09.webp": "c8145373739ea498e3e99893679b76d3933cb37f74982ef4c3b384a43049d5f6",
+  "s3/c10.webp": "6c8d0e7a7029f083cf86551d0b602291157dd692d3f93bad47bf4f0117e6ef3c",
+  "s3/c11.webp": "16ae0d453b56dd15f52faef276b4e335cfac947be17fb73e9b564cf6656d9383",
+  "thumb-s1.webp": "d9af02fc943a7b738dcd144bc5376d6e48f93e6125607e47f9a46b918a6f0278",
+  "thumb-s2.webp": "44b8d986cadda02637e3e89db5d47c246b24cafc749f2f7ad61cea6e4ee150ac",
+  "thumb-s3.webp": "d85ccc45b95f71a5ca469c05dc8731859226c7e5b3e337f6951ee2d19c412ea9"
+ }
+}

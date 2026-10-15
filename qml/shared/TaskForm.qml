@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "LifeText.js" as LifeText
 
 // Draft editor. Saves the draft in Rust (task.create / task.update), asks Rust for a
 // preflight, shows its summary, and enables Start only for a fresh, acknowledged
@@ -20,11 +21,35 @@ ColumnLayout {
     property int editGeneration: 0
     property bool dirty: true
     property var preflight: null
+    property int preflightCareRevision: -1
     property string providerId: ""
     property string formError: ""
     property bool loading: false
 
     readonly property var snap: host && host.snapshot ? host.snapshot : null
+    readonly property var care: snap && snap.care ? snap.care : null
+    readonly property int careRevision: care ? care.revision : -1
+    onCareRevisionChanged: {
+        if (root.preflight !== null && root.preflightCareRevision !== root.careRevision) {
+            root.preflight = null
+            ackBox.checked = false
+            root.formError = "Care or rest changed after preflight. Run preflight again and review this revision before Start."
+        }
+    }
+    // v0.2 life gates (SPEC §6), in Rust's order: no life → death pending → critical. Rust
+    // already refuses Start in these states; the form mirrors them so it never offers Start.
+    readonly property var life: snap && snap.life ? snap.life : null
+    readonly property string lifeBlock: LifeText.hasNoLife(snap) ? "Adopt a companion to start work."
+        : life && life.death_pending ? "New work waits until the current task is finished."
+        : life && (life.status === "critical" || life.fainted)
+            ? LifeText.cleanName(life.name) + " urgently needs "
+              + root.urgentCare() + "; care before starting work."
+        : ""
+    readonly property bool readyToWork: !!(care && care.ready_to_work) && lifeBlock === ""
+    readonly property string readinessText: !care ? "Refresh to load care readiness before Start."
+        : lifeBlock !== "" ? lifeBlock
+        : care.ready_to_work ? "Ready to work. Start still needs a fresh preflight and your acknowledgement."
+        : (care.readiness_reasons || []).join(" · ") || "Care is not ready. Return to the pet and refresh."
     readonly property var providers: snap && snap.providers ? snap.providers : []
     readonly property bool hostBusy: !!(host && host.busy)
     readonly property var scopeList: scopeArea.text.split("\n").map(function (s) { return s.trim() }).filter(function (s) { return s.length > 0 })
@@ -36,8 +61,14 @@ ColumnLayout {
         && draftJsonBytes <= maxDraftJsonBytes
     readonly property bool preflightFresh: preflight !== null && !dirty && taskId !== ""
         && preflight.task_id === taskId && preflight.revision === revision
+        && preflightCareRevision === careRevision
     spacing: 10
 
+    function urgentCare() {
+        var lc = root.snap && root.snap.lifecycle ? root.snap.lifecycle : null
+        var need = lc && lc.critical ? lc.critical.need : (LifeText.worstNeed(root.snap) || {}).need
+        return LifeText.NEED_CARE[need] || "care"
+    }
     function utf8Bytes(s) {
         var n = 0
         for (var i = 0; i < s.length; i++) {
@@ -136,6 +167,8 @@ ColumnLayout {
             params.expected_revision = root.revision
         }
         root.formError = ""
+        root.preflight = null
+        ackBox.checked = false
         root.host.request(method, params, function (resp) {
             if (!resp.ok) {
                 root.refresh()
@@ -147,18 +180,31 @@ ColumnLayout {
                 root.refresh()
                 return
             }
+            if (typeof resp.result.instructions !== "string") {
+                root.formError = "Saved instructions were not returned. Reload the draft before preflight."
+                root.refresh()
+                return
+            }
+            if (resp.result.instructions !== instructionsArea.text) {
+                root.loading = true
+                instructionsArea.text = resp.result.instructions
+                root.loading = false
+                root.formError = "The saved draft filtered sensitive or unsupported text. Review the updated instructions below before acknowledging this preflight."
+            }
             root.dirty = false
             root.host.request("task.preflight", { "task_id": root.taskId, "revision": root.revision }, function (pre) {
                 if (pre.ok && gen === root.editGeneration && pre.result.task_id === root.taskId
-                        && pre.result.revision === root.revision)
+                        && pre.result.revision === root.revision) {
+                    root.preflightCareRevision = root.careRevision
                     root.preflight = pre.result
+                }
                 root.refresh()
             })
         })
     }
     // Called only from the Start button's onClicked.
     function startClicked() {
-        if (!root.preflightFresh || !ackBox.checked || root.hostBusy)
+        if (!root.preflightFresh || !ackBox.checked || root.hostBusy || !root.readyToWork)
             return
         if (Date.now() >= root.preflight.expires_at_ms) {
             root.preflight = null
@@ -181,22 +227,50 @@ ColumnLayout {
 
     Label { text: "New task"; font.bold: true; font.pixelSize: 18 }
 
-    Label { text: "Care category" }
+    Label { text: "Skill track (does not change permissions)" }
     ComboBox {
         id: categoryBox
         Layout.fillWidth: true
         textRole: "text"
         valueRole: "value"
         model: [
-            { "value": "hunger", "text": "Hunger: fix a specific bug" },
-            { "value": "thirst", "text": "Thirst: improve speed or quality" },
-            { "value": "mental_health", "text": "Mental health: learn, explain or plan" },
-            { "value": "hygiene", "text": "Hygiene: remove selected obsolete files" }
+            { "value": "hunger", "text": "Bugfix: fix a specific bug" },
+            { "value": "thirst", "text": "Quality & Performance: improve a named area" },
+            { "value": "mental_health", "text": "Learning & Specification: learn, explain or plan" },
+            { "value": "hygiene", "text": "Cleanup: inspect selected obsolete project files" }
         ]
-        Accessible.name: "Care category"
+        Accessible.name: "Skill track"
         onActivated: root.edited()
     }
 
+    GroupBox {
+        title: "Guided task · small simulation · up to 20 demo XP"
+        Layout.fillWidth: true
+        ColumnLayout {
+            anchors.fill: parent
+            Label {
+                Layout.fillWidth: true
+                text: "Choose one bounded outcome, name the exact paths, and state what you will inspect before accepting. This template grants no access and runs no real command."
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+            Button {
+                text: "Use a learning-task guide"
+                enabled: !root.hostBusy
+                onClicked: {
+                    categoryBox.currentIndex = categoryBox.indexOfValue("mental_health")
+                    instructionsArea.text = "Explain the selected function or module. Describe its inputs, outputs, and one edge case. Review checklist: check each claim against the selected code and record assumptions."
+                    root.edited()
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "Higher-level templates are previews only; real providers, capability and containment gates remain disabled. Level never changes permissions."
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
     Label { text: "Provider" }
     ColumnLayout {
         Layout.fillWidth: true
@@ -376,12 +450,20 @@ ColumnLayout {
         font.bold: true
     }
 
+    Label {
+        objectName: "taskForm.readiness"
+        Layout.fillWidth: true
+        text: root.readinessText
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        font.bold: true
+    }
     RowLayout {
         Button {
             objectName: "taskForm.start"
             text: "Start"
-            enabled: root.preflightFresh && ackBox.checked && !root.hostBusy
-            Accessible.description: "Starts the reviewed task revision"
+            enabled: root.preflightFresh && ackBox.checked && !root.hostBusy && root.readyToWork
+            Accessible.description: root.readyToWork ? "Starts this exact reviewed simulation revision" : root.readinessText
             onClicked: root.startClicked()
         }
         Button {

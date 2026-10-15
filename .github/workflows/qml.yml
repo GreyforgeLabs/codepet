@@ -1,0 +1,62 @@
+name: QML offscreen contracts
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  qml:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_CONTROLS_STYLE: Basic
+      XDG_CACHE_HOME: /tmp/codepet-qt-cache
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install offscreen Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libgl1 libxkbcommon0
+      - name: Install pinned test-only Qt and image runtime
+        run: python3 -m pip install PySide6==6.8.3 Pillow==11.1.0
+      # Every offscreen smoke in qml/tests (spec §17.1); a smoke exits non-zero on any FAIL.
+      - name: QML smokes
+        run: |
+          set -e
+          for smoke in qml/tests/*Smoke.qml; do
+            echo "== $smoke"
+            python3 qml/tests/run_qml.py "$smoke"
+          done
+      - name: Overlay host and bar plugin contracts
+        run: |
+          python3 qml/tests/test_overlay_windows.py
+          python3 qml/tests/test_quickshell_host.py
+          python3 qml/tests/test_bar_plugin.py
+      - name: Pet assets (legacy sprites, v0.2 packs, invalid-pack fixtures, distinctness)
+        run: |
+          python3 qml/tests/test_sprite_assets.py
+          python3 qml/tests/test_pet_assets.py
+          python3 qml/tests/test_pet_assets_invalid.py
+          python3 qml/tests/test_pet_distinctness.py
+      # tools/petart/extract.py --check needs the GPT Image 2 source sheets, which are a
+      # release asset (codepet-art-sources-v0.2.tar), not part of the repository; it runs
+      # locally only. The manifests' sha256 checks above cover the committed frames.
+      # Source-art catalog (PR #7): stdlib-only checks that also fail under -O. Isolated
+      # mode (-I) ignores user site-packages, so test_verify.py's optional Pillow --alpha
+      # recheck skips when Pillow is installed only for the user.
+      - name: Source-art library verifier and its regression test
+        run: |
+          python3 -I docs/art-library/verify.py
+          python3 -I docs/art-library/test_verify.py
+      - name: Install, uninstall and measurement tooling (temporary HOME, stub tools)
+        run: python3 qml/tests/test_install_scripts.py
+      - name: Copy rules
+        run: python3 qml/tests/copy_lint.py
+      - name: Node model tests (bar model, presence model, state machine, life text)
+        run: |
+          node --version
+          node --test qml/tests/*.mjs
+      - name: CI matrix covers every test; release docs present
+        run: |
+          python3 qml/tests/test_ci_matrix.py
+          python3 qml/tests/test_release_docs.py
+      - name: Portable QML lint
+        run: pyside6-qmllint -I qml qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml

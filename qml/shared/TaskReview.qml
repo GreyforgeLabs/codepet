@@ -16,6 +16,9 @@ ColumnLayout {
     property var receipt: null
     property bool duplicate: false
     property string outcome: ""
+    // Guidance when task.review fails, e.g. a recovery_required task whose saved review
+    // metadata is missing (Rust answers INVALID_STATE "task has no review").
+    property string loadNotice: ""
     // Idempotency key for acceptance: reused only for an identical retry.
     property string acceptKey: ""
     property string acceptKeyParams: ""
@@ -27,15 +30,24 @@ ColumnLayout {
     readonly property bool needsOverride: verification !== "passed"
     readonly property bool canDecide: task !== null && review !== null && task.state === "review_ready" && receipt === null
     readonly property bool canAbandon: task !== null && review !== null && task.state === "recovery_required"
+    // The protocol bounds review_digest to 1..=128 UTF-8 bytes (codepet-protocol check_token);
+    // a saved digest outside that range would be refused with INVALID_PARAMS, so the
+    // accept, discard and abandon buttons stay disabled and digestNotice explains why.
+    readonly property int maxDigestBytes: 128
+    readonly property bool digestUsable: review !== null && typeof review.digest === "string"
+        && review.digest.length > 0 && utf8Bytes(review.digest) <= maxDigestBytes
+    readonly property string digestNotice: review !== null && !digestUsable ? root.damagedDigestText : ""
+    readonly property string damagedDigestText: "This task's saved review digest is damaged, so CodePet cannot use it to end the task. "
+        + "Go back and use \"Check interrupted tasks\" to restore the review metadata, then open the task again. Nothing is resumed."
     readonly property int maxReasonBytes: 512
     readonly property int reasonBytes: utf8Bytes(reasonField.text.trim())
     readonly property bool reasonOk: reasonBytes <= maxReasonBytes
         && (!needsOverride || reasonField.text.trim().length > 0)
     readonly property var categoryNames: ({
-        "hunger": "Hunger",
-        "thirst": "Thirst",
-        "mental_health": "Mental health",
-        "hygiene": "Hygiene"
+        "hunger": "Bugfix",
+        "thirst": "Quality & Performance",
+        "mental_health": "Learning & Specification",
+        "hygiene": "Cleanup"
     })
     spacing: 10
 
@@ -54,6 +66,10 @@ ColumnLayout {
         return n
     }
     function verificationText() {
+        if (root.review && root.review.metadata_repaired === true)
+            return "Verification: unavailable. Recovery restored this review's damaged metadata only so the task could be abandoned; it is not a sealed review."
+        if (root.task && root.task.state === "recovery_required")
+            return "Verification: unavailable. The saved review cannot be trusted; only abandonment is allowed."
         if (root.verification === "passed")
             return "Verification: passed"
         if (root.verification === "failed")
@@ -67,6 +83,7 @@ ColumnLayout {
         root.receipt = null
         root.duplicate = false
         root.outcome = ""
+        root.loadNotice = ""
         root.acceptKey = ""
         root.acceptKeyParams = ""
         ackBox.checked = false
@@ -75,11 +92,24 @@ ColumnLayout {
         root.host.request("task.review", { "task_id": taskId }, function (resp) {
             if (resp.ok)
                 root.task = resp.result
+            else
+                root.loadNotice = root.missingReviewNotice(taskId, resp)
             root.host.request("state.get", {}, function () {})
         })
     }
+    function missingReviewNotice(taskId, resp) {
+        var snap = root.host ? root.host.snapshot : null
+        var active = snap && snap.active_task ? snap.active_task : null
+        var code = resp && resp.error ? String(resp.error.code) : ""
+        if (code === "INVALID_STATE" && active && active.task_id === taskId && active.state === "recovery_required")
+            return "This task's saved review metadata is missing, so it cannot be abandoned yet. Go back and use \"Check interrupted tasks\" to restore it, then Resolve recovery. Nothing is resumed."
+        // A malformed digest echoed back to task.discard/accept is refused as INVALID_PARAMS.
+        if (code === "INVALID_PARAMS")
+            return root.damagedDigestText
+        return ""
+    }
     function acceptClicked() {
-        if (!root.canDecide || !ackBox.checked || root.hostBusy)
+        if (!root.canDecide || !root.digestUsable || !ackBox.checked || root.hostBusy)
             return
         var reason = reasonField.text.trim()
         if (!root.reasonOk)
@@ -94,21 +124,31 @@ ColumnLayout {
             root.acceptKeyParams = key
         }
         root.host.request("task.accept_artifact", params, function (resp) {
-            if (resp.ok && resp.result) {
-                root.receipt = resp.result.receipt
-                root.duplicate = resp.result.duplicate === true
+            var outcome = resp.ok && resp.result ? resp.result : null
+            if (outcome) {
+                root.receipt = outcome.receipt
+                root.duplicate = outcome.duplicate === true
             }
-            root.host.request("state.get", {}, function () {})
+            root.host.request("state.get", {}, function () {
+                // This UI performed the acceptance: announce it once the refreshed snapshot
+                // (with the new growth events and their seqs) is in place, so the desktop
+                // pet celebrates from this response (spec D11). Hosts without the signal
+                // simply skip it.
+                if (outcome && root.host && typeof root.host.taskAccepted === "function")
+                    root.host.taskAccepted(outcome)
+            })
         }, root.acceptKey)
     }
     function discardClicked() {
-        if (!root.canDecide || root.hostBusy)
+        if (!root.canDecide || !root.digestUsable || root.hostBusy)
             return
         var params = { "task_id": root.task.task_id, "review_digest": root.review.digest }
         root.host.request("task.discard", params, function (resp) {
             if (resp.ok) {
                 root.task = resp.result
                 root.outcome = "Discarded. No reward was granted and no project files were changed."
+            } else {
+                root.loadNotice = root.missingReviewNotice(params.task_id, resp)
             }
             root.host.request("state.get", {}, function () {})
         })
@@ -116,7 +156,7 @@ ColumnLayout {
 
     // Explicit no-reward abandonment of a recovery_required task, after acknowledgement.
     function abandonClicked() {
-        if (!root.canAbandon || !abandonAck.checked || root.hostBusy)
+        if (!root.canAbandon || !root.digestUsable || !abandonAck.checked || root.hostBusy)
             return
         var params = { "task_id": root.task.task_id, "review_digest": root.review.digest }
         abandonAck.checked = false
@@ -124,6 +164,8 @@ ColumnLayout {
             if (resp.ok) {
                 root.task = resp.result
                 root.outcome = "Abandoned. No reward was granted. CodePet did not restore, change or delete any files."
+            } else {
+                root.loadNotice = root.missingReviewNotice(params.task_id, resp)
             }
             root.host.request("state.get", {}, function () {})
         })
@@ -135,6 +177,25 @@ ColumnLayout {
         visible: root.task === null
         text: root.hostBusy ? "Loading review…" : "No review loaded."
         textFormat: Text.PlainText
+    }
+    Label {
+        objectName: "taskReview.loadNotice"
+        Layout.fillWidth: true
+        visible: root.task === null && root.loadNotice !== ""
+        text: root.loadNotice
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        font.bold: true
+    }
+    // Loaded review whose digest cannot be sent (or a request refused with INVALID_PARAMS).
+    Label {
+        objectName: "taskReview.digestNotice"
+        Layout.fillWidth: true
+        visible: root.task !== null && text !== ""
+        text: root.digestNotice !== "" ? root.digestNotice : root.loadNotice
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        font.bold: true
     }
 
     ColumnLayout {
@@ -218,7 +279,7 @@ ColumnLayout {
             }
             Label {
                 Layout.fillWidth: true
-                text: "Accepting records the category reward once, in CodePet's saved state. Discarding grants nothing."
+                text: "Acceptance never refills care. Eligible simulated acceptance records demo XP once; failed checks grant no XP. Real-work XP remains separate and requires supported real evidence. Discarding grants nothing."
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
             }
@@ -226,13 +287,13 @@ ColumnLayout {
                 Button {
                     objectName: "taskReview.accept"
                     text: "Accept artifact"
-                    enabled: root.canDecide && ackBox.checked && !root.hostBusy && root.reasonOk
+                    enabled: root.canDecide && root.digestUsable && ackBox.checked && !root.hostBusy && root.reasonOk
                     onClicked: root.acceptClicked()
                 }
                 Button {
                     objectName: "taskReview.discard"
                     text: "Discard (no reward)"
-                    enabled: root.canDecide && !root.hostBusy
+                    enabled: root.canDecide && root.digestUsable && !root.hostBusy
                     onClicked: root.discardClicked()
                 }
             }
@@ -259,7 +320,7 @@ ColumnLayout {
         Button {
             objectName: "taskReview.abandon"
             text: "Abandon (no reward)"
-            enabled: root.canAbandon && abandonAck.checked && !root.hostBusy
+            enabled: root.canAbandon && root.digestUsable && abandonAck.checked && !root.hostBusy
             onClicked: root.abandonClicked()
         }
     }
@@ -269,8 +330,9 @@ ColumnLayout {
         visible: root.receipt !== null
         text: root.receipt
             ? (root.duplicate ? "Already accepted earlier. " : "Accepted. ")
-                + "Recorded reward: +" + (root.receipt.amount_hundredths / 100).toFixed(1) + " "
-                + root.categoryName(root.receipt.category) + " · verification: " + root.receipt.verification
+                + "Saved receipt: +" + (root.receipt.demo_xp || 0) + " demo XP · +" + (root.receipt.real_xp || 0) + " real-work XP"
+                + " · track: " + (root.receipt.progression_track || "none")
+                + (root.receipt.amount_hundredths > 0 ? " · historical care reward: +" + (root.receipt.amount_hundredths / 100).toFixed(1) : "") + " · verification: " + root.receipt.verification
                 + (root.receipt.override_reason ? " · override reason: " + root.receipt.override_reason : "")
             : ""
         textFormat: Text.PlainText

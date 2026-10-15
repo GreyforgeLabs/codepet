@@ -1,6 +1,12 @@
 # CodePet implementation specification
 
-Version: 1.0 · Status: implementation-ready design, not implemented or benchmarked · Target: supported Linux desktops; Omarchy integration by default
+Version: 1.1 · Status: implementation-ready design, not implemented or benchmarked · Target: supported Linux desktops; Omarchy integration by default
+
+## Current product direction (2026-10-15)
+
+This revision supersedes the earlier bar/panel-only and no-roaming direction: the primary interface is a transparent desktop pet with a tight input region, short cosmetic walks, long pauses, hover/selection meters and transient care props. A separate focusable task/review window opens only through explicit user action. Ordinary portable Qt preview windows are not a claim of Wayland overlay support. See [desktop-overlay.md](desktop-overlay.md) for implemented capability boundaries and live validation gates.
+
+The implemented care/progression contract in [care-progression.md](care-progression.md) also supersedes the older category meter rewards below: care fills bars, full bars and completed required rest gate Start, explicit eligible mock acceptance grants isolated demo XP, and real providers remain disabled. No cosmetic timer, low meter, care interaction or wake event starts coding.
 
 ## 1. Product decision
 
@@ -17,6 +23,7 @@ The core loop is:
 5. Watch progress or cancel
 6. Review changes, verification evidence, and any remaining uncertainty
 7. Explicitly apply or accept the result; receive one care reward
+   *(Superseded for the implemented build: acceptance grants isolated demo XP for eligible mock results and never refills care; Start is gated on full care and required rest. See [care-progression.md](care-progression.md). Pending operator confirmation, see §4.)*
 
 Use Rust because the on-demand controller is predominantly process supervision, file handling, local IPC, and small amounts of state. Retain QML because Omarchy already provides the UI host, and reuse portable Qt Quick components in a standalone lightweight window elsewhere. Rust runs for an active task or a short explicit state/control command, never as an idle daemon. Do not add Electron, Chromium, a webview, a local HTTP server, or a second UI framework.
 
@@ -46,7 +53,7 @@ Upstream Omagotchi supplies an existing needs-oriented QML interface, small orig
 | RUN-04 | Stop the entire contained process tree on cancellation or deadline |
 | DATA-01 | Apply only reviewed changes, with baseline conflict checks, recovery journal, and backups |
 | DATA-02 | Refuse detected baseline conflicts; require a quiescent destination and disclose concurrent-writer limits |
-| DATA-03 | A reward is recorded once, transactionally, after the user's explicit acceptance |
+| DATA-03 | A reward is recorded once, transactionally, after the user's explicit acceptance. *(Implemented build: the reward is the isolated demo XP ledger row, not a meter refill; see [care-progression.md](care-progression.md).)* |
 | SEC-01 | Treat repository instructions, generated output, filenames, and test scripts as untrusted input |
 | SEC-02 | Do not grant home-directory, host filesystem, secret, privileged, or network access implicitly |
 | SEC-03 | No telemetry, project uploading by the app, app account, or app-owned API key requirement |
@@ -73,9 +80,26 @@ The selected coding provider can require its own account, subscription, API key,
 
 Automatic bug discovery; issue trackers; pull requests; commits or pushes to the user's repository; multiple agents; task queues; recurring chores; terminal-wide session monitoring; screen or clipboard surveillance; system package removal; privileged commands; automatic dependency installation; unrestricted provider MCP servers; remote filesystem targets; cloud sync; plugin marketplace; social features; complex pet breeding or death mechanics.
 
+> **Superseded in v0.2.0 (2026-10-15).** Death mechanics are no longer excluded: v0.2 adds
+> an opt-out permadeath lifecycle (with a gentle mode, explicit arming, attended-time-only
+> neglect, frozen grace and a memorial). See [lifecycle.md](lifecycle.md) for the rules and
+> [decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md) for the decisions.
+> Breeding, multiple simultaneous pets and every other item above remain excluded.
+
 A task may run tests and edit project code. It must not run `sudo`, administer the machine, delete caches across the home directory, or treat an entire filesystem as a cleanup target. Dependency downloads and updates require the precise workflow in §10; hygiene is not permission to “clean my computer.”
 
 ## 4. Care categories and reward rules
+
+> **Supersession note (2026-10-15, pending operator confirmation).** The implemented build
+> follows [care-progression.md](care-progression.md) instead of the meter-reward rules in this section:
+> acceptance no longer refills a care meter; care is filled only by explicit care clicks;
+> Start requires all four meters full, no bathroom break due and no nap due, then debits
+> care once; eligible mock acceptance grants isolated demo XP in the category's mastery
+> track. REW-01, REW-03, REW-04 and the exactly-once/idempotency parts of REW-02 and
+> REW-05 still apply, with "reward" meaning that XP ledger row. Whether gating every Start
+> on full care plus bathroom and nap is the intended product direction for real providers
+> has not been confirmed by the operator; confirm it before real providers rely on it.
+> The table and REW-06 below are the earlier target, kept for history.
 
 All meters represent **well-being**, from 0 to 100: larger is better. UI labels should say “Hunger satisfied,” “Hydration,” “Mental health,” and “Cleanliness,” or display the four requested names with an unambiguous high-is-good legend. Start at 70 each. Use integer hundredths internally and clamp after each update.
 
@@ -94,11 +118,19 @@ All meters represent **well-being**, from 0 to 100: larger is better. UI labels 
 
 **REW-04:** Missing verification is labelled “Not verified.” A user may explicitly accept a useful unverified result after acknowledging the missing evidence; record `verification_override=true` and their short reason. This does not change the check result or present it as verified. Known failing checks require the same explicit override and visible failure warning.
 
-**REW-05:** Use a SQLite unique constraint on `rewards.task_id`, with acceptance and meter update in the same database transaction. Requests are idempotent across double clicks, IPC reconnects, and crashes. Reject duplicate acceptance with the recorded result.
+**REW-05:** Use a SQLite unique constraint on `rewards.task_id`, with acceptance and meter update in the same database transaction. *(Implemented build: the unique ledger is `demo_xp_rewards.task_id`, committed with the acceptance; meters are not updated.)* Requests are idempotent across double clicks, IPC reconnects, and crashes. Reject duplicate acceptance with the recorded result.
 
 **REW-06:** A rollback changes the original reward to reversed and removes the granted increment, clamped at zero, in the same transaction recording successful rollback. Do not rewrite subsequent rewards. Explain that meter decay and later rewards can make the resulting balance different from the pre-task balance.
 
 ### 4.1 Decay and pauses
+
+> **Superseded in v0.2.0 (2026-10-15).** The "floor 20, no pet death" rule and the
+> UI-computed decay below describe the earlier target. v0.2 lives decay only during
+> attended time recorded by the bar plugin and settled by Rust, hunger and thirst can lead
+> to a critical period and, for armed permadeath lives, to a permanent end; gentle lives
+> faint instead. See [lifecycle.md](lifecycle.md) and
+> [decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md). The bullets below
+> are kept for history.
 
 - Decay is disabled by default. Offer an optional “Gentle decay while open” setting
 - Default enabled rates: hunger 1 point/hour, thirst 1/hour, mental health 0.5/hour, hygiene 0.5/hour
@@ -111,9 +143,15 @@ All meters represent **well-being**, from 0 to 100: larger is better. UI labels 
 
 ## 5. User interaction and UI
 
-### 5.1 Bar and panel
+### 5.1 Transparent desktop pet and explicit task window
 
-In Omarchy, the bar shows a small sprite and an optional task-status dot. Clicking opens a lightweight panel. On other desktops, a standalone Qt Quick window presents the same pet and controls without requiring panel integration. The shared panel contains four meters, task status, **New task**, **Pause decay**, settings, and recent results. Keep roaming and climbing out of version one; they create unnecessary CPU and integration work. Permit a small idle animation, disabled by reduced-motion or power-saving mode.
+Omarchy uses a transparent Quickshell PanelWindow on one selected screen, with no reserved space and no keyboard focus. A union of only visible pet/menu/prop bounds forms the input region; empty desktop space passes clicks through. Choose the top layer deliberately, not the lock-screen overlay layer. Move artwork inside the surface; do not repeatedly reposition a desktop window or capture the full screen's input.
+
+The pet makes small screen-local floor walks, then pauses. Clamp pet and controls on screen/scale changes and select a remaining monitor when its screen disappears. Animation is cosmetic, bounded to at most 6 FPS, paused when hidden or reduced-motion is selected. Explicit hide and trusted lock/suspend/fullscreen suppression remove both surface and props. Do not instantiate a session locker as a lock detector; unsupported integrations must be documented without guarantees.
+
+Show meters on hover/selection and a compact care menu on click. Bowls, tree and bed are transient. Task entry, review and keyboard navigation live in an independent window that opens only explicitly, sharing one transport and Rust-owned state. Closing it must not kill the existing per-job supervisor. No frame or solid scene background surrounds the desktop pet.
+
+Other Linux desktops require capability-specific hosts. A portable fixture preview is useful but does not satisfy global placement, click-through or always-on-top guarantees on Wayland or X11.
 
 Status mapping:
 
@@ -605,9 +643,9 @@ Do not implement excluded features before these gates pass. A safe one-provider 
 | T02 | Double-click Start and replay request/token | Exactly one launch; MAN-02, IPC-01 |
 | T03 | Change scope after preflight | Start rejected until new review; UI-02 |
 | T04 | Attempt second task while running or review pending | BUSY; no queue; MAN-02 |
-| T05 | Successful bug fix with runner-owned regression check | Review then explicit apply/accept; one hunger reward |
+| T05 | Successful bug fix with runner-owned regression check | Review then explicit apply/accept; one hunger reward *(implemented build: one Bugfix-track XP grant, no meter refill; see §4 note)* |
 | T06 | Provider says “tests passed” but check fails | Failure shown; no automatic reward; REW-01 |
-| T07 | Useful learning artifact, no code changes | Explicit artifact acceptance grants mental-health reward once |
+| T07 | Useful learning artifact, no code changes | Explicit artifact acceptance grants mental-health reward once *(implemented build: one Learning & Specification XP grant, no meter refill; see §4 note)* |
 | T08 | Provider exits 0 without useful result | No automatic acceptance/reward |
 | T09 | Repeated accept, reconnect, crash after acceptance commit | Same receipt returned; no duplicate meter change |
 | T10 | Cancel leader that forked/detached children | Entire cgroup empty before cancelled; RUN-04 |

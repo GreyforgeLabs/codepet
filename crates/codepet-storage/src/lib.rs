@@ -1,30 +1,47 @@
-//! Durable SQLite state for CodePet milestone 1 (mock execution only).
+//! Durable SQLite state for CodePet (mock execution only) and the v0.2 companion lifecycle.
 //!
 //! Every mutation runs in `BEGIN IMMEDIATE`, which serializes writers across processes, and
-//! every task state change appends a `task_events` row in the same transaction. Nothing here
-//! launches a provider, spawns a process, or reads or writes a selected project folder.
+//! every task state change appends a `task_events` row in the same transaction. Every write
+//! transaction settles attended presence and rest first and finalizes a due death last (see
+//! `docs/lifecycle.md`). Nothing here launches a provider, spawns a process, or reads or
+//! writes a selected project folder.
 use std::fmt;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod bar_export;
+mod care;
+mod life;
+mod lifecycle_store;
 mod model;
 mod paths;
+mod presence_io;
 mod schema;
 mod store;
 mod sys;
 
-pub use model::{
-    AcceptOutcome, DecayView, Event, EventData, EventsPage, HistoryCursor, HistoryPage, MetersView,
-    MockOptions, MockOutcome, PauseView, PreflightResult, PreflightSummary, ProviderInfo,
-    ReceiptView, RecoverResult, RecoveryChange, ReviewBrief, ReviewView, SettingsView, Snapshot,
-    StartResult, TaskBrief, TaskInput, TaskSummary,
+pub use bar_export::{BAR_SCHEMA, MAX_BAR_STATE_BYTES, MAX_READINESS_REASONS, MAX_REASON_BYTES};
+pub use care::{BATHROOM_LIMIT, DEMO_XP, EXECUTION_LIMIT_MS, SESSION_LIMIT, SLEEP_MS};
+/// Lifecycle enums used by the life API, re-exported for callers of `adopt`/`set_rules`.
+pub use codepet_core::lifecycle::{Mode, Pace};
+pub use life::{
+    lifecycle_rules_json, lifecycle_rules_sha256, AdoptRequest, Leniency, MAX_MEMORIAL_PAGE,
 };
-pub use paths::StatePaths;
+pub use model::{
+    AcceptOutcome, CareOutcome, CareView, CriticalView, DecayView, Event, EventData, EventsPage,
+    HistoryCursor, HistoryPage, LifeOutcome, LifeSummary, LifeView, LifecycleView, MasteryView,
+    MemorialBrief, MemorialPage, MetersView, MockOptions, MockOutcome, NeedView, NextStageView,
+    PauseView, PreflightResult, PreflightSummary, ProgressionView, ProviderInfo, ReceiptView,
+    RecoverResult, RecoveryChange, ReviewBrief, ReviewView, RulesView, SettingsView, Snapshot,
+    StartResult, TaskBrief, TaskInput, TaskSummary, UnseenEvent, XpView,
+};
+pub use paths::{StatePaths, BAR_STATE_FILE, PRESENCE_FILE};
 pub use store::{AcceptRequest, SealOutcome, Step, Store};
 pub use sys::Supervisor;
 
 /// Current SQLite `user_version`.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 4;
 pub const DB_FILE: &str = "codepet.sqlite3";
 pub const TOKEN_TTL_MS: i64 = 5 * 60 * 1000;
 /// Responses must fit one 64 KiB frame, so stored text is bounded by its JSON-encoded size
@@ -43,14 +60,26 @@ pub const MAX_EVENTS_PAGE: u32 = 100;
 pub const MAX_HISTORY_PAGE: u32 = 50;
 pub const RECENT_TASKS: u32 = 10;
 pub const MAX_REQUEST_ID_BYTES: usize = 128;
+/// Idempotency receipts kept for `pet.care`, `pet.sleep` and `pet.wake`: the most recent
+/// ones, pruned in the transaction that adds a new one. Acceptance receipts are never
+/// pruned. A retry of a care request older than this window runs as a new action.
+pub const MAX_CARE_RECEIPTS: i64 = 256;
 /// Names accepted by `CODEPET_FAULT` in debug builds.
-pub const FAULT_POINTS: [&str; 5] = [
+pub const FAULT_POINTS: [&str; 9] = [
     "accept_before_commit",
     "accept_after_commit",
     "start_after_commit",
     "supervisor_running",
     "review_before_commit",
+    "death_before_commit",
+    "adopt_before_commit",
+    "evolve_before_commit",
+    "presence_before_commit",
 ];
+/// Bounded idempotency receipts for frequent lifecycle clicks (`pet.select`,
+/// `pet.events_seen`, `pet.rules`, `pet.configure_life`), pruned like care receipts.
+/// Adoption and retirement receipts are kept.
+pub const MAX_LIFE_RECEIPTS: i64 = 256;
 
 pub type Result<T, E = StorageError> = std::result::Result<T, E>;
 
@@ -58,6 +87,11 @@ pub type Result<T, E = StorageError> = std::result::Result<T, E>;
 #[derive(Debug)]
 pub enum StorageError {
     Busy,
+    /// No living companion: care, sleep, pause and selection need one.
+    NoActivePet,
+    /// `NO_ACTIVE_PET` for a command whose own settlement made a pending end final: the
+    /// end is committed and the command refused.
+    PassedAway,
     InvalidState(&'static str),
     StaleRevision,
     UnsupportedProvider,
@@ -88,6 +122,7 @@ impl StorageError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Busy => "BUSY",
+            Self::NoActivePet | Self::PassedAway => "NO_ACTIVE_PET",
             Self::InvalidState(_) => "INVALID_STATE",
             Self::StaleRevision => "STALE_REVISION",
             Self::UnsupportedProvider => "UNSUPPORTED_PROVIDER",
@@ -121,6 +156,13 @@ impl fmt::Display for StorageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Busy => f.write_str("Another task occupies the active slot."),
+            Self::NoActivePet => f.write_str(
+                "No companion is living. Adopt a companion whenever you're ready.",
+            ),
+            Self::PassedAway => f.write_str(
+                "Your companion's grace time ran out and they have passed away. \
+                 Their memorial is kept; adopt a companion whenever you're ready.",
+            ),
             Self::InvalidState(why) => write!(f, "Invalid task state: {why}."),
             Self::StaleRevision => f.write_str("The revision changed. Reload and review it."),
             Self::UnsupportedProvider => f.write_str("Provider is not supported in this version."),
@@ -176,33 +218,110 @@ impl From<std::io::Error> for StorageError {
 /// Wall clock in Unix milliseconds; injectable so tests can expire tokens.
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> i64;
+    /// Milliseconds since boot *including* suspend (CLOCK_BOOTTIME) and a clock identity,
+    /// when available. Used for nap settlement, where suspended time counts as rest. A
+    /// missing identity uses bounded wall-clock reconciliation instead, useful for
+    /// deterministic tests.
+    fn steady_time(&self) -> Option<(String, i64)> {
+        None
+    }
+    /// Monotonic milliseconds *excluding* suspend (CLOCK_MONOTONIC) and a clock identity,
+    /// when available. Used for execution accounting, where a suspended laptop must not
+    /// be charged as supervised execution. Same fallback as `steady_time`.
+    fn execution_time(&self) -> Option<(String, i64)> {
+        None
+    }
 }
+
+fn boot_id() -> Option<String> {
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    Some(boot.trim().to_owned())
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;
 impl Clock for SystemClock {
+    fn steady_time(&self) -> Option<(String, i64)> {
+        let boot = boot_id()?;
+        let uptime = std::fs::read_to_string("/proc/uptime").ok()?;
+        let seconds = uptime.split_whitespace().next()?;
+        let (whole, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
+        let millis: i64 = whole.parse::<i64>().ok()?.checked_mul(1000)?;
+        let fraction = format!("{fraction:0<3}");
+        Some((
+            boot,
+            millis.checked_add(fraction[..3].parse::<i64>().ok()?)?,
+        ))
+    }
+    fn execution_time(&self) -> Option<(String, i64)> {
+        let now = rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
+        let millis = now
+            .tv_sec
+            .checked_mul(1000)?
+            .checked_add(now.tv_nsec / 1_000_000)?;
+        // A distinct identity keeps CLOCK_MONOTONIC values from ever being compared with
+        // CLOCK_BOOTTIME cursors written by an earlier build.
+        Some((format!("{}/monotonic", boot_id()?), millis))
+    }
     fn now_ms(&self) -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
     }
 }
-/// Settable clock for tests.
+/// Settable clock for tests. By default it has no boot clock (`steady_time() == None`),
+/// exactly as before v0.2; `set_steady` adds a settable `(boot id, CLOCK_BOOTTIME ms)` pair
+/// so lifecycle tests can drive presence settlement deterministically.
 #[derive(Debug, Default)]
-pub struct ManualClock(AtomicI64);
+pub struct ManualClock {
+    wall: AtomicI64,
+    steady: Mutex<Option<(String, i64)>>,
+}
 impl ManualClock {
     pub fn new(ms: i64) -> Self {
-        Self(AtomicI64::new(ms))
+        Self {
+            wall: AtomicI64::new(ms),
+            steady: Mutex::new(None),
+        }
     }
+    /// Sets the wall clock only (a wall jump); the boot clock is unchanged.
     pub fn set(&self, ms: i64) {
-        self.0.store(ms, Ordering::SeqCst);
+        self.wall.store(ms, Ordering::SeqCst);
     }
+    /// Time passes: the wall clock and, when set, the boot clock advance together.
     pub fn advance(&self, ms: i64) {
-        self.0.fetch_add(ms, Ordering::SeqCst);
+        self.wall.fetch_add(ms, Ordering::SeqCst);
+        if let Some((_, steady)) = self.steady_guard().as_mut() {
+            *steady += ms;
+        }
+    }
+    /// Sets (or replaces) the boot clock identity and its milliseconds since boot.
+    pub fn set_steady(&self, boot: &str, ms: i64) {
+        *self.steady_guard() = Some((boot.to_owned(), ms));
+    }
+    /// Removes the boot clock again (`steady_time() == None`).
+    pub fn clear_steady(&self) {
+        *self.steady_guard() = None;
+    }
+    /// Advances only the boot clock (for example a suspend, which the wall clock also
+    /// sees, or a wall clock that stepped back while real time passed).
+    pub fn advance_steady(&self, ms: i64) {
+        if let Some((_, steady)) = self.steady_guard().as_mut() {
+            *steady += ms;
+        }
+    }
+    fn steady_guard(&self) -> std::sync::MutexGuard<'_, Option<(String, i64)>> {
+        self.steady
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 impl Clock for ManualClock {
     fn now_ms(&self) -> i64 {
-        self.0.load(Ordering::SeqCst)
+        self.wall.load(Ordering::SeqCst)
+    }
+    fn steady_time(&self) -> Option<(String, i64)> {
+        self.steady_guard().clone()
     }
 }
 

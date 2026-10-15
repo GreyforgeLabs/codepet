@@ -1,3 +1,18 @@
+# v0.2.0 note
+
+v0.2.0 adds the companion lifecycle, presence settlement (the decay settlement this
+milestone excluded) and `bar-state.json`. See [lifecycle.md](lifecycle.md),
+[decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md) and
+[architecture.md](architecture.md). The method shapes below remain valid for the v0.1
+methods.
+
+# Care/progression update
+
+The care/progression feature supersedes the original acceptance meter-refill rules below.
+See [care-progression.md](care-progression.md) for schema v2, explicit care/sleep commands,
+full-readiness gates and isolated demo XP. The original milestone contract is retained
+below as historical context; real providers remain disabled.
+
 # Milestone 1: durable mock execution
 
 Status: **implemented (mock only), 2026-10-14**, with the deviations listed below. This is
@@ -64,10 +79,10 @@ and a committed mutation could answer `OUTPUT_LIMIT`. The fixes changed the cont
 | --- | --- | --- |
 | `codepet-core` | Pure enums, draft validation, transition table, reward arithmetic, existing in-memory model | none |
 | `codepet-protocol` | Envelopes, methods, error codes, typed params, bounded framing | serde, serde_json |
-| `codepet-storage` | XDG state dir checks, SQLite schema/migrations, durable task engine, tokens, ledger, recovery, fault points | core, rusqlite (bundled), serde, serde_json, sha2 |
+| `codepet-storage` | XDG state dir checks, SQLite schema/migrations, durable task engine, tokens, ledger, recovery, fault points | core, rusqlite (bundled), serde, serde_json, sha2, rustix (`std`, `time`: CLOCK_MONOTONIC execution time) |
 | `codepet` (CLI) | Short commands, `rpc` dispatcher, mock supervisor, error mapping | core, protocol, storage, serde_json |
 
-No other third-party crates. Builds are offline against the cached registry.
+No other third-party crates at runtime (`tempfile` is a test-only dev-dependency of storage and the CLI). Builds are offline against the cached registry.
 
 ## Core additions (pure, no IO)
 
@@ -132,6 +147,19 @@ No other third-party crates. Builds are offline against the cached registry.
   `recover` treats a supervisor as alive only if both match; it never resumes work.
   Active states with a confirmed-dead supervisor → `interrupted`. `review_ready` stays
   readable after its digest is recomputed and matches; mismatch → `recovery_required`.
+  If review metadata is missing, explicit recovery fills only the missing fields: a fresh
+  opaque digest identifies abandonment, and missing verification is restored as described
+  below. A stored digest that is not exactly 64 lowercase hex characters (for example empty or
+  oversized, which `task.discard` could never echo back) counts as missing. Existing
+  artifact bytes and any usable digest are preserved, and every replacement first records
+  the previous column values in the `review_repairs` audit table (schema v3). A missing
+  verification is restored from the task's recorded check (`checks.status`) when one
+  exists, and only otherwise becomes `not_verified`. Repaired reviews carry
+  `metadata_repaired: true` in `review` briefs and summaries, permanently, so history and
+  the UI never present them as sealed results. A repair that leaves the state unchanged
+  appends a same-state `task_events` row (`from` = `state` = `recovery_required`). This also repairs tasks already stuck
+  in `recovery_required`. The replacement metadata never enables acceptance; the user must
+  explicitly abandon with the exact returned digest to release the slot without a reward.
 - Fault points: `CODEPET_FAULT=<name>` is honored only in debug builds
   (`cfg(debug_assertions)`) and aborts the process at that point. Names:
   `accept_before_commit`, `accept_after_commit`, `start_after_commit`,
@@ -194,7 +222,7 @@ Task brief (lists: `state.get`, `history.list`, `task.recover`):
   "mock": {"outcome": "artifact", "step_ms": 0},
   "instructions_excerpt": "…", "instructions_bytes": 30, "instructions_sha256": "hex",
   "created_at_ms": 0, "updated_at_ms": 0,
-  "review": {"digest": "hex", "verification": "not_verified", "simulated": true, "artifact_bytes": 412},
+  "review": {"digest": "hex", "verification": "not_verified", "metadata_repaired": false, "simulated": true, "artifact_bytes": 412},
   "receipt": null
 }
 ```
@@ -210,7 +238,7 @@ Task summary (`task.get`, `task.review` and the mutations below):
   "folder": "/abs/path", "scope": ["src"], "instructions": "…",
   "mock": {"outcome": "artifact", "step_ms": 0},
   "created_at_ms": 0, "updated_at_ms": 0,
-  "review": {"digest": "hex", "verification": "not_verified", "artifact": "…", "simulated": true},
+  "review": {"digest": "hex", "verification": "not_verified", "metadata_repaired": false, "artifact": "…", "simulated": true},
   "receipt": null
 }
 ```
@@ -231,7 +259,9 @@ Receipt: `{"task_id","category","amount_hundredths":2000,"verification","overrid
 - `task.accept_artifact` params: `task_id review_digest acknowledged override_reason?`
   (request envelope `id` is the idempotency key) → `{"receipt":{…},"duplicate":false}`.
 - `task.discard` params: `task_id review_digest` → task summary.
-- `task.recover` params: `{}` → `{"changed":[{"task_id","from","to"}],"active_task":brief|null}`.
+- `task.recover` params: `{}` → `{"changed":[{"task_id","from","to"}],"repaired":["task_id"],"active_task":brief|null}`.
+  `repaired` lists tasks whose review metadata recovery replaced so they can be abandoned,
+  including a `recovery_required` task whose state did not change.
 - `events.subscribe` params: `after_seq limit?(≤100)` → `{"events":[event…],"last_seq"}`.
 - `history.list` params: `before_ms? before_task_id? limit?(≤50)` →
   `{"tasks":[brief…],"next":{"before_ms","before_task_id"}|null}`. Pass `next` back as the

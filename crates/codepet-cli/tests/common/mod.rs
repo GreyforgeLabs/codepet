@@ -1,17 +1,22 @@
 //! Shared helpers: every test gets its own temporary XDG_STATE_HOME and HOME and runs the
 //! built `codepet` binary. Nothing touches the operator's real state directory.
 #![allow(dead_code)]
+use codepet_storage::{Clock, ManualClock, StatePaths, Store, SystemClock};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 pub const BIN: &str = env!("CARGO_BIN_EXE_codepet");
+pub const MIN: i64 = 60_000;
+pub const HOUR: i64 = 3_600_000;
 const SIGABRT: i32 = 6;
 
 pub struct Env {
@@ -181,8 +186,13 @@ impl Env {
     pub fn start(&self, task_id: &str, revision: u64, token: &str) -> Value {
         self.ok("task.start", Self::start_params(task_id, revision, token))
     }
-    /// create → preflight → start; returns (task_id, review digest).
+    /// Explicitly fill care before tests that exercise work rather than care policy.
+    pub fn care_routine(&self) -> Value {
+        self.ok("pet.care", json!({"action": "routine"}))
+    }
+    /// care → create → preflight → start; returns (task_id, review digest).
     pub fn reviewed(&self, category: &str, outcome: &str) -> (String, String) {
+        self.care_routine();
         let id = self.create(category, 0, outcome);
         let token = self.preflight(&id, 1);
         let s = self.start(&id, 1, &token);
@@ -224,6 +234,152 @@ impl Env {
             }),
             None,
         )
+    }
+}
+
+/// Lifecycle helpers. A `Store` opened here on a `ManualClock` stands in for time passing
+/// between commands (no test-only clock ever reaches the CLI process); everything else goes
+/// through the real binary.
+impl Env {
+    pub fn paths(&self) -> StatePaths {
+        StatePaths::resolve(|key| match key {
+            "XDG_STATE_HOME" => Some(self.xdg().into_os_string()),
+            "HOME" => Some(self.home().into_os_string()),
+            _ => None,
+        })
+        .unwrap()
+    }
+    /// A storage handle on the test state directory driven by `clock`.
+    pub fn store(&self, clock: Arc<ManualClock>) -> Store {
+        Store::open(&self.paths(), clock).unwrap()
+    }
+    /// Seeds an explicitly started nap whose wall-clock interval has already elapsed; the
+    /// next CLI process settles it.
+    pub fn elapsed_nap(&self) {
+        let mut store = self.store(Arc::new(ManualClock::new(SystemClock.now_ms() - 120_001)));
+        store.sleep(&self.id()).unwrap();
+    }
+    pub fn bar_state_path(&self) -> PathBuf {
+        self.state_dir().join("bar-state.json")
+    }
+    /// The published `bar-state.json`, if any.
+    pub fn bar_state(&self) -> Option<Value> {
+        match std::fs::read(self.bar_state_path()) {
+            Ok(bytes) => Some(serde_json::from_slice(&bytes).expect("bar-state.json is JSON")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => panic!("cannot read bar-state.json: {e}"),
+        }
+    }
+    pub fn presence_path(&self) -> PathBuf {
+        self.state_dir().join("presence.json")
+    }
+    /// Writes `presence.json` (mode 0600) as the bar leader would: `attended_ms` in total
+    /// for `session`, last updated at `now_wall`, recorded since `started_wall`.
+    pub fn write_presence(
+        &self,
+        session: &str,
+        life_id: &str,
+        started_wall: i64,
+        now_wall: i64,
+        attended_ms: i64,
+    ) {
+        let doc = json!({
+            "v": 1, "session": session, "life_id": life_id,
+            "started_wall_ms": started_wall, "updated_wall_ms": now_wall,
+            "attended_ms": attended_ms, "ticks": (attended_ms + MIN - 1) / MIN,
+        });
+        self.write_presence_raw(&doc.to_string());
+    }
+    pub fn write_presence_raw(&self, text: &str) {
+        let path = self.presence_path();
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(&path, text).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    /// The living companion's id from a fresh `state.get`.
+    pub fn life_id(&self) -> String {
+        self.state()["life"]["life_id"]
+            .as_str()
+            .expect("a living companion")
+            .to_owned()
+    }
+    /// Arms the current life in permadeath mode with the rules acknowledged.
+    pub fn arm(&self) -> Value {
+        let life_id = self.life_id();
+        self.ok(
+            "pet.rules",
+            json!({"life_id": life_id, "mode": "permadeath", "acknowledge_rules": true}),
+        )
+    }
+    /// Retires the living companion by its typed name.
+    pub fn retire(&self) -> Value {
+        let life = self.state()["life"].clone();
+        self.ok(
+            "pet.retire",
+            json!({"life_id": life["life_id"], "confirm_name": life["name"]}),
+        )
+    }
+    pub fn adopt(&self, species: &str, mode: &str, pace: &str) -> Value {
+        self.ok(
+            "pet.adopt",
+            json!({"species": species, "mode": mode, "pace": pace, "acknowledge_rules": true}),
+        )
+    }
+}
+
+/// Drives attended time through one bar session, as the bar leader and storage would.
+pub struct Timeline {
+    pub clock: Arc<ManualClock>,
+    pub store: Store,
+    session: &'static str,
+    life_id: String,
+    started_wall: i64,
+    attended: i64,
+}
+impl Timeline {
+    /// Starts two days in the past, so the CLI's real clock is always later than any
+    /// timestamp the timeline writes.
+    pub fn new(env: &Env, session: &'static str) -> Self {
+        let clock = Arc::new(ManualClock::new(SystemClock.now_ms() - 48 * HOUR));
+        clock.set_steady("boot-timeline", 10_000_000);
+        let store = env.store(clock.clone());
+        let started_wall = clock.now_ms();
+        Self {
+            clock,
+            store,
+            session,
+            life_id: env.life_id(),
+            started_wall,
+            attended: 0,
+        }
+    }
+    /// `ms` of attended time pass; the next settlement credits them.
+    pub fn attend(&mut self, env: &Env, ms: i64) {
+        self.clock.advance(ms);
+        self.attended += ms;
+        env.write_presence(
+            self.session,
+            &self.life_id,
+            self.started_wall,
+            self.clock.now_ms(),
+            self.attended,
+        );
+    }
+    /// Attends up to `total` ms and settles through the timeline's store.
+    pub fn settle_to(&mut self, env: &Env, total: i64) -> Value {
+        self.attend(env, total - self.attended);
+        serde_json::to_value(self.store.snapshot().unwrap()).unwrap()
+    }
+    /// Attends up to `total` ms, written with real timestamps, for a CLI process to settle.
+    pub fn attend_for_cli(&mut self, env: &Env, total: i64) {
+        self.attended = total;
+        env.write_presence(
+            self.session,
+            &self.life_id,
+            self.started_wall,
+            SystemClock.now_ms(),
+            total,
+        );
     }
 }
 
@@ -283,5 +439,47 @@ pub fn wait_output(mut child: Child) -> Output {
         status,
         stdout: stdout.join().unwrap(),
         stderr: stderr.join().unwrap(),
+    }
+}
+
+/// Verify containment without relying on CONFIG_CHECKPOINT_RESTORE's optional
+/// `/proc/PID/task/TID/children` interface, absent in some Linux test sandboxes.
+pub fn assert_no_child_processes(pid: u32) {
+    let tasks = std::fs::read_dir(format!("/proc/{pid}/task")).unwrap();
+    let mut needs_parent_scan = false;
+    for task in tasks {
+        let path = task.unwrap().path().join("children");
+        match std::fs::read_to_string(&path) {
+            Ok(children) => assert!(children.trim().is_empty(), "{pid} has children: {children}"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => needs_parent_scan = true,
+            Err(e) => panic!("cannot inspect {}: {e}", path.display()),
+        }
+    }
+    if needs_parent_scan {
+        for process in std::fs::read_dir("/proc").unwrap() {
+            let process = process.unwrap();
+            let Some(child_pid) = process
+                .file_name()
+                .to_str()
+                .and_then(|n| n.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let status = match std::fs::read_to_string(process.path().join("status")) {
+                Ok(status) => status,
+                // Unrelated processes can exit between listing and inspection.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => panic!("cannot inspect process {child_pid}: {e}"),
+            };
+            let parent = status
+                .lines()
+                .find_map(|line| line.strip_prefix("PPid:"))
+                .and_then(|value| value.trim().parse::<u32>().ok())
+                .expect("Linux process status contains PPid");
+            assert_ne!(
+                parent, pid,
+                "mock supervisor {pid} spawned child {child_pid}"
+            );
+        }
     }
 }
