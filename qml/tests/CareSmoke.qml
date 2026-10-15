@@ -88,6 +88,12 @@ Item {
                 top.check(top.care.remainingMs < 92000 && host.snapshot.care.sleep_remaining_ms === 92000,
                           "countdown is local presentation only")
                 top.fixture("ready")
+                top.check(top.care.animationRunning, "the Care tab sprite animates by default")
+                panel.reducedMotion = true
+                top.check(top.care.reducedMotion && !top.care.animationRunning,
+                          "the host's less-motion preference reaches the Care tab through Panel")
+                panel.reducedMotion = false
+                top.check(top.care.animationRunning, "and clearing it resumes the sprite")
                 top.care.reducedMotion = true
                 top.check(!top.care.animationRunning, "reduced motion disables pose ticks")
                 top.care.reducedMotion = false

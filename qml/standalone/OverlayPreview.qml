@@ -81,6 +81,7 @@ ApplicationWindow {
                 x: 20; width: parent.width - 40
                 host: host
                 showPetCare: true
+                reducedMotion: root.reducedMotion
             }
         }
     }

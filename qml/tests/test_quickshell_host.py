@@ -275,6 +275,17 @@ class HostContractV02(unittest.TestCase):
         self.assertIn('shell.views.indexOf(name) < 0', view)
         self.assertIn('if (!hostAdapter.busy)', view)
 
+    def test_reduced_motion_reaches_the_task_window(self):
+        # CODEPET_REDUCED_MOTION, the setReducedMotion IPC verb and the pet menu's
+        # "Less motion" all set shell.reducedMotion; the Care tab must honour it too.
+        panel = block(CODE, 'Panel {')
+        self.assertIn('reducedMotion: shell.reducedMotion', panel)
+        self.assertIn('reducedMotion: shell.reducedMotion', block(CODE, 'DesktopPet {'))
+        panel_qml = (QML / "shared/Panel.qml").read_text()
+        self.assertIn('reducedMotion: root.reducedMotion', block(panel_qml, 'PetCare {'))
+        preview = (QML / "standalone/OverlayPreview.qml").read_text()
+        self.assertIn('reducedMotion: root.reducedMotion', block(preview, 'Panel {'))
+
     def test_window_has_the_four_tabs(self):
         tabs = block(CODE, 'TabBar {')
         self.assertIn('model: ["Care", "Tasks", "Companion", "Life"]', tabs)

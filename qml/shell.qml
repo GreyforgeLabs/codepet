@@ -249,6 +249,7 @@ ShellRoot {
                     showPetCare: true
                     width: parent.width
                     host: hostAdapter
+                    reducedMotion: shell.reducedMotion
                 }
             }
         }

@@ -26,6 +26,8 @@ ColumnLayout {
     required property var host
     property string view: "home"
     property bool showPetCare: true
+    // The host's "less motion" preference; reaches the Care tab's sprite.
+    property bool reducedMotion: false
     property string notice: ""
     // Optional generated pet registry (PetRegistry.js REGISTRY); LifeText falls back to the roster.
     property var registry: null
@@ -273,6 +275,7 @@ ColumnLayout {
             visible: root.showPetCare && root.shows(["home", "care"]) && !root.noLife
             Layout.fillWidth: true
             host: root.host
+            reducedMotion: root.reducedMotion
         }
         GroupBox {
             objectName: "panel.careMeters"
