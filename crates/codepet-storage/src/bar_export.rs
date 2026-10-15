@@ -12,7 +12,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::Serialize;
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
 
 pub const BAR_SCHEMA: &str = "codepet.bar.v1";
@@ -253,9 +253,14 @@ fn existing_version(path: &Path, db_id: &str) -> i64 {
     if !meta.is_file() || meta.len() > MAX_BAR_STATE_BYTES as u64 {
         return 0;
     }
-    let Ok(file) = fs::File::open(path) else {
+    // Never follows a swapped-in symlink or blocks on a FIFO while the DB lock is held.
+    let Ok(file) = sys::open_sidecar(path) else {
         return 0;
     };
+    match file.metadata() {
+        Ok(m) if m.is_file() && (m.dev(), m.ino()) == (meta.dev(), meta.ino()) => {}
+        _ => return 0,
+    }
     let mut text = Vec::new();
     if file
         .take(MAX_BAR_STATE_BYTES as u64 + 1)

@@ -2,7 +2,7 @@
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Effective UID from `/proc/self/status` (std has no safe accessor).
 pub(crate) fn current_uid() -> io::Result<u32> {
@@ -21,6 +21,25 @@ pub(crate) fn passwd_home(passwd: &str, uid: u32) -> Option<PathBuf> {
         let f: Vec<&str> = line.split(':').collect();
         (f.len() == 7 && f[2].parse() == Ok(uid) && !f[5].is_empty()).then(|| PathBuf::from(f[5]))
     })
+}
+
+/// Opens a state-dir sidecar read-only with `O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC`: a final
+/// symlink is refused (`ELOOP`) instead of followed, and a FIFO or device swapped in after
+/// the caller's `lstat` cannot block the open (and with it every writer holding the DB
+/// lock). Callers still compare the handle's `(dev, ino)` and file type with the `lstat`.
+pub(crate) fn open_sidecar(path: &Path) -> io::Result<fs::File> {
+    use rustix::fs::{Mode, OFlags};
+    let fd = rustix::fs::open(
+        path,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?;
+    Ok(fs::File::from(fd))
+}
+
+/// True for the error `open_sidecar` returns when the final component is a symlink.
+pub(crate) fn is_symlink_refusal(e: &io::Error) -> bool {
+    e.raw_os_error() == Some(rustix::io::Errno::LOOP.raw_os_error())
 }
 
 pub(crate) fn random_bytes<const N: usize>() -> io::Result<[u8; N]> {

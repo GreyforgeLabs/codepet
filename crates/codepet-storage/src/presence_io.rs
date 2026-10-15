@@ -8,7 +8,7 @@
 use crate::sys;
 use codepet_core::presence::{self, PresenceDoc, Reject};
 use serde::Deserialize;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -73,10 +73,13 @@ fn read_inner(path: &Path, now_wall: i64) -> Result<Option<PresenceDoc>, Refusal
     if !link.is_file() {
         return Err(Refusal::NotRegular);
     }
-    let file = match File::open(path) {
+    // O_NOFOLLOW | O_NONBLOCK: a symlink or FIFO swapped in after the lstat is refused,
+    // never followed or waited on (this runs under the database write lock).
+    let file = match sys::open_sidecar(path) {
         Ok(f) => f,
         // Deleted between the two calls: as if it never existed.
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(e) if sys::is_symlink_refusal(&e) => return Err(Refusal::Swapped),
         Err(_) => return Err(Refusal::Unreadable),
     };
     let meta = file.metadata().map_err(|_| Refusal::Unreadable)?;

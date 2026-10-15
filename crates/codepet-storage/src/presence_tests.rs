@@ -445,3 +445,81 @@ fn gentle_and_permadeath_charge_identically_until_grace_runs_out() {
         assert_eq!(store.snapshot().unwrap().meters.thirst, 7500, "{mode:?}");
     }
 }
+
+/// Runs `f` on a thread and fails the test if it does not finish within five seconds
+/// (a blocking `open(O_RDONLY)` on a FIFO would hang forever).
+fn finishes_promptly<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(5))
+        .expect("opening a state-dir sidecar blocked")
+}
+
+fn make_fifo(path: &std::path::Path) {
+    rustix::fs::mknodat(
+        rustix::fs::CWD,
+        path,
+        rustix::fs::FileType::Fifo,
+        rustix::fs::Mode::from_raw_mode(0o600),
+        0,
+    )
+    .unwrap();
+}
+
+#[test]
+fn sidecar_open_never_follows_a_symlink_or_blocks_on_a_fifo() {
+    // The lstat-then-open window: whatever is at the path by the time of open(2) must be
+    // refused, not followed, and must never block the writer holding the DB lock.
+    let env = Env::new();
+    let fifo = env.root.join("swapped-fifo");
+    make_fifo(&fifo);
+    let f = fifo.clone();
+    let opened = finishes_promptly(move || crate::sys::open_sidecar(&f).map(|h| h.metadata()));
+    let meta = opened.expect("O_NONBLOCK open of a FIFO succeeds at once").unwrap();
+    assert!(!meta.is_file(), "the fstat check then refuses it");
+    let target = env.root.join("target.json");
+    fs::write(&target, "{}").unwrap();
+    let link = env.root.join("link.json");
+    symlink(&target, &link).unwrap();
+    let err = crate::sys::open_sidecar(&link).unwrap_err();
+    assert!(crate::sys::is_symlink_refusal(&err), "{err:?}");
+    assert_eq!(
+        crate::sys::open_sidecar(&env.root.join("absent")).unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+}
+
+#[test]
+fn a_fifo_presence_file_is_refused_without_blocking_settlement() {
+    let env = Env::with_boot();
+    let (store, _id) = armed(&env);
+    make_fifo(&env.presence_path());
+    let path = env.presence_path();
+    let read = finishes_promptly(move || presence_io::read(&path, 0));
+    assert!(matches!(
+        read,
+        presence_io::PresenceRead::Refused(Refusal::NotRegular)
+    ));
+    // A settling snapshot and the bar export (both under the DB lock) finish too.
+    let snap = finishes_promptly(move || {
+        let s = store.snapshot().map(|s| s.state_version);
+        let e = store.export_bar_state();
+        (s.is_ok(), e.is_ok())
+    });
+    assert_eq!(snap, (true, true));
+}
+
+#[test]
+fn a_fifo_bar_state_file_never_blocks_the_export() {
+    let env = Env::new();
+    let store = env.open();
+    make_fifo(&env.paths.bar_state_path());
+    // existing_version sees a non-regular file (version 0) and the rename replaces it.
+    let ok = finishes_promptly(move || store.export_bar_state().unwrap());
+    assert!(ok);
+    assert!(fs::symlink_metadata(env.paths.bar_state_path())
+        .unwrap()
+        .is_file());
+}
