@@ -17,6 +17,8 @@ HEX_DIGITS = frozenset("0123456789abcdef")
 # IHDR colour type 6 is truecolour with alpha; the manifest records it as RGBA.
 PNG_COLOUR_TYPES = {"RGBA": 6, "RGB": 2, "LA": 4, "L": 0}
 # Text files that belong to the catalog itself; anything else must be a listed PNG.
+GENERATION_TOOL = "built-in image_gen.imagegen"
+GENERATION_MODEL = "gpt-image"
 CATALOG_FILES = frozenset({"README.md", "manifest.json", "verify.py", "test_verify.py"})
 
 
@@ -32,6 +34,18 @@ class Checks:
         if not condition:
             self.errors.append(message)
         return bool(condition)
+
+
+def png_chunks(data, kind):
+    """Concatenated payloads of every PNG chunk of the given four-byte type."""
+    payload = bytearray()
+    offset = 8
+    while offset + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[offset : offset + 4])
+        if data[offset + 4 : offset + 8] == kind:
+            payload += data[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+    return bytes(payload)
 
 
 def alpha_statistics(path):
@@ -150,9 +164,28 @@ def verify(root, check_alpha=False):
         )
         checks.require(asset.get("runtime_ready") is False, f"{label}: runtime_ready must be false")
         checks.require(
-            bool(asset.get("provenance")) and bool(asset.get("visual_qa_from_generator")),
-            f"{label}: provenance and QA notes are required",
+            bool(asset.get("provenance")) and bool(asset.get("visual_qa_notes")),
+            f"{label}: provenance and visual_qa_notes are required",
         )
+        checks.require(
+            asset.get("model") == GENERATION_MODEL,
+            f"{label}: model must be {GENERATION_MODEL!r}",
+        )
+        for step_index, step in enumerate(asset.get("provenance") or []):
+            checks.require(
+                step.get("tool") == GENERATION_TOOL,
+                f"{label}: provenance[{step_index}] tool must be {GENERATION_TOOL!r}",
+            )
+        c2pa = asset.get("c2pa") or {}
+        credentials = png_chunks(data, b"caBX")
+        for key in ("claim_generator", "model_label", "manifest_id", "signed_at"):
+            value = c2pa.get(key)
+            if key == "signed_at" and isinstance(value, str):
+                value = value.removesuffix("Z")
+            checks.require(
+                isinstance(value, str) and value and value.encode() in credentials,
+                f"{label}: c2pa {key} {c2pa.get(key)!r} is not in the embedded C2PA chunk",
+            )
         for step_index, step in enumerate(asset.get("provenance") or []):
             if step.get("kind") != "imagegen_edit":
                 continue

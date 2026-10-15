@@ -4,7 +4,7 @@
 
 ## Catalog
 
-Paths below are relative to this directory. The [manifest](manifest.json) records SHA-256, bytes, dimensions, measured alpha, generation/edit prompts, intended pose roles and reported QA limitations for every selected image. Pose names are prompt intentions, not certified frame semantics.
+Paths below are relative to this directory. The [manifest](manifest.json) records SHA-256, bytes, dimensions, measured alpha, generation/edit prompts, intended pose roles and reported QA limitations for every selected image. Every provenance step uses the tool label `built-in image_gen.imagegen` and every asset records `model: gpt-image` plus a `c2pa` block (claim generator, model label, C2PA manifest id and earliest signing time, 2026-10-15T03:15–03:22Z) read from the PNG's embedded Content Credentials. `visual_qa_notes` holds reviewer observations made after inspecting each file, not generator output. Pose names are prompt intentions, not certified frame semantics.
 
 | Subject | Version | Selected source sheet |
 | --- | --- | --- |

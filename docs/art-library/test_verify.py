@@ -185,6 +185,32 @@ class VerifyCorruptionTest(unittest.TestCase):
         self.edit_manifest(lambda m: m.pop("license"))
         self.assert_fails_in_every_mode("manifest license must state")
 
+    def test_inconsistent_tool_label_fails_under_optimization(self):
+        self.edit_manifest(
+            lambda m: m["assets"][5]["provenance"][0].update(tool="built-in image_gen__imagegen")
+        )
+        self.assert_fails_in_every_mode("tool must be 'built-in image_gen.imagegen'")
+
+    def test_missing_model_fails_under_optimization(self):
+        self.edit_manifest(lambda m: m["assets"][8].pop("model"))
+        self.assert_fails_in_every_mode("model must be 'gpt-image'")
+
+    def test_wrong_c2pa_manifest_id_fails_under_optimization(self):
+        self.edit_manifest(
+            lambda m: m["assets"][9]["c2pa"].update(
+                manifest_id="urn:c2pa:00000000-0000-0000-0000-000000000000"
+            )
+        )
+        self.assert_fails_in_every_mode("c2pa manifest_id")
+
+    def test_old_qa_key_is_rejected_under_optimization(self):
+        def rename(manifest):
+            asset = manifest["assets"][10]
+            asset["visual_qa_from_generator"] = asset.pop("visual_qa_notes")
+
+        self.edit_manifest(rename)
+        self.assert_fails_in_every_mode("visual_qa_notes are required")
+
     def test_unknown_argument_is_rejected(self):
         result = self.run_verify(["-I"], {}, ["--skip-hashes"])
         self.assertEqual(result.returncode, 2)
