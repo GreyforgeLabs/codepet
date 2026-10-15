@@ -477,7 +477,9 @@ fn sidecar_open_never_follows_a_symlink_or_blocks_on_a_fifo() {
     make_fifo(&fifo);
     let f = fifo.clone();
     let opened = finishes_promptly(move || crate::sys::open_sidecar(&f).map(|h| h.metadata()));
-    let meta = opened.expect("O_NONBLOCK open of a FIFO succeeds at once").unwrap();
+    let meta = opened
+        .expect("O_NONBLOCK open of a FIFO succeeds at once")
+        .unwrap();
     assert!(!meta.is_file(), "the fstat check then refuses it");
     let target = env.root.join("target.json");
     fs::write(&target, "{}").unwrap();
@@ -486,7 +488,9 @@ fn sidecar_open_never_follows_a_symlink_or_blocks_on_a_fifo() {
     let err = crate::sys::open_sidecar(&link).unwrap_err();
     assert!(crate::sys::is_symlink_refusal(&err), "{err:?}");
     assert_eq!(
-        crate::sys::open_sidecar(&env.root.join("absent")).unwrap_err().kind(),
+        crate::sys::open_sidecar(&env.root.join("absent"))
+            .unwrap_err()
+            .kind(),
         std::io::ErrorKind::NotFound
     );
 }

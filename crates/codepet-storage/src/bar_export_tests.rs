@@ -201,8 +201,7 @@ fn the_file_only_moves_forward() {
     let path = env.paths.bar_state_path();
     // (Same database: the file names this database's db_id.)
     let db_id = read_bar(&env)["db_id"].clone();
-    let future =
-        serde_json::json!({"schema": "codepet.bar.v1", "state_version": newest + 100, "db_id": db_id});
+    let future = serde_json::json!({"schema": "codepet.bar.v1", "state_version": newest + 100, "db_id": db_id});
     fs::write(&path, future.to_string()).unwrap();
     a.care("c2", "water").unwrap();
     assert!(!a.export_bar_state().unwrap());
@@ -326,11 +325,23 @@ fn need_windows_carry_until_warning_for_the_bar_prediction() {
     assert_eq!(needs.len(), snap.lifecycle.needs.len());
     for (bar, view) in needs.iter().zip(&snap.lifecycle.needs) {
         assert_eq!(bar["need"], view.need.as_str());
-        assert_eq!(bar["until_warning_ms"].as_i64(), view.until_warning_ms, "{}", view.need);
-        assert_eq!(bar["until_critical_ms"].as_i64(), view.until_critical_ms, "{}", view.need);
+        assert_eq!(
+            bar["until_warning_ms"].as_i64(),
+            view.until_warning_ms,
+            "{}",
+            view.need
+        );
+        assert_eq!(
+            bar["until_critical_ms"].as_i64(),
+            view.until_critical_ms,
+            "{}",
+            view.need
+        );
     }
     // Every need (mood and hygiene included) has a warning window from full meters.
-    assert!(needs.iter().all(|n| n["until_warning_ms"].as_i64().unwrap_or(0) > 0));
+    assert!(needs
+        .iter()
+        .all(|n| n["until_warning_ms"].as_i64().unwrap_or(0) > 0));
 }
 
 #[test]
@@ -355,10 +366,15 @@ fn the_ui_fixture_has_exactly_the_exported_shape() {
     let extra: Vec<_> = b
         .difference(&a)
         .filter(|k| {
-            !k.starts_with(".critical.") && !k.starts_with(".task.") && !k.starts_with(".unseen_events[].")
+            !k.starts_with(".critical.")
+                && !k.starts_with(".task.")
+                && !k.starts_with(".unseen_events[].")
         })
         .collect();
-    assert!(extra.is_empty(), "fixture has fields Rust never emits: {extra:?}");
+    assert!(
+        extra.is_empty(),
+        "fixture has fields Rust never emits: {extra:?}"
+    );
 }
 
 #[test]
@@ -374,9 +390,7 @@ fn db_id_is_stable_for_one_database_and_shared_with_the_snapshot() {
     let mut store = env.open();
     assert_eq!(store.snapshot().unwrap().db_id, id);
     let life = store.snapshot().unwrap().life.unwrap().life_id;
-    store
-        .select_appearance("look", &life, "dog")
-        .unwrap();
+    store.select_appearance("look", &life, "dog").unwrap();
     assert_eq!(store.snapshot().unwrap().db_id, id);
     // The id never repeats the life id itself.
     assert!(!id.contains(&life[5..]));
@@ -420,7 +434,11 @@ fn a_recreated_database_gets_a_new_db_id_and_replaces_the_old_file() {
     // Delete the database (and its WAL/SHM) and start again from nothing.
     for entry in fs::read_dir(&env.paths.state_dir).unwrap() {
         let p = entry.unwrap().path();
-        if p.file_name().unwrap().to_string_lossy().starts_with("codepet.sqlite3") {
+        if p.file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("codepet.sqlite3")
+        {
             fs::remove_file(p).unwrap();
         }
     }

@@ -320,7 +320,9 @@ fn pending_death_copy_never_promises_that_care_can_still_help() {
     let name = s.life.as_ref().unwrap().name.clone();
     assert_eq!(
         s.care.readiness_reasons[0],
-        format!("New work waits until the current task is closed; {name}'s grace time has run out.")
+        format!(
+            "New work waits until the current task is closed; {name}'s grace time has run out."
+        )
     );
     for reason in &s.care.readiness_reasons {
         assert!(!reason.contains("needs care"), "{reason}");
