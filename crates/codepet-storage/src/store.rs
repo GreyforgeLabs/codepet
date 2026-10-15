@@ -1082,9 +1082,10 @@ impl Store {
 
     /// Explicit recovery. Never resumes work: active phases whose supervisor is confirmed
     /// dead (PID + start time mismatch) become `interrupted`; a `review_ready` task whose
-    /// recomputed digest differs becomes `recovery_required`. Missing review metadata is
-    /// replaced only with abandonment metadata, never a valid sealed review: a fresh opaque
-    /// digest and `not_verified` let the user explicitly discard the blocked task.
+    /// recomputed digest differs becomes `recovery_required`. Missing or malformed review
+    /// metadata is replaced only with abandonment metadata, never a valid sealed review: a
+    /// fresh opaque digest and `not_verified` let the user explicitly discard the blocked
+    /// task. Every replacement records the previous column values in `review_repairs`.
     pub fn recover(&mut self) -> Result<RecoverResult> {
         let (tx, at) = self.write()?;
         let tasks = load_tasks(
@@ -1102,22 +1103,34 @@ impl Store {
             } else {
                 (!t.supervisor.is_some_and(|s| s.is_alive())).then_some(State::Interrupted)
             };
+            let usable_digest = t.review_digest.as_deref().filter(|d| is_digest(d));
             if (t.state == State::RecoveryRequired || to == Some(State::RecoveryRequired))
-                && (t.review_digest.is_none() || t.review_verification.is_none())
+                && (usable_digest.is_none() || t.review_verification.is_none())
             {
-                // Keep existing metadata and artifact bytes. A missing digest cannot
-                // authorize any action, so issue a durable abandonment identity instead
-                // of dropping the exact-digest requirement. RecoveryRequired still
-                // forbids acceptance, even if a missing check used to be `passed`.
-                let digest = match &t.review_digest {
-                    Some(digest) => digest.clone(),
+                // Keep artifact bytes and any usable metadata. A missing or malformed digest
+                // (one `task.discard` could never echo back) cannot authorize any action, so
+                // issue a durable abandonment identity instead of dropping the exact-digest
+                // requirement. RecoveryRequired still forbids acceptance, even if a missing
+                // check used to be `passed`. The replaced values are kept in review_repairs.
+                let digest = match usable_digest {
+                    Some(digest) => digest.to_owned(),
                     None => sys::hex(&sys::random_bytes::<32>()?),
                 };
+                let (verification, source) = match t.review_verification {
+                    Some(v) => (v, "stored"),
+                    None => (Verification::NotVerified, "default"),
+                };
                 tx.execute(
-                    "UPDATE tasks SET review_digest = COALESCE(review_digest, ?1),
-                        review_verification = COALESCE(review_verification, 'not_verified'),
-                        updated_at_ms = ?2 WHERE id = ?3",
-                    params![digest, at.wall, t.id],
+                    "INSERT INTO review_repairs (task_id, previous_digest, previous_verification,
+                        digest, verification, verification_source, repaired_at_ms)
+                     SELECT id, review_digest, review_verification, ?1, ?2, ?3, ?4
+                     FROM tasks WHERE id = ?5",
+                    params![digest, verification.as_str(), source, at.wall, t.id],
+                )?;
+                tx.execute(
+                    "UPDATE tasks SET review_digest = ?1, review_verification = ?2,
+                        updated_at_ms = ?3 WHERE id = ?4",
+                    params![digest, verification.as_str(), at.wall, t.id],
                 )?;
             }
             if let Some(to) = to {
@@ -1406,6 +1419,12 @@ fn review_digest(
         s(verification.as_str())
     );
     sha256_hex(manifest.as_bytes())
+}
+
+/// True for the only digest shape storage ever issues: 64 lowercase hex characters
+/// (SHA-256 manifests and random abandonment identities alike).
+fn is_digest(d: &str) -> bool {
+    d.len() == 64 && d.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// Recomputes the review digest from the stored artifact bytes and task columns.

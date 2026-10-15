@@ -1402,6 +1402,67 @@ fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
 }
 
 #[test]
+fn recover_replaces_digests_that_task_discard_could_never_accept() {
+    for damaged in [String::new(), "f".repeat(200), "A".repeat(64)] {
+        let env = Env::new();
+        let mut store = env.open();
+        let (id, _) = reviewed(&mut store, &env, Category::Hunger, Verification::Failed);
+        env.raw()
+            .execute(
+                "UPDATE tasks SET review_digest = ?1 WHERE id = ?2",
+                rusqlite::params![damaged, id],
+            )
+            .unwrap();
+        let discard_params = |digest: &str| {
+            codepet_protocol::parse_params::<codepet_protocol::TaskDiscardParams>(
+                serde_json::json!({"task_id": id, "review_digest": digest}),
+            )
+        };
+        if damaged.is_empty() || damaged.len() > 128 {
+            // The stored value alone could never get past task.discard's validation.
+            assert!(discard_params(&damaged).is_err());
+        }
+
+        let recovered = store.recover().unwrap();
+        assert_eq!(recovered.changed[0].to, State::RecoveryRequired);
+        let review = recovered.active_task.unwrap().review.unwrap();
+        assert_ne!(review.digest, damaged);
+        assert_eq!(review.digest.len(), 64);
+        assert!(review
+            .digest
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')));
+        assert_eq!(review.verification, Verification::Failed);
+        // The replaced value is preserved verbatim, not destroyed by the repair.
+        let (previous, digest, source): (String, String, String) = env
+            .raw()
+            .query_row(
+                "SELECT previous_digest, digest, verification_source FROM review_repairs
+                 WHERE task_id = ?1",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (previous.as_str(), digest.as_str(), source.as_str()),
+            (damaged.as_str(), review.digest.as_str(), "stored")
+        );
+
+        // The UI's protocol-level discard now validates and releases the slot.
+        let params = discard_params(&review.digest).unwrap();
+        assert_eq!(
+            store
+                .discard(&params.task_id, &params.review_digest)
+                .unwrap()
+                .state,
+            State::Discarded
+        );
+        assert!(store.snapshot().unwrap().active_task.is_none());
+        assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 0);
+    }
+}
+
+#[test]
 fn recover_repairs_already_stranded_recovery_metadata() {
     let env = Env::new();
     let mut store = env.open();
@@ -1610,13 +1671,13 @@ fn newer_schema_is_refused_untouched() {
     env.paths.prepare().unwrap();
     {
         let c = env.raw();
-        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 3;")
+        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 4;")
             .unwrap();
     }
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(3))
+        Err(StorageError::SchemaUnsupported(4))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     assert_eq!(fs::read_dir(&env.paths.state_dir).unwrap().count(), 1);
@@ -1671,7 +1732,7 @@ fn corrupt_database_is_refused_untouched() {
 
 #[test]
 fn migration_backs_up_older_versions_first() {
-    fn v3(tx: &rusqlite::Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
+    fn v4(tx: &rusqlite::Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
         tx.execute_batch("CREATE TABLE extra (x INTEGER)")
     }
     let env = Env::new();
@@ -1682,34 +1743,39 @@ fn migration_backs_up_older_versions_first() {
             .unwrap()
             .task_id
     };
-    let migrations: &[schema::Migration] = &[schema::MIGRATIONS[0], schema::MIGRATIONS[1], v3];
+    let migrations: &[schema::Migration] = &[
+        schema::MIGRATIONS[0],
+        schema::MIGRATIONS[1],
+        schema::MIGRATIONS[2],
+        v4,
+    ];
     env.clock.set(T0 + 42);
     let store = Store::open_with(&env.paths, env.clock.clone(), migrations).unwrap();
     assert_eq!(store.task(&id).unwrap().task_id, id);
     drop(store);
-    assert_eq!(env.count("PRAGMA user_version"), 3);
+    assert_eq!(env.count("PRAGMA user_version"), 4);
     assert_eq!(env.count("SELECT count(*) FROM extra"), 0);
     let backup = env
         .paths
         .state_dir
-        .join(format!("codepet.sqlite3.bak-v2-{}", T0 + 42));
+        .join(format!("codepet.sqlite3.bak-v3-{}", T0 + 42));
     assert_eq!(mode(&backup), 0o600);
     let b = Connection::open(&backup).unwrap();
     let v: i64 = b
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(v, 2);
+    assert_eq!(v, 3);
     let n: i64 = b
         .query_row("SELECT count(*) FROM tasks WHERE id = ?1", [&id], |r| {
             r.get(0)
         })
         .unwrap();
     assert_eq!(n, 1);
-    // This build (v2) now refuses the upgraded file without touching it.
+    // This build (v3) now refuses the upgraded file without touching it.
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(3))
+        Err(StorageError::SchemaUnsupported(4))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     // Reopening at the same version neither migrates nor backs up again.

@@ -378,7 +378,7 @@ fn v1_migration_preserves_historical_care_receipts_and_inflight_tasks() {
         rusqlite::params![sys::sha256_hex(r#"{"acknowledged":true,"override_reason":"historical review","review_digest":"legacy-digest","task_id":"old-accepted"}"#.as_bytes()), legacy_response]).unwrap();
     drop(old);
     let mut s = env.open();
-    assert_eq!(env.count("PRAGMA user_version"), 2);
+    assert_eq!(env.count("PRAGMA user_version"), SCHEMA_VERSION);
     assert_eq!(
         s.snapshot().unwrap().meters,
         MetersView {

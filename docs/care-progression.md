@@ -68,6 +68,9 @@ Older application builds refuse the newer schema; keep a normal consistent SQLit
 before upgrading if rollback is required (including WAL data where applicable). The
 migration does not promise a reverse schema conversion or silently delete history.
 
+Schema v3 is additive: it adds the `review_repairs` audit table used when explicit
+recovery has to replace missing or malformed review metadata (see milestone-1.md).
+
 The UI's task timeline describes recorded lifecycle transitions. It does not claim files
 were read, commands were run or tests passed by the mock. Real action-level execution
 receipts, paged logs, diffs and verification integration are still future provider work.

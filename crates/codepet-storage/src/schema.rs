@@ -3,7 +3,7 @@ use codepet_core::{Settings, METER_START};
 use rusqlite::{params, Transaction};
 
 pub(crate) type Migration = fn(&Transaction<'_>, i64) -> rusqlite::Result<()>;
-pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2];
+pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3];
 
 /// Slot-occupying states; must equal `State::occupies_slot` (checked by a test).
 pub(crate) const SLOT_STATES: &str = "('preparing','running','waiting_for_user','verifying',\
@@ -198,4 +198,26 @@ CREATE TABLE demo_xp_rewards (
 );
 UPDATE preflight_tokens SET status = 'invalidated' WHERE status = 'pending';
 ")
+}
+
+/// Additive migration: an audit row for every review-metadata repair made by explicit
+/// recovery. The replaced column values are kept verbatim, so repairing a damaged review
+/// never destroys historical data, and the row marks the repaired metadata as abandonment
+/// metadata rather than a sealed review.
+fn v3(tx: &Transaction<'_>, _now: i64) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        r"
+CREATE TABLE review_repairs (
+    id INTEGER PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    previous_digest TEXT,
+    previous_verification TEXT,
+    digest TEXT NOT NULL CHECK (length(digest) = 64),
+    verification TEXT NOT NULL CHECK (verification IN ('passed','failed','not_verified')),
+    verification_source TEXT NOT NULL CHECK (verification_source IN ('stored','checks','default')),
+    repaired_at_ms INTEGER NOT NULL
+);
+CREATE INDEX review_repairs_task ON review_repairs(task_id);
+",
+    )
 }

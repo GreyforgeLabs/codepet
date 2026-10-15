@@ -67,6 +67,7 @@ name = "codepet-storage"
 version = "0.1.0"
 dependencies = [
  "codepet-core",
+ "codepet-protocol",
  "rusqlite",
  "serde",
  "serde_json",

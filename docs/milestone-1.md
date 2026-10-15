@@ -141,7 +141,10 @@ No other third-party crates. Builds are offline against the cached registry.
   readable after its digest is recomputed and matches; mismatch → `recovery_required`.
   If review metadata is missing, explicit recovery fills only the missing fields: a fresh
   opaque digest identifies abandonment, and missing verification becomes `not_verified`.
-  Existing artifact bytes and digest are preserved. This also repairs tasks already stuck
+  A stored digest that is not exactly 64 lowercase hex characters (for example empty or
+  oversized, which `task.discard` could never echo back) counts as missing. Existing
+  artifact bytes and any usable digest are preserved, and every replacement first records
+  the previous column values in the `review_repairs` audit table (schema v3). This also repairs tasks already stuck
   in `recovery_required`. The replacement metadata never enables acceptance; the user must
   explicitly abandon with the exact returned digest to release the slot without a reward.
 - Fault points: `CODEPET_FAULT=<name>` is honored only in debug builds

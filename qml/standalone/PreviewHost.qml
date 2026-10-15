@@ -92,7 +92,7 @@ QtObject {
         if (due) reasons.push(sleeping ? "Resting. Wake or refresh after the nap" : "Needs a two-minute nap")
         if (active) reasons.push("Finish or resolve the active task first")
         return {
-            "schema_version": 2, "protocol_version": 1, "last_seq": 3,
+            "schema_version": 3, "protocol_version": 1, "last_seq": 3,
             "meters": { "hunger": meter, "thirst": meter, "mental_health": meter, "hygiene": meter },
             "care": { "revision": 1, "bathroom_due": bathroom, "starts_since_bathroom": bathroom ? 2 : 0,
                 "sleeping": sleeping, "sleep_due": due, "sleep_remaining_ms": sleeping ? 92000 : 120000,
