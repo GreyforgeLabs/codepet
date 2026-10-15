@@ -1,6 +1,6 @@
 # License and upstream provenance
 
-Original CodePet code is licensed under MIT (see LICENSE). No visual assets are vendored.
+Original CodePet code is licensed under MIT (see LICENSE). No third-party visual asset packs are vendored. The [source-art library](art-library/README.md) contains AI-generated concept/pose sheets created for CodePet; its manifest records generation/edit prompts and provenance. Copyright, exclusivity and distribution suitability of these outputs have not been legally reviewed.
 
 ## Rust dependencies
 
