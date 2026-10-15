@@ -11,6 +11,10 @@ jobs:
       XDG_CACHE_HOME: /tmp/codepet-qt-cache
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install offscreen Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libgl1 libxkbcommon0
       - name: Install pinned test-only Qt runtime
         run: python3 -m pip install PySide6==6.8.3
       - name: Portable QML and lifecycle checks
