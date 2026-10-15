@@ -1,3 +1,39 @@
+# Integration validation: PRs #1-#4 plus review fixes, greyarch, 2026-10-15
+
+Branch `integrate/v0.2`, based on `origin/main` `6a5f654`. PRs merged in order with real
+merge commits: #1 core settings preflight, #2 review-metadata recovery, #3 care/sleep/demo
+progression, #4 transparent desktop overlay. The #2/#3 combination merged cleanly as text
+but did not compile (`now` → `at.wall` in `recover()`) and #2's abandonment test expected the
+old meter model; both were resolved inside the #3 merge commit. Twelve confirmed review
+findings were then fixed in separate `Fix review finding:` commits (schema is now v3).
+
+Local workstation (Arch Linux, kernel 7.2.5-3-omarchy): rustc/cargo 1.98.1, PySide6 6.11.2
+/ Qt 6.11.2 (`/usr/lib/qt6/bin/qmllint`), Quickshell 0.3.1, Node 26.8.1. Cargo ran in a
+3 GiB memory-capped scope with `-j 2 --offline`.
+
+- `cargo fmt --all --check`: passed
+- `cargo test --workspace --locked`: 184 passed, 0 failed, 0 ignored (codepet unit 2,
+  care 10, cli 7, crash 5, rpc 13; codepet-core 29; codepet-protocol 40;
+  codepet-storage 78)
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed
+- `cargo run --locked -p codepet -- mock-demo`: passed
+- QML offscreen (`QT_QPA_PLATFORM=offscreen`, commands from `.github/workflows/qml.yml`):
+  PreviewSmoke 41, CareSmoke 26, CareFlowSmoke 10, FilteredDraftSmoke 3, OverlaySmoke 19,
+  TimelineSmoke 11 checks, all passed; overlay window lifecycle 7 checks; 36 sprite/prop
+  SVG assets; `test_quickshell_host.py` 8 tests passed, including the two real Quickshell
+  load smokes (the real `qml/shell.qml` reaches `No PanelWindow backend loaded`; a staged
+  copy with a FloatingWindow in place of the layer-shell PanelWindow loads and answers
+  `qs ipc call codepet ...`)
+- Qt 6 qmllint on `qml/shared`, `qml/standalone` and every `*Smoke.qml`: no output.
+  On `qml/shell.qml` it reports only `Type PanelWindow is not creatable`, which the real
+  load contradicts (Quickshell creates it when a layer-shell backend exists).
+
+Not run here: hosted CI (pinned PySide6 6.8.3), live Omarchy/Wayland input pass-through,
+focus, hotplug, lock/suspend/fullscreen integration and resource measurements. The
+Quickshell load smokes run offscreen without a compositor and are not desktop validation.
+
+---
+
 # Care/progression validation — cloud workspace, 2026-10-15
 
 This revision was implemented and tested only in the cloud workspace, based directly on
