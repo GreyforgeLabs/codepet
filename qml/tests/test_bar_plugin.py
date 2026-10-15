@@ -310,6 +310,15 @@ class SourceContract(unittest.TestCase):
         self.assertNotIn("Text.RichText", self.all_qml)
         self.assertNotIn("Text.StyledText", self.all_qml)
 
+    def test_tooltip_target_reports_hover_like_the_omarchy_bar_requires(self):
+        # Bar.qml showTooltip() returns early unless target.tooltipHovered === true.
+        bw = self.qml["BarWidget.qml"]
+        self.assertIn("readonly property bool tooltipHovered: visible && opacity > 0 && root.hovered && !root.menu", bw)
+        bar_qml = OMARCHY_SHELL / "plugins" / "bar" / "Bar.qml"
+        if bar_qml.is_file():
+            self.assertIn("target.tooltipHovered === true", bar_qml.read_text(),
+                          "the Omarchy tooltip guard changed; revisit tooltipHovered")
+
     def test_every_text_element_is_plain_text(self):
         # A Text without textFormat is AutoText, which renders a pet name such as
         # "<b>Pip</b>" as rich text. Every Text (and every component based on it) must
@@ -434,7 +443,11 @@ ShellRoot {
         property var activePopout: null
         property var shell: fakeShell
         function moduleWidgets(id) { return id === "greyforge.codepet" ? [w1, w2] : [] }
-        function showTooltip(t, s) { shell.tips = shell.tips.concat([String(s)]) }
+        // The same guard as Omarchy 4 Bar.qml showTooltip/targetTooltipHovered.
+        function showTooltip(t, s) {
+            if (!(!!t && t.visible !== false && t.opacity !== 0 && t.tooltipHovered === true) || !s) return
+            shell.tips = shell.tips.concat([String(s)])
+        }
         function hideTooltip(t) {}
         function requestPopout(o) { activePopout = o }
         function releasePopout(o) { if (activePopout === o) activePopout = null }
@@ -693,11 +706,18 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.assertEqual(writes[-1]["id"], "greyforge.codepet")
         self.assertEqual(writes[-1]["entry"]["label"], "status")
 
-        # Tooltip after the hover grace.
+        # Tooltip after the hover grace, through the same tooltipHovered guard as Bar.qml.
         self.call("close")
         self.call("hover", "true")
         self.assertTrue(self.wait_for(lambda: len(self.dump()["tips"]) >= 1, 5))
         self.assertIn("Ginger", self.dump()["tips"][-1])
+        # While the popup is open the cell does not report hover, so no tooltip is shown.
+        tips = len(self.dump()["tips"])
+        self.call("open")
+        self.call("hover", "true")
+        time.sleep(1)
+        self.assertEqual(len(self.dump()["tips"]), tips, "no tooltip over an open popup")
+        self.call("close")
 
     def test_state_home_setting_reaches_rpc_launcher_and_files(self):
         qa = self.make_tmp_state_home()

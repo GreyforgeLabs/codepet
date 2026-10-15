@@ -261,6 +261,9 @@ BarWidget {
 
     // ------------------------------------------------------------- tooltip
     property bool hovered: false
+    // Bar.showTooltip() drops the request unless the target reports tooltipHovered
+    // (Bar.qml targetTooltipHovered), as WidgetButton and Tray do.
+    readonly property bool tooltipHovered: visible && opacity > 0 && root.hovered && !root.menu
     function hideTip() {
         hoverGrace.stop()
         if (bar && typeof bar.hideTooltip === "function") bar.hideTooltip(root)
