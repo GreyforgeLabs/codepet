@@ -223,6 +223,7 @@ Templates:
 - **Warning:** "Ginger is getting thirsty. Water will help. About 2 h 40 min of active time before it becomes serious."
 - **Critical (permadeath):** "Ginger urgently needs water. Care now keeps them safe. Without water, Ginger may pass away after about 5 h 10 min of active time."
 - **Fainted:** "Ginger fainted from thirst. Water will revive them; work waits until then."
+- **Grace run out, task still open (`death_pending`):** "Ginger's grace time has run out. They will pass away when the current task is finished. The task and its result are kept safe: review, accept, discard or cancel it as usual. New work waits until then." The life panel and the bar tooltip use exactly these words (`LifeText.pendingText`; `test_bar_model.mjs` checks the bar copy matches). The companion has not passed away yet, so no surface says it has.
 - **Ended:** "Ginger has passed away. They reached level 3 as a Desk Cat and helped with 14 accepted tasks. Your work, tasks and history are unchanged. You can adopt a new companion whenever you're ready."
 - **Frozen clock:** "Paused: time isn't counting (on a break / task running / not set up)."
 

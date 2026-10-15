@@ -69,7 +69,7 @@ cell is static; there is no bar animation.
 | Glyph | Status (highest precedence first) |
 |---|---|
 | `+` | no living companion |
-| `✿` | memorial (an ending is recorded once the current task is closed) |
+| `✿` | grace has run out: the companion will pass away once the current task is finished (the tooltip uses the life panel's exact words) |
 | `!!` | urgent, or fainted (gentle mode) |
 | `◦` | not set up: time isn't counting until the life rules are chosen |
 | `!` | warning: a need is low |

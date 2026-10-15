@@ -390,7 +390,7 @@ function accessibleName(state, status, predicted, pred, reg) {
     var out = "CodePet: " + name + ", " + stageName(reg, str(life.appearance, ""), stage) + ", level " + (isNum(life.level) ? life.level : 1) + "."
     var worst = worstNeed(state)
     switch (status) {
-    case "death_pending": out += " " + name + " has passed away; the memorial is recorded once the current task is closed. Your work is unchanged."; break
+    case "death_pending": out += " " + name + "'s grace time has run out. They will pass away when the current task is finished; your work is kept."; break
     case "fainted": out += " Fainted. Care will revive them; work waits until then."; break
     case "critical":
         if (predicted) out += " Estimated: " + name + " may need you urgently. Open CodePet to check."
@@ -436,6 +436,13 @@ function tooltip(state, cfg, opts) {
 
 // The life status line, using the lifecycle copy rules.
 // opts.predicted: "warning" | "critical" | "" (from summarize, leader only).
+// Same words as qml/shared/LifeText.js pendingText() (test_bar_model.mjs checks they match):
+// the companion has not passed away yet; it will once the current task is finished.
+function pendingText(name) {
+    return name + "'s grace time has run out. They will pass away when the current task is finished. "
+        + "The task and its result are kept safe: review, accept, discard or cancel it as usual. New work waits until then."
+}
+
 function lifecycleText(state, opts) {
     opts = opts || {}
     if (!state) return "Open CodePet once to set up."
@@ -451,7 +458,7 @@ function lifecycleText(state, opts) {
     var critNeed = crit && NEEDS.indexOf(crit.need) >= 0 ? crit.need : (worst ? worst.need : "thirst")
     var critAction = crit ? str(crit.action, NEED_ACTION[critNeed]) : NEED_ACTION[critNeed]
     if (life.death_pending === true)
-        return name + " has passed away. The memorial is recorded once the current task is closed. Your work, tasks and history are unchanged."
+        return pendingText(name)
     if (life.fainted === true)
         return name + " fainted from " + NEED_NOUN[critNeed] + ". " + ACTION_WORD[critAction] + " will revive them; work waits until then."
     if (life.status === "critical") {

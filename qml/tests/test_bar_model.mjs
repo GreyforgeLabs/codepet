@@ -18,6 +18,7 @@ function loadLibrary(rel) {
 }
 
 const M = loadLibrary('../../omarchy-plugin/CodePetBar.js');
+const L = loadLibrary('../shared/LifeText.js');
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const LIFE = 'life-0123456789abcdef01234567';
 const BANNED = /kill|starv|your fault|abandon|neglected you|guilt|punish|streak|hurry|!!!|\bdie\b|\bdied\b|\bdeath\b|\bdead\b/i;
@@ -403,7 +404,12 @@ test('lifecycle text follows the copy rules', () => {
     assert.equal(M.lifecycleText(STATUS_CASES.working), "Paused: time isn't counting (task running).");
     assert.match(M.lifecycleText(STATUS_CASES.no_life), /adopt a new companion whenever you're ready/);
     assert.match(M.lifecycleText(barState({ life: null, memorial: { count: 1, latest_name: 'Biscuit' } })), /^Biscuit is remembered/);
-    assert.match(M.lifecycleText(STATUS_CASES.death_pending), /Your work, tasks and history are unchanged/);
+    assert.equal(M.lifecycleText(STATUS_CASES.death_pending), L.pendingText('Ginger'),
+        'death pending uses the same words as the life UI');
+    assert.match(M.lifecycleText(STATUS_CASES.death_pending), /will pass away when the current task is finished/);
+    assert.doesNotMatch(M.lifecycleText(STATUS_CASES.death_pending), /passed away/, 'never says it already passed');
+    assert.match(M.summarize(STATUS_CASES.death_pending, cfg(), { registry: REGISTRY }).accessibleName,
+        /grace time has run out\. They will pass away when the current task is finished; your work is kept\. /);
     assert.equal(M.lifecycleText(null), 'Open CodePet once to set up.');
     assert.equal(M.lifecycleText(STATUS_CASES.healthy, { predicted: 'critical' }), '≈ Ginger may need you urgently. Open CodePet to check.');
     for (const st of Object.values(STATUS_CASES)) {
