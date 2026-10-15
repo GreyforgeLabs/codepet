@@ -62,7 +62,8 @@ Item {
     }
     function cosmeticTick() {
         if (!motionRunning) return
-        frame = (frame + 1) % 10
+        // PetSprite shows frame % 4; a non-multiple of 4 here would skip frames.
+        frame = (frame + 1) % 4
         if (selected || hovered || controller.reaction !== "") { walking = false; return }
         if (idleTicks > 0) { idleTicks -= 1; return }
         if (!walking) {

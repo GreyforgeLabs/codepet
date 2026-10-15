@@ -152,7 +152,7 @@ ColumnLayout {
         interval: 200 // 5 FPS maximum, including care poses; no smooth animations.
         repeat: true
         running: root.animationRunning
-        onTriggered: root.frame = (root.frame + 1) % 10
+        onTriggered: root.frame = (root.frame + 1) % 4
     }
     Timer {
         id: reactionEnd

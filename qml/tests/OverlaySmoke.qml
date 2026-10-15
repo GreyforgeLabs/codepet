@@ -37,6 +37,16 @@ Item {
                 scene.cosmeticTick()
                 test.check(scene.petX === 105, "movement is a bounded local floor step")
                 test.check(host.seq === 0, "movement never sends RPC")
+                scene.selected = true
+                var smooth = true
+                for (var i = 0; i < 12; i++) {
+                    var before = scene.frame
+                    scene.cosmeticTick()
+                    if (scene.frame !== (before + 1) % 4)
+                        smooth = false
+                }
+                test.check(smooth, "sprite frames cycle 0-3 without skipping")
+                scene.selected = false
                 scene.reducedMotion = true
                 test.savedFrame = scene.frame
                 break
