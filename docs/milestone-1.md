@@ -132,6 +132,11 @@ No other third-party crates. Builds are offline against the cached registry.
   `recover` treats a supervisor as alive only if both match; it never resumes work.
   Active states with a confirmed-dead supervisor → `interrupted`. `review_ready` stays
   readable after its digest is recomputed and matches; mismatch → `recovery_required`.
+  If review metadata is missing, explicit recovery fills only the missing fields: a fresh
+  opaque digest identifies abandonment, and missing verification becomes `not_verified`.
+  Existing artifact bytes and digest are preserved. This also repairs tasks already stuck
+  in `recovery_required`. The replacement metadata never enables acceptance; the user must
+  explicitly abandon with the exact returned digest to release the slot without a reward.
 - Fault points: `CODEPET_FAULT=<name>` is honored only in debug builds
   (`cfg(debug_assertions)`) and aborts the process at that point. Names:
   `accept_before_commit`, `accept_after_commit`, `start_after_commit`,

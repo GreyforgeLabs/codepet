@@ -54,6 +54,8 @@ ColumnLayout {
         return n
     }
     function verificationText() {
+        if (root.task && root.task.state === "recovery_required")
+            return "Verification: unavailable. The saved review cannot be trusted; only abandonment is allowed."
         if (root.verification === "passed")
             return "Verification: passed"
         if (root.verification === "failed")

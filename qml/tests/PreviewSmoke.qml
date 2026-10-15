@@ -130,6 +130,8 @@ Item {
                 break
             case 18:
                 top.check(top.review.canAbandon && !top.review.canDecide, "recovery_required: abandon only, no accept")
+                top.check(top.review.verificationText().indexOf("unavailable") !== -1,
+                          "damaged review never claims trustworthy verification evidence")
                 var ab = top.find(top.review, "taskReview.abandon")
                 top.check(!ab.enabled, "abandon disabled before acknowledgement")
                 top.find(top.review, "taskReview.abandonAck").checked = true
