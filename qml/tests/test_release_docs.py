@@ -76,8 +76,10 @@ class ReleaseDocs(unittest.TestCase):
         self.assertIn("Contact-sheet review", section)
         for wave in ("Wave 1", "Wave 2", "Wave 3"):
             self.assertIn(wave, section)
-        for item in ("gait", "care poses", "stage readability", "fish in water", "not recolors"):
+        for item in ("gait", "care poses", "stage readability", "fish in water", "not recolors",
+                     "64/96/112 px at 1x–2x", "both directions", "playback"):
             self.assertIn(item, section)
+        self.assertIn("extract.py --previews", section)
         # §17.9 live QA: items 1-7, each pass, fail or untested.
         rows = re.findall(r"(?m)^\| (\d) \| [^|]+ \| (pass|fail|untested) \|", section)
         self.assertEqual(sorted(int(n) for n, _ in rows), [1, 2, 3, 4, 5, 6, 7], rows)

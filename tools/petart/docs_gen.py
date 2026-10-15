@@ -189,6 +189,8 @@ def pets_md(manifests):
     w("python3 tools/petart/extract.py --all               # every ready species, shared images, index")
     w("python3 tools/petart/extract.py --check             # rebuild in a scratch dir and byte-compare")
     w("python3 tools/petart/extract.py --contact           # QA contact sheets (run directory)")
+    w("python3 tools/petart/extract.py --previews          # 64/96/112 px at 1x-2x, both directions, playback")
+    w("python3 tools/petart/extract.py --gallery           # docs/screenshots/codepet-v0.2-roster.webp")
     w("CODEPET_ALLOW_PARTIAL_ART=1 python3 qml/tests/test_pet_assets.py")
     w("python3 qml/tests/test_pet_distinctness.py")
     w("```")

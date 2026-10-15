@@ -42,14 +42,23 @@ They are not Wayland, compositor, input, focus or resource validation.
 ## Contact-sheet review (spec §17.4 row 5)
 
 Contact sheets come from `tools/petart/extract.py --contact` (light and dark backgrounds).
-No human review is recorded in this run; each wave stays **untested** until someone checks
-it and records the result here.
+Scale, direction and playback previews come from `tools/petart/extract.py --previews`:
+`<id>-scales.webp` shows each stage at 64, 96 and 112 px at 1x, 1.25x, 1.5x and 2x, facing
+right and mirrored left, and `<id>-s<stage>-playback.webp` is an animated WebP stepping
+through every state at its frame time in both directions. Both land in the run directory
+(`~/Work/runs/codepet--2026-10-15--v0.2/previews`, generated for all 15 species in this
+pass), not in Git. No human review is recorded in this run; each wave and column stays
+**untested** until someone checks it and records the result here.
 
-| Wave | Species | gait | care poses | stage readability | fish in water | not recolors | Result |
-|---|---|---|---|---|---|---|---|
-| Wave 1 | cat, dog, capybara, penguin, robot | – | – | – | n/a | – | untested |
-| Wave 2 | iguana, spider, snake, goldfish, rabbit | – | – | – | – | – | untested |
-| Wave 3 | turtle, frog, owl, red_panda, axolotl | – | – | – | – | – | untested |
+| Wave | Species | gait | care poses | stage readability | fish in water | not recolors | 64/96/112 px at 1x–2x | both directions | playback | Result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Wave 1 | cat, dog, capybara, penguin, robot | – | – | – | n/a | – | untested | untested | untested | untested |
+| Wave 2 | iguana, spider, snake, goldfish, rabbit | – | – | – | – | – | untested | untested | untested | untested |
+| Wave 3 | turtle, frog, owl, red_panda, axolotl | – | – | – | – | – | untested | untested | untested | untested |
+
+The goldfish `sleep_enter` frame was corrected after these sheets were first drawn (c09 is
+now rendered from the open-eyed idle pose); Wave 2 reviewers should check it in the
+playback preview.
 
 ## Live QA on greyarch (spec §17.9)
 

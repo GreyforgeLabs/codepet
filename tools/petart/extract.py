@@ -9,6 +9,7 @@ Dev-time tool only; nothing here runs inside the app. Python 3, Pillow, numpy, s
     python3 tools/petart/extract.py --index           # registry.json, PetRegistry.js, PROVENANCE.md, docs/pets.md
     python3 tools/petart/extract.py --check           # rebuild into a scratch dir and byte-compare
     python3 tools/petart/extract.py --contact         # contact sheets into the run directory
+    python3 tools/petart/extract.py --previews        # scale/direction sheets + playback (run directory)
     python3 tools/petart/extract.py --gallery         # docs/screenshots/codepet-v0.2-roster.webp
 
 Source sheets live outside the repository (about 200 MB):
@@ -727,6 +728,9 @@ def main(argv=None):
     ap.add_argument("--status", action="store_true", help="show which species are ready")
     ap.add_argument("--src", type=Path, default=DEFAULT_SRC, help=f"source sheet root (default {DEFAULT_SRC})")
     ap.add_argument("--contact-dir", type=Path, default=DEFAULT_RUN / "contact-sheets")
+    ap.add_argument("--previews", action="store_true",
+                    help="render scale/direction sheets and animated playback previews")
+    ap.add_argument("--preview-dir", type=Path, default=DEFAULT_RUN / "previews")
     args = ap.parse_args(argv)
     src = args.src.expanduser()
     did = False
@@ -757,6 +761,12 @@ def main(argv=None):
         args.contact_dir.mkdir(parents=True, exist_ok=True)
         for p in contact.render_all(REPO / PETS_REL, args.contact_dir, species=targets or None):
             print(f"contact sheet: {p}")
+    if args.previews:
+        import contact
+        did = True
+        args.preview_dir.mkdir(parents=True, exist_ok=True)
+        for p in contact.render_previews(REPO / PETS_REL, args.preview_dir, species=targets or None):
+            print(f"preview: {p}")
     if args.gallery:
         import contact
         did = True

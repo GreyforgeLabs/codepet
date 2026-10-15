@@ -112,6 +112,8 @@ python3 tools/petart/extract.py --species owl       # extract one species, then 
 python3 tools/petart/extract.py --all               # every ready species, shared images, index
 python3 tools/petart/extract.py --check             # rebuild in a scratch dir and byte-compare
 python3 tools/petart/extract.py --contact           # QA contact sheets (run directory)
+python3 tools/petart/extract.py --previews          # 64/96/112 px at 1x-2x, both directions, playback
+python3 tools/petart/extract.py --gallery           # docs/screenshots/codepet-v0.2-roster.webp
 CODEPET_ALLOW_PARTIAL_ART=1 python3 qml/tests/test_pet_assets.py
 python3 qml/tests/test_pet_distinctness.py
 ```
