@@ -3,7 +3,9 @@
 All notable changes to CodePet. Real providers stay disabled; every task is a mock
 (simulation) task.
 
-## Unreleased
+## 0.2.1 - 2026-10-15
+
+The first public release. No change to the lifecycle rules, the pets or the storage schema.
 
 ### Fixed
 - Running the test suite no longer floods the desktop with "Process crashed: codepet"

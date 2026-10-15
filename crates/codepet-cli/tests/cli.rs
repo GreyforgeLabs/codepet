@@ -103,7 +103,10 @@ fn version_prints_without_opening_storage() {
     let env = Env::new();
     let output = env.run(&["--version"]);
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), "codepet 0.2.0\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("codepet {}\n", env!("CARGO_PKG_VERSION"))
+    );
     assert!(output.stderr.is_empty());
     assert!(!env.xdg().exists());
     let help = String::from_utf8(env.run(&["--help"]).stdout).unwrap();
@@ -122,7 +125,7 @@ fn state_command_publishes_the_bar_state() {
         .bar_state()
         .expect("codepet state publishes bar-state.json");
     assert_eq!(bar["schema"], "codepet.bar.v1");
-    assert_eq!(bar["app_version"], "0.2.0");
+    assert_eq!(bar["app_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(bar["ruleset"], "lifecycle-v1");
     assert_eq!(bar["state_version"], s["state_version"]);
     assert_eq!(bar["life"]["life_id"], s["life"]["life_id"]);

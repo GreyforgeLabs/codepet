@@ -3,10 +3,19 @@ members = ["crates/codepet-core", "crates/codepet-protocol", "crates/codepet-sto
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
+description = "A desktop coding pet for Omarchy: a Rust core with a QML bar widget and desktop overlay"
+repository = "https://github.com/GreyforgeLabs/codepet"
+homepage = "https://github.com/GreyforgeLabs/codepet"
+publish = false
+
+# Release binaries drop their symbol table. Panic locations still name source paths, so
+# release archives are built by tools/release/package.sh with --remap-path-prefix.
+[profile.release]
+strip = "symbols"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

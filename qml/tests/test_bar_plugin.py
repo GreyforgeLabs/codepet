@@ -110,8 +110,7 @@ class Manifest(unittest.TestCase):
     def test_version_matches_cargo(self):
         cargo = tomllib.loads((REPO / "Cargo.toml").read_text())
         self.assertEqual(self.m["version"], cargo["workspace"]["package"]["version"])
-        self.assertEqual(self.m["version"], "0.2.0")
-        self.assertIn("## 0.2.0", (PLUGIN / "CHANGELOG.md").read_text())
+        self.assertIn(f"## {self.m['version']}", (PLUGIN / "CHANGELOG.md").read_text())
 
     def test_bar_widget_defaults(self):
         bw = self.m["barWidget"]

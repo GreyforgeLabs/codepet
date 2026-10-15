@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
 
 # No runtime dependencies. serde_json only parses the shared lifecycle vector
 # fixtures in tests; it is already in the lockfile through the other crates.

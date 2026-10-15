@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Published with CodePet 0.2.1, the first public release. The manifest names the project
+  homepage.
+
 ## 0.2.0
 
 First release of the CodePet bar widget for Omarchy 4.

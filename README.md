@@ -6,8 +6,9 @@ Quick/QML (Quickshell on Omarchy) only renders what Rust returns and sends expli
 requests. The only provider is a mock that runs no command and never touches a project
 folder.
 
-**Current release: v0.2.0, a private testing prerelease** (`codepet --version` prints
-`codepet 0.2.0`). See the [changelog](CHANGELOG.md).
+**Current release: [v0.2.1](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.2.1),
+the first public release (MIT)** (`codepet --version` prints `codepet 0.2.1`). See the
+[changelog](CHANGELOG.md).
 
 ## What v0.2.0 adds
 
