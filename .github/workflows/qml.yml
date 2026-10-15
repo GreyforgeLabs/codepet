@@ -39,6 +39,8 @@ jobs:
       # tools/petart/extract.py --check needs the GPT Image 2 source sheets, which are a
       # release asset (codepet-art-sources-v0.2.tar), not part of the repository; it runs
       # locally only. The manifests' sha256 checks above cover the committed frames.
+      - name: Install, uninstall and measurement tooling (temporary HOME, stub tools)
+        run: python3 qml/tests/test_install_scripts.py
       - name: Copy rules
         run: python3 qml/tests/copy_lint.py
       - name: Node model tests (bar model, presence model, state machine, life text)
