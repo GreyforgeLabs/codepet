@@ -2,6 +2,7 @@
 import QtQuick
 import "../shared"
 import "../standalone"
+import "../shared/PetCatalog.js" as PetCatalog
 
 Item {
     id: top
@@ -56,7 +57,13 @@ Item {
                 top.check(host.lastError.indexOf("PREVIEW_ONLY") === 0, "preview care refused without mutation")
                 top.check(host.snapshot.meters.hunger === 7000, "care animation never grants stats")
                 top.fixture("bathroom_due")
-                top.check(top.find(top.care, "petCare.wash").text === "Bathroom + wash", "bathroom due directs user to actual bathroom action")
+                top.check(top.find(top.care, "petCare.wash").text === PetCatalog.careLabel(top.care.petId, "bathroom"),
+                          "bathroom due directs user to actual bathroom action")
+                top.check(top.care.petId === "cat" && top.find(top.care, "petCare.food").text === PetCatalog.careLabel("cat", "food"),
+                          "care labels come from the catalog for the v0.1 pet")
+                top.check(top.find(top.care, "petCare.footer").text
+                          === "Needs only change during active time while CodePet is on your bar. See Life.", "footer explains active time")
+                top.check(!top.find(top.care, "petCare.seeLife").visible, "See Life is hidden when the host cannot open it")
                 top.check(!host.snapshot.care.ready_to_work, "full bars plus bathroom due is not ready")
                 top.fixture("sleep_due")
                 top.check(!top.form.readyToWork && top.care.canSleep, "sleep due blocks Start and offers bed")

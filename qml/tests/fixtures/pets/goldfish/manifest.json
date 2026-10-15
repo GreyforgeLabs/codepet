@@ -1,0 +1,393 @@
+{
+ "assetRevision": "wp6-fixture",
+ "careHints": {
+  "water": "Fish don't drink from bowls; this refreshes the tank water."
+ },
+ "careLabels": {
+  "bathroom": "Filter clean",
+  "food": "Surface pellets",
+  "play": "Plant arch",
+  "sleep": "Plant hover",
+  "wash": "Tank clean",
+  "water": "Water refresh"
+ },
+ "defaultName": "Bubbles",
+ "displayName": "Goldfish",
+ "files": {
+  "s1/b00.webp": "0a7eda982db5b3a0676b27208cac3a0f20a44b23d8ff8ef1ebef70ac4a41518a",
+  "s1/b01.webp": "cb72f77bb442cc1b4068cead7068a633757d3d8bbe4c6f868765c816e9e9c03a",
+  "s1/b02.webp": "3b9022d4ee1a93799baefbb0dad9138b7c506b8e92a136fae2298515bb561ea0",
+  "s1/b03.webp": "05d18c5aa8088699dfced5932617f9d1304c85489d4af1dbd196d573d564ca40",
+  "s1/b04.webp": "1feb8ccb6d0b5733882a2f653a4cb0a6f45f6effcc7e7db57f920b0c020c0002",
+  "s1/b05.webp": "2c05d0a55ffa052641a722b956c9379e53a80cac8868ad9a3b80a698a90cee45",
+  "s1/b06.webp": "e5ebdb74e2a1d83f6e3e9107a5c1cbabb8fe8087c3b52cfccc7204211c8f8e7c",
+  "s1/b07.webp": "1f8a74b2123e50519bfad97dd9fff43c4eaa3e3e309cb6a133bfa43a42aa0557",
+  "s1/b08.webp": "b009759be6640c1718529de169c512c31df40b7b5378489daf1edf867f320212",
+  "s1/b09.webp": "550afb876c7e1ff5e32d27c24a268ea7aca37b3f57d9ce5574570cf37bfba456",
+  "s1/b10.webp": "789956d0ea8100efac32c292c06496a41af1f3774183f0655ec9c27f491c7bd6",
+  "s1/b11.webp": "4e1a66f49af4346774023a70409f65ab8954b6ff386e2d36059e6c4d23b506e9",
+  "s1/c00.webp": "8095acd3676c6e8c3a675f453b58272ac54b1693c5358ef3b1781573433da155",
+  "s1/c01.webp": "ee3fc8a2c20d41a65347785180c36b569ac984c3fceefa6686cebbbd704412e6",
+  "s1/c02.webp": "15a2029f296201bde8dcb10e7fbf34450a67cf0b373bdfa4b78e58a0b57c41e8",
+  "s1/c03.webp": "bd6dcbe6e965410b55dd38e1080185103b082adcd1a95f319d18483db501a183",
+  "s1/c04.webp": "7a055a457e617aa6a05edea87a1dd8dd061b200037a6b8a718773fcf7bc1033f",
+  "s1/c05.webp": "e7d89829270de281df88df2200f67e005455ab763284c9310a6e9e3f01f7ec62",
+  "s1/c06.webp": "66348806538a5064ff07299661996217f767d4b52d80585fe02082f57a47aa94",
+  "s1/c07.webp": "0109bcd185aa967f0c41cc711da85848e8fd65fa9d0985814be93a8a922f8b30",
+  "s1/c08.webp": "2a7b4082f9bdfade92c57af5a789c4af341f94dba764127315ee08805027d8d2",
+  "s1/c09.webp": "dbfa538a2fb10c7fce9ac5180f1c88f662706aee40e08a7f016f12ef0c3fd33e",
+  "s1/c10.webp": "47ba83fca82dc6232da0fe9c25f369dd3dbc52989f136fbe47cd34850942078b",
+  "s1/c11.webp": "e71566c1a467ccb46ded9364bcf90744802a79a3a278fc9139335bc9442e81d7",
+  "s2/b00.webp": "07ca14861e0c623a4cf0ff9d4e3eff60dd01237ab20bee294cca2e95ba037119",
+  "s2/b01.webp": "19a8f710cff4541c83705fab1bf62a86710f544b7663deb017434b054cc70d11",
+  "s2/b02.webp": "2f4edda8002829f21d190b0969b9d90f0d04f14939049e08e90fad45426b4566",
+  "s2/b03.webp": "af56b85dce8d3e02dcd56d56aa0b529b51c5e1ac2e27ce381527edb41a0dff17",
+  "s2/b04.webp": "82de8f04f48244dc440b74df6e271457773d966b935cb69e7b89ed26484ebda1",
+  "s2/b05.webp": "aa0637a3327b4aacba70e47bfc43647a2d1c50e42b65e651c482e852b0457101",
+  "s2/b06.webp": "2379c68d195ea3f545f0595e8a43b4b9ed9c0763c611e12a5582cd761d46806d",
+  "s2/b07.webp": "661403c74cc3290799c721e1b890d6f5250abfacb42e4d9653766e02b6eaaf7c",
+  "s2/b08.webp": "cb7d7bea2de20194efb276baa2ba1c2f52a1099a6318233c1453fed70abd17f8",
+  "s2/b09.webp": "f5f7aff958ab25d99dd059e4dcbd06e906baa8cfee8fab11a563d48044011598",
+  "s2/b10.webp": "5c6ade252f8621fd6ad399a57be794fe6c66131a06fdf73ba15cd4958b521633",
+  "s2/b11.webp": "0ba61c35d8d0ddc1d8fe7fa4604d62b73e84cea787c4da1415c2c3b63ebf21ab",
+  "s2/c00.webp": "d5a441c2a5a175fb8a32454e13a25d1333a468252a6324898e8410bbd6b594d9",
+  "s2/c01.webp": "084d7f217f098c775202bdfe4263b47d68f4b11acc640db52f15b3067f21cf37",
+  "s2/c02.webp": "67b5528fa2689a8676782f8a7991d1f23cf37bbef716358daacbcf2707a7b026",
+  "s2/c03.webp": "304e66e428ffe329b2a51f85552a4ab335417303cc8d11d467c0e5cbb2d57ad3",
+  "s2/c04.webp": "6ef024bcaabf61567215522bdbd3c10fbcfdf2d7267bc6965d8a0a4dcb1d3f3c",
+  "s2/c05.webp": "6920c8f504bf466f29a60f52c6a4211aa37c178fbe4faae192acfe7d7db6bc74",
+  "s2/c06.webp": "ec397ed9242e66f5db8fece14f704dab5cf73c3801901fe03df34c53bce94a2d",
+  "s2/c07.webp": "a15b3c7e7da5682de69533c234cbe3c609ef9174e17f45ad328a56827a0eda3f",
+  "s2/c08.webp": "e97ea2f342060db337a4c49669d9fcd110233517abbe295e25c3437d43bb56f1",
+  "s2/c09.webp": "9328e61c295925968310529815621e09cb7849360a8fe34ed2289e95ac03fa12",
+  "s2/c10.webp": "8fda3eaf91f4988c8dc4f64aa1fbe9b07d1794686ba9548b1fbd2fbd1b5d591d",
+  "s2/c11.webp": "72378415c4f84dc5afe943fa5384215297697cbcdc719632194bd75c48ac1fff",
+  "s3/b00.webp": "ef50c8eb77e07a55772a053f32e2f61891f82c41937fc9be98bce2ef7da16878",
+  "s3/b01.webp": "ec0c3d49c8c31fef0593bb804909a923e68bb3f937bbe091fb1e604384077624",
+  "s3/b02.webp": "b273419dc93eac5a63b9af2b000052efedcbce41deb9c791757641e6525ac6a4",
+  "s3/b03.webp": "6a7513fdfe803118c4dc8f4f2d698eaf4d25605dec8269123a8e1a3d60fbc4bd",
+  "s3/b04.webp": "5cbf79e2f8a94e7cc8ae547d84828ca393ca19bb45ef40aef33252e53be44a05",
+  "s3/b05.webp": "0204dd2759413c6d2a1310ea3b332625127c2bf2c1caec58acbcbac5111975ae",
+  "s3/b06.webp": "d72c106761fd7bcda37d127dc98aae76b9c8f16524517eed119ea64d6c7a6f20",
+  "s3/b07.webp": "c1b8032c4353988517fc41b09b0086baf5b3445f97769948082ac7bded5b5bc1",
+  "s3/b08.webp": "36a15ca495d397d2e89c1b0b0472b24f2ecffb594168a8377c9b9f36d0d9edf6",
+  "s3/b09.webp": "45fb5d99a7704f69f42a3f4a9d0a3ab962a6b7cf997b18ec83a1e4d1108ce2e5",
+  "s3/b10.webp": "28cb5a8532ee19221d23de2fbe080920efda6c94df5983991c678e4e8a176203",
+  "s3/b11.webp": "0476936fbede2cb126c9125c80460a1547f9f8e42a43e9b9dd08b68765c14129",
+  "s3/c00.webp": "f743326ec160a48a4a1661ac2ba30bd841b3f6ff1c036260f9cfffc30c8a6e95",
+  "s3/c01.webp": "b203c40787fbf1af1aa237e2f23089a45ae5c4a46bd061baf100c16a43c80b5d",
+  "s3/c02.webp": "9e43dae21f87a3fa35dc4da464ff9783506c8bbec9e9a6875e3f86ed81ab71fb",
+  "s3/c03.webp": "a69c59705fe3bee9e75f5b646903ba32996111e0c676d4f1a4d06ab6ff518d88",
+  "s3/c04.webp": "87a4b16bdb39d4497deb7b7ade89030f206cba257b95f137cb25c58c08e23c97",
+  "s3/c05.webp": "f25c7a845aff0d6909a19aa16f841c84ed8d4b9c3a7e4e5851efef633343304e",
+  "s3/c06.webp": "4aa2b496d36954e5017cc625e910103fa2dec1f9bd8dd41107004c62a72f2bae",
+  "s3/c07.webp": "af31d490efb5812b7156802d6dfea54ee44eb2aa93b6cbda5fe10308b0ae366b",
+  "s3/c08.webp": "658953be14131cc67b88b95ebd45b5f5e1586bb6a16991ddedff0429d0ba0d42",
+  "s3/c09.webp": "b4b1cd4dcfbdcf9dc912916b9b1b82704140807461fee50fbe3e5b80c474fa5b",
+  "s3/c10.webp": "e47507514ba0f35c4c8a77b35460e182519558aea806ddbf33702093cefd0719",
+  "s3/c11.webp": "1c3d73aae6a22143e6fbcbef5b4a3486bcbc115862e57012159922e317685b3a",
+  "thumb-s1.webp": "06f20ae1a9981a79084f84e8590475362e4c36d15b470a6b6539341053e832e5",
+  "thumb-s2.webp": "c2ab094a25c0b493fef53f1bb957641c4f0b9ec9e3b586fb253194bf3cc03c6f",
+  "thumb-s3.webp": "5d4e96fee795f1e7c9fc3763947e9608a400067460f9d8110774cbb40280f9a7"
+ },
+ "geometry": {
+  "groundY": 184,
+  "hitBox": [
+   24,
+   40,
+   144,
+   144
+  ],
+  "roams": false,
+  "viewBox": [
+   0,
+   0,
+   192,
+   192
+  ],
+  "water": {
+   "outer": [
+    24,
+    40,
+    144,
+    144
+   ],
+   "swimBounds": [
+    40,
+    72,
+    112,
+    96
+   ],
+   "waterLineY": 56
+  }
+ },
+ "habitat": "aquatic",
+ "id": "goldfish",
+ "license": "MIT",
+ "locomotion": {
+  "airborneFrames": [],
+  "pauseTicks": [
+   30,
+   75
+  ],
+  "pxPerTick": 0,
+  "style": "swim_in_habitat"
+ },
+ "personality": "the dreamy bubble navigator",
+ "placeholder": false,
+ "schemaVersion": 1,
+ "stages": [
+  {
+   "key": "young",
+   "minLevel": 1,
+   "name": "Fry",
+   "stage": 1
+  },
+  {
+   "key": "grown",
+   "minLevel": 2,
+   "name": "Goldfish",
+   "stage": 2
+  },
+  {
+   "key": "mature",
+   "minLevel": 4,
+   "name": "Fantail",
+   "stage": 3
+  }
+ ],
+ "states": {
+  "bathroom": {
+   "fallback": null,
+   "frameMs": 600,
+   "frames": [
+    "b03.webp",
+    "c08.webp",
+    "c08.webp",
+    "b00.webp"
+   ],
+   "interrupt": "higher",
+   "loop": false,
+   "mirror": false,
+   "priority": 70,
+   "reducedFrame": 1,
+   "repeats": 1
+  },
+  "celebrate": {
+   "fallback": "idle",
+   "frameMs": 400,
+   "frames": [
+    "c11.webp",
+    "b04.webp",
+    "c11.webp",
+    "b04.webp"
+   ],
+   "interrupt": "higher",
+   "loop": false,
+   "mirror": false,
+   "priority": 60,
+   "reducedFrame": 0,
+   "repeats": 1
+  },
+  "error": {
+   "fallback": "idle",
+   "frameMs": 1000,
+   "frames": [
+    "b06.webp"
+   ],
+   "interrupt": "higher",
+   "loop": true,
+   "mirror": false,
+   "priority": 100,
+   "reducedFrame": 0,
+   "repeats": 1
+  },
+  "food": {
+   "fallback": null,
+   "frameMs": 400,
+   "frames": [
+    "b03.webp",
+    "c00.webp",
+    "c01.webp",
+    "c00.webp",
+    "c01.webp",
+    "b04.webp"
+   ],
+   "interrupt": "higher",
+   "loop": false,
+   "mirror": false,
+   "priority": 70,
+   "reducedFrame": 1,
+   "repeats": 1
+  },
+  "idle": {
+   "fallback": null,
+   "frameMs": 600,
+   "frames": [
+    "b00.webp",
+    "b00.webp",
+    "b01.webp",
+    "b00.webp"
+   ],
+   "interrupt": "any",
+   "loop": true,
+   "mirror": false,
+   "priority": 0,
+   "reducedFrame": 0,
+   "repeats": 1
+  },
+  "locomotion": {
+   "fallback": "idle",
+   "frameMs": 200,
+   "frames": [
+    "b08.webp",
+    "b09.webp",
+    "b10.webp",
+    "b11.webp"
+   ],
+   "interrupt": "any",
+   "loop": true,
+   "mirror": false,
+   "priority": 20,
+   "reducedFrame": 0,
+   "repeats": 1
+  },
+  "needs_care": {
+   "fallback": "idle",
+   "frameMs": 800,
+   "frames": [
+    "b05.webp"
+   ],
+   "interrupt": "any",
+   "loop": true,
+   "mirror": false,
+   "priority": 50,
+   "reducedFrame": 0,
+   "repeats": 1
+  },
+  "play": {
+   "fallback": null,
+   "frameMs": 400,
+   "frames": [
+    "b03.webp",
+    "c04.webp",
+    "c05.webp",
+    "c04.webp",
+    "c05.webp",
+    "b04.webp"
+   ],
+   "interrupt": "higher",
+   "loop": false,
+   "mirror": false,
+   "priority": 70,
+   "reducedFrame": 1,
+   "repeats": 1
+  },
+  "sleep": {
+   "fallback": null,
+   "frameMs": 1000,
+   "frames": [
+    "b07.webp"
+   ],
+   "interrupt": "higher",
+   "loop": true,
+   "mirror": false,
+   "priority": 85,
+   "reducedFrame": 0,
+   "repeats": 1
+  },
+  "sleep_enter": {
+   "fallback": null,
+   "frameMs": 600,
+   "frames": [
+    "c09.webp",
+    "b07.webp"
+   ],
+   "interrupt": "none",
+   "loop": false,
+   "mirror": false,
+   "priority": 90,
+   "reducedFrame": 1,
+   "repeats": 1
+  },
+  "sleep_exit": {
+   "fallback": null,
+   "frameMs": 600,
+   "frames": [
+    "c10.webp",
+    "b00.webp"
+   ],
+   "interrupt": "none",
+   "loop": false,
+   "mirror": false,
+   "priority": 90,
+   "reducedFrame": 1,
+   "repeats": 1
+  },
+  "waiting": {
+   "fallback": "idle",
+   "frameMs": 800,
+   "frames": [
+    "b02.webp",
+    "b00.webp"
+   ],
+   "interrupt": "any",
+   "loop": true,
+   "mirror": false,
+   "priority": 35,
+   "reducedFrame": 0,
+   "repeats": 1
+  },
+  "wash": {
+   "fallback": null,
+   "frameMs": 400,
+   "frames": [
+    "b00.webp",
+    "c06.webp",
+    "c07.webp",
+    "c06.webp",
+    "c07.webp",
+    "b04.webp"
+   ],
+   "interrupt": "higher",
+   "loop": false,
+   "mirror": false,
+   "priority": 70,
+   "reducedFrame": 1,
+   "repeats": 1
+  },
+  "water": {
+   "fallback": null,
+   "frameMs": 400,
+   "frames": [
+    "b03.webp",
+    "c02.webp",
+    "c03.webp",
+    "c02.webp",
+    "c03.webp",
+    "b04.webp"
+   ],
+   "interrupt": "higher",
+   "loop": false,
+   "mirror": false,
+   "priority": 70,
+   "reducedFrame": 1,
+   "repeats": 1
+  },
+  "working": {
+   "fallback": "idle",
+   "frameMs": 800,
+   "frames": [
+    "b04.webp",
+    "b00.webp"
+   ],
+   "interrupt": "any",
+   "loop": true,
+   "mirror": false,
+   "priority": 40,
+   "reducedFrame": 0,
+   "repeats": 1
+  }
+ },
+ "thumbnailPattern": "thumb-s{stage}.webp"
+}
