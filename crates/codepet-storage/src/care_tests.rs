@@ -752,13 +752,18 @@ fn suspend_is_never_charged_as_execution_but_counts_as_rest() {
 
 #[test]
 fn system_clock_measures_execution_without_suspended_time() {
-    let (boot_id, boottime) = SystemClock.steady_time().unwrap();
+    // Read CLOCK_MONOTONIC first: CLOCK_BOOTTIME read afterwards can only be later, so
+    // scheduling delay between the two reads widens the margin instead of eating it.
     let (run_id, monotonic) = SystemClock.execution_time().unwrap();
+    let (boot_id, boottime) = SystemClock.steady_time().unwrap();
     // Distinct identities: execution cursors are never compared with boottime cursors.
     assert_eq!(run_id, format!("{boot_id}/monotonic"));
     // CLOCK_MONOTONIC excludes suspend, so it never runs ahead of CLOCK_BOOTTIME
-    // (allowing for /proc/uptime's 10 ms resolution).
-    assert!(monotonic > 0 && monotonic <= boottime + 20);
+    // (allowing for /proc/uptime's truncated 10 ms resolution).
+    assert!(
+        monotonic > 0 && monotonic <= boottime + 20,
+        "monotonic {monotonic} ms ran ahead of boottime {boottime} ms"
+    );
 }
 
 #[test]
