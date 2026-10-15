@@ -415,6 +415,9 @@ impl Engine {
     pub fn set_settings(&mut self, settings: Settings) -> Result<(), Error> {
         settings.validate()?;
         self.settings = settings;
+        // Preflight approval includes execution settings, not just the draft revision.
+        // Match the durable store: even an identical settings update needs new approval.
+        self.tokens.clear();
         Ok(())
     }
     pub fn task(&self, id: JobId) -> Result<&Task, Error> {
