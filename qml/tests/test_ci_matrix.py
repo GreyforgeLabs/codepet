@@ -51,8 +51,13 @@ class CiMatrix(unittest.TestCase):
             self.assertRegex(lines, r"python3 -I docs/art-library/" + re.escape(script) + r"\b", script)
 
     def test_lint_still_runs(self):
-        self.assertIn("pyside6-qmllint -I qml qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml",
-                      "\n".join(run_lines()))
+        lines = "\n".join(run_lines())
+        self.assertIn("pyside6-qmllint -I qml -I qml/tests/stubs qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml",
+                      lines)
+        self.assertIn("ls omarchy-plugin/*.qml", lines, "the bar plugin's popup files are linted too")
+
+    def test_plugin_strings_are_checked(self):
+        self.assertIn("python3 tools/ui/gen_plugin_strings.py --check", "\n".join(run_lines()))
 
 
 if __name__ == "__main__":
