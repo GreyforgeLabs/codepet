@@ -59,6 +59,11 @@ pub use store::{AcceptRequest, SealOutcome, Step};
 pub use store::{MigrationReport, Store};
 pub use sys::Supervisor;
 pub use treats::{caps_allow, CapCheck, Earned};
+// v0.3 ingestion (WP2): the hook inbox and the fold.
+pub use agent_store::{FoldBatch, AGENT_SCHEMA_VERSION};
+pub use spool::{
+    event_id, hmac_key, payload_digest, Inbox, InboxRecord, InboxScan, SpoolWrite, INBOX_EXT,
+};
 
 /// Current SQLite `user_version`.
 pub const SCHEMA_VERSION: i64 = 5;

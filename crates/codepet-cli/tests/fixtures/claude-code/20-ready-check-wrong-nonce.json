@@ -1,0 +1,14 @@
+{
+ "name": "ready-check-wrong-nonce",
+ "client": "claude-code",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {
+  "CLAUDE_CODE_ENTRYPOINT": "cli"
+ },
+ "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+ "at_ms": 1792123876111,
+ "stdin": "{\"hook_event_name\":\"Stop\",\"session_id\":\"codepet-ready-check\",\"prompt_id\":\"codepet-ready-check\",\"codepet_test\":\"ffffffffffffffffffffffffffffffff\"}\n",
+ "expect": {
+  "drop": "test_nonce"
+ }
+}

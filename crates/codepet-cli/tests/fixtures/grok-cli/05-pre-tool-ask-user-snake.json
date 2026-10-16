@@ -1,0 +1,27 @@
+{
+ "name": "pre-tool-ask-user-snake",
+ "client": "grok-cli",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"hookEventName\":\"pre_tool_use\",\"hook_event_name\":\"PreToolUse\",\"sessionId\":\"01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"workspaceRoot\":\"/home/u/CANARY-workspace-7f3a\",\"timestamp\":\"2026-10-16T12:00:00Z\",\"permissionMode\":\"default\",\"promptId\":\"g-1\",\"toolName\":\"ask_user_question\",\"toolUseId\":\"tu3\"}\n",
+ "expect": {
+  "event_id": "1e1336b2d395c8677fa5c9cf4c051f9b",
+  "record": {
+   "v": 1,
+   "client": "grok-cli",
+   "kind": "waiting",
+   "session": "01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b",
+   "turn": "g-1",
+   "tool": "tu3",
+   "akey": null,
+   "note": "ask_user",
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "51522d7ba86b81c4",
+   "at_ms": 1792123876111
+  }
+ }
+}

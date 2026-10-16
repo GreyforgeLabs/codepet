@@ -139,7 +139,9 @@ pub fn run() -> i32 {
 /// It never migrates (spec §6.2: only `codepet migrate` and `rpc` `state.get` may); an
 /// older database is refused untouched with `SCHEMA_UNSUPPORTED` ("needs codepet migrate").
 pub fn state_get() -> Result<Value, Failure> {
-    let store = open_current()?;
+    let mut store = open_current()?;
+    // v0.3 (§6.3): first fold at most one waiting inbox batch, unless a fold runs.
+    crate::fold::drain_once(&mut store);
     let value = serde_json::to_value(store.snapshot()?)?;
     publish_bar_state(&store);
     Ok(value)
@@ -272,6 +274,8 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
         }
         Method::StateGet => {
             let _: EmptyParams = parse_params(p)?;
+            // v0.3 (§8 rule 1): opening the popup drains the inbox (one batch).
+            crate::fold::drain_once(ctx.store()?);
             encode(serde_json::to_value(ctx.store()?.snapshot()?))
         }
         #[cfg(feature = "legacy-tasks")]

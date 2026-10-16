@@ -1,0 +1,27 @@
+{
+ "name": "approval-key-ignored",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"waiting\",\"session_id\":\"ses_7a1b\",\"approval_key\":\"k1\"}\n",
+ "expect": {
+  "event_id": "a0643341101cb0d2eaf27673d8d689cb",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "waiting",
+   "session": "ses_7a1b",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "b4ef7345aa5e0b54",
+   "at_ms": 1792123876111
+  }
+ }
+}

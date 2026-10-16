@@ -282,9 +282,18 @@ for vec in normalization["vectors"]:
             and not (vec["client"] == "opencode" and "approval_key" in p))
 
 
+# Idempotent state changes: a repeat is never a duplicate (a second permission prompt of the
+# same tool has byte-identical payload), so their bucket is the millisecond itself.
+STATE_KINDS = ["session_start", "waiting", "idle_prompt", "session_end"]
+
+
+def event_bucket(kind, at_ms):
+    return at_ms if kind in STATE_KINDS else at_ms // 3000
+
+
 def event_id(client, kind, session, body, at_ms):
     dig = hashlib.sha256(body).hexdigest()[:16]
-    key = f"codepet-ev1|{client}|{kind}|{session}|{dig}|{at_ms // 3000}"
+    key = f"codepet-ev1|{client}|{kind}|{session}|{dig}|{event_bucket(kind, at_ms)}"
     return dig, hashlib.sha256(key.encode()).hexdigest()[:32]
 
 
@@ -295,19 +304,27 @@ for client, kind, session, body, at in [
     ("claude-code", "turn_done", S, b'{"hook_event_name":"Stop","session_id":"' + S.encode() + b'","prompt_id":"p-1"}\n', 1792123878000),
     ("codex", "session_end", S, b'{"hook_event_name":"SessionEnd","session_id":"' + S.encode() + b'"}', 1792123800000),
     ("hermes", "waiting", "~ak:sk-cli-1", b'{"codepet_v":1,"event":"waiting","approval_key":"sk-cli-1"}\n', 1792123800000),
+    ("claude-code", "waiting", S, b'{"hook_event_name":"Notification","session_id":"' + S.encode() + b'","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}\n', 1792123876111),
+    ("claude-code", "waiting", S, b'{"hook_event_name":"Notification","session_id":"' + S.encode() + b'","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}\n', 1792123876112),
 ]:
     dig, eid = event_id(client, kind, session, body, at)
     eid_cases.append({"client": client, "kind": kind, "session": session, "payload_utf8": body.decode(),
                       "at_ms": at, "expect": {"dig": dig, "event_id": eid}})
 event_ids = {
-    "formula": "dig = hex(sha256(bytes read))[..16]; event_id = hex(sha256('codepet-ev1|' + client + '|' + kind + '|' + session + '|' + dig + '|' + floor(at_ms / 3000)))[..32]",
+    "formula": "dig = hex(sha256(bytes read))[..16]; event_id = hex(sha256('codepet-ev1|' + client + '|' + kind + '|' + session + '|' + dig + '|' + bucket))[..32], bucket in decimal",
+    "bucket": "floor(at_ms / 3000) for every kind except state_kinds, whose bucket is at_ms itself",
+    "state_kinds": STATE_KINDS,
+    "state_kinds_reason": "idempotent state changes: a real duplicate delivery of one does no harm, but a legitimate repeat can be byte-identical (Claude Code's permission Notification carries no turn or tool id and a generic message, Codex PermissionRequest repeats the same command), so a 3 s bucket would swallow the second 'needs you'. Amended after the WP2 review (notes.md §5)",
     "session_field": "the raw session id; for a Hermes approval event (no session_id) the literal '~ak:' + approval_key ('~' never occurs in an id, so it cannot collide)",
     "notes": ["cases 1 and 2 share a 3 s bucket and dedupe; case 3 is the next bucket and does not",
-              "case 5 is a Hermes approval event (session field '~ak:<approval_key>')"],
+              "case 5 is a Hermes approval event (session field '~ak:<approval_key>')",
+              "cases 6 and 7 are two byte-identical permission prompts 1 ms apart in one 3 s bucket: distinct ids, both fold"],
     "vectors": eid_cases,
 }
 assert eid_cases[0]["expect"]["event_id"] == eid_cases[1]["expect"]["event_id"]
 assert eid_cases[1]["expect"]["event_id"] != eid_cases[2]["expect"]["event_id"]
+assert eid_cases[5]["expect"]["dig"] == eid_cases[6]["expect"]["dig"]
+assert eid_cases[5]["expect"]["event_id"] != eid_cases[6]["expect"]["event_id"]
 
 # ---------------------------------------------------------------- interactivity (§6.4)
 interactivity = {
@@ -544,6 +561,17 @@ sessions = {
          "events": [ev(0, "turn_start", "7", expect="working"), ev(1000, "activity", "7", "c1", expect="working"),
                     ev(2000, "turn_done", "7", expect="idle", note="jar_full -> finished_jar_full")],
          "final": {"treats": 0, "finished_seq": 1, "open_turn": None, "last_done_tools": 1, "finished_jar_full": True}},
+        {"name": "jar_full_describes_only_the_last_finished_turn", "client": "codex", "jar": 10,
+         "events": [ev(0, "turn_start", "7", expect="working"), ev(1000, "activity", "7", "c1", expect="working"),
+                    ev(2000, "turn_done", "7", expect="idle", note="jar_full -> finished_jar_full"),
+                    ev(40000, "turn_start", "8", expect="working"),
+                    ev(41000, "turn_done", "8", expect="idle", note="0 tools, 1 s: no treat check; the flag clears (act.done, not act.done_full)")],
+         "final": {"treats": 0, "finished_seq": 2, "open_turn": None, "last_done_tools": 0, "finished_jar_full": False}},
+        {"name": "late_tool_recheck_on_a_full_jar_sets_jar_full", "client": "codex", "jar": 10,
+         "events": [ev(0, "turn_start", "7", expect="working"),
+                    ev(5000, "turn_done", "7", expect="idle", note="0 tools, 5 s: no treat check yet"),
+                    ev(5200, "activity", "7", "call_1", expect="idle", note="(b): the one re-check meets a full jar")],
+         "final": {"treats": 0, "finished_seq": 1, "open_turn": None, "last_done_tools": 1, "finished_jar_full": True}},
     ],
 }
 
@@ -696,7 +724,7 @@ hmac_keys = {
         "approval": {"domain": "codepet-approval-v1", "parts": ["approval_key"], "column": "agent_sessions.session_key (approval = 1); its own domain, so it never collides with a session key"},
         "turn": {"domain": "codepet-turn-v1", "parts": ["session", "turn"], "column": "open_turn_key, last_done_turn_key, activity_turns.turn_key, agent_events.turn_hmac. A turn_start without a turn key uses turn = '~ev:' + event_id"},
         "tool": {"domain": "codepet-tool-v1", "parts": ["session", "tool"], "column": "agent_events.tool_hmac (distinct-tool counting per session_hmac + turn_hmac)"},
-        "dedupe": {"domain": "codepet-dedupe-v1", "parts": ["kind", "session field of the event id", "dig", "floor(at_ms / event_bucket_ms) in decimal"], "column": "agent_events.dedupe_key"},
+        "dedupe": {"domain": "codepet-dedupe-v1", "parts": ["kind", "session field of the event id", "dig", "the event id's bucket in decimal (event_ids.bucket)"], "column": "agent_events.dedupe_key"},
     },
     "salt_hex": SALT.hex(),
     "vectors": [],
@@ -710,6 +738,7 @@ for kind, client, parts in [
     ("turn", "opencode", ["ses_1", "~ev:" + eid_cases[0]["expect"]["event_id"]]),
     ("tool", "claude-code", [S, "toolu_01"]),
     ("dedupe", "claude-code", ["turn_done", S, eid_cases[0]["expect"]["dig"], str(1792123876111 // 3000)]),
+    ("dedupe", "claude-code", ["waiting", S, eid_cases[5]["expect"]["dig"], str(1792123876111)]),
 ]:
     hmac_keys["vectors"].append({"use": kind, "client": client, "parts": parts,
                                  "expect": hkey(hmac_keys["domains"][kind]["domain"], client, *parts)})

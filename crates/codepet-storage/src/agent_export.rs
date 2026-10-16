@@ -1,7 +1,7 @@
 //! The v0.3 blocks of `bar-state.json` (spec §8, `docs/v0.3/contracts/bar.v2.schema.json`):
 //! `enabled`, `agent`, `treats` and `clients`.
 //!
-//! WP0 serialises them with defaults (CodePet on, nothing seen, empty jar, no client
+//! WP0 serialised them with defaults (CodePet on, nothing seen, empty jar, no client
 //! records). WP1 fills `enabled` and `treats`, WP2 fills `agent`, WP3 fills `clients`, each
 //! from committed rows and without settling anything.
 use crate::Result;
@@ -17,7 +17,7 @@ pub(crate) struct V03Blocks {
     pub enabled: bool,
     /// `meta.count_helpers` (WP1).
     pub count_helpers: bool,
-    /// Coding-app activity (WP2 fills it; defaults until then).
+    /// Coding-app activity (WP2: `agent::pet_state` over the counting sessions).
     pub agent: AgentExport,
     /// The living life's treat jar (WP1).
     pub treats: TreatsExport,
@@ -25,12 +25,13 @@ pub(crate) struct V03Blocks {
     pub clients: ClientsExport,
 }
 impl V03Blocks {
-    pub(crate) fn load(c: &Connection) -> Result<Self> {
+    /// `now` decides which sessions still count (stale sessions without timers, §6.4).
+    pub(crate) fn load(c: &Connection, now: i64) -> Result<Self> {
         let (jar, full) = crate::treats::jar_of_living(c)?;
         Ok(Self {
             enabled: crate::app::enabled(c)?,
             count_helpers: crate::app::count_helpers(c)?,
-            agent: AgentExport::default(),
+            agent: crate::agent_store::agent_export(c, now)?,
             treats: TreatsExport { jar, full },
             clients: ClientsExport::new(),
         })

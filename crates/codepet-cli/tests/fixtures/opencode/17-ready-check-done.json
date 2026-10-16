@@ -1,0 +1,27 @@
+{
+ "name": "ready-check-done",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_done\",\"session_id\":\"codepet-ready-check\",\"turn_id\":\"codepet-ready-check\",\"tools\":0,\"interactive\":true,\"codepet_test\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f0\"}\n",
+ "expect": {
+  "event_id": "91317bf4ae91c5a5323f78bb5505ead1",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "turn_done",
+   "session": "codepet-ready-check",
+   "turn": "codepet-ready-check",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": true,
+   "dig": "e67db3ed04fc0e50",
+   "at_ms": 1792123876111
+  }
+ }
+}

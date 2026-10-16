@@ -20,9 +20,10 @@
   "path_rule": "both values are absolute, contain none of ' (single quote), newline, NUL, and are <= 4096 bytes; otherwise the Connect fails with reason blocked and writes nothing",
   "mode": "0755, written as temp file in the same dir + fsync + rename",
   "tombstone": "shim-tombstone.sh, written in place of the shim when uninstall cannot disconnect every client",
-  "reference_sha256": "e636f426bfa0f5f1c26f480d6df855c7bf87e90332cb2bfdd8768cbde1204664",
-  "tombstone_sha256": "58b884c92c852e69aaee84bd62d8589bfa37b0e99283a09c847ad22b7021058d",
-  "doctor": "codepet doctor prints the installed shim's sha256 and checks its S/B against the bar's paths"
+  "reference_sha256": "dc370b1710b409934cc5fd177dc7cc637c0ef7b1a0a45dcf37be9129bb6c8bb9",
+  "tombstone_sha256": "5f5ea5d96b2ca15baf394c4a853f8c3804ab9d6819438a593b540c050c329c24",
+  "doctor": "codepet doctor prints the installed shim's sha256 and checks its S/B against the bar's paths",
+  "silence": "the first command of the shim and the tombstone is `exec >/dev/null 2>&1` (stdin stays for the drain): the shell's own messages, such as bash's 'Killed' job report when the 0.3 s drain is cut, never reach the argv-form clients (OpenCode, Hermes). Amended after the WP2 review (notes.md §5)"
  },
  "stored_command": {
   "shell": "<shim> <client-id> >/dev/null 2>&1 || true  (claude-code, codex, grok-cli: the client runs it through a shell)",

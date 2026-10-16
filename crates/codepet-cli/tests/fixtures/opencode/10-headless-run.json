@@ -1,0 +1,27 @@
+{
+ "name": "headless-run",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_start\",\"session_id\":\"ses_run\",\"turn_id\":\"1792123800000-1\",\"interactive\":false}\n",
+ "expect": {
+  "event_id": "f947c8748c03731aefecae4e59c8d555",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "turn_start",
+   "session": "ses_run",
+   "turn": "1792123800000-1",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": false,
+   "test": false,
+   "dig": "2f145d7cc9495f8f",
+   "at_ms": 1792123876111
+  }
+ }
+}

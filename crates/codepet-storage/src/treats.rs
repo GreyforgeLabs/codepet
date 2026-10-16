@@ -17,51 +17,15 @@ use crate::life::{self, EvolvedBy};
 use crate::model::Snapshot;
 use crate::store::V03Policy;
 use crate::{fault, lifecycle_store, Result, StorageError, Store};
-use codepet_core::agent::{CAP_PER_DAY, CAP_PER_HOUR, CAP_SESSION_MS, JAR_MAX, TREAT_XP};
+use codepet_core::agent::{CAP_SESSION_MS, DAY_MS, HOUR_MS, JAR_MAX, TREAT_XP};
 use rusqlite::{params, Connection, OptionalExtension};
 
-const HOUR_MS: i64 = 60 * 60 * 1000;
-const DAY_MS: i64 = 24 * HOUR_MS;
-
-/// The cap verdict for one qualifying turn (`agent_vectors.json` `caps`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CapCheck {
-    Allow,
-    /// The jar already holds [`JAR_MAX`] unspent treats; the UI wiggles the jar.
-    JarFull,
-    CappedSession,
-    CappedHour,
-    CappedDay,
-}
-impl CapCheck {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Allow => "allow",
-            Self::JarFull => "jar_full",
-            Self::CappedSession => "capped_session",
-            Self::CappedHour => "capped_hour",
-            Self::CappedDay => "capped_day",
-        }
-    }
-}
-
 /// The pure cap rule, in order: jar full, then the session's 30 s, then 12 per rolling hour,
-/// then 48 per rolling 24 h. `session_earned` / `all_earned` are `earned_at_ms` values; 0 is
-/// a forgotten row and never counts.
-pub fn caps_allow(at: i64, jar: u32, session_earned: &[i64], all_earned: &[i64]) -> CapCheck {
-    let within = |t: i64, window: i64| t > 0 && t > at - window;
-    if jar >= JAR_MAX {
-        CapCheck::JarFull
-    } else if session_earned.iter().any(|&t| within(t, CAP_SESSION_MS)) {
-        CapCheck::CappedSession
-    } else if all_earned.iter().filter(|&&t| within(t, HOUR_MS)).count() >= CAP_PER_HOUR as usize {
-        CapCheck::CappedHour
-    } else if all_earned.iter().filter(|&&t| within(t, DAY_MS)).count() >= CAP_PER_DAY as usize {
-        CapCheck::CappedDay
-    } else {
-        CapCheck::Allow
-    }
-}
+/// then 48 per rolling 24 h, over `earned_at_ms` values (0 = forgotten, never counts).
+pub use codepet_core::agent::caps_allow;
+/// The cap verdict for one qualifying turn (`agent_vectors.json` `caps`): the pure rule lives
+/// in `codepet_core::agent` (one implementation for the fold, the jar and the vectors).
+pub use codepet_core::agent::CapVerdict as CapCheck;
 
 /// Unspent treats of `life_id`.
 pub(crate) fn jar(c: &Connection, life_id: &str) -> Result<u32> {
@@ -103,15 +67,13 @@ pub(crate) fn check(c: &Connection, life_id: &str, session_key: &str, at: i64) -
             &[&(at - ms)],
         )
     };
-    Ok(if session > 0 {
-        CapCheck::CappedSession
-    } else if window(HOUR_MS)? >= i64::from(CAP_PER_HOUR) {
-        CapCheck::CappedHour
-    } else if window(DAY_MS)? >= i64::from(CAP_PER_DAY) {
-        CapCheck::CappedDay
-    } else {
-        CapCheck::Allow
-    })
+    let n = |v: i64| u32::try_from(v).unwrap_or(u32::MAX);
+    Ok(codepet_core::agent::caps_verdict(
+        jar,
+        session > 0,
+        n(window(HOUR_MS)?),
+        n(window(DAY_MS)?),
+    ))
 }
 
 /// What [`earn`] did with one qualifying finished turn.
@@ -133,8 +95,6 @@ pub enum Earned {
 /// it (called by the fold inside its transaction; `session_key` / `turn_key` are the 32-hex
 /// HMAC keys, `client` a supported client id). The caller has already decided that the turn
 /// qualifies (`agent::turn_qualifies`) and that CodePet is On (X2).
-// The fold (WP2) is the caller; until it lands only the tests use it.
-#[allow(dead_code)]
 pub(crate) fn earn(
     c: &Connection,
     life_id: &str,

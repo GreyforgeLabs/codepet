@@ -166,7 +166,7 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
         },
     )?;
     let care = care::view(c, meters)?;
-    let v03 = V03Blocks::load(c)?;
+    let v03 = V03Blocks::load(c, generated_at_ms)?;
     // v0.3.0 keeps the v1 keys `task`, `care.ready_to_work` and `care.readiness_reasons` as
     // inert compatibility values (null, false, []), so a still-loaded v0.2 bar or overlay
     // degrades gracefully until the reload (spec §6.6); v0.3.1 drops them. Only the

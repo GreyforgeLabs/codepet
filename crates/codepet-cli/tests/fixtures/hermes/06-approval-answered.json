@@ -1,0 +1,27 @@
+{
+ "name": "approval-answered",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"activity\",\"approval_key\":\"sk-cli-1\"}\n",
+ "expect": {
+  "event_id": "59c71fded458c46a79caea732fe402b0",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "activity",
+   "session": null,
+   "turn": null,
+   "tool": null,
+   "akey": "sk-cli-1",
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "f6b7ab5dc61d5fb5",
+   "at_ms": 1792123876111
+  }
+ }
+}

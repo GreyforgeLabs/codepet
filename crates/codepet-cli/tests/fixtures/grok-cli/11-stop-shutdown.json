@@ -1,0 +1,27 @@
+{
+ "name": "stop-shutdown",
+ "client": "grok-cli",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"hookEventName\":\"stop\",\"hook_event_name\":\"Stop\",\"sessionId\":\"01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"workspaceRoot\":\"/home/u/CANARY-workspace-7f3a\",\"timestamp\":\"2026-10-16T12:00:00Z\",\"permissionMode\":\"default\",\"reason\":\"shutdown\"}\n",
+ "expect": {
+  "event_id": "a64dc2cac4da1d0b069b2fa58695660d",
+  "record": {
+   "v": 1,
+   "client": "grok-cli",
+   "kind": "session_end",
+   "session": "01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "2fcf782656b81bde",
+   "at_ms": 1792123876111
+  }
+ }
+}

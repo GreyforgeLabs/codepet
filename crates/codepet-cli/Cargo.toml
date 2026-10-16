@@ -14,11 +14,17 @@ codepet-core = { path = "../codepet-core" }
 codepet-protocol = { path = "../codepet-protocol" }
 codepet-storage = { path = "../codepet-storage" }
 serde_json = "1"
+# The hook and the fold (v0.3 WP2): poll(2) for the bounded stdin read, flock(2) for
+# fold.lock, setsid/nice/umask for the detached fold. Safe wrappers only (unsafe code is
+# forbidden); already in the lock graph through codepet-storage.
+rustix = { version = "1.1", default-features = false, features = ["std", "event", "fs", "process", "time"] }
 
 [dev-dependencies]
 # The same crate with its test-support API (v0.2-shaped databases for the CLI tests).
 codepet-storage = { path = "../codepet-storage", features = ["test-support"] }
 tempfile = "3"
+# WP2 hook/fold tests read the database directly; same package as codepet-storage's.
+rusqlite = { version = "0.39", features = ["bundled"] }
 
 [features]
 # v0.3 (spec §6.5): `providers`, `mock-demo` and the supervisor move behind this

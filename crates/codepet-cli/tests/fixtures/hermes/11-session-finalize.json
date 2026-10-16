@@ -1,0 +1,27 @@
+{
+ "name": "session-finalize",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"session_end\",\"session_id\":\"20261016_120000_ab12cd\"}\n",
+ "expect": {
+  "event_id": "55c18f13f2f8709778821cc64b7c9329",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "session_end",
+   "session": "20261016_120000_ab12cd",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "b8d40072e14c74e7",
+   "at_ms": 1792123876111
+  }
+ }
+}

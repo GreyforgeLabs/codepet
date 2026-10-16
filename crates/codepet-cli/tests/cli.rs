@@ -154,7 +154,6 @@ fn state_command_reports_a_failed_publish_on_one_line_only() {
 fn v03_commands_of_later_packages_are_routed_but_not_implemented_and_touch_nothing() {
     let env = Env::new();
     for args in [
-        &["fold", "--state-dir", "/nonexistent"][..],
         &["clients-job", "job-1"],
         &["connect", "--all"],
         &["disconnect", "codex"],
@@ -171,6 +170,18 @@ fn v03_commands_of_later_packages_are_routed_but_not_implemented_and_touch_nothi
         assert_eq!(err.lines().count(), 1, "{args:?}");
     }
     assert!(!env.xdg().exists(), "skeleton commands create no state");
+    // v0.3 WP2: the fold is implemented; a missing state dir fails with one plain line
+    // and creates nothing (it never creates directories).
+    let output = env.run(&["fold", "--state-dir", "/nonexistent"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let err = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        err.starts_with("codepet fold: ") && err.lines().count() == 1,
+        "{err}"
+    );
+    assert!(!std::path::Path::new("/nonexistent").exists());
+    assert!(!env.xdg().exists());
 }
 
 #[test]

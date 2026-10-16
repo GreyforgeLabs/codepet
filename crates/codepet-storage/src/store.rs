@@ -355,7 +355,7 @@ impl Store {
         };
         let (meters, _paused) = load_pet(&tx)?;
         let block = life::LifeBlock::load(&tx)?;
-        let v03 = crate::agent_export::V03Blocks::load(&tx)?;
+        let v03 = crate::agent_export::V03Blocks::load(&tx, self.clock.now_ms())?;
         #[cfg(feature = "legacy-tasks")]
         let legacy = legacy::snapshot_block(&tx, _paused)?;
         let snapshot = Snapshot {

@@ -1,0 +1,27 @@
+{
+ "name": "activity-permission-replied",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"activity\",\"session_id\":\"ses_7a1b\",\"turn_id\":\"1792123800000-1\"}\n",
+ "expect": {
+  "event_id": "35791014fd37f7b6b6263d546281c48b",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "activity",
+   "session": "ses_7a1b",
+   "turn": "1792123800000-1",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "ecf926ce12449c9d",
+   "at_ms": 1792123876111
+  }
+ }
+}

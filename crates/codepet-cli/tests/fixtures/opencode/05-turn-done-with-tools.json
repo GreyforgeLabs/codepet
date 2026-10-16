@@ -1,0 +1,27 @@
+{
+ "name": "turn-done-with-tools",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_done\",\"session_id\":\"ses_7a1b\",\"turn_id\":\"1792123800000-1\",\"tools\":4,\"interactive\":true}\n",
+ "expect": {
+  "event_id": "69d38949e5ff4da98af565c4558a2ff3",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "turn_done",
+   "session": "ses_7a1b",
+   "turn": "1792123800000-1",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 4,
+   "interactive": true,
+   "test": false,
+   "dig": "2d5c0df6523e51b5",
+   "at_ms": 1792123876111
+  }
+ }
+}

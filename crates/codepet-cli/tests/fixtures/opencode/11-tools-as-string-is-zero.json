@@ -1,0 +1,27 @@
+{
+ "name": "tools-as-string-is-zero",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_done\",\"session_id\":\"ses_7a1b\",\"turn_id\":\"1792123800000-5\",\"tools\":\"4\"}\n",
+ "expect": {
+  "event_id": "76b314f9a66a5db542cf6cd6cf7256fc",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "turn_done",
+   "session": "ses_7a1b",
+   "turn": "1792123800000-5",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "0f7b3890a05bfa3f",
+   "at_ms": 1792123876111
+  }
+ }
+}

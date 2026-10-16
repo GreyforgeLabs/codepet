@@ -1,0 +1,29 @@
+{
+ "name": "pre-tool-bash",
+ "client": "claude-code",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {
+  "CLAUDE_CODE_ENTRYPOINT": "cli"
+ },
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11\",\"transcript_path\":\"/home/u/.claude/projects/CANARY-proj-7f3a/5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"permission_mode\":\"default\",\"hook_event_name\":\"PreToolUse\",\"prompt_id\":\"550e8400-e29b-41d4-a716-446655440000\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"CANARY-command-7f3a\",\"session_id\":\"spoof\"},\"tool_use_id\":\"toolu_01ABCdef\"}\n",
+ "expect": {
+  "event_id": "420d8c1b84b5367d439e07c5febcb353",
+  "record": {
+   "v": 1,
+   "client": "claude-code",
+   "kind": "activity",
+   "session": "5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11",
+   "turn": "550e8400-e29b-41d4-a716-446655440000",
+   "tool": "toolu_01ABCdef",
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "9ce72e8014d0490c",
+   "at_ms": 1792123876111
+  }
+ }
+}

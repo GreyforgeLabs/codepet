@@ -1,0 +1,27 @@
+{
+ "name": "waiting-permission",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"waiting\",\"session_id\":\"ses_7a1b\",\"turn_id\":\"1792123800000-1\"}\n",
+ "expect": {
+  "event_id": "af12c99f638c6444bf3d23b232b4fb64",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "waiting",
+   "session": "ses_7a1b",
+   "turn": "1792123800000-1",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "f09371ead516d472",
+   "at_ms": 1792123876111
+  }
+ }
+}
