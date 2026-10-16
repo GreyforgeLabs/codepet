@@ -17,6 +17,7 @@ fn spent() -> MetersView {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn explicit_care_is_idempotent_and_does_not_award_xp() {
     let env = Env::new();
@@ -54,6 +55,7 @@ fn explicit_care_is_idempotent_and_does_not_award_xp() {
     ));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn start_requires_every_full_bar_and_debits_only_once() {
     for column in ["hunger", "thirst", "mental_health", "hygiene"] {
@@ -88,6 +90,7 @@ fn start_requires_every_full_bar_and_debits_only_once() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn bathroom_due_after_two_starts_is_not_cleared_by_wash() {
     let env = Env::new();
@@ -109,6 +112,7 @@ fn bathroom_due_after_two_starts_is_not_cleared_by_wash() {
     assert_eq!(state.care.work_sessions, 2);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn third_start_requires_sleep_but_never_interrupts_execution() {
     let env = Env::new();
@@ -157,12 +161,15 @@ fn early_wake_and_closed_app_preserve_sleep_credit() {
     env.clock.advance(30_000);
     let wake = s.wake("early").unwrap();
     assert_eq!(wake.care.sleep_remaining_ms, 90_000);
-    assert!(wake.care.sleep_due && !wake.care.sleeping);
+    // The nap requirement is a retired readiness gate: only the legacy build reports it.
+    let nap_gate = cfg!(feature = "legacy-tasks");
+    assert_eq!(wake.care.sleep_due, nap_gate);
+    assert!(!wake.care.sleeping);
     drop(s);
     env.clock.advance(86_400_000);
     let mut s = env.open();
     assert_eq!(s.snapshot().unwrap().care.sleep_remaining_ms, 90_000);
-    assert!(s.snapshot().unwrap().care.sleep_due);
+    assert_eq!(s.snapshot().unwrap().care.sleep_due, nap_gate);
     s.sleep("resume").unwrap();
     drop(s);
     env.clock.advance(89_999);
@@ -192,6 +199,7 @@ fn backward_wall_clock_does_not_grant_or_double_count_rest() {
     assert_eq!(s.snapshot().unwrap().progression.demo.lifetime_xp, 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn elapsed_execution_counts_running_not_waiting_or_review() {
     let env = Env::new();
@@ -234,6 +242,7 @@ fn elapsed_execution_counts_running_not_waiting_or_review() {
     assert!(s.snapshot().unwrap().care.sleeping);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn pre_execution_failure_refunds_once_but_executed_failure_does_not() {
     let env = Env::new();
@@ -256,6 +265,7 @@ fn pre_execution_failure_refunds_once_but_executed_failure_does_not() {
     assert_eq!(s.snapshot().unwrap().care.work_sessions, 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn demo_level_thresholds_and_mastery_never_enable_real_providers() {
     let env = Env::new();
@@ -296,6 +306,7 @@ fn demo_level_thresholds_and_mastery_never_enable_real_providers() {
     assert_eq!(s.snapshot().unwrap().progression.demo.lifetime_xp, 200);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn new_sensitive_text_is_redacted_before_persistence_and_digest() {
     let env = Env::new();
@@ -350,6 +361,7 @@ fn new_sensitive_text_is_redacted_before_persistence_and_digest() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn v1_migration_preserves_historical_care_receipts_and_inflight_tasks() {
     let env = Env::new();
@@ -505,6 +517,7 @@ fn same_boot_monotonic_time_wins_over_wall_clock_jumps() {
     assert!(!s.snapshot().unwrap().care.sleep_due);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn explicit_snapshot_checkpoints_live_execution_once_and_recovery_ignores_dead_time() {
     let env = Env::new();
@@ -535,6 +548,7 @@ fn explicit_snapshot_checkpoints_live_execution_once_and_recovery_ignores_dead_t
     assert_eq!(s.snapshot().unwrap().meters, spent());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn sleep_completion_invalidates_tokens_issued_during_sleep_only_once() {
     let env = Env::new();
@@ -565,6 +579,7 @@ fn sleep_completion_invalidates_tokens_issued_during_sleep_only_once() {
     assert_eq!(s.snapshot().unwrap().care.revision, revision + 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn older_transition_timestamp_cannot_rewind_newer_execution_checkpoint() {
     // Public snapshot path, using the conservative wall-clock fallback.
@@ -618,6 +633,7 @@ fn older_transition_timestamp_cannot_rewind_newer_execution_checkpoint() {
     assert_eq!(env.count("SELECT execution_ms FROM task_care_usage"), 200);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn snapshot_checkpoints_never_invalidate_other_approvals() {
     let env = Env::new();
@@ -655,6 +671,7 @@ fn snapshot_checkpoints_never_invalidate_other_approvals() {
     assert_eq!(env.count(pending), 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn idle_snapshot_is_a_plain_read_that_never_waits_for_the_writer_lock() {
     let env = Env::new();
@@ -708,6 +725,7 @@ impl Clock for SuspendClock {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn suspend_is_never_charged_as_execution_but_counts_as_rest() {
     let env = Env::new();
@@ -766,6 +784,7 @@ fn system_clock_measures_execution_without_suspended_time() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn care_receipts_are_bounded_but_acceptance_receipts_are_kept() {
     let env = Env::new();

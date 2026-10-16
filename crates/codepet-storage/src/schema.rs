@@ -12,6 +12,7 @@ use rusqlite::{params, OptionalExtension, Transaction};
 pub(crate) type Migration = fn(&Transaction<'_>, &TimeMark) -> crate::Result<()>;
 pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3, v4];
 
+#[cfg(feature = "legacy-tasks")]
 /// Slot-occupying states; must equal `State::occupies_slot` (checked by a test).
 pub(crate) const SLOT_STATES: &str = "('preparing','running','waiting_for_user','verifying',\
 'review_ready','cancelling','recovery_required')";

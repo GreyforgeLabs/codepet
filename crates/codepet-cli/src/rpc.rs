@@ -7,29 +7,50 @@
 //! export is reported on one bounded stderr line and never changes the response or exit
 //! code.
 use crate::errors::Failure;
+#[cfg(feature = "legacy-tasks")]
 use crate::supervisor::{self, Job};
 use codepet_core::lifecycle::{Mode, Pace};
-use codepet_core::{Category, Draft, Provider, Settings, PROTOCOL_VERSION};
+use codepet_core::PROTOCOL_VERSION;
+#[cfg(feature = "legacy-tasks")]
+use codepet_core::{Category, Draft, Provider, Settings};
 use codepet_protocol::{
     parse_params, parse_request, read_frame, AgentForgetHistoryParams, AppSetEnabledParams,
     AppSetHelpersParams, ClientsConnectParams, ClientsDisconnectParams, ClientsStatusParams,
-    ClientsTestParams, DraftParams, EmptyParams, ErrorCode, EventsSubscribeParams, HelloParams,
-    HistoryListParams, LifecycleRulesParams, Method, PetAdoptParams, PetCareParams,
-    PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams, PetPauseParams,
-    PetRenameParams, PetRetireParams, PetRulesParams, PetSelectParams, PetStartParams,
-    ProtocolError, Request, Response, SettingsUpdateParams, TaskAcceptArtifactParams,
-    TaskDiscardParams, TaskIdParams, TaskPreflightParams, TaskStartParams, TaskUpdateParams,
-    TreatsGiveParams, NOT_IMPLEMENTED_MESSAGE, V03_PENDING_MESSAGE,
+    ClientsTestParams, EmptyParams, ErrorCode, HelloParams, LifecycleRulesParams, Method,
+    PetAdoptParams, PetCareParams, PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams,
+    PetPauseParams, PetRenameParams, PetRetireParams, PetRulesParams, PetSelectParams,
+    PetStartParams, ProtocolError, Request, Response, TreatsGiveParams, V03_PENDING_MESSAGE,
+};
+#[cfg(feature = "legacy-tasks")]
+use codepet_protocol::{
+    DraftParams, EventsSubscribeParams, HistoryListParams, SettingsUpdateParams,
+    TaskAcceptArtifactParams, TaskDiscardParams, TaskIdParams, TaskPreflightParams,
+    TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
 };
 use codepet_storage::{
-    lifecycle_rules_json, AcceptRequest, AdoptRequest, Leniency, MockOptions, MockOutcome,
-    ProviderInfo, StatePaths, Store, Supervisor, SystemClock, TaskInput,
+    lifecycle_rules_json, AdoptRequest, Leniency, StatePaths, Store, SystemClock,
+};
+#[cfg(feature = "legacy-tasks")]
+use codepet_storage::{
+    AcceptRequest, MockOptions, MockOutcome, ProviderInfo, Supervisor, TaskInput,
 };
 use serde_json::{json, Value};
 use std::io::{self, Write};
 use std::sync::Arc;
 
 type Outcome = Result<(Value, Option<Job>), Failure>;
+
+/// The default build never continues as a task supervisor: no task can start (spec §6.5).
+#[cfg(not(feature = "legacy-tasks"))]
+pub enum Job {}
+
+/// The store a started job took over.
+fn job_store(job: &Job) -> &Store {
+    #[cfg(feature = "legacy-tasks")]
+    return &job.store;
+    #[cfg(not(feature = "legacy-tasks"))]
+    match *job {}
+}
 
 /// Bytes of an export failure quoted on stderr.
 const MAX_EXPORT_ERROR_BYTES: usize = 200;
@@ -95,7 +116,10 @@ pub fn run() -> i32 {
     // The start already committed `preparing` under this PID, so supervise even if the
     // client went away: the job then ends in a durable state instead of `interrupted`.
     if let Some(job) = job {
+        #[cfg(feature = "legacy-tasks")]
         let _ = supervisor::run(job);
+        #[cfg(not(feature = "legacy-tasks"))]
+        match job {}
     }
     match (written, ok) {
         (Ok(()), true) => 0,
@@ -126,7 +150,7 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
             // Publish before answering, so a client that sees this response finds the
             // passive state file at least as new. A started task's store moved into its job.
             if method.is_mutating() {
-                if let Some(store) = job.as_ref().map(|j| &j.store).or(ctx.store.as_ref()) {
+                if let Some(store) = job.as_ref().map(job_store).or(ctx.store.as_ref()) {
                     publish_bar_state(store);
                 }
             }
@@ -178,7 +202,28 @@ fn encode(value: serde_json::Result<Value>) -> Outcome {
 fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
     let p = req.params;
     match req.method {
+        // The retired task pipeline (spec §6.5): unrouted in the default build, where these
+        // names never parse; with `legacy-tasks` they keep their v0.2 behaviour.
+        #[cfg(not(feature = "legacy-tasks"))]
+        Method::EventsSubscribe
+        | Method::ProvidersInspect
+        | Method::TaskCreate
+        | Method::TaskGet
+        | Method::TaskUpdate
+        | Method::TaskPreflight
+        | Method::TaskStart
+        | Method::TaskCancel
+        | Method::TaskReview
+        | Method::TaskLogs
+        | Method::TaskApply
+        | Method::TaskAcceptArtifact
+        | Method::TaskDiscard
+        | Method::TaskRollback
+        | Method::TaskRecover
+        | Method::HistoryList
+        | Method::SettingsUpdate => Err(Failure::new(ErrorCode::UnknownMethod, "unknown method")),
         // Parsed but refused before any params or state are touched.
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskLogs | Method::TaskApply | Method::TaskRollback => Err(Failure::new(
             ErrorCode::InvalidState,
             NOT_IMPLEMENTED_MESSAGE,
@@ -192,20 +237,30 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ));
             }
             let last_seq = ctx.store()?.last_seq()?;
-            done(json!({
+            // v0.3 retires the supervisor handshake with the task pipeline (spec §6.2).
+            #[cfg(not(feature = "legacy-tasks"))]
+            let hello = json!({
+                "protocol_version": PROTOCOL_VERSION,
+                "last_seq": last_seq,
+            });
+            #[cfg(feature = "legacy-tasks")]
+            let hello = json!({
                 "protocol_version": PROTOCOL_VERSION,
                 "supervisor": null,
                 "last_seq": last_seq,
-            }))
+            });
+            done(hello)
         }
         Method::StateGet => {
             let _: EmptyParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.snapshot()?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::ProvidersInspect => {
             let _: EmptyParams = parse_params(p)?;
             done(json!({ "providers": ProviderInfo::all() }))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::EventsSubscribe => {
             let e: EventsSubscribeParams = parse_params(p)?;
             let after = to_i64(e.after_seq, "after_seq")?;
@@ -214,6 +269,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                     .events_after(after, Some(e.limit_or_default()))?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::HistoryList => {
             let h: HistoryListParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.history(
@@ -222,15 +278,18 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 Some(h.limit_or_default()),
             )?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskGet => {
             let t: TaskIdParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.task(&t.task_id)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskCreate => {
             let d: DraftParams = parse_params(p)?;
             let input = task_input(&d)?;
             encode(serde_json::to_value(ctx.store()?.create_task(&input)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskUpdate => {
             let u: TaskUpdateParams = parse_params(p)?;
             let input = task_input(&u.draft())?;
@@ -239,6 +298,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ctx.store()?.update_task(&u.task_id, expected, &input)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskPreflight => {
             let t: TaskPreflightParams = parse_params(p)?;
             let revision = to_i64(t.revision, "revision")?;
@@ -246,6 +306,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ctx.store()?.preflight(&t.task_id, revision)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskStart => {
             let t: TaskStartParams = parse_params(p)?;
             let revision = to_i64(t.revision, "revision")?;
@@ -266,14 +327,17 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
             };
             Ok((value, Some(job)))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskCancel => {
             let t: TaskIdParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.cancel(&t.task_id)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskReview => {
             let t: TaskIdParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.review(&t.task_id)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskAcceptArtifact => {
             let a: TaskAcceptArtifactParams = parse_params(p)?;
             let request = AcceptRequest {
@@ -287,16 +351,19 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ctx.store()?.accept_artifact(&request)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskDiscard => {
             let d: TaskDiscardParams = parse_params(p)?;
             encode(serde_json::to_value(
                 ctx.store()?.discard(&d.task_id, &d.review_digest)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskRecover => {
             let _: EmptyParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.recover()?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::SettingsUpdate => {
             let s: SettingsUpdateParams = parse_params(p)?;
             let expected = to_i64(s.expected_revision, "expected_revision")?;
@@ -456,6 +523,7 @@ fn to_i64(v: u64, field: &str) -> Result<i64, Failure> {
 }
 
 /// Validates enum-valued strings with core's parsers; content checks stay in storage/core.
+#[cfg(feature = "legacy-tasks")]
 fn task_input(d: &DraftParams) -> Result<TaskInput, Failure> {
     let category =
         Category::parse(&d.category).ok_or_else(|| Failure::invalid_params("unknown category"))?;

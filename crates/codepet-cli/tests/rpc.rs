@@ -1,9 +1,12 @@
 //! `codepet rpc` end to end through the built binary, one process per request.
+// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use common::{error_code, Env};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
     let env = Env::new();
@@ -105,6 +108,7 @@ fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
     assert!(!env.folder().exists(), "the mock never touched the folder");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn replayed_tokens_and_stale_revisions_are_refused() {
     let env = Env::new();
@@ -175,6 +179,7 @@ fn replayed_tokens_and_stale_revisions_are_refused() {
     assert_eq!(env.meter("hunger"), 9000, "discard never refills care");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn cancellation_from_another_process_stops_the_supervisor() {
     let env = Env::new();
@@ -240,6 +245,7 @@ fn cancellation_from_another_process_stops_the_supervisor() {
     assert!(!env.folder().exists());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn mock_outcomes_failure_and_simulated_check() {
     let env = Env::new();
@@ -289,6 +295,7 @@ fn mock_outcomes_failure_and_simulated_check() {
     assert!(!env.folder().exists());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn unsupported_providers_fail_closed() {
     let env = Env::new();
@@ -314,6 +321,7 @@ fn unsupported_providers_fail_closed() {
     assert_eq!(env.state()["active_task"], Value::Null);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn malformed_frames_get_typed_errors_without_touching_state() {
     let env = Env::new();
@@ -397,6 +405,7 @@ fn malformed_frames_get_typed_errors_without_touching_state() {
     assert_eq!(r.response()["id"], "one");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn other_methods_round_trip() {
     let env = Env::new();
@@ -495,6 +504,7 @@ fn other_methods_round_trip() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// The largest draft storage accepts (32 KiB JSON-encoded), with JSON-hostile text.
 fn max_draft(env: &Env) -> Value {
     let mut d = env.draft("hygiene", 0, "artifact");
@@ -514,6 +524,7 @@ fn max_draft(env: &Env) -> Value {
     d
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn maximal_draft_can_be_reviewed_and_discarded() {
     let env = Env::new();
@@ -559,6 +570,7 @@ fn maximal_draft_can_be_reviewed_and_discarded() {
     assert_eq!(env.meter("hygiene"), 9000);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn oversized_drafts_are_refused_before_anything_is_stored() {
     let env = Env::new();
@@ -607,6 +619,7 @@ fn oversized_drafts_are_refused_before_anything_is_stored() {
     assert_eq!(env.task(&id)["revision"], 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn many_large_drafts_keep_state_get_readable() {
     let env = Env::new();
@@ -638,6 +651,7 @@ fn many_large_drafts_keep_state_get_readable() {
     assert_eq!(rest["tasks"].as_array().unwrap().len(), 6);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn over_long_override_reason_is_invalid_params_not_override_required() {
     let env = Env::new();
@@ -650,6 +664,7 @@ fn over_long_override_reason_is_invalid_params_not_override_required() {
     assert_eq!(env.meter("hunger"), 9000);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn home_is_refused_even_when_home_is_unset() {
     let env = Env::new();
@@ -681,6 +696,7 @@ fn home_is_refused_even_when_home_is_unset() {
     assert_eq!(r.response()["ok"], true, "{:?}", r.response());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn sensitive_task_text_is_redacted_before_mock_artifact_and_receipt_persistence() {
     let env = Env::new();
@@ -800,6 +816,7 @@ fn lifecycle_requests_are_validated_before_storage_opens() {
     assert!(!env.xdg().exists());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn every_successful_mutation_publishes_and_nothing_else_does() {
     let env = Env::new();
@@ -893,6 +910,7 @@ fn every_successful_mutation_publishes_and_nothing_else_does() {
     assert_eq!(version(&env), s["state_version"].as_i64().unwrap());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn the_supervisor_publishes_every_step() {
     let env = Env::new();

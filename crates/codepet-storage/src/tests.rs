@@ -1,5 +1,11 @@
+// Task-pipeline helpers stay for the `legacy-tasks` build (deleted in v0.3.1); the default
+// build compiles them without callers.
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code))]
+
 use super::*;
-use codepet_core::{Category, Draft, Provider, Settings, State, Verification};
+use codepet_core::{Category, Draft, Provider, State};
+#[cfg(feature = "legacy-tasks")]
+use codepet_core::{Settings, Verification};
 use rusqlite::Connection;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -85,6 +91,7 @@ fn dead_sup() -> Supervisor {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 fn make_ready(store: &mut Store, env: &Env) {
     let state = store.snapshot().unwrap();
     if state.care.sleep_due && state.active_task.is_none() {
@@ -95,18 +102,21 @@ fn make_ready(store: &mut Store, env: &Env) {
     store.care(&sys::uuid_v4().unwrap(), "routine").unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 fn ready(store: &mut Store, env: &Env, category: Category) -> (String, i64, String) {
     make_ready(store, env);
     let t = store.create_task(&env.input(category)).unwrap();
     let p = store.preflight(&t.task_id, t.revision).unwrap();
     (t.task_id, t.revision, p.preflight_token)
 }
+#[cfg(feature = "legacy-tasks")]
 fn started(store: &mut Store, env: &Env, category: Category, s: Supervisor) -> String {
     let (id, rev, token) = ready(store, env, category);
     let r = store.start(&id, rev, &token, s).unwrap();
     assert_eq!(r.state, State::Preparing);
     id
 }
+#[cfg(feature = "legacy-tasks")]
 fn reviewed(
     store: &mut Store,
     env: &Env,
@@ -133,6 +143,7 @@ fn reviewed(
         SealOutcome::Cancelling => panic!("unexpected cancel"),
     }
 }
+#[cfg(feature = "legacy-tasks")]
 fn accept(
     store: &mut Store,
     id: &str,
@@ -175,28 +186,31 @@ fn fresh_open_has_defaults_and_safe_modes() {
             hygiene: 7000
         }
     );
-    assert_eq!(
-        s.decay,
-        DecayView {
-            enabled: false,
-            paused: false
-        }
-    );
-    let d = Settings::default();
-    assert_eq!(s.settings.revision, 1);
-    assert_eq!(s.settings.decay_enabled, d.decay_enabled);
-    assert_eq!(s.settings.decay_per_hour, d.decay_per_hour);
-    assert_eq!(s.settings.timeout_seconds, d.timeout_seconds);
+    #[cfg(feature = "legacy-tasks")]
+    {
+        assert_eq!(
+            s.decay,
+            DecayView {
+                enabled: false,
+                paused: false
+            }
+        );
+        let d = Settings::default();
+        assert_eq!(s.settings.revision, 1);
+        assert_eq!(s.settings.decay_enabled, d.decay_enabled);
+        assert_eq!(s.settings.decay_per_hour, d.decay_per_hour);
+        assert_eq!(s.settings.timeout_seconds, d.timeout_seconds);
+        assert!(s.active_task.is_none() && s.recent.is_empty());
+        assert_eq!(s.providers.len(), 5);
+        assert!(s
+            .providers
+            .iter()
+            .all(|p| p.available == (p.id == Provider::Mock)));
+    }
     assert_eq!(
         (s.schema_version, s.protocol_version, s.last_seq),
         (SCHEMA_VERSION, 1, 0)
     );
-    assert!(s.active_task.is_none() && s.recent.is_empty());
-    assert_eq!(s.providers.len(), 5);
-    assert!(s
-        .providers
-        .iter()
-        .all(|p| p.available == (p.id == Provider::Mock)));
     assert_eq!(mode(&env.paths.state_dir), 0o700);
     assert_eq!(mode(&env.paths.db_path), 0o600);
     assert_eq!(env.paths.state_dir, env.root.join("state/codepet"));
@@ -209,6 +223,7 @@ fn fresh_open_has_defaults_and_safe_modes() {
     assert_eq!(env.count("SELECT count(*) FROM apply_transactions"), 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn snapshot_json_shape_matches_contract() {
     let env = Env::new();
@@ -359,6 +374,7 @@ fn snapshot_json_shape_matches_contract() {
     assert_eq!(v["meters"]["mental_health"], 9500);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn reopen_persists_meters_tasks_and_settings() {
     let env = Env::new();
@@ -396,6 +412,7 @@ fn reopen_persists_meters_tasks_and_settings() {
     assert!(snap.last_seq > 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn stale_revisions_are_refused() {
     let env = Env::new();
@@ -434,6 +451,7 @@ fn stale_revisions_are_refused() {
     ));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn tokens_are_one_use_and_task_bound() {
     let env = Env::new();
@@ -472,6 +490,7 @@ fn tokens_are_one_use_and_task_bound() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn consumed_token_cannot_restart_after_slot_frees() {
     let env = Env::new();
@@ -488,6 +507,7 @@ fn consumed_token_cannot_restart_after_slot_frees() {
     ));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn token_expires_by_clock() {
     let env = Env::new();
@@ -504,6 +524,7 @@ fn token_expires_by_clock() {
     store.start(&id, rev, &p.preflight_token, sup()).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn token_refused_after_clock_steps_back() {
     let env = Env::new();
@@ -525,6 +546,7 @@ fn token_refused_after_clock_steps_back() {
     store.start(&id, rev, &token, sup()).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn newer_preflight_supersedes_older() {
     let env = Env::new();
@@ -539,6 +561,7 @@ fn newer_preflight_supersedes_older() {
     store.start(&id, rev, &new, sup()).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn settings_update_invalidates_tokens() {
     let env = Env::new();
@@ -569,6 +592,7 @@ fn settings_update_invalidates_tokens() {
         .unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn preflight_summary_and_path_policy() {
     let env = Env::new();
@@ -673,6 +697,7 @@ fn preflight_summary_and_path_policy() {
     ));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn start_rechecks_the_folder() {
     let env = Env::new();
@@ -693,6 +718,7 @@ fn start_rechecks_the_folder() {
     assert!(store.snapshot().unwrap().active_task.is_none());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn unknown_home_fails_closed_and_account_home_is_refused() {
     let env = Env::new();
@@ -739,6 +765,7 @@ fn passwd_home_lookup() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn draft_input_is_validated() {
     let env = Env::new();
@@ -772,6 +799,7 @@ fn draft_input_is_validated() {
     assert_eq!(env.count("SELECT count(*) FROM tasks"), 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn single_active_slot_across_states_and_handles() {
     let env = Env::new();
@@ -825,6 +853,7 @@ fn single_active_slot_across_states_and_handles() {
     assert_eq!(a.snapshot().unwrap().active_task.unwrap().task_id, y);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn unique_index_enforces_slot_even_without_checks() {
     let env = Env::new();
@@ -865,6 +894,7 @@ fn unique_index_enforces_slot_even_without_checks() {
     assert!(raw.execute("UPDATE pet_state SET hunger = -1", []).is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn slot_state_list_matches_core() {
     for s in State::ALL {
@@ -876,6 +906,7 @@ fn slot_state_list_matches_core() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn acceptance_rewards_exactly_once() {
     let env = Env::new();
@@ -922,6 +953,7 @@ fn acceptance_rewards_exactly_once() {
         .is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn idempotency_conflict_on_changed_params() {
     let env = Env::new();
@@ -966,6 +998,7 @@ fn idempotency_conflict_on_changed_params() {
     assert_eq!(meters(&store).thirst, 9000);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn override_rules_mirror_core() {
     let env = Env::new();
@@ -1034,6 +1067,7 @@ fn override_rules_mirror_core() {
     assert_eq!(meters(&store).hunger, 9000);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn discard_failure_and_cancel_never_reward() {
     let env = Env::new();
@@ -1101,6 +1135,7 @@ fn discard_failure_and_cancel_never_reward() {
     assert!(store.snapshot().unwrap().active_task.is_none());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn acceptance_does_not_refill_care() {
     let env = Env::new();
@@ -1125,6 +1160,7 @@ fn acceptance_does_not_refill_care() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn supervisor_steps_are_compare_and_set() {
     let env = Env::new();
@@ -1194,6 +1230,7 @@ fn supervisor_steps_are_compare_and_set() {
     assert_eq!(env.count("SELECT count(*) FROM artifacts"), 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn artifact_at_size_limit_is_sealed() {
     let env = Env::new();
@@ -1219,6 +1256,7 @@ fn artifact_at_size_limit_is_sealed() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recover_interrupts_dead_supervisors_only() {
     let env = Env::new();
@@ -1258,6 +1296,7 @@ fn recover_interrupts_dead_supervisors_only() {
     assert_eq!(env.count("SELECT count(*) FROM rewards"), 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recover_flags_tampered_review() {
     let env = Env::new();
@@ -1316,6 +1355,7 @@ fn recover_flags_tampered_review() {
     assert_eq!(meters(&store).hunger, 9000);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recover_flags_tampered_verification_column() {
     let env = Env::new();
@@ -1330,6 +1370,7 @@ fn recover_flags_tampered_verification_column() {
     assert_eq!(store.recover().unwrap().changed.len(), 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
     for missing in [
@@ -1467,6 +1508,7 @@ fn recover_missing_review_metadata_can_be_explicitly_abandoned() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recover_replaces_digests_that_task_discard_could_never_accept() {
     for damaged in [String::new(), "f".repeat(200), "A".repeat(64)] {
@@ -1529,6 +1571,7 @@ fn recover_replaces_digests_that_task_discard_could_never_accept() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recover_repairs_already_stranded_recovery_metadata() {
     let env = Env::new();
@@ -1585,6 +1628,7 @@ fn recover_repairs_already_stranded_recovery_metadata() {
     assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn every_state_change_appends_an_event() {
     let env = Env::new();
@@ -1644,6 +1688,7 @@ fn every_state_change_appends_an_event() {
     ));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn history_pages_newest_first() {
     let env = Env::new();
@@ -1691,6 +1736,7 @@ fn history_pages_newest_first() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn history_cursor_keeps_tasks_created_in_the_same_millisecond() {
     let env = Env::new();
@@ -1723,6 +1769,7 @@ fn history_cursor_keeps_tasks_created_in_the_same_millisecond() {
     assert_eq!(seen, expected, "every task exactly once, newest first");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn draft_capacity_is_bounded() {
     let env = Env::new();
@@ -1740,10 +1787,11 @@ fn draft_capacity_is_bounded() {
 fn pause_is_persisted() {
     let env = Env::new();
     let mut store = env.open();
+    let paused = |s: &Snapshot| s.life.as_ref().unwrap().paused;
     assert!(store.set_paused(true).unwrap().paused);
-    assert!(env.open().snapshot().unwrap().decay.paused);
+    assert!(paused(&env.open().snapshot().unwrap()));
     assert!(!store.set_paused(false).unwrap().paused);
-    assert!(!store.snapshot().unwrap().decay.paused);
+    assert!(!paused(&store.snapshot().unwrap()));
 }
 
 #[test]
@@ -1788,12 +1836,7 @@ fn corrupt_database_is_refused_untouched() {
 
     // A valid header with damaged b-tree pages.
     let env = Env::new();
-    {
-        let mut store = env.open();
-        for _ in 0..20 {
-            store.create_task(&env.input(Category::Hunger)).unwrap();
-        }
-    }
+    drop(env.open());
     {
         let c = env.raw();
         c.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
@@ -1811,6 +1854,7 @@ fn corrupt_database_is_refused_untouched() {
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn migration_backs_up_older_versions_first() {
     fn v5(tx: &rusqlite::Transaction<'_>, _at: &care::TimeMark) -> Result<()> {
@@ -1968,6 +2012,7 @@ fn state_dir_resolution() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn supervisor_identity_uses_start_time() {
     let me = sup();
@@ -1986,6 +2031,7 @@ fn supervisor_identity_uses_start_time() {
     .is_alive());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn injected_crash_before_commit_leaves_no_trace() {
     let env = Env::new();
@@ -2022,6 +2068,7 @@ fn injected_crash_before_commit_leaves_no_trace() {
     assert_eq!(meters(&store).thirst, 9000);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn injected_crash_after_commit_keeps_single_reward() {
     let env = Env::new();
@@ -2052,6 +2099,7 @@ fn injected_crash_after_commit_keeps_single_reward() {
     assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn injected_crash_before_review_commit_stays_verifying() {
     let env = Env::new();
@@ -2081,6 +2129,7 @@ fn injected_crash_before_review_commit_stays_verifying() {
     assert!(store.recover().unwrap().changed.is_empty());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn injected_crash_after_start_commit_is_recoverable() {
     let env = Env::new();
@@ -2149,6 +2198,7 @@ fn error_codes_map_to_protocol() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn ids_are_uuid_v4() {
     let env = Env::new();
@@ -2189,6 +2239,7 @@ fn connection_pragmas_are_applied() {
         .is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn concurrent_starts_from_separate_connections_admit_one() {
     let env = Env::new();
@@ -2227,6 +2278,7 @@ fn concurrent_starts_from_separate_connections_admit_one() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn concurrent_accepts_reward_once() {
     let env = Env::new();
@@ -2261,6 +2313,7 @@ fn concurrent_accepts_reward_once() {
     assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// Builds the largest draft the store accepts: JSON-hostile instructions (quotes and control
 /// characters), long scope entries, and a folder padded to exactly `MAX_DRAFT_JSON_BYTES`.
 fn max_input(env: &Env) -> TaskInput {
@@ -2281,6 +2334,7 @@ fn max_input(env: &Env) -> TaskInput {
     input
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// A maximal draft carried to review with a maximal artifact.
 fn max_review(store: &mut Store, env: &Env) -> (String, String) {
     make_ready(store, env);
@@ -2311,6 +2365,7 @@ fn fits_frame<T: serde::Serialize>(what: &str, value: &T) {
     assert!(n <= 65536, "{what}: {n} bytes");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn draft_budget_is_json_encoded_size() {
     let env = Env::new();
@@ -2339,6 +2394,7 @@ fn draft_budget_is_json_encoded_size() {
     assert_eq!(env.count("SELECT count(*) FROM tasks"), 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn maximal_tasks_can_always_be_read_reviewed_and_released() {
     let env = Env::new();
@@ -2377,6 +2433,7 @@ fn maximal_tasks_can_always_be_read_reviewed_and_released() {
     assert!(store.snapshot().unwrap().active_task.is_none());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn history_pages_stop_at_the_byte_budget() {
     let env = Env::new();
@@ -2408,6 +2465,7 @@ fn history_pages_stop_at_the_byte_budget() {
     assert!(rest.next.is_none());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn json_prefix_matches_serde_encoding() {
     let samples = [
@@ -2535,6 +2593,7 @@ fn armed(env: &Env) -> (Store, String) {
     (store, id)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// Drives a new task into `state` (any slot state) through the public API, plus raw
 /// artifact tampering for `recovery_required`. Returns the task id.
 fn task_in_state(store: &mut Store, env: &Env, state: State) -> String {

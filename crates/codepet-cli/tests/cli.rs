@@ -1,6 +1,10 @@
+// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
+
 mod common;
 use common::Env;
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn no_arguments_do_not_start_a_task() {
     let env = Env::new();
@@ -23,6 +27,7 @@ fn no_arguments_do_not_start_a_task() {
         "help, providers and mock-demo create no state"
     );
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn demo_stops_at_unverified_review_without_reward() {
     let env = Env::new();
@@ -40,6 +45,7 @@ fn real_provider_command_is_rejected() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn providers_lists_mock_only() {
     let env = Env::new();
@@ -49,6 +55,7 @@ fn providers_lists_mock_only() {
         assert!(text.contains(&format!("{p}: unsupported")), "{text}");
     }
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn usage_errors_exit_2_without_output_or_state() {
     let env = Env::new();
@@ -64,6 +71,7 @@ fn usage_errors_exit_2_without_output_or_state() {
     }
     assert!(!env.xdg().exists());
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn state_command_prints_the_snapshot() {
     let env = Env::new();

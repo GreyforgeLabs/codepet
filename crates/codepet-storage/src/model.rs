@@ -237,10 +237,17 @@ pub struct Snapshot {
     pub meters: MetersView,
     pub care: CareView,
     pub progression: ProgressionView,
+    // The v0.2 task-pipeline fields, dropped from the v0.3 snapshot (spec §6.2) and present
+    // only in the `legacy-tasks` build.
+    #[cfg(feature = "legacy-tasks")]
     pub decay: DecayView,
+    #[cfg(feature = "legacy-tasks")]
     pub settings: SettingsView,
+    #[cfg(feature = "legacy-tasks")]
     pub active_task: Option<TaskBrief>,
+    #[cfg(feature = "legacy-tasks")]
     pub recent: Vec<TaskBrief>,
+    #[cfg(feature = "legacy-tasks")]
     pub providers: Vec<ProviderInfo>,
     /// The living companion, or `null` when none is living.
     pub life: Option<LifeView>,
@@ -371,7 +378,13 @@ pub struct CareView {
     pub sleep_started_at_ms: Option<i64>,
     pub work_sessions: u32,
     pub execution_ms: i64,
+    /// v0.2 readiness gate; dropped from the v0.3 snapshot (spec §6.2), `legacy-tasks` only.
+    #[cfg(feature = "legacy-tasks")]
+    #[serde(default)]
     pub ready_to_work: bool,
+    /// v0.2 readiness reasons; dropped from the v0.3 snapshot, `legacy-tasks` only.
+    #[cfg(feature = "legacy-tasks")]
+    #[serde(default)]
     pub readiness_reasons: Vec<String>,
     pub welcome_care_available: bool,
 }

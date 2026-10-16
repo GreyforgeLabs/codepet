@@ -1,5 +1,7 @@
 //! Crash injection through `CODEPET_FAULT` (debug builds only). Each fault aborts the real
 //! process; the next process must see a consistent durable state.
+// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use codepet_storage::{Clock, SystemClock};
 use common::{Env, Timeline, MIN};
@@ -13,6 +15,7 @@ fn assert_aborted_silently(r: &common::Reply) {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_before_accept_commit_grants_nothing_and_retry_succeeds_once() {
     let env = Env::new();
@@ -44,6 +47,7 @@ fn abort_before_accept_commit_grants_nothing_and_retry_succeeds_once() {
     assert_eq!(env.state()["progression"]["demo"]["lifetime_xp"], 20);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_after_accept_commit_keeps_exactly_one_reward() {
     let env = Env::new();
@@ -82,6 +86,7 @@ fn abort_after_accept_commit_keeps_exactly_one_reward() {
     assert_eq!(env.task(&id)["receipt"], retry["receipt"]);
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// Starts with a fault armed; returns (task_id, reply).
 fn start_with_fault(env: &Env, fault: &str) -> (String, common::Reply) {
     env.care_routine();
@@ -97,6 +102,7 @@ fn start_with_fault(env: &Env, fault: &str) -> (String, common::Reply) {
     (id, r)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// `task.recover` turns the dead supervisor's row into `interrupted`, never resumes it,
 /// and frees the slot for a new explicit start.
 fn recover_interrupts(env: &Env, id: &str, from: &str) {
@@ -128,6 +134,7 @@ fn recover_interrupts(env: &Env, id: &str, from: &str) {
     assert_ne!(next, id);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_after_start_commit_is_recovered_as_interrupted() {
     let env = Env::new();
@@ -137,6 +144,7 @@ fn abort_after_start_commit_is_recovered_as_interrupted() {
     recover_interrupts(&env, &id, "preparing");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_in_running_supervisor_is_recovered_as_interrupted() {
     let env = Env::new();
@@ -148,6 +156,7 @@ fn abort_in_running_supervisor_is_recovered_as_interrupted() {
     recover_interrupts(&env, &id, "running");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_before_review_commit_rolls_back_the_review() {
     let env = Env::new();
@@ -189,6 +198,7 @@ fn abort_before_adoption_commit_adopts_nothing_and_retry_adopts_once() {
     assert_eq!(env.bar_state().unwrap()["life"]["name"], "Yuzu");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_before_evolution_commit_grants_no_xp_and_no_event() {
     let env = Env::new();

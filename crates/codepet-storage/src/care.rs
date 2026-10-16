@@ -1,11 +1,16 @@
 //! Explicit pet care, bounded rest settlement, and isolated simulation progression.
 //! No timer, worker, provider launch, or project access exists in this module.
 use crate::model::{CareView, MasteryView, MetersView, ProgressionView, XpView};
-use crate::{life, lifecycle_store, Clock, Result, StorageError};
+#[cfg(feature = "legacy-tasks")]
+use crate::{life, lifecycle_store};
+use crate::{Clock, Result, StorageError};
 use codepet_core::evolution::{level_for_xp, next_level_xp};
 use codepet_core::lifecycle::RULES_V1;
+#[cfg(feature = "legacy-tasks")]
 use codepet_core::{Category, State};
-use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(feature = "legacy-tasks")]
+use rusqlite::OptionalExtension;
+use rusqlite::{params, Connection};
 
 pub const SLEEP_MS: i64 = 120_000;
 pub const EXECUTION_LIMIT_MS: i64 = 45 * 60 * 1000;
@@ -21,7 +26,10 @@ pub(crate) struct TimeMark {
     pub wall: i64,
     pub boot: Option<String>,
     pub steady: Option<i64>,
+    /// Execution clock of the retired task pipeline (`legacy-tasks` only).
+    #[cfg(feature = "legacy-tasks")]
     pub run_clock: Option<String>,
+    #[cfg(feature = "legacy-tasks")]
     pub run_steady: Option<i64>,
 }
 impl TimeMark {
@@ -31,12 +39,15 @@ impl TimeMark {
             None => (None, None),
         };
         let (boot, steady) = split(clock.steady_time());
+        #[cfg(feature = "legacy-tasks")]
         let (run_clock, run_steady) = split(clock.execution_time());
         Self {
             wall: clock.now_ms(),
             boot,
             steady,
+            #[cfg(feature = "legacy-tasks")]
             run_clock,
+            #[cfg(feature = "legacy-tasks")]
             run_steady,
         }
     }
@@ -49,6 +60,7 @@ impl TimeMark {
         )
     }
     /// Execution elapsed since a segment cursor, excluding suspended time.
+    #[cfg(feature = "legacy-tasks")]
     fn run_elapsed(&self, wall: i64, clock: Option<&str>, steady: Option<i64>, cap: i64) -> i64 {
         elapsed(
             (self.wall, self.run_clock.as_deref(), self.run_steady),
@@ -128,7 +140,12 @@ pub(crate) fn settle_sleep(c: &Connection, at: &TimeMark) -> Result<bool> {
     Ok(true)
 }
 
+/// The care block. In the default v0.3 build the nap and bathroom requirements never come
+/// due (spec §7.2: the retired readiness gates, `legacy-tasks` only); `sleeping` and the
+/// nap countdown are real.
+#[cfg_attr(not(feature = "legacy-tasks"), allow(unused_variables))]
 pub(crate) fn view(c: &Connection, meters: MetersView) -> Result<CareView> {
+    #[cfg_attr(not(feature = "legacy-tasks"), allow(unused_mut))]
     let mut v = c.query_row(
         "SELECT revision, starts_since_bathroom, work_sessions,
         execution_ms, rest_required, sleep_remaining_ms, sleep_started_at_ms,
@@ -140,22 +157,34 @@ pub(crate) fn view(c: &Connection, meters: MetersView) -> Result<CareView> {
             let execution: i64 = r.get(3)?;
             let required: bool = r.get(4)?;
             let started: Option<i64> = r.get(6)?;
+            let legacy = cfg!(feature = "legacy-tasks");
             Ok(CareView {
                 revision: r.get(0)?,
-                bathroom_due: starts >= BATHROOM_LIMIT,
+                bathroom_due: legacy && starts >= BATHROOM_LIMIT,
                 starts_since_bathroom: starts,
                 sleeping: started.is_some(),
-                sleep_due: required || work >= SESSION_LIMIT || execution >= EXECUTION_LIMIT_MS,
+                sleep_due: legacy
+                    && (required || work >= SESSION_LIMIT || execution >= EXECUTION_LIMIT_MS),
                 sleep_remaining_ms: r.get(5)?,
                 sleep_started_at_ms: started,
                 work_sessions: work,
                 execution_ms: execution,
+                #[cfg(feature = "legacy-tasks")]
                 ready_to_work: false,
+                #[cfg(feature = "legacy-tasks")]
                 readiness_reasons: vec![],
                 welcome_care_available: r.get(7)?,
             })
         },
     )?;
+    #[cfg(feature = "legacy-tasks")]
+    readiness(c, meters, &mut v)?;
+    Ok(v)
+}
+
+/// The v0.2 readiness gate of `CareView` (`legacy-tasks` only).
+#[cfg(feature = "legacy-tasks")]
+fn readiness(c: &Connection, meters: MetersView, v: &mut CareView) -> Result<()> {
     if let Some(reason) = lifecycle_reason(c)? {
         v.readiness_reasons.push(reason);
     }
@@ -193,9 +222,10 @@ pub(crate) fn view(c: &Connection, meters: MetersView) -> Result<CareView> {
             .push("Finish or discard the current task first".into());
     }
     v.ready_to_work = v.readiness_reasons.is_empty();
-    Ok(v)
+    Ok(())
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// The lifecycle gate, in order: no living companion → a pending end → a critical need.
 /// Plain text only; durations and deaths are never predicted here.
 fn lifecycle_reason(c: &Connection) -> Result<Option<String>> {
@@ -221,6 +251,7 @@ fn lifecycle_reason(c: &Connection) -> Result<Option<String>> {
     Ok(None)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// Start and preflight refuse without a living, settled companion (spec §6).
 pub(crate) fn ensure_lifecycle_ready(c: &Connection) -> Result<()> {
     if life::active_life(c)?.is_none() {
@@ -240,6 +271,7 @@ pub(crate) fn ensure_lifecycle_ready(c: &Connection) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn ensure_ready(c: &Connection, meters: MetersView) -> Result<()> {
     ensure_lifecycle_ready(c)?;
     let v = view(c, meters)?;
@@ -263,6 +295,7 @@ pub(crate) fn ensure_ready(c: &Connection, meters: MetersView) -> Result<()> {
     Err(StorageError::InvalidState(why))
 }
 
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn debit(c: &Connection, task_id: &str, now: i64) -> Result<()> {
     c.execute(
         "INSERT INTO task_care_usage (task_id) VALUES (?1)",
@@ -289,6 +322,7 @@ pub(crate) fn debit(c: &Connection, task_id: &str, now: i64) -> Result<()> {
     lifecycle_store::on_debit(c, task_id, now)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// Running and verification are actual supervised execution phases. Waiting, preparation,
 /// review and cancellation waiting earn no execution duration. Recovery never invents
 /// unobserved runtime after the last durable checkpoint.
@@ -410,6 +444,7 @@ pub(crate) fn transition(
 }
 
 /// The running or verifying task whose supervisor is still alive, if any.
+#[cfg(feature = "legacy-tasks")]
 fn live_execution(c: &Connection) -> Result<Option<(String, State)>> {
     type RunningRow = (String, String, u32, i64);
     let row: Option<RunningRow> = c
@@ -442,9 +477,12 @@ pub(crate) fn snapshot_needs_settlement(c: &Connection) -> Result<bool> {
         [],
         |r| r.get(0),
     )?;
-    Ok(sleeping || live_execution(c)?.is_some())
+    #[cfg(feature = "legacy-tasks")]
+    let sleeping = sleeping || live_execution(c)?.is_some();
+    Ok(sleeping)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// An explicit snapshot may checkpoint a live supervisor, but never extrapolates
 /// execution after a crash. Persisted segment cursors make later transitions idempotent.
 pub(crate) fn checkpoint_running(c: &Connection, at: &TimeMark) -> Result<()> {
@@ -454,6 +492,7 @@ pub(crate) fn checkpoint_running(c: &Connection, at: &TimeMark) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn track(category: Category) -> &'static str {
     match category {
         Category::Hunger => "bugfix",

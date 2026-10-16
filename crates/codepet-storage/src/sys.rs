@@ -63,6 +63,7 @@ pub(crate) fn sha256_hex(data: &[u8]) -> String {
 }
 
 /// Random UUID v4 text.
+#[cfg(any(test, feature = "legacy-tasks"))]
 pub(crate) fn uuid_v4() -> io::Result<String> {
     let mut b = random_bytes::<16>()?;
     b[6] = (b[6] & 0x0f) | 0x40;

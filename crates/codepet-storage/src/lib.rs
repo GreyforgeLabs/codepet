@@ -49,7 +49,9 @@ pub use paths::{
     FOLD_LOCK_FILE, HELPERS_FLAG, INBOX_DIR, INBOX_OVERFLOW_FILE, INTEGRATIONS_DIR, JOBS_DIR,
     OFF_FLAG, PRESENCE_FILE, SHIM_REL_PATH, STAGING_DIR, TEST_NONCE_FILE,
 };
-pub use store::{AcceptRequest, SealOutcome, Step, Store};
+pub use store::Store;
+#[cfg(feature = "legacy-tasks")]
+pub use store::{AcceptRequest, SealOutcome, Step};
 pub use sys::Supervisor;
 
 /// Current SQLite `user_version`.
@@ -76,17 +78,29 @@ pub const MAX_REQUEST_ID_BYTES: usize = 128;
 /// ones, pruned in the transaction that adds a new one. Acceptance receipts are never
 /// pruned. A retry of a care request older than this window runs as a new action.
 pub const MAX_CARE_RECEIPTS: i64 = 256;
-/// Names accepted by `CODEPET_FAULT` in debug builds.
-pub const FAULT_POINTS: [&str; 9] = [
+/// Names accepted by `CODEPET_FAULT` in debug builds. v0.3 (spec §6.5) retires the task
+/// pipeline's points (`accept_*`, `start_after_commit`, `supervisor_running`,
+/// `review_before_commit`; still honoured by the `legacy-tasks` build, see
+/// [`LEGACY_FAULT_POINTS`]) and adds `fold_before_commit`, `treat_before_commit`,
+/// `enable_before_commit` and `connect_after_artifact`.
+pub const FAULT_POINTS: [&str; 8] = [
+    "death_before_commit",
+    "adopt_before_commit",
+    "evolve_before_commit",
+    "presence_before_commit",
+    "fold_before_commit",
+    "treat_before_commit",
+    "enable_before_commit",
+    "connect_after_artifact",
+];
+/// The retired task pipeline's fault points (`legacy-tasks` only; deleted in v0.3.1).
+#[cfg(feature = "legacy-tasks")]
+pub const LEGACY_FAULT_POINTS: [&str; 5] = [
     "accept_before_commit",
     "accept_after_commit",
     "start_after_commit",
     "supervisor_running",
     "review_before_commit",
-    "death_before_commit",
-    "adopt_before_commit",
-    "evolve_before_commit",
-    "presence_before_commit",
 ];
 /// Bounded idempotency receipts for frequent lifecycle clicks (`pet.select`,
 /// `pet.events_seen`, `pet.rules`, `pet.configure_life`), pruned like care receipts.
@@ -346,7 +360,11 @@ impl Clock for ManualClock {
 /// crash watchers then report each injected fault; a non-dumpable process skips the
 /// core-dump path in the kernel entirely.
 pub fn fault(name: &str) {
-    debug_assert!(FAULT_POINTS.contains(&name), "unknown fault point {name}");
+    #[cfg(feature = "legacy-tasks")]
+    let known = FAULT_POINTS.contains(&name) || LEGACY_FAULT_POINTS.contains(&name);
+    #[cfg(not(feature = "legacy-tasks"))]
+    let known = FAULT_POINTS.contains(&name);
+    debug_assert!(known, "unknown fault point {name}");
     #[cfg(test)]
     test_fault::hit(name);
     #[cfg(debug_assertions)]

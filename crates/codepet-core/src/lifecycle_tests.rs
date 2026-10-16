@@ -869,8 +869,9 @@ fn leniency_during_a_critical_never_lets_unrelated_care_clear_it() {
     assert_eq!(after.critical, None);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
-fn debit_refund_and_leniency_helpers() {
+fn debit_and_refund_helpers() {
     let r = steady();
     let full = Vitals::from_meters([10_000, 10_000, 9000, 10_000], &r);
     assert_eq!(full.hold_ms, [H, H, 0, H]);
@@ -886,6 +887,12 @@ fn debit_refund_and_leniency_helpers() {
     );
     // Only needs actually restored to full get a hold back.
     assert_eq!(refunded.hold_ms, [H, 0, 0, H]);
+}
+
+#[test]
+fn leniency_helpers() {
+    let r = steady();
+    let full = Vitals::from_meters([10_000, 10_000, 9000, 10_000], &r);
     let mut crit = thirst_empty(r.critical_after_ms);
     crit.critical = Some(Critical {
         need: Category::Thirst,

@@ -8,6 +8,7 @@ fn draft() -> Draft {
         instructions: "Explain the task state machine".into(),
     }
 }
+#[cfg(feature = "legacy-tasks")]
 fn running(engine: &mut Engine) -> JobId {
     let id = engine.create(draft()).unwrap();
     let token = engine.preflight(id).unwrap();
@@ -15,6 +16,7 @@ fn running(engine: &mut Engine) -> JobId {
     engine.mock_prepared(id).unwrap();
     id
 }
+#[cfg(feature = "legacy-tasks")]
 fn review(engine: &mut Engine, verification: Verification) -> (JobId, u64) {
     let id = running(engine);
     engine.mock_exited(id, true).unwrap();
@@ -23,6 +25,7 @@ fn review(engine: &mut Engine, verification: Verification) -> (JobId, u64) {
         .unwrap();
     (id, digest)
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn idle_never_starts() {
     let mut e = Engine::default();
@@ -41,6 +44,7 @@ fn idle_never_starts() {
     assert_eq!(e.task(id).unwrap().state, State::Draft);
     assert_eq!(e.active_job(), None);
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn changed_draft_invalidates_start() {
     let mut e = Engine::default();
@@ -50,6 +54,7 @@ fn changed_draft_invalidates_start() {
     assert_eq!(e.start(id, token), Err(Error::InvalidToken));
     assert_eq!(e.update(id, 1, draft()), Err(Error::StaleRevision));
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn changed_settings_invalidate_all_preflights() {
     let mut e = Engine::default();
@@ -70,6 +75,7 @@ fn changed_settings_invalidate_all_preflights() {
     e.start(first, fresh).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn rejected_settings_preserve_preflight_and_settings() {
     let mut e = Engine::default();
@@ -85,6 +91,7 @@ fn rejected_settings_preserve_preflight_and_settings() {
     assert_eq!(e.settings(), &Settings::default());
     e.start(id, token).unwrap();
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn superseded_preflight_is_invalid() {
     let mut e = Engine::default();
@@ -94,6 +101,7 @@ fn superseded_preflight_is_invalid() {
     assert_eq!(e.start(id, old), Err(Error::InvalidToken));
     e.start(id, new).unwrap();
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn token_cannot_cross_engine_or_job() {
     let mut a = Engine::default();
@@ -108,6 +116,7 @@ fn token_cannot_cross_engine_or_job() {
     a.preflight(z).unwrap();
     assert_eq!(a.start(z, t), Err(Error::InvalidToken));
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn unsupported_providers_fail_closed() {
     for p in [
@@ -124,6 +133,7 @@ fn unsupported_providers_fail_closed() {
         assert_eq!(e.active_job(), None);
     }
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn single_slot_including_wait_review_cancel() {
     let mut e = Engine::default();
@@ -144,6 +154,7 @@ fn single_slot_including_wait_review_cancel() {
     e.mock_confirm_stopped(other).unwrap();
     assert_eq!(e.active_job(), None);
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn acceptance_is_explicit_and_exactly_once() {
     let mut e = Engine::default();
@@ -163,6 +174,7 @@ fn acceptance_is_explicit_and_exactly_once() {
     assert_eq!(e.meters().hundredths(Category::Hunger), 7000);
     assert_eq!(e.active_job(), None);
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn failed_or_missing_checks_need_override() {
     for verification in [Verification::Failed, Verification::NotVerified] {
@@ -186,6 +198,7 @@ fn failed_or_missing_checks_need_override() {
         assert!(receipt.override_reason.is_some());
     }
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn meter_reward_clamps() {
     let mut e = Engine::default();
@@ -195,6 +208,7 @@ fn meter_reward_clamps() {
     }
     assert_eq!(e.meters().hundredths(Category::MentalHealth), 10000);
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn cancel_is_idempotent_and_does_not_reward() {
     let mut e = Engine::default();
@@ -208,6 +222,7 @@ fn cancel_is_idempotent_and_does_not_reward() {
     assert_eq!(e.task(id).unwrap().state, State::Cancelled);
     assert!(e.preflight(id).is_err());
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn failure_and_discard_have_no_reward() {
     let mut e = Engine::default();
@@ -223,6 +238,7 @@ fn failure_and_discard_have_no_reward() {
     );
     assert_eq!(e.meters(), &Meters::default());
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recovery_interrupts_without_restart() {
     for phase in 0..5 {
@@ -248,6 +264,7 @@ fn recovery_interrupts_without_restart() {
         assert_eq!(e.meters(), &Meters::default());
     }
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recovery_blocks_unvalidated_review() {
     let mut e = Engine::default();
@@ -262,6 +279,7 @@ fn recovery_blocks_unvalidated_review() {
     e.mock_abandon_recovery(id).unwrap();
     assert_eq!(e.active_job(), None);
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recovery_preserves_receipt_without_second_reward() {
     let mut e = Engine::default();
@@ -271,6 +289,7 @@ fn recovery_preserves_receipt_without_second_reward() {
     assert_eq!(e.accept_artifact(id, h, true, None).unwrap(), receipt);
     assert_eq!(e.meters().hundredths(Category::MentalHealth), 9000);
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn recovery_invalidates_old_start_tokens() {
     let mut e = Engine::default();
@@ -281,6 +300,7 @@ fn recovery_invalidates_old_start_tokens() {
     e.preflight(id).unwrap();
     assert_eq!(e.start(id, old), Err(Error::InvalidToken));
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn events_are_ordered_job_scoped_and_bounded() {
     let mut e = Engine::default();
@@ -296,6 +316,7 @@ fn events_are_ordered_job_scoped_and_bounded() {
     assert_eq!(e.events_after(u64::MAX), Err(Error::ResyncRequired));
     assert_eq!(e.events.len(), MAX_EVENTS);
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn task_capacity_is_bounded_without_history_deletion() {
     let mut e = Engine::default();
@@ -330,6 +351,7 @@ fn validates_paths_and_inputs() {
     d.instructions = "ok".into();
     assert!(d.validate().is_ok());
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn settings_bounds_are_enforced() {
     let mut e = Engine::default();
@@ -364,6 +386,7 @@ fn protocol_frames_are_bounded_versioned_utf8_single_line() {
         Err(Error::InvalidFrame)
     );
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn out_of_order_or_wrong_job_events_fail_closed() {
     let mut e = Engine::default();
@@ -486,6 +509,7 @@ fn transition_table_matches_spec() {
     // Review-ready and recovery are not terminal: they still hold the slot.
     assert!(ReviewReady.occupies_slot() && RecoveryRequired.occupies_slot());
 }
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn pure_reward_helper_is_fixed_and_clamped() {
     assert_eq!(Meters::apply_reward(METER_START), 9000);

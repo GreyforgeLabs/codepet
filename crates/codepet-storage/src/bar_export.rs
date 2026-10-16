@@ -6,10 +6,13 @@
 //! `state_version`. Readers never launch Rust in response to a change of this file.
 use crate::agent_export::{AgentExport, ClientsExport, TreatsExport};
 use crate::model::MetersView;
+#[cfg(feature = "legacy-tasks")]
 use crate::schema::SLOT_STATES;
 use crate::{care, life, sys, Result, StorageError, Store};
 use codepet_core::lifecycle::{IDLE_TIMEOUT_S, RULESET_V1, TICK_MS};
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
+#[cfg(feature = "legacy-tasks")]
+use rusqlite::OptionalExtension;
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use serde::Serialize;
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
@@ -135,6 +138,7 @@ pub(crate) struct BarState {
 }
 
 /// Longest prefix of `s` that is at most `max` UTF-8 bytes.
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn byte_prefix(s: &str, max: usize) -> &str {
     if s.len() <= max {
         return s;
@@ -162,6 +166,11 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
         },
     )?;
     let care = care::view(c, meters)?;
+    // v0.3.0 keeps the v1 keys `task`, `care.ready_to_work` and `care.readiness_reasons` as
+    // inert compatibility values (null, false, []), so a still-loaded v0.2 bar or overlay
+    // degrades gracefully until the reload (spec §6.6); v0.3.1 drops them. Only the
+    // `legacy-tasks` build still reports a slot task and its readiness gate.
+    #[cfg(feature = "legacy-tasks")]
     let task: Option<(String, String)> = c
         .query_row(
             &format!("SELECT state, category FROM tasks WHERE state IN {SLOT_STATES} LIMIT 1"),
@@ -169,6 +178,19 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
+    #[cfg(not(feature = "legacy-tasks"))]
+    let task: Option<(String, String)> = None;
+    #[cfg(feature = "legacy-tasks")]
+    let (ready_to_work, readiness_reasons) = (
+        care.ready_to_work,
+        care.readiness_reasons
+            .iter()
+            .take(MAX_READINESS_REASONS)
+            .map(|r| byte_prefix(r, MAX_REASON_BYTES).to_owned())
+            .collect(),
+    );
+    #[cfg(not(feature = "legacy-tasks"))]
+    let (ready_to_work, readiness_reasons) = (false, Vec::new());
     Ok(BarState {
         schema: BAR_SCHEMA,
         state_version: life::state_version(c)?,
@@ -221,13 +243,8 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             sleep_started_at_ms: care.sleep_started_at_ms,
             sleep_due: care.sleep_due,
             bathroom_due: care.bathroom_due,
-            ready_to_work: care.ready_to_work,
-            readiness_reasons: care
-                .readiness_reasons
-                .iter()
-                .take(MAX_READINESS_REASONS)
-                .map(|r| byte_prefix(r, MAX_REASON_BYTES).to_owned())
-                .collect(),
+            ready_to_work,
+            readiness_reasons,
         },
         task: task.map(|(state, category)| BarTask { state, category }),
         presence: BarPresence {

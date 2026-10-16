@@ -6,12 +6,14 @@
 //! `NOT_IMPLEMENTED` (exit 1, one stderr line, no state touched) until their work package
 //! lands. `hook` already keeps invariant O2: it always exits 0 silently.
 mod clients_job;
+#[cfg(feature = "legacy-tasks")]
 mod demo;
 mod doctor;
 mod errors;
 mod fold;
 mod hook;
 mod rpc;
+#[cfg(feature = "legacy-tasks")]
 mod supervisor;
 
 use std::io::Write;
@@ -28,6 +30,7 @@ task.start runs a per-job mock supervisor, which spawns no process.";
 /// `codepet --version`; printed without opening storage.
 const VERSION: &str = concat!("codepet ", env!("CARGO_PKG_VERSION"));
 
+#[cfg(feature = "legacy-tasks")]
 const PROVIDERS: &str = "Mock: available (simulation only)
 Codex: unsupported
 OpenCode: unsupported
@@ -46,10 +49,12 @@ fn main() {
             println!("{VERSION}");
             0
         }
+        #[cfg(feature = "legacy-tasks")]
         (Some(Some("providers")), 1) => {
             println!("{PROVIDERS}");
             0
         }
+        #[cfg(feature = "legacy-tasks")]
         (Some(Some("mock-demo")), 1) => {
             demo::run();
             0
@@ -68,12 +73,13 @@ fn main() {
             )),
             _,
         ) => not_implemented(c),
-        (
-            Some(Some(
-                c @ ("--help" | "help" | "--version" | "providers" | "mock-demo" | "rpc" | "state"),
-            )),
-            _,
-        ) => usage(&format!("{c} takes no arguments")),
+        #[cfg(feature = "legacy-tasks")]
+        (Some(Some(c @ ("providers" | "mock-demo"))), _) => {
+            usage(&format!("{c} takes no arguments"))
+        }
+        (Some(Some(c @ ("--help" | "help" | "--version" | "rpc" | "state"))), _) => {
+            usage(&format!("{c} takes no arguments"))
+        }
         (Some(Some(other)), _) => usage(&format!("Unsupported command: {other}")),
         (Some(None), _) => usage("Unsupported command"),
     };

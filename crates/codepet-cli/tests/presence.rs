@@ -1,6 +1,8 @@
 //! Attended presence end to end: the bar leader's `presence.json` is settled by ordinary
 //! CLI commands (`rpc` and `codepet state`) under the real system clocks. Nothing in the CLI
 //! records presence itself, and a refused or uncertain file never fails a command.
+// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use codepet_storage::{Clock, SystemClock};
 use common::{error_code, Env, HOUR, MIN};
@@ -88,6 +90,7 @@ fn an_unarmed_life_never_charges_even_after_arming() {
     assert_eq!(env.bar_state().unwrap()["presence"]["wanted"], true);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn pause_and_a_held_slot_discard_presence() {
     let env = Env::new();

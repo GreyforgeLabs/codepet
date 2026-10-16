@@ -11,12 +11,13 @@ use crate::model::{
     CriticalView, LifeOutcome, LifeSummary, LifeView, LifecycleView, MemorialBrief, MemorialPage,
     MetersView, NeedView, NextStageView, RulesView, UnseenEvent,
 };
+#[cfg(feature = "legacy-tasks")]
 use crate::schema::SLOT_STATES;
 use crate::store::{passed_away_if, replay_or_run, seal};
 use crate::{fault, sys, Result, StorageError, Store};
-use codepet_core::evolution::{
-    level_for_xp, next_level_xp, next_stage, stage_for_xp, stage_key, stages_crossed,
-};
+#[cfg(feature = "legacy-tasks")]
+use codepet_core::evolution::stages_crossed;
+use codepet_core::evolution::{level_for_xp, next_level_xp, next_stage, stage_for_xp, stage_key};
 use codepet_core::lifecycle::{
     self as lc, LifeStatus, Mode, Pace, Rules, Vitals, HOUR_MS, IDLE_TIMEOUT_S, RULESET_V1,
     RULES_V1, SETTLE_CAP_MS, TICK_MS,
@@ -193,6 +194,7 @@ fn life_by_id(c: &Connection, life_id: &str) -> Result<Option<LifeRow>> {
     .transpose()
 }
 
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn is_living(c: &Connection, life_id: &str) -> Result<bool> {
     Ok(life_by_id(c, life_id)?.is_some_and(|l| l.status.is_living()))
 }
@@ -257,6 +259,7 @@ pub(crate) fn life_xp(c: &Connection, life_id: &str) -> Result<(u32, u32)> {
     ))
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// Journals each stage newly reached by `old_xp + gained` as `evolved` (once per life and
 /// stage, unseen). Returns whether any row was added.
 pub(crate) fn record_evolution(
@@ -290,6 +293,7 @@ pub(crate) fn record_evolution(
 }
 
 /// Stages journaled by the acceptance of `task_id`, ascending.
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn evolved_by_task(c: &Connection, task_id: &str) -> Result<Vec<u8>> {
     let mut stmt = c.prepare(
         "SELECT dedup_key FROM life_events WHERE task_id = ?1 AND kind = 'evolved' ORDER BY seq",
@@ -338,12 +342,22 @@ pub(crate) fn state_version(c: &Connection) -> Result<i64> {
     )
 }
 
-fn slot_busy(c: &Connection) -> Result<bool> {
+/// True while a task holds the active slot. Only the retired task pipeline can occupy it
+/// (`legacy-tasks`); the v5 migration closed every slot task, so in the default build the
+/// slot is always free: `death_pending` is never created, the `slot_busy` blocker never
+/// triggers and the frozen reason `task` never occurs (spec §6.5).
+#[cfg(feature = "legacy-tasks")]
+pub(crate) fn slot_busy(c: &Connection) -> Result<bool> {
     Ok(c.query_row(
         &format!("SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN {SLOT_STATES})"),
         [],
         |r| r.get(0),
     )?)
+}
+/// See the `legacy-tasks` variant: the default build has no slot holder.
+#[cfg(not(feature = "legacy-tasks"))]
+pub(crate) fn slot_busy(_c: &Connection) -> Result<bool> {
+    Ok(false)
 }
 
 /// True when a pending end can finalize now (the slot is free).

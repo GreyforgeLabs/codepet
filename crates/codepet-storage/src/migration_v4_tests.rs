@@ -233,6 +233,7 @@ fn check_upgrade(
     assert_eq!(mode(&backup), 0o600);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn v1_to_v4_keeps_everything_and_creates_an_unarmed_migrated_life() {
     let env = Env::new();
@@ -264,6 +265,7 @@ fn v1_to_v4_keeps_everything_and_creates_an_unarmed_migrated_life() {
     assert_eq!(out.receipt.xp_withheld, None);
 }
 
+#[cfg(feature = "legacy-tasks")]
 fn v2_or_v3_upgrade(from: usize, slot_state: &str) {
     let env = Env::with_boot();
     old_db(&env, from);
@@ -343,6 +345,7 @@ fn v2_or_v3_upgrade(from: usize, slot_state: &str) {
     assert_eq!(after.lifecycle.frozen_reason, "unarmed");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn v2_to_v4_with_each_in_flight_slot_state() {
     for state in ["running", "review_ready", "recovery_required"] {
@@ -350,6 +353,7 @@ fn v2_to_v4_with_each_in_flight_slot_state() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn v3_to_v4_with_each_in_flight_slot_state() {
     for state in ["running", "review_ready", "recovery_required"] {

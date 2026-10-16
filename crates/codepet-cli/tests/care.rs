@@ -1,4 +1,6 @@
 //! Care and progression through fresh CLI processes. Explicit actions never launch work.
+// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use codepet_storage::{Clock, ManualClock, StatePaths, Store, SystemClock};
 use common::{error_code, Env};
@@ -13,6 +15,7 @@ fn full_meters() -> Value {
 fn spent_meters() -> Value {
     json!({"hunger": 9000, "thirst": 9000, "mental_health": 9500, "hygiene": 9000})
 }
+#[cfg(feature = "legacy-tasks")]
 fn discard(env: &Env, task: &str) {
     let digest = env.task(task)["review"]["digest"].clone();
     env.ok(
@@ -20,6 +23,7 @@ fn discard(env: &Env, task: &str) {
         json!({"task_id": task, "review_digest": digest}),
     );
 }
+#[cfg(feature = "legacy-tasks")]
 fn accept(env: &Env, task: &str, digest: &str) -> Value {
     env.ok(
         "task.accept_artifact",
@@ -56,6 +60,7 @@ fn invalid_care_and_rest_requests_never_open_storage() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn explicit_care_is_idempotent_and_never_grants_xp_or_starts_work() {
     let env = Env::new();
@@ -118,6 +123,7 @@ fn explicit_care_is_idempotent_and_never_grants_xp_or_starts_work() {
     assert!(!env.folder().exists());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn readiness_is_rechecked_and_care_changes_invalidate_preflight() {
     let env = Env::new();
@@ -170,6 +176,7 @@ fn readiness_is_rechecked_and_care_changes_invalidate_preflight() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn bathroom_and_mandatory_sleep_survive_restarts_and_block_only_new_work() {
     let env = Env::new();
@@ -266,6 +273,7 @@ fn bathroom_and_mandatory_sleep_survive_restarts_and_block_only_new_work() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn early_wake_keeps_credit_and_repeated_sleep_does_not_restart_the_timer() {
     let env = Env::new();
@@ -315,6 +323,7 @@ fn elapsed_nap(env: &Env) {
     store.sleep(&env.id()).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn an_explicit_nap_finishes_offline_without_refilling_care_or_starting_work() {
     let env = Env::new();
@@ -332,6 +341,7 @@ fn an_explicit_nap_finishes_offline_without_refilling_care_or_starting_work() {
     assert_eq!(after["active_task"], Value::Null);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn concurrent_process_starts_get_one_slot_and_one_care_debit() {
     let env = Env::new();
@@ -375,6 +385,7 @@ fn concurrent_process_starts_get_one_slot_and_one_care_debit() {
     assert!(!env.folder().exists());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn four_accepted_simulations_level_only_demo_and_cannot_enable_providers() {
     let env = Env::new();
@@ -424,6 +435,7 @@ fn four_accepted_simulations_level_only_demo_and_cannot_enable_providers() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn sleeping_keeps_completed_results_reviewable_and_acceptance_available() {
     let env = Env::new();
@@ -451,6 +463,7 @@ fn sleeping_keeps_completed_results_reviewable_and_acceptance_available() {
     assert_eq!(env.state()["settings"]["timeout_seconds"], 600);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn concurrent_acceptance_returns_one_receipt_and_one_demo_reward() {
     let env = Env::new();

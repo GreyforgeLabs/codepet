@@ -29,6 +29,7 @@ fn kinds(env: &Env, life: &str) -> Vec<String> {
         .unwrap()
 }
 
+#[cfg(feature = "legacy-tasks")]
 fn accept_n(store: &mut Store, env: &Env, n: usize) -> Vec<AcceptOutcome> {
     (0..n)
         .map(|i| {
@@ -126,6 +127,7 @@ fn rules_json_sha_matches_and_is_canonical() {
 fn care_pause_start_and_select_need_a_living_companion() {
     let env = Env::new();
     let mut store = env.open();
+    #[cfg(feature = "legacy-tasks")]
     let t = store.create_task(&env.input(Category::Hunger)).unwrap();
     retire_ginger(&mut store);
     assert!(matches!(
@@ -138,6 +140,7 @@ fn care_pause_start_and_select_need_a_living_companion() {
         store.set_paused(true),
         Err(StorageError::NoActivePet)
     ));
+    #[cfg(feature = "legacy-tasks")]
     assert!(matches!(
         store.preflight(&t.task_id, 1),
         Err(StorageError::NoActivePet)
@@ -148,6 +151,7 @@ fn care_pause_start_and_select_need_a_living_companion() {
     ));
     let s = store.snapshot().unwrap();
     assert!(s.life.is_none());
+    #[cfg(feature = "legacy-tasks")]
     assert_eq!(
         s.care.readiness_reasons[0],
         "Adopt a companion to start work"
@@ -155,6 +159,7 @@ fn care_pause_start_and_select_need_a_living_companion() {
     assert_eq!(StorageError::NoActivePet.code(), "NO_ACTIVE_PET");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn adopt_after_death_level1_xp0_meters7000_armed() {
     let env = Env::with_boot();
@@ -270,20 +275,23 @@ fn adoption_is_explicit_acknowledged_validated_and_idempotent() {
     ));
     assert_eq!(env.count("SELECT count(*) FROM lives"), 2);
     // Adoption is refused while a task holds the slot (fixture: no living life + slot).
-    let env = Env::new();
-    let mut store = env.open();
-    let t = store.create_task(&env.input(Category::Hunger)).unwrap();
-    retire_ginger(&mut store);
-    env.raw()
-        .execute(
-            "UPDATE tasks SET state = 'review_ready' WHERE id = ?1",
-            [&t.task_id],
-        )
-        .unwrap();
-    assert!(matches!(
-        store.adopt("busy", &adopt_req("owl", Mode::Permadeath, Pace::Steady)),
-        Err(StorageError::InvalidState(_))
-    ));
+    #[cfg(feature = "legacy-tasks")]
+    {
+        let env = Env::new();
+        let mut store = env.open();
+        let t = store.create_task(&env.input(Category::Hunger)).unwrap();
+        retire_ginger(&mut store);
+        env.raw()
+            .execute(
+                "UPDATE tasks SET state = 'review_ready' WHERE id = ?1",
+                [&t.task_id],
+            )
+            .unwrap();
+        assert!(matches!(
+            store.adopt("busy", &adopt_req("owl", Mode::Permadeath, Pace::Steady)),
+            Err(StorageError::InvalidState(_))
+        ));
+    }
 }
 
 #[test]
@@ -373,6 +381,7 @@ fn invariant_state(env: &Env, store: &Store) -> (Value, Vec<String>) {
     (v, tables.iter().map(|t| env.dump(t)).collect())
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn select_preserves_everything() {
     type Setup = fn(&mut Store, &Env);
@@ -515,13 +524,16 @@ fn retire_requires_name_free_slot_not_critical() {
         store.retire("r1", &id, "ginger"),
         Err(StorageError::InvalidParams(_))
     ));
-    let task = task_in_state(&mut store, &env, State::ReviewReady);
-    assert!(matches!(
-        store.retire("r2", &id, "Ginger"),
-        Err(StorageError::InvalidState(_))
-    ));
-    let digest = store.review(&task).unwrap().review.unwrap().digest;
-    store.discard(&task, &digest).unwrap();
+    #[cfg(feature = "legacy-tasks")]
+    {
+        let task = task_in_state(&mut store, &env, State::ReviewReady);
+        assert!(matches!(
+            store.retire("r2", &id, "Ginger"),
+            Err(StorageError::InvalidState(_))
+        ));
+        let digest = store.review(&task).unwrap().review.unwrap().digest;
+        store.discard(&task, &digest).unwrap();
+    }
     env.raw()
         .execute(
             "UPDATE life_vitals SET critical_need = 'hunger', critical_grace_ms = 900000,
@@ -762,6 +774,7 @@ fn pause_is_journaled_on_the_living_companion() {
     assert_eq!(store.snapshot().unwrap().lifecycle.frozen_reason, "unarmed");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn evolution_is_journaled_once_and_celebrated_until_seen() {
     let env = Env::new();
@@ -815,6 +828,7 @@ fn evolution_is_journaled_once_and_celebrated_until_seen() {
         .is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn evolve_fault_before_commit_leaves_no_xp_and_no_event() {
     let env = Env::new();
@@ -843,6 +857,7 @@ fn evolve_fault_before_commit_leaves_no_xp_and_no_event() {
     assert_eq!(out.receipt.evolved_to, [2]);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn stages_crossed_two_at_once_journal_two_events() {
     let env = Env::new();
@@ -858,6 +873,7 @@ fn stages_crossed_two_at_once_journal_two_events() {
     assert_eq!(life::evolved_by_task(c, &task).unwrap(), [2, 3]);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn xp_reversal_derives_lower_stage_and_keeps_the_journal() {
     let env = Env::new();
@@ -884,6 +900,7 @@ fn xp_reversal_derives_lower_stage_and_keeps_the_journal() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn old_task_accept_after_adoption_never_credits_the_new_life() {
     let env = Env::new();
@@ -932,6 +949,7 @@ fn old_task_accept_after_adoption_never_credits_the_new_life() {
     assert_eq!(env.count("SELECT count(*) FROM demo_xp_rewards"), 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn xp_binds_to_the_task_life_not_the_active_one() {
     let env = Env::new();
@@ -986,6 +1004,7 @@ fn memorial_pages_newest_first() {
     assert_eq!(store.memorial(None, None).unwrap().entries.len(), 6);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn v2_era_receipts_replay_with_serde_defaults() {
     let receipt = serde_json::json!({"task_id":"t","category":"hunger","amount_hundredths":0,
@@ -1028,6 +1047,7 @@ fn v2_era_receipts_replay_with_serde_defaults() {
     assert_eq!(store.care("c", "food").unwrap(), care);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn xp_view_output_is_byte_identical_to_v0_1() {
     fn old(xp: u32) -> (u8, Option<u32>) {
@@ -1058,6 +1078,7 @@ fn xp_view_output_is_byte_identical_to_v0_1() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn worst_case_snapshot_and_outcomes_fit_one_frame() {
     let env = Env::new();
