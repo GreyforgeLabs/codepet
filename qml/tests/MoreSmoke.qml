@@ -79,8 +79,9 @@ Window {
             kit.check(ctl.cfg.overlayOnLoad === true && ctl.launches[ctl.launches.length - 1] === "show", "Pet on my desktop on: setting + show")
         },
         function () {
+            var n = ctl.launches.length
             win.find("cp.more.desktop").toggled(false)
-            kit.check(ctl.cfg.overlayOnLoad === false && ctl.launches[ctl.launches.length - 1] === "hide", "Pet on my desktop off: setting + hide")
+            kit.check(ctl.cfg.overlayOnLoad === false && ctl.launches.length === n, "Pet on my desktop off: the setting only (the pet exits by itself)")
             win.find("cp.more.calm").toggled(true)
             kit.check(ctl.cfg.calm === true && app.calm, "Calm mode on")
             win.find("cp.more.calm").toggled(false)

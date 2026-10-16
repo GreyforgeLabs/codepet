@@ -40,7 +40,7 @@ Item {
             textOff: menu.app.s("header.off")
             onToggled: c => {
                 menu.app.ctl.setSetting("overlayOnLoad", c)
-                menu.app.ctl.launch(c ? "show" : "hide")
+                if (c) menu.app.ctl.launch("show")
             }
         }
         MenuRow {

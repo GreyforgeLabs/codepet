@@ -84,11 +84,11 @@ Window {
         },
         function () {
             kit.check(kit.runningTimers(app).indexOf("codepetPopup.frames") >= 0, "On and open: the frame clock runs")
-            ctl.open = false
+            ctl.popupVisible = false
         },
         function () {
             kit.check(kit.runningTimers(app).length === 0, "closed popup: no running timers " + JSON.stringify(kit.runningTimers(app)))
-            ctl.open = true
+            ctl.popupVisible = true
             ctl.cfg = { label: "name", calm: true, overlayOnLoad: false }
         },
         function () {

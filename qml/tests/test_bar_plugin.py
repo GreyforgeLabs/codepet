@@ -180,7 +180,7 @@ class SourceContract(unittest.TestCase):
         self.assertIn("running: popupRoot.animating", frames)
         # The animation clock runs only while the popup is open, On and not in Calm mode.
         anim = re.search(r"readonly property bool animating:([^\n]*\n[^\n]*)", self.qml["PopupApp.qml"]).group(1)
-        for need in ("ctl.open === true", "popupRoot.isOn", "!popupRoot.calm"):
+        for need in ("ctl.popupVisible === true", "popupRoot.isOn", "!popupRoot.calm"):
             self.assertIn(need, anim)
         dog = blocks(self.qml["BarRpc.qml"], "Timer {")[0]
         self.assertIn("interval: rpc.responseTimeoutMs", dog)
@@ -276,12 +276,31 @@ class SourceContract(unittest.TestCase):
         self.assertIn('"app.set_enabled", { enabled: true }', on)
         self.assertIn("bar.registerClickTarget(root)", bw)
 
-    def test_open_home_ipc(self):
+    def test_open_home_ipc_and_the_omarchy_panel_contract(self):
         bw = self.qml["BarWidget.qml"]
         ipc = block_after(bw, bw.index("IpcHandler {"))
         self.assertIn('target: "greyforge.codepet"', ipc)
         self.assertIn("enabled: root.leader", ipc)
-        self.assertIn("function openHome(): void { root.openHome() }", ipc)
+        self.assertIn("function openHome(): void { root.open() }", ipc)
+        # `omarchy-shell shell summon|hide|toggle greyforge.codepet` (Bar.qml summonBarWidget)
+        # calls open() / close() and reads `opened`; open() keeps the Off cell rule.
+        self.assertIn("readonly property bool opened: root.menu", bw)
+        opener = function_bodies(bw)["open"]
+        self.assertIn("if (!root.isOn) root.turnOnAndOpen()", opener)
+        bar_qml = OMARCHY_SHELL / "plugins" / "bar" / "Bar.qml"
+        if bar_qml.is_file():
+            text = bar_qml.read_text()
+            self.assertIn("item.open()", text, "the Omarchy summon contract changed")
+            self.assertIn("item.opened === true", text)
+
+    def test_desktop_pet_switch_follows_the_overlay_contract(self):
+        # On shows the pet; off writes the setting only (the overlay exits by itself).
+        for name, var in (("MoreScreen.qml", "more"), ("MenuScreen.qml", "menu")):
+            text = self.qml[name]
+            self.assertNotIn('launch("hide")', text, name)
+            self.assertNotIn("? \"show\" : \"hide\"", text, name)
+        start = function_bodies(self.qml["BarWidget.qml"])["startup"]
+        self.assertIn("root.cfg.overlayOnLoad && life && life.armed === true", start)
 
     def test_state_home_reaches_files_rpc_and_launcher(self):
         bw = self.qml["BarWidget.qml"]
@@ -467,7 +486,8 @@ state_home = os.environ.get("XDG_STATE_HOME", "")
 req = json.loads(sys.stdin.readline())
 with open(os.path.join(home, "rpc.log"), "a") as log:
     log.write(json.dumps({{"method": req["method"], "id": req["id"], "params": req["params"],
-                          "argv": sys.argv[1:], "state_home": state_home}}) + "\n")
+                          "argv": sys.argv[1:], "state_home": state_home,
+                          "test_state": os.environ.get("CODEPET_TEST_STATE")}}) + "\n")
 sdir = os.path.join(state_home or os.path.join(home, ".local/state"), "codepet")
 path = os.path.join(sdir, "bar-state.json")
 try:
@@ -581,6 +601,8 @@ ShellRoot {
         target: "harness"
         function dump(): string { return JSON.stringify({ w1: shell.info(w1), w2: shell.info(w2), settingsWrites: shell.settingsWrites, targets: fakeBar.clickTargets.length }) }
         function press(button: int): void { w1.triggerPress(button === 2 ? Qt.RightButton : Qt.LeftButton) }
+        // What Omarchy's `shell summon greyforge.codepet` does (Bar.qml summonBarWidget).
+        function summon(): bool { w1.open(); return w1.opened }
         function close(): void { w1.close() }
         function page(name: string): void { w1.openPage(name) }
         function tap(name: string): void { var o = kit.find(shell.app(), name); if (o) o.tapped() }
@@ -810,6 +832,10 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: len(self.launch_log()) >= 2))
         self.assertEqual(self.launch_log()[-1]["calm"], "1")
 
+        # Omarchy's summon opens Home through open(); `opened` reports it.
+        self.harness("close")
+        self.assertEqual(self.harness("summon"), "true")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home"))
         # The right click opens the small menu; IPC openHome opens Home.
         self.harness("close")
         self.harness("press", "2")
@@ -872,6 +898,7 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.start(shell_entry={"stateHome": str(qa)}, state=fixture("idle-happy", state_version=7), state_home=qa)
         self.assertTrue(self.wait_for(lambda: len(self.rpc_log()) >= 1))
         self.assertEqual(self.rpc_log()[0]["state_home"], str(qa))
+        self.assertEqual(self.rpc_log()[0]["test_state"], "1", "the CLI is told it runs on a test state home")
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] == 8))
         d = self.dump()
         self.assertTrue(d["w1"]["testState"])

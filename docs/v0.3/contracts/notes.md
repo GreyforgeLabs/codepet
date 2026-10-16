@@ -351,10 +351,12 @@ the spec left room, and what WP5 asks the contract owners to adopt.
    typing. Offscreen Quickshell has no layer-shell backend, so `test_bar_plugin.py` stages a
    test-only stand-in (`qml/tests/stubs/live/KeyboardPanel.qml`). Keyboard entry in the real
    shell is not verified offscreen (WP7 nested-rig item).
-2. **`openHome` IPC.** The bar leader registers the IPC target `greyforge.codepet` with
-   `openHome()` (also `open`, `close`, `toggle`). WP6's desktop pet calls
-   `omarchy-shell greyforge.codepet openHome` (equivalently
-   `qs ipc -p $OMARCHY_PATH/shell call greyforge.codepet openHome`).
+2. **Opening Home from the desktop pet.** The widget implements Omarchy's bar-widget panel
+   contract, which WP6's overlay uses (`omarchy-shell -q shell summon greyforge.codepet`,
+   WP6 notes item 1): `open()` opens the popup at Home (on the Off cell it turns CodePet on
+   first, the §3.1 rule), `close()` closes it and `opened` reports it. The bar leader also
+   registers the IPC target `greyforge.codepet` with `openHome()`, `close()` and `toggle()`
+   for direct calls (`qs ipc -p $OMARCHY_PATH/shell call greyforge.codepet openHome`).
 3. **`petstate.js`.** WP5 ships a hand port of the contract's `priority` reference as
    `omarchy-plugin/petstate.js` with the frozen API `sharedPriority(export, now, seen)`;
    `qml/tests/test_bar_model.mjs` replays every `priority` vector against it. WP6 owns the
@@ -381,10 +383,14 @@ the spec left room, and what WP5 asks the contract owners to adopt.
    clock, the tile and badge pulses, and reaches the desktop pet as
    `CODEPET_REDUCED_MOTION=1` on the next launcher call (WP6: honour it; a running overlay
    learns it only on its next start).
-7. **Pet on my desktop** writes `overlayOnLoad` and calls the launcher's `show` / `hide`;
-   Let's go! sets it and shows the pet; turning CodePet on shows it when set. SPEC §3.8
-   wants the overlay process to exit when the switch is off: WP6/WP3 should make `hide`
-   with the setting off (or a new launcher verb) end the process.
+7. **Pet on my desktop** follows WP6's flow (WP6 notes item 2, `DesktopPetFlow.js`): the
+   switch is `overlayOnLoad`; Let's go! sets it and launches `show`; the More and menu
+   switches launch `show` when turned on and nothing when turned off (the overlay reads the
+   setting and exits by itself); the leader's startup shows the pet only with the switch on,
+   CodePet On and an armed life; turning CodePet on shows it when the switch is on. After
+   WP6 merges, the widget can call `DesktopPetFlow.js` instead of its own copies of these
+   rules (same behaviour). With a `stateHome` test override every `codepet rpc` child gets
+   `CODEPET_TEST_STATE=1` (WP3 notes item 1), so the clients methods answer `TEST_STATE`.
 8. **Celebrations seen.** The bar widget keeps `seen` (agent_vectors.json
    `priority.celebrate.seen`) in memory and advances it when the popup closes after showing a
    celebration; a shown growth is acknowledged then with `pet.events_seen`. A shell restart

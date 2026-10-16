@@ -104,7 +104,7 @@ test('paths: defaults, XDG overrides, test stateHome and Calm mode reach the lau
     const q = M.paths(M.config({ stateHome: '/qa', binary: '/opt/codepet', calm: true }), env);
     assert.equal(q.stateDir, '/qa/codepet');
     assert.ok(q.testState);
-    assert.deepEqual(plain(q.childEnv), { XDG_STATE_HOME: '/qa' });
+    assert.deepEqual(plain(q.childEnv), { XDG_STATE_HOME: '/qa', CODEPET_TEST_STATE: '1' });
     assert.deepEqual(plain(q.launcherEnv), ['CODEPET_BIN=/opt/codepet', 'XDG_STATE_HOME=/qa', 'CODEPET_REDUCED_MOTION=1']);
     for (const v of Object.values(p)) if (typeof v === 'string') assert.ok(!v.includes('omarchy-plugin') && !v.includes('/plugins/'), v);
 });

@@ -12,7 +12,7 @@ import "Strings.js" as Strings
 // shell; it provides:
 //   barState (normalized export or null), snapshot (last state.get result), registry,
 //   face (petstate.js sharedPriority), cfg (plugin settings), runtimeBase (file:// URL of
-//   the installed runtime, for pet art), open (popup visible), testState, now (ms),
+//   the installed runtime, for pet art), popupVisible, testState, now (ms),
 //   request(method, params, callback), setSetting(key, value), launch(verb), closePopup().
 //
 // Timers: one animation clock (only while open, On and not in Calm mode) and one one-shot
@@ -174,7 +174,7 @@ Item {
     // ---------------------------------------------------------------- the clock and bubbles
 
     property real clockMs: 0
-    readonly property bool animating: popupRoot.ctl !== null && popupRoot.ctl.open === true && popupRoot.isOn && !popupRoot.calm
+    readonly property bool animating: popupRoot.ctl !== null && popupRoot.ctl.popupVisible === true && popupRoot.isOn && !popupRoot.calm
         && popupRoot.screen !== "loading" && popupRoot.screen !== "menu"
     Timer {
         id: frames

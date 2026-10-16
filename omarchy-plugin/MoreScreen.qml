@@ -13,9 +13,11 @@ Item {
     implicitWidth: t.u(448)
     implicitHeight: column.implicitHeight
 
+    // On shows the desktop pet; off needs no verb: the pet reads the switch and exits by
+    // itself (notes.md §7 WP6 item 2).
     function setDesktop(on) {
         more.app.ctl.setSetting("overlayOnLoad", on)
-        more.app.ctl.launch(on ? "show" : "hide")
+        if (on) more.app.ctl.launch("show")
     }
     function setCalm(on) { more.app.ctl.setSetting("calm", on) }
     function bedtime() {

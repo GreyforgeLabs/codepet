@@ -153,14 +153,14 @@ BarWidget {
         }
     }
 
-    // The desktop pet asks for Home through this target (SPEC-v0.3 §3.8), only on the leader.
+    // A direct IPC target for Home (SPEC-v0.3 §3.8), only on the leader; Omarchy's
+    // `shell summon greyforge.codepet` reaches open() below as well.
     IpcHandler {
         target: "greyforge.codepet"
         enabled: root.leader
-        function openHome(): void { root.openHome() }
-        function open(): void { root.openHome() }
+        function openHome(): void { root.open() }
         function close(): void { root.close() }
-        function toggle(): void { if (root.menu) root.close(); else root.openHome() }
+        function toggle(): void { if (root.menu) root.close(); else root.open() }
     }
 
     // ------------------------------------------------------------- transport
@@ -209,7 +209,11 @@ BarWidget {
         root.startupDone = true
         rpc.request("state.get", {}, function (resp) {
             if (resp.ok) root.snapshot = resp.result
-            if (resp.ok && resp.result && resp.result.enabled !== false && root.cfg.overlayOnLoad) root.launch("show")
+            // The desktop pet comes back only when its switch is on, CodePet is On and a pet
+            // was started (an unarmed or missing life has nothing to show yet).
+            var life = resp.ok && resp.result ? resp.result.life : null
+            if (resp.ok && resp.result.enabled !== false && root.cfg.overlayOnLoad && life && life.armed === true)
+                root.launch("show")
         })
     }
     Component.onCompleted: {
@@ -240,7 +244,17 @@ BarWidget {
     // "popup" (Home and its pages) or "menu" (the right-click menu).
     property string popupMode: "popup"
     property string startPage: ""
-    readonly property bool open: root.menu
+    // The popup is up (PopupApp runs its animation clock only then).
+    readonly property bool popupVisible: root.menu
+    // Omarchy's bar-widget panel contract: `omarchy-shell shell summon|hide|toggle
+    // greyforge.codepet` calls open() / close() and reads `opened` on the focused bar's
+    // widget. The desktop pet opens Home this way (notes.md §7 WP6 item 1).
+    readonly property bool opened: root.menu
+    function open() {
+        if (root.menu && root.popupMode === "popup") return
+        if (!root.isOn) root.turnOnAndOpen()
+        else root.openHome()
+    }
 
     function close() {
         if (!root.menu) return

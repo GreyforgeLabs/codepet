@@ -12,7 +12,7 @@ QtObject {
     property var registry: null
     property var cfg: ({ label: "name", presence: true, overlayOnLoad: false, calm: false })
     property string runtimeBase: ""
-    property bool open: true
+    property bool popupVisible: true
     property bool testState: false
     property string stateHome: ""
     property real now: 1792123900000
