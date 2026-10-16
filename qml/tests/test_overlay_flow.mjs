@@ -33,14 +33,21 @@ const shellJson = (entry, where = 'layout') => {
     return JSON.stringify({ version: 1, bar });
 };
 
-test('settings path follows XDG rules', () => {
-    assert.equal(F.settingsPath('/x/config', '/home/u'), '/x/config/omarchy/shell.json');
-    assert.equal(F.settingsPath('/x/config/', '/home/u'), '/x/config/omarchy/shell.json');
-    assert.equal(F.settingsPath('', '/home/u'), '/home/u/.config/omarchy/shell.json');
-    assert.equal(F.settingsPath('relative', '/home/u'), '/home/u/.config/omarchy/shell.json');
-    assert.equal(F.settingsPath('/a/../b', '/home/u'), '/home/u/.config/omarchy/shell.json');
-    assert.equal(F.settingsPath(undefined, 'relative'), '');
-    assert.equal(F.settingsPath(null, ''), '');
+test('settings path is the file the Omarchy shell reads: $HOME/.config, whatever XDG_CONFIG_HOME says', () => {
+    assert.equal(F.settingsPath('/home/u'), '/home/u/.config/omarchy/shell.json');
+    assert.equal(F.settingsPath('/home/u/'), '/home/u/.config/omarchy/shell.json');
+    assert.equal(F.settingsPath('relative'), '');
+    assert.equal(F.settingsPath('/a/../b'), '');
+    assert.equal(F.settingsPath(''), '');
+    assert.equal(F.settingsPath(undefined), '');
+    assert.equal(F.settingsPath.length, 1, 'no XDG_CONFIG_HOME parameter');
+    const shell = read('../shell.qml');
+    assert.match(shell, /OverlayFlow\.settingsPath\(Quickshell\.env\("HOME"\)\)/);
+    assert.doesNotMatch(shell, /XDG_CONFIG_HOME/, 'the overlay never follows XDG_CONFIG_HOME for shell.json');
+    // Omarchy's own path, when the packaged shell is there to compare with.
+    const omarchy = '/usr/share/omarchy/shell/shell.qml';
+    if (existsSync(omarchy))
+        assert.match(readFileSync(omarchy, 'utf8'), /userConfigPath: home \+ "\/\.config\/omarchy\/shell\.json"/);
 });
 
 test('"Pet on my desktop" is the bar entry\'s overlayOnLoad, read like the bar plugin', () => {
@@ -51,15 +58,38 @@ test('"Pet on my desktop" is the bar entry\'s overlayOnLoad, read like the bar p
     assert.equal(F.desktopPetSetting(shellJson({ id })), false, 'missing key = manifest default (off)');
     assert.equal(F.desktopPetSetting(shellJson({ id, overlayOnLoad: 1 })), false);
     assert.equal(F.desktopPetSetting(shellJson({ id, overlayOnLoad: true }, 'flat')), true, 'older flat bar sections');
-    // Unknown: no file, junk, no CodePet cell. A standalone overlay keeps running.
-    assert.equal(F.desktopPetSetting(shellJson(undefined)), null);
+    // The CodePet cell was removed from the bar (no uninstall): off, the pet exits.
+    assert.equal(F.desktopPetSetting(shellJson(undefined)), false);
+    assert.equal(F.desktopPetSetting(JSON.stringify({ version: 1, bar: { layout: { right: [] } } })), false);
+    assert.equal(F.desktopPetSetting(JSON.stringify({ version: 1 })), false, 'Omarchy\'s built-in bar has no CodePet');
+    assert.equal(F.desktopPetSetting(JSON.stringify({ version: 1, bar: 3 })), false);
+    // Unknown: no usable file (none, junk, not version 1, which Omarchy ignores too).
+    // A standalone overlay keeps running.
     assert.equal(F.desktopPetSetting(''), null);
     assert.equal(F.desktopPetSetting('{nope'), null);
     assert.equal(F.desktopPetSetting('[]'), null);
-    assert.equal(F.desktopPetSetting(JSON.stringify({ bar: 3 })), null);
+    assert.equal(F.desktopPetSetting(JSON.stringify({ bar: { layout: { right: [] } } })), null);
+    assert.equal(F.desktopPetSetting(JSON.stringify({ version: 2, bar: { layout: { right: [{ id, overlayOnLoad: true }] } } })), null);
     assert.equal(F.desktopPetSetting(undefined), null);
     const big = shellJson({ id, overlayOnLoad: true }).replace('"version":1', `"pad":"${'x'.repeat(1048576)}","version":1`);
     assert.equal(F.desktopPetSetting(big), null, 'over 1 MiB');
+});
+
+test('Calm mode: the bar entry\'s calm, live; a setReducedMotion call until it changes; else the launch env', () => {
+    const id = 'greyforge.codepet';
+    assert.equal(F.calmSetting(shellJson({ id, calm: true })), true);
+    assert.equal(F.calmSetting(shellJson({ id, calm: 'true' })), true);
+    assert.equal(F.calmSetting(shellJson({ id, calm: false })), false);
+    assert.equal(F.calmSetting(shellJson({ id })), false, 'missing key = the plugin default (off; Omarchy has no system signal)');
+    assert.equal(F.calmSetting(shellJson(undefined)), null);
+    assert.equal(F.calmSetting('{nope'), null);
+    assert.equal(F.reducedMotion(null, true, ''), true);
+    assert.equal(F.reducedMotion(null, false, '1'), false, 'the live setting beats the launch env');
+    assert.equal(F.reducedMotion(null, null, '1'), true, 'no setting: CODEPET_REDUCED_MOTION=1');
+    assert.equal(F.reducedMotion(null, null, ''), false);
+    assert.equal(F.reducedMotion(null, null, 'yes'), false);
+    assert.equal(F.reducedMotion(true, false, ''), true, 'an explicit call wins');
+    assert.equal(F.reducedMotion(false, true, '1'), false);
 });
 
 test('the process exits on Off or when the desktop pet is switched off, and only then', () => {
@@ -73,13 +103,31 @@ test('the process exits on Off or when the desktop pet is switched off, and only
     const v1 = fixture('idle-happy');
     delete v1.enabled;
     assert.equal(F.exitReason(v1, null), '', 'a v1 export (no enabled) is on');
+    // Off ends it at once; a switch read as off ends it at once only after it was on here.
+    assert.equal(F.exitsAtOnce('off', false), true);
+    assert.equal(F.exitsAtOnce('desktop_pet_off', true), true);
+    assert.equal(F.exitsAtOnce('desktop_pet_off', false), false, 'a launch can race the write that turns it on');
+    assert.equal(F.exitsAtOnce('', true), false);
+    assert.ok(F.SETTLE_MS >= 1000 && F.SETTLE_MS <= 3000, 'well inside the launcher\'s 3 s wait');
 });
 
 test('Home opens through the Omarchy shell, silently', () => {
     assert.deepEqual(plain(F.openHomeArgv('/usr/share/omarchy')),
                      ['/usr/share/omarchy/bin/omarchy-shell', '-q', 'shell', 'summon', 'greyforge.codepet']);
-    assert.deepEqual(plain(F.openHomeArgv('')), ['omarchy-shell', '-q', 'shell', 'summon', 'greyforge.codepet']);
-    assert.deepEqual(plain(F.openHomeArgv('relative/x')), ['omarchy-shell', '-q', 'shell', 'summon', 'greyforge.codepet']);
+    // omarchy-shell refuses to run without OMARCHY_PATH: pass the packaged one.
+    const fallback = ['/usr/bin/env', 'OMARCHY_PATH=/usr/share/omarchy', 'omarchy-shell', '-q', 'shell', 'summon', 'greyforge.codepet'];
+    assert.deepEqual(plain(F.openHomeArgv('')), fallback);
+    assert.deepEqual(plain(F.openHomeArgv(undefined)), fallback);
+    assert.deepEqual(plain(F.openHomeArgv('relative/x')), fallback);
+    // A burst of clicks sends one call a second.
+    assert.equal(F.homeDue(0, 5000), true, 'never sent');
+    assert.equal(F.homeDue(5000, 5000), false);
+    assert.equal(F.homeDue(5000, 5999), false);
+    assert.equal(F.homeDue(5000, 6000), true);
+    assert.equal(F.homeDue(5000, 4000), true, 'a clock that went back allows one');
+    let sent = 0, last = 0;
+    for (let t = 10000; t < 10900; t += 30) if (F.homeDue(last, t)) { sent += 1; last = t; }
+    assert.equal(sent, 1, 'thirty clicks in under a second: one Omarchy call');
     assert.equal(F.PLUGIN_ID, JSON.parse(read('../../omarchy-plugin/manifest.json')).id);
     for (const v of ['panel', 'tasks', 'care', 'companion', 'life']) assert.ok(F.opensHome(v), v);
     for (const v of ['', 'show', 'hide', 'refresh', 'toString']) assert.ok(!F.opensHome(v), v);
@@ -170,4 +218,20 @@ test('a celebration plays once: its key, seen and growth', () => {
     assert.equal(O.withoutGrowth(grewDoc, grew.celebrate.seq - 1), grewDoc, 'newer growth still plays');
     assert.equal(O.withoutGrowth(grewDoc, -1), grewDoc);
     assert.equal(O.withoutGrowth(null, 5), null);
+});
+
+test('a new overlay process counts what its first export holds as celebrated', () => {
+    const now = 1792123900000;
+    for (const name of ['finished-treat', 'hello', 'ready-check-done', 'grew-up']) {
+        const doc = fixture(name);
+        const start = O.seenAtStart(doc);
+        const face = P.sharedPriority(O.withoutGrowth(doc, start.grewSeq), now, start.seen);
+        assert.notEqual(face.state, 'celebrate', `${name}: no replay after a restart`);
+        assert.equal(P.sharedPriority(doc, now, { finished_seq: 0, hello_seq: 0, test_at_ms: 0 }).state, 'celebrate',
+                     `${name}: the fixture does celebrate for a process that saw it arrive`);
+    }
+    assert.deepEqual(plain(O.seenAtStart(null)), { seen: { finished_seq: 0, hello_seq: 0, test_at_ms: 0 }, grewSeq: -1 });
+    const running = fixture('idle-happy');
+    running.agent = { ...running.agent, test: { state: 'running', at_ms: 5 } };
+    assert.equal(O.seenAtStart(running).seen.test_at_ms, 0, 'a running ready check is not seen yet');
 });

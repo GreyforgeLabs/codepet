@@ -30,8 +30,11 @@ Item {
     property real fixedNowMs: 0
     property real nowMs: 0
     // What this scene already celebrated (petstate.js `seen`), and the growth it played.
+    // Seeded from the first export drawn (OverlayFace.seenAtStart): a new overlay process
+    // never replays a celebration it was started after.
     property var seen: ({ finished_seq: 0, hello_seq: 0, test_at_ms: 0 })
     property real grewSeq: -1
+    property bool seeded: false
     property string playedCelebration: ""
     property var celebrationBubble: null
     property bool initialized: false
@@ -57,6 +60,7 @@ Item {
     // Click feedback: the heart bubble's remaining time and the hop offset (px, <= 0).
     property int heartMsLeft: 0
     property real hopOffset: 0
+    readonly property bool hopping: hop.running
     property int clickCount: 0
 
     signal homeRequested()
@@ -151,6 +155,12 @@ Item {
         // into the outer call, which observes the final face.
         if (!initialized || updatingFace) return
         updatingFace = true
+        if (!root.seeded && root.barState) {
+            var start = OverlayFace.seenAtStart(root.barState)
+            root.seen = start.seen
+            root.grewSeq = start.grewSeq
+            root.seeded = true
+        }
         var l = root.barState && root.barState.life ? root.barState.life : null
         root.life = l
         root.petId = l ? String(l.appearance || "") : ""

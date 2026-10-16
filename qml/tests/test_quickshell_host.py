@@ -67,7 +67,13 @@ class HostContract(unittest.TestCase):
         self.assertNotIn('host: hostAdapter', CODE, 'the pet has no transport')
         self.assertLess(CODE.index('HostAdapter {'), CODE.index('PanelWindow {'))
         self.assertEqual(CODE.count('screen: shell.selectedScreen'), 1)
-        for forbidden in ('task.', 'pet.care', 'pet.events_seen', 'Timer {', 'destroy(', 'Qt.exit('):
+        # One timer only: the single-shot settle of a "Pet on my desktop" off (no polling).
+        self.assertEqual(CODE.count('Timer {'), 1)
+        settle = block(CODE, 'Timer {')
+        self.assertIn('repeat: false', settle)
+        self.assertIn('interval: OverlayFlow.SETTLE_MS', settle)
+        self.assertNotIn('running:', settle)
+        for forbidden in ('task.', 'pet.care', 'pet.events_seen', 'destroy(', 'Qt.exit('):
             self.assertNotIn(forbidden, CODE)
         self.assertNotIn('parentWindow:', CODE)
 
@@ -76,12 +82,22 @@ class HostContract(unittest.TestCase):
         self.assertIn('Qt.quit()', block(CODE, 'function leave() {'))
         self.assertIn('readonly property string exitReason: OverlayFlow.exitReason(shell.barState, shell.desktopPet)',
                       CODE)
-        self.assertIn('onExitReasonChanged: if (shell.exitReason !== "") shell.leave()', CODE)
-        # "Pet on my desktop" is the bar plugin's setting: watched, never written.
+        self.assertIn('onExitReasonChanged: shell.checkExit()', CODE)
+        check = block(CODE, 'function checkExit() {')
+        self.assertIn('OverlayFlow.exitsAtOnce(shell.exitReason, shell.sawDesktopPetOn)', check)
+        self.assertIn('settleTimer.restart()', check)
+        self.assertIn('settleTimer.stop()', check)
+        self.assertIn('onDesktopPetChanged: if (shell.desktopPet === true) shell.sawDesktopPetOn = true', CODE)
+        # "Pet on my desktop" and Calm mode are the bar plugin's settings: watched, never written,
+        # in the file the Omarchy shell itself uses ($HOME/.config, not XDG_CONFIG_HOME).
         settings = block(CODE, 'FileView {')
-        self.assertIn('OverlayFlow.settingsPath(Quickshell.env("XDG_CONFIG_HOME"), Quickshell.env("HOME"))', settings)
+        self.assertIn('OverlayFlow.settingsPath(Quickshell.env("HOME"))', settings)
+        self.assertNotIn('XDG_CONFIG_HOME', CODE)
         self.assertIn('watchChanges: true', settings)
-        self.assertIn('OverlayFlow.desktopPetSetting(text())', settings)
+        self.assertIn('shell.readSettings(text())', settings)
+        read = block(CODE, 'function readSettings(text) {')
+        self.assertIn('OverlayFlow.desktopPetSetting(text)', read)
+        self.assertIn('OverlayFlow.calmSetting(text)', read)
         for write in ('setText', 'writeAdapter', 'updateEntryInline'):
             self.assertNotIn(write, CODE)
 
@@ -89,6 +105,8 @@ class HostContract(unittest.TestCase):
         self.assertIn('onHomeRequested: shell.openHome()', CODE)
         home = block(CODE, 'function openHome() {')
         self.assertIn('Quickshell.execDetached(OverlayFlow.openHomeArgv(Quickshell.env("OMARCHY_PATH")))', home)
+        self.assertIn('if (!OverlayFlow.homeDue(shell.lastHomeMs, now))', home)
+        self.assertLess(home.index('homeDue'), home.index('execDetached'))
         self.assertNotIn('Process', CODE)
 
     def test_suppression_and_explicit_restore(self):
@@ -101,6 +119,8 @@ class HostContract(unittest.TestCase):
         self.assertIn('function show(): void { shell.explicitlyHidden = false }', CODE)
         self.assertNotIn('WlSessionLock', CODE)
         self.assertIn('reducedMotion: shell.reducedMotion', block(CODE, 'DesktopPet {'))
+        self.assertIn('OverlayFlow.reducedMotion(shell.reducedMotionOverride, shell.calmSetting,', CODE)
+        self.assertIn('onCalmSettingChanged: shell.reducedMotionOverride = null', CODE)
 
     @unittest.skipUnless(shutil.which('node'), 'Node unavailable; pure-JS policy untested')
     def test_monitor_and_hit_region_policy(self):
@@ -141,6 +161,8 @@ FAKE_OMARCHY_SHELL = """#!{python} -I
 import json, os, sys
 with open(os.path.join(os.environ["HOME"], "omarchy-shell.log"), "a") as f:
     f.write(json.dumps(sys.argv[1:]) + "\\n")
+with open(os.path.join(os.environ["HOME"], "omarchy-shell.env.log"), "a") as f:
+    f.write(json.dumps(os.environ.get("OMARCHY_PATH")) + "\\n")
 """
 LOAD_ERRORS = re.compile(r"outside of the config folder|is not a type|is not installed"
                          r"|module \S+ not found|Failed to load configuration")
@@ -165,7 +187,9 @@ def isolated_env(root):
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(home),
         "XDG_RUNTIME_DIR": str(run),
-        "XDG_CONFIG_HOME": str(home / ".config"),
+        # Elsewhere on purpose: the Omarchy shell (and so the overlay) reads
+        # $HOME/.config/omarchy/shell.json whatever XDG_CONFIG_HOME says.
+        "XDG_CONFIG_HOME": str(root / "xdg-config"),
         "XDG_CACHE_HOME": str(home / ".cache"),
         "XDG_DATA_HOME": str(home / ".local/share"),
         "XDG_STATE_HOME": str(home / ".local/state"),
@@ -239,7 +263,8 @@ class QuickshellLoad(unittest.TestCase):
                     self.assertNotIn("target codepet", r.stdout, call)
                     self.assertNotIn("Function not found", r.stdout, call)
                 st = json.loads(ipc("status").stdout)
-                self.assertEqual((st["supervisor"], st["home_requests"]), (False, 3), st)
+                # panel, tasks and openHome within a second: one Omarchy call (coalesced).
+                self.assertEqual((st["supervisor"], st["home_requests"], st["calm"]), (False, 1, True), st)
                 self.assertNotIn("window", st)
                 ipc("hide")
                 self.assertEqual(json.loads(ipc("status").stdout)["pet"], "hidden")
@@ -953,11 +978,13 @@ def bar_state_text(version, appearance, db_id=DB_A, fixture="idle-happy", schema
     return json.dumps(doc)
 
 
-def shell_json(overlay_on_load):
+def shell_json(overlay_on_load, calm=None):
     """~/.config/omarchy/shell.json with the CodePet cell; None = key absent."""
     entry = {"id": "greyforge.codepet", "label": "name"}
     if overlay_on_load is not None:
         entry["overlayOnLoad"] = overlay_on_load
+    if calm is not None:
+        entry["calm"] = calm
     return json.dumps({"version": 1, "bar": {"layout": {"left": [], "center": [],
                                                         "right": [{"id": "omarchy.clock"}, entry]}}})
 
@@ -1038,7 +1065,7 @@ class QuickshellOverlayRuntime(unittest.TestCase):
         return d / "bar-state.json"
 
     def settings_file(self, env):
-        d = Path(env["XDG_CONFIG_HOME"]) / "omarchy"
+        d = Path(env["HOME"]) / ".config/omarchy"
         d.mkdir(parents=True, exist_ok=True)
         return d / "shell.json"
 
@@ -1064,13 +1091,21 @@ class QuickshellOverlayRuntime(unittest.TestCase):
                 time.sleep(0.5)
                 self.assertEqual(self.rpc_log(env), [], "a readable file needs no state.get")
                 self.assertTrue(session.call("ping").stdout.startswith("codepet-overlay shown"))
-                for verb in ("openHome", "panel", "care"):
+                # A burst (a child mashing the pet) is one Omarchy call; a later one is another.
+                for verb in ("openHome", "panel", "care", "openHome", "openHome"):
                     self.assertEqual(session.call(verb).returncode, 0, verb)
-                st = session.wait_for(lambda s: s.get("home_requests") == 3)
-                self.assertEqual(st.get("home_requests"), 3, st)
+                st = session.wait_for(lambda s: s.get("home_requests") == 1)
+                self.assertEqual(st.get("home_requests"), 1, st)
+                time.sleep(1.1)
+                self.assertEqual(session.call("panel").returncode, 0)
+                st = session.wait_for(lambda s: s.get("home_requests") == 2)
+                self.assertEqual(st.get("home_requests"), 2, st)
                 time.sleep(0.3)
-                self.assertEqual(self.shell_calls(env), [["-q", "shell", "summon", "greyforge.codepet"]] * 3,
+                self.assertEqual(self.shell_calls(env), [["-q", "shell", "summon", "greyforge.codepet"]] * 2,
                                  "each opens Home through the Omarchy shell")
+                env_log = (Path(env["HOME"]) / "omarchy-shell.env.log").read_text().split()
+                self.assertEqual(env_log, ['"/usr/share/omarchy"'] * 2,
+                                 "without OMARCHY_PATH the packaged one is passed (omarchy-shell needs it)")
                 session.call("toggle")
                 self.assertEqual(session.wait_for(lambda s: s.get("pet") == "hidden").get("pet"), "hidden")
                 self.assertTrue(session.call("ping").stdout.startswith("codepet-overlay hidden"))
@@ -1184,18 +1219,104 @@ class QuickshellOverlayRuntime(unittest.TestCase):
             finally:
                 out = session.close()
             self.assertIn("exiting (desktop_pet_off)", out)
-            # The v0.2 default (no key) is off too; a shell.json without CodePet is unknown.
-            write_atomically(settings, shell_json(None))
+            # The v0.2 default (no key) is off too, and so is a bar without the CodePet cell
+            # (removed in Omarchy's bar settings without the uninstall): both exit after the
+            # settle time.
+            for text in (shell_json(None), json.dumps({"version": 1, "bar": {"layout": {"right": []}}})):
+                write_atomically(settings, text)
+                session = QsSession(root, env, entry)
+                try:
+                    st = session.wait_for(lambda s: s.get("exit_reason") == "desktop_pet_off")
+                    self.assertEqual((st.get("desktop_pet"), st.get("drawn")), (False, False), st)
+                    self.assertEqual(session.wait_exit(), 0, text)
+                finally:
+                    session.close()
+            # No usable shell.json (a standalone overlay): unknown, it keeps running.
+            for text in ("{broken", json.dumps({"bar": {"layout": {"right": []}}})):
+                write_atomically(settings, text)
+                session = QsSession(root, env, entry)
+                try:
+                    st = session.wait_for(lambda s: s.get("state_version") == 4)
+                    time.sleep(2.0)
+                    st = session.status()
+                    self.assertEqual((st.get("desktop_pet"), st.get("drawn"), st.get("exit_reason")),
+                                     (None, True, ""), (text, st))
+                finally:
+                    session.close()
+            # A shell.json under XDG_CONFIG_HOME is not the one Omarchy uses: ignored.
+            settings.unlink()
+            other = Path(env["XDG_CONFIG_HOME"]) / "omarchy/shell.json"
+            other.parent.mkdir(parents=True, exist_ok=True)
+            write_atomically(other, shell_json(False))
             session = QsSession(root, env, entry)
             try:
-                self.assertEqual(session.wait_exit(), 0)
+                session.wait_for(lambda s: s.get("state_version") == 4)
+                time.sleep(2.0)
+                st = session.status()
+                self.assertEqual((st.get("desktop_pet"), st.get("drawn")), (None, True), st)
             finally:
                 session.close()
-            write_atomically(settings, json.dumps({"version": 1, "bar": {"layout": {"right": []}}}))
+
+    def test_a_launch_racing_the_switch_write_keeps_the_pet(self):
+        """Let's go! writes overlayOnLoad=true and launches `show`; Omarchy's write does not
+        block, so the new process can read the old false first. It must not exit on it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self.export_env(root)
+            write_atomically(self.state_file(env), bar_state_text(4, "cat"))
+            settings = self.settings_file(env)
+            write_atomically(settings, shell_json(False))
+            entry = stage_without_layer_shell(root)
+            session = QsSession(root, env, entry)
+            try:
+                st = session.wait_for(lambda s: s.get("exit_reason") == "desktop_pet_off")
+                self.assertEqual(st.get("desktop_pet"), False, st)
+                time.sleep(0.2)
+                write_atomically(settings, shell_json(True))
+                st = session.wait_for(lambda s: s.get("desktop_pet") is True)
+                self.assertEqual((st.get("exit_reason"), st.get("drawn")), ("", True), st)
+                time.sleep(2.0)
+                self.assertIsNone(session.proc.poll(), "the settled switch is on: still running")
+                # Now seen on: switching it off exits at once (no settle wait).
+                write_atomically(settings, shell_json(False))
+                self.assertEqual(session.wait_exit(1.2), 0)
+            finally:
+                out = session.close()
+            self.assertEqual(out.count("exiting (desktop_pet_off)"), 1, out)
+
+    def test_calm_mode_follows_the_bar_setting_live(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self.export_env(root)
+            write_atomically(self.state_file(env), bar_state_text(4, "cat"))
+            settings = self.settings_file(env)
+            write_atomically(settings, shell_json(True))
+            entry = stage_without_layer_shell(root)
+            env["CODEPET_REDUCED_MOTION"] = "1"
+            session = QsSession(root, env, entry)
+            try:
+                st = session.wait_for(lambda s: s.get("desktop_pet") is True)
+                self.assertEqual(st.get("calm"), False, "the live setting (missing = off) beats the launch env")
+                write_atomically(settings, shell_json(True, calm=True))
+                self.assertEqual(session.wait_for(lambda s: s.get("calm") is True).get("calm"), True)
+                session.call("setReducedMotion", "false")
+                self.assertEqual(session.wait_for(lambda s: s.get("calm") is False).get("calm"), False,
+                                 "an explicit call holds")
+                write_atomically(settings, shell_json(True, calm=False))
+                time.sleep(0.5)
+                write_atomically(settings, shell_json(True, calm=True))
+                self.assertEqual(session.wait_for(lambda s: s.get("calm") is True).get("calm"), True,
+                                 "until the setting changes")
+                self.assertEqual(session.status().get("drawn"), True)
+            finally:
+                out = session.close()
+            self.assertNotRegex(out, r"TypeError|ReferenceError|Binding loop", out)
+            # No usable shell.json: CODEPET_REDUCED_MOTION=1 from the launch.
+            settings.unlink()
             session = QsSession(root, env, entry)
             try:
                 st = session.wait_for(lambda s: s.get("state_version") == 4)
-                self.assertEqual((st.get("desktop_pet"), st.get("drawn")), (None, True), st)
+                self.assertEqual((st.get("desktop_pet"), st.get("calm")), (None, True), st)
             finally:
                 session.close()
 
@@ -1282,6 +1403,7 @@ class QuickshellOverlayRuntime(unittest.TestCase):
                 self.assertEqual(code, 0)
                 # A v0.2 window verb opens the bar popup, once.
                 self.assertEqual(st.get("home_requests"), 1, st)
+                time.sleep(1.1)  # Home requests within a second are coalesced
                 for verb in ("show", "toggle", "care", "show"):
                     r = launcher(verb)
                     self.assertEqual(r.returncode, 0, (verb, r.stderr))

@@ -17,18 +17,28 @@ import "omarchy/OverlayFlow.js" as OverlayFlow
 // The overlay is one click-through layer-shell pet. It draws bar-state.json (watched,
 // never polled) and has no window of its own: everything you do with CodePet happens in
 // the bar popup, which a click on the pet opens at Home. The process exits by itself when
-// CodePet is Off or "Pet on my desktop" is off (omarchy/OverlayFlow.js).
+// CodePet is Off or "Pet on my desktop" is off, and follows Calm mode live; both switches
+// are the bar entry's settings in ~/.config/omarchy/shell.json (omarchy/OverlayFlow.js).
 ShellRoot {
     id: shell
     property string preferredScreenName: Quickshell.env("CODEPET_SCREEN")
-    property bool reducedMotion: Quickshell.env("CODEPET_REDUCED_MOTION") === "1"
     property bool explicitlyHidden: false
     // The last valid bar-state.json, and "Pet on my desktop" (null = unknown).
     property var barState: null
     property var desktopPet: null
+    // This process has seen "Pet on my desktop" on (then an off exits at once).
+    property bool sawDesktopPetOn: false
+    // Calm mode: the bar entry's `calm` (null = unknown), and a `setReducedMotion` call
+    // (null = none), which holds until the setting changes.
+    property var calmSetting: null
+    property var reducedMotionOverride: null
+    readonly property bool reducedMotion: OverlayFlow.reducedMotion(shell.reducedMotionOverride, shell.calmSetting,
+                                                                    Quickshell.env("CODEPET_REDUCED_MOTION"))
     property bool startupReadDone: false
     property bool leaving: false
+    // Home requests sent to the Omarchy shell (coalesced: at most one per second).
     property int homeRequests: 0
+    property real lastHomeMs: 0
     readonly property string exitReason: OverlayFlow.exitReason(shell.barState, shell.desktopPet)
 
     // Integration inputs, NOT detectors. Bind these to trustworthy host events
@@ -43,7 +53,9 @@ ShellRoot {
                                          && !selectedScreenFullscreen && selectedScreen !== null
                                          && exitReason === ""
 
-    onExitReasonChanged: if (shell.exitReason !== "") shell.leave()
+    onExitReasonChanged: shell.checkExit()
+    onDesktopPetChanged: if (shell.desktopPet === true) shell.sawDesktopPetOn = true
+    onCalmSettingChanged: shell.reducedMotionOverride = null
 
     // Explicit reads only: the startup read when bar-state.json is missing or unreadable,
     // and the `refresh` verb. A file event never launches codepet.
@@ -62,15 +74,29 @@ ShellRoot {
         onUnavailable: shell.startupRead()
     }
 
-    // "Pet on my desktop": the bar plugin's overlayOnLoad setting, read-only.
+    // "Pet on my desktop" (overlayOnLoad) and Calm mode (calm): the bar entry's settings, read-only.
     FileView {
         id: settingsFile
-        path: OverlayFlow.settingsPath(Quickshell.env("XDG_CONFIG_HOME"), Quickshell.env("HOME"))
+        path: OverlayFlow.settingsPath(Quickshell.env("HOME"))
         watchChanges: true
         printErrors: false
-        onLoaded: shell.desktopPet = OverlayFlow.desktopPetSetting(text())
-        onLoadFailed: shell.desktopPet = null
+        onLoaded: shell.readSettings(text())
+        onLoadFailed: shell.readSettings("")
         onFileChanged: reload()
+    }
+    function readSettings(text) {
+        shell.desktopPet = OverlayFlow.desktopPetSetting(text)
+        shell.calmSetting = OverlayFlow.calmSetting(text)
+    }
+
+    // A "Pet on my desktop" off read before this process saw it on must hold this long:
+    // the launch after Let's go! can race the write that turns the switch on.
+    Timer {
+        id: settleTimer
+        objectName: "overlay.settleTimer"
+        interval: OverlayFlow.SETTLE_MS
+        repeat: false
+        onTriggered: if (shell.exitReason !== "") shell.leave()
     }
 
     // At most one startup state.get, and only when there is no readable file to draw.
@@ -86,17 +112,34 @@ ShellRoot {
         if (!hostAdapter.busy)
             hostAdapter.request("state.get", {}, null)
     }
-    // Opens the bar popup at Home (the bar plugin's `open()` through Omarchy's IPC).
+    // Opens the bar popup at Home (the bar plugin's `open()` through Omarchy's IPC). A burst
+    // of clicks sends one call: requests within a second of the last one are dropped (the
+    // pet still hops and shows its heart for every click).
     function openHome() {
         if (shell.exitReason !== "")
             return
+        var now = Date.now()
+        if (!OverlayFlow.homeDue(shell.lastHomeMs, now))
+            return
+        shell.lastHomeMs = now
         shell.homeRequests += 1
         Quickshell.execDetached(OverlayFlow.openHomeArgv(Quickshell.env("OMARCHY_PATH")))
     }
     function hidePet() {
         shell.explicitlyHidden = true
     }
-    // Off or "Pet on my desktop" off: the process exits (SPEC-v0.3 §7.3).
+    // Off, or "Pet on my desktop" switched off after it was on: exit now. An off read before
+    // the switch was ever on here exits once it has held for the settle time.
+    function checkExit() {
+        if (shell.exitReason === "") {
+            settleTimer.stop()
+        } else if (OverlayFlow.exitsAtOnce(shell.exitReason, shell.sawDesktopPetOn)) {
+            shell.leave()
+        } else if (!settleTimer.running) {
+            settleTimer.restart()
+        }
+    }
+    // Off or "Pet on my desktop" off: the process exits (SPEC-v0.3 §3.8, §7.3).
     function leave() {
         if (shell.leaving)
             return
@@ -110,7 +153,9 @@ ShellRoot {
         target: "codepet"
         // Read-only one-line JSON status for the launcher's `status` verb and tests. No
         // timers, no names of coding apps' content. `supervisor` is always false: v0.3 has
-        // no simulation task (kept for the launcher's `quit` check).
+        // no simulation task (kept for the launcher's `quit` check). `exit_reason` is
+        // non-empty while the process is about to exit ("off", "desktop_pet_off"), so a
+        // launcher can say the desktop pet is off instead of reporting a failure.
         function status(): string {
             var s = shell.barState
             var life = s && s.life ? s.life : null
@@ -120,6 +165,8 @@ ShellRoot {
                 "supervisor": false,
                 "enabled": s ? s.enabled !== false : null,
                 "desktop_pet": shell.desktopPet,
+                "exit_reason": shell.exitReason,
+                "calm": shell.reducedMotion,
                 "face": pet.face.state,
                 "overlay": pet.face.overlay,
                 "drawn": pet.active,
@@ -145,7 +192,7 @@ ShellRoot {
         function companion(): void { shell.openHome() }
         function life(): void { shell.openHome() }
         function refresh(): void { shell.refresh() }
-        function setReducedMotion(value: bool): void { shell.reducedMotion = value }
+        function setReducedMotion(value: bool): void { shell.reducedMotionOverride = value }
         function selectScreen(name: string): void { shell.preferredScreenName = name }
         function setSessionState(locked: bool, suspended: bool): void {
             shell.sessionLocked = locked

@@ -21,7 +21,7 @@ const D = load('../../omarchy-plugin/DesktopPetFlow.js');
 const F = load('../omarchy/OverlayFlow.js');
 const fixture = (n) => JSON.parse(read(`../../docs/v0.3/contracts/fixtures/bar-v2/${n}.json`));
 const MANIFEST = JSON.parse(read('../../omarchy-plugin/manifest.json'));
-const asShellJson = (settings) => JSON.stringify({ bar: { layout: { right: [{ id: MANIFEST.id, ...settings }] } } });
+const asShellJson = (settings) => JSON.stringify({ version: 1, bar: { layout: { right: [{ id: MANIFEST.id, ...settings }] } } });
 
 test('the switch is the manifest setting the overlay reads', () => {
     assert.ok(MANIFEST.barWidget.schema.some((f) => f.key === D.SETTING && f.type === 'boolean'));

@@ -3,7 +3,7 @@
 // Pure presentation rules for the desktop pet (SPEC-v0.3 §3.8). petstate.js decides the
 // face (one order for the bar, Home and the overlay); this file turns its `overlay` and
 // `bubble` fields into an animation state and a picture-only thought bubble. No imports,
-// no I/O, no timers. Node-tested by qml/tests/test_overlay_face.mjs.
+// no I/O, no timers. Node-tested by qml/tests/test_overlay_flow.mjs.
 
 var CARE_SETS = ["floor", "aquatic", "robot"]
 var NEEDS = ["food", "water", "play", "wash"]
@@ -112,6 +112,36 @@ function markSeen(seen, celebrate) {
     else if (celebrate.kind === "test" && typeof celebrate.at_ms === "number")
         out.test_at_ms = Math.max(out.test_at_ms, celebrate.at_ms)
     return out
+}
+
+// What a new desktop-pet process counts as already celebrated: everything in the first
+// export it draws. A celebration therefore plays once on the desktop, never again after a
+// restart of the overlay (Off to On, the switch off and on, a bar or session restart);
+// one that happened before the process started is left to the bar and Home.
+// Returns {seen, grewSeq} (grewSeq -1 = no growth waiting).
+function seenAtStart(doc) {
+    var seen = { finished_seq: 0, hello_seq: 0, test_at_ms: 0 }
+    var grewSeq = -1
+    if (doc === null || typeof doc !== "object")
+        return { seen: seen, grewSeq: grewSeq }
+    var a = doc.agent !== null && typeof doc.agent === "object" ? doc.agent : null
+    if (a !== null) {
+        if (typeof a.finished_seq === "number" && isFinite(a.finished_seq))
+            seen.finished_seq = Math.max(0, a.finished_seq)
+        if (typeof a.hello_seq === "number" && isFinite(a.hello_seq))
+            seen.hello_seq = Math.max(0, a.hello_seq)
+        var t = a.test
+        if (t !== null && typeof t === "object" && t.state === "done" && typeof t.at_ms === "number"
+                && isFinite(t.at_ms))
+            seen.test_at_ms = Math.max(0, t.at_ms)
+    }
+    if (Array.isArray(doc.unseen_events)) {
+        for (var i = 0; i < doc.unseen_events.length; i++) {
+            var e = doc.unseen_events[i]
+            if (e && typeof e.seq === "number" && isFinite(e.seq) && e.seq > grewSeq) grewSeq = e.seq
+        }
+    }
+    return { seen: seen, grewSeq: grewSeq }
 }
 
 // The document the face is computed from once growth was celebrated here: the same

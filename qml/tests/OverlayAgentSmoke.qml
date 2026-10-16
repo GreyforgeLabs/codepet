@@ -56,6 +56,8 @@ Item {
     DesktopPet { id: pet; width: test.width; height: test.height; fixedNowMs: test.now; onHomeRequested: test.homes += 1 }
     // A second scene on the real clock, for the single-shot wake timer.
     DesktopPet { id: live; width: 600; height: 400 }
+    // A scene whose first export already holds celebrations: a new overlay process.
+    DesktopPet { id: fresh; width: 600; height: 400; fixedNowMs: test.now }
 
     function check(value, label) {
         checks += 1
@@ -165,17 +167,34 @@ Item {
         pet.barState = doc({unseen_events: [{seq: 9, stage: 2}], life: lifeWith({stage: 2}), state_version: 14})
         check(pet.transientState === "", "the same growth never replays")
 
+        // ---- a new process: what its first export holds was celebrated before it started ----
+        fresh.barState = doc({agent: agent({finished_seq: 5, finished_at_ms: now - 24000, finished_app: "codex",
+                                            hello_seq: 2, hello_at_ms: now - 5000, hello_app: "codex",
+                                            test: {state: "done", at_ms: now - 3000}}),
+                              unseen_events: [{seq: 9, stage: 2}], life: lifeWith({stage: 2})})
+        check(fresh.transientState === "" && fresh.face.state !== "celebrate",
+              "a restarted overlay never replays a celebration it started after")
+        check(fresh.seen.finished_seq === 5 && fresh.seen.hello_seq === 2 && fresh.seen.test_at_ms === now - 3000
+              && fresh.grewSeq === 9, "everything in the first export counts as seen")
+        fresh.barState = doc({agent: agent({finished_seq: 6, finished_at_ms: now - 4000, finished_app: "codex",
+                                            hello_seq: 2, hello_at_ms: now - 5000, hello_app: "codex"}),
+                              unseen_events: [{seq: 9, stage: 2}], life: lifeWith({stage: 2}), state_version: 11})
+        check(fresh.transientState === "celebrate" && fresh.seen.finished_seq === 6,
+              "a finish after the start celebrates once")
+
         // ---- a click always reacts (K5) ----
         show({})
         var before = homes
         check(pet.petClicked(), "a click on the pet is handled")
         check(homes === before + 1, "a click asks the host for Home once")
+        check(pet.hopping, "the pet hops")
         check(icons(pet) === "care-floor/heart.webp" && iconsLoad(pet), "with a heart bubble")
         check(find(pet, "desktopPet.cosmeticTimer").running, "the heart bubble ends on its own")
         pet.reducedMotion = true
+        check(!pet.hopping && pet.hopOffset === 0, "Calm mode stops a hop at once")
         pet.heartMsLeft = 0
         pet.petClicked()
-        check(homes === before + 2 && icons(pet) === "care-floor/heart.webp" && pet.hopOffset === 0,
+        check(homes === before + 2 && icons(pet) === "care-floor/heart.webp" && !pet.hopping && pet.hopOffset === 0,
               "Calm mode: the bubble only, no hop")
         for (i = 0; i < 4; i++) pet.cosmeticTick()
         check(pet.heartMsLeft === 0 && icons(pet) === "", "the heart goes away")
@@ -187,6 +206,7 @@ Item {
         show({})
 
         // ---- the single-shot wake timer (real clock) ----
+        live.barState = doc({})
         var t0 = Date.now()
         live.barState = doc({agent: agent({finished_seq: 1, finished_at_ms: t0 - 1500, finished_app: "codex"})})
         var wake = find(live, "desktopPet.wakeTimer")
@@ -202,6 +222,19 @@ Item {
             test.check(live.seen.finished_seq === 1, "the wake timer re-read the clock and the pet celebrated")
             test.check(live.transientState === "celebrate" && !wake.running,
                        "once celebrated nothing is left to wait for: no wake armed")
+            // Calm mode while an app needs you: no bob, no hop (SPEC-v0.3 §3.8).
+            live.clearTransients()
+            var t1 = Date.now()
+            live.barState = test.doc({agent: test.agent({state: "waiting", stale_at_ms: t1 + 540000,
+                                                         apps: [{id: "codex", state: "waiting", since_ms: t1 - 60000,
+                                                                 stale_at_ms: t1 + 540000}]}), state_version: 11})
+            live.reducedMotion = true
+            var still = true
+            for (var i = 0; i < 6; i++) { live.cosmeticTick(); if (live.bobOffset !== 0) still = false }
+            live.petClicked()
+            test.check(live.face.state === "waiting" && still && !live.hopping && live.hopOffset === 0,
+                       "Calm mode: a waiting pet neither bobs nor hops")
+            live.reducedMotion = false
             live.barState = test.doc({enabled: false})
             test.check(!wake.running && !test.find(live, "desktopPet.cosmeticTimer").running, "Off stops both timers (K9)")
             console.log("Overlay agent smoke: " + test.checks + " checks, " + test.failures + " failures")

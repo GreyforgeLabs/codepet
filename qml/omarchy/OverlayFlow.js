@@ -1,17 +1,21 @@
 .pragma library
 
-// Pure lifecycle rules for the desktop overlay process (SPEC-v0.3 §3.8, §7.3, §8). No
+// Pure lifecycle rules for the desktop overlay process (SPEC-v0.3 §3.6, §3.8, §7.3, §8). No
 // Quickshell, no I/O: shell.qml reads the files and runs the commands. Node-tested by
 // qml/tests/test_overlay_flow.mjs.
 //
 // - The overlay process exits when CodePet is Off (bar-state.json `enabled: false`) or
 //   when "Pet on my desktop" is off. That switch is the bar plugin's `overlayOnLoad`
 //   setting in ~/.config/omarchy/shell.json (written by the bar plugin; read-only here).
+//   Turned off after this process saw it on, it exits at once; read as off before that,
+//   it exits only after the off has held for SETTLE_MS (a launch can race the write that
+//   turns the switch on).
+// - Calm mode is the same entry's `calm` setting, read live (SPEC-v0.3 §3.6, §7.2).
 // - A click on the pet opens the bar popup at Home through the Omarchy shell's IPC:
 //   `omarchy-shell -q shell summon greyforge.codepet`, which calls the bar widget's
 //   `open()` (Omarchy's bar-widget panel contract: open(), close(), opened; the bar plugin
 //   makes open() show Home). `-q` keeps it silent and successful when the shell or the
-//   widget is not there.
+//   widget is not there. Requests closer than HOME_COOLDOWN_MS are coalesced.
 
 var PLUGIN_ID = "greyforge.codepet"
 var SETTING = "overlayOnLoad"
@@ -19,6 +23,12 @@ var MAX_SETTINGS_BYTES = 1048576
 // Verbs that open the bar popup. `panel` is the v0.3 name; the v0.2 window verbs stay as
 // aliases while the v0.2 bar menu and launcher still send them (until WP5 replaces them).
 var HOME_VERBS = ["panel", "tasks", "care", "companion", "life"]
+// One Omarchy IPC call per second at most, however fast the pet is clicked.
+var HOME_COOLDOWN_MS = 1000
+// How long a "Pet on my desktop" off must hold before a process that never saw it on exits.
+var SETTLE_MS = 1500
+// The packaged Omarchy root, used when $OMARCHY_PATH is not set (omarchy-shell needs it).
+var DEFAULT_OMARCHY_PATH = "/usr/share/omarchy"
 
 function isObject(v) {
     return v !== null && typeof v === "object" && !Array.isArray(v)
@@ -41,20 +51,17 @@ function absolute(v) {
            && v.indexOf("\0") < 0 && v.split("/").indexOf("..") < 0 ? v.replace(/\/+$/, "") : ""
 }
 
-// `$XDG_CONFIG_HOME/omarchy/shell.json` (a relative XDG_CONFIG_HOME is ignored), else
-// `~/.config/omarchy/shell.json`; "" without an absolute base (the watcher stays idle).
-function settingsPath(xdgConfigHome, home) {
-    var base = absolute(xdgConfigHome)
-    if (base === "") {
-        var h = absolute(home)
-        base = h === "" ? "" : h + "/.config"
-    }
-    return base === "" ? "" : base + "/omarchy/shell.json"
+// `$HOME/.config/omarchy/shell.json`, exactly the file the Omarchy shell reads and writes
+// (its `userConfigPath` ignores XDG_CONFIG_HOME); "" without an absolute HOME (the watcher
+// stays idle).
+function settingsPath(home) {
+    var h = absolute(home)
+    return h === "" ? "" : h + "/.config/omarchy/shell.json"
 }
 
-// The CodePet bar entry's settings in a shell.json text, or null when the file is
-// missing, oversized or unparsable, or has no CodePet entry.
-function pluginEntry(text) {
+// A parsed shell.json the Omarchy shell would use (a JSON object with `version: 1`), or null
+// when the text is missing, oversized, unparsable or of another version.
+function parseSettings(text) {
     if (typeof text !== "string" || text.length === 0 || text.length > MAX_SETTINGS_BYTES
             || utf8Bytes(text) > MAX_SETTINGS_BYTES)
         return null
@@ -64,6 +71,11 @@ function pluginEntry(text) {
     } catch (e) {
         return null
     }
+    return isObject(doc) && doc.version === 1 ? doc : null
+}
+
+// The CodePet bar entry of a parsed shell.json, or null when the bar has no CodePet cell.
+function entryOf(doc) {
     if (!isObject(doc) || !isObject(doc.bar))
         return null
     var holders = [doc.bar.layout, doc.bar]
@@ -84,14 +96,42 @@ function pluginEntry(text) {
     return null
 }
 
-// "Pet on my desktop": true / false from the CodePet bar entry, null when unknown (no
-// shell.json, no CodePet cell: a standalone overlay keeps running). A missing key is the
-// manifest default, false, exactly as the bar plugin reads it.
+// The CodePet bar entry's settings in a shell.json text, or null (no usable file, or no
+// CodePet cell).
+function pluginEntry(text) {
+    return entryOf(parseSettings(text))
+}
+
+// "Pet on my desktop": true / false from the CodePet bar entry. A missing key is the
+// manifest default, false, exactly as the bar plugin reads it. A shell.json the Omarchy
+// shell uses but without a CodePet cell is false too: the cell was removed from the bar.
+// null (unknown, keep running) only without a usable file: none, unparsable, oversized or
+// not `version: 1` (the Omarchy shell then ignores it as well).
 function desktopPetSetting(text) {
-    var entry = pluginEntry(text)
-    if (entry === null)
+    var doc = parseSettings(text)
+    if (doc === null)
         return null
-    return String(entry[SETTING]) === "true"
+    var entry = entryOf(doc)
+    return entry !== null && String(entry[SETTING]) === "true"
+}
+
+// Calm mode: the CodePet bar entry's `calm` setting (missing = the manifest default, off);
+// null when there is no usable file or no CodePet cell.
+function calmSetting(text) {
+    var entry = pluginEntry(text)
+    return entry === null ? null : String(entry.calm) === "true"
+}
+
+// Whether the pet moves calmly: an explicit `setReducedMotion` call (`override`, null when
+// none) wins until the setting changes; then the bar entry's `calm` (`setting`); with no
+// setting, CODEPET_REDUCED_MOTION=1 from the launch (`envValue`). Omarchy has no system
+// reduced-motion signal, so "follows system" is the plugin default: off.
+function reducedMotion(override, setting, envValue) {
+    if (override === true || override === false)
+        return override
+    if (setting === true || setting === false)
+        return setting
+    return envValue === "1"
 }
 
 // Why the overlay process must exit now: "off", "desktop_pet_off" or "" (keep running).
@@ -104,12 +144,29 @@ function exitReason(barState, desktopPet) {
     return ""
 }
 
-// argv that opens the bar popup at Home. `omarchyPath` is $OMARCHY_PATH (absolute), else
-// `omarchy-shell` is looked up on PATH.
+// Whether an exit reason ends the process now: Off always does; a desktop pet switched
+// off does once this process saw it on. Otherwise the off must hold for SETTLE_MS first.
+function exitsAtOnce(reason, sawDesktopPetOn) {
+    return reason === "off" || (reason === "desktop_pet_off" && sawDesktopPetOn === true)
+}
+
+// Whether a Home request goes out now: none was sent in the last HOME_COOLDOWN_MS
+// (`lastSentMs` 0 = never; a clock that went backwards allows one).
+function homeDue(lastSentMs, nowMs) {
+    if (!(typeof lastSentMs === "number" && lastSentMs > 0))
+        return true
+    return nowMs < lastSentMs || nowMs - lastSentMs >= HOME_COOLDOWN_MS
+}
+
+// argv that opens the bar popup at Home. `omarchyPath` is $OMARCHY_PATH (absolute); without
+// it, omarchy-shell from PATH is run with the packaged OMARCHY_PATH, because it refuses to
+// run (silently, under -q) when OMARCHY_PATH is not set.
 function openHomeArgv(omarchyPath) {
     var base = absolute(omarchyPath)
-    var bin = base === "" ? "omarchy-shell" : base + "/bin/omarchy-shell"
-    return [bin, "-q", "shell", "summon", PLUGIN_ID]
+    var call = ["-q", "shell", "summon", PLUGIN_ID]
+    if (base !== "")
+        return [base + "/bin/omarchy-shell"].concat(call)
+    return ["/usr/bin/env", "OMARCHY_PATH=" + DEFAULT_OMARCHY_PATH, "omarchy-shell"].concat(call)
 }
 
 function opensHome(verb) {
