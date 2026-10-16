@@ -85,7 +85,13 @@ pub fn now_ms() -> i64 {
 pub fn random_hex(n: usize) -> std::io::Result<String> {
     let mut bytes = vec![0u8; n];
     fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(n * 2);
+    for b in bytes {
+        out.push(char::from(HEX[usize::from(b >> 4)]));
+        out.push(char::from(HEX[usize::from(b & 15)]));
+    }
+    Ok(out)
 }
 
 /// `job-` + 24 lowercase hex (`protocol.json` `job_id_pattern`).

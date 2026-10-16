@@ -345,11 +345,7 @@ pub fn sweep_temps(dir: &Path) {
 /// Installs a directory tree built in `staging` at `target` (same filesystem): a new
 /// target by one rename, an existing one by an atomic exchange (the old tree is then
 /// removed). `files` are (relative path, bytes, mode). Returns whether anything changed.
-pub fn install_dir(
-    staging: &Path,
-    target: &Path,
-    files: &[TreeFile],
-) -> io::Result<bool> {
+pub fn install_dir(staging: &Path, target: &Path, files: &[TreeFile]) -> io::Result<bool> {
     if dir_matches(target, files) {
         return Ok(false);
     }
