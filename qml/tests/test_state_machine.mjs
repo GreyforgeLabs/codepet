@@ -46,15 +46,21 @@ test('PetSprite stays passive: no Timer, no requests, no animations', () => {
 });
 
 test('shared QML never imports Quickshell', () => {
-    for (const f of ['PetSprite.qml', 'DesktopPet.qml', 'PetCare.qml', 'PetCatalog.js', 'PetStateMachine.js'])
+    for (const f of ['PetSprite.qml', 'DesktopPet.qml', 'PetCare.qml', 'PetCatalog.js', 'PetStateMachine.js',
+                     'OverlayFace.js', 'petstate.js'])
         assert.doesNotMatch(read(`../shared/${f}`), /^\s*import\s+Quickshell/m, f);
 });
 
-test('DesktopPet keeps a single cosmetic scheduler and no state.get', () => {
-    const src = read('../shared/DesktopPet.qml');
-    assert.equal(src.match(/Timer \{/g).length, 1);
+test('DesktopPet: one cosmetic scheduler, one single-shot wake, and no transport at all', () => {
+    const src = read('../shared/DesktopPet.qml').replace(/\/\/[^\n]*/g, '');
+    assert.equal(src.match(/Timer \{/g).length, 2);
     assert.match(src, /objectName: "desktopPet\.cosmeticTimer"/);
-    assert.ok(!src.includes('"state.get"'), 'DesktopPet must never refresh on its own');
+    const wake = src.slice(src.indexOf('objectName: "desktopPet.wakeTimer"'));
+    assert.match(wake.slice(0, 200), /repeat: false/, 'the wake timer is single-shot');
+    for (const banned of ['.request(', 'host', 'Process', 'execDetached', 'state.get', 'pet.care', 'pet.events_seen'])
+        assert.ok(!src.includes(banned), `DesktopPet must not contain ${banned}`);
+    // Picture-only: no Text on the desktop (no numbers, no words, K1/K2).
+    assert.doesNotMatch(src, /\bText \{|\bLabel \{|\bButton \{/);
     assert.ok(!src.includes('Item {\n        id: prop'), 'the separate prop item is gone');
 });
 
