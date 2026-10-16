@@ -559,6 +559,46 @@ fn retention_is_hourly_limited_and_coarsens() {
     assert!(store.agent_retention().unwrap());
 }
 
+/// Heavy use (more than 1000 events per active hour) cannot outgrow the bounds: one pass
+/// brings `agent_events` back to its row cap and drops everything older than 7 days, and
+/// an over-cap table is trimmed even inside the hourly gate.
+#[test]
+fn retention_keeps_agent_events_within_its_bounds_under_heavy_use() {
+    let env = Env::new();
+    let mut store = env.fold();
+    let cap = i64::from(AGENT_EVENTS_MAX_ROWS);
+    let insert = |from: i64, n: i64, at: i64| {
+        env.set(&format!(
+            "WITH RECURSIVE k(i) AS (SELECT {from} UNION ALL SELECT i + 1 FROM k WHERE i < {})
+             INSERT INTO agent_events (dedupe_key, client, kind, at_ms, outcome, interactive)
+             SELECT printf('%032x', i), 'claude-code', 'activity', {at}, 'folded', 1 FROM k",
+            from + n - 1
+        ));
+    };
+    // 1700 rows older than 7 days, then cap + 1800 recent ones.
+    insert(1, 1700, T0 - 8 * DAY_MS);
+    insert(10_000, cap + 1800, T0);
+    assert!(store.agent_retention().unwrap());
+    assert_eq!(env.int("SELECT COUNT(*) FROM agent_events"), cap);
+    assert_eq!(
+        env.int(&format!(
+            "SELECT COUNT(*) FROM agent_events WHERE at_ms < {}",
+            T0 - AGENT_EVENTS_KEEP_MS
+        )),
+        0
+    );
+    // The newest rows are the ones kept.
+    assert_eq!(
+        env.int("SELECT MIN(id) FROM agent_events"),
+        env.int("SELECT MAX(id) FROM agent_events") - cap + 1
+    );
+    // Within the hour: nothing to do at the cap, but an over-cap burst is trimmed at once.
+    assert!(!store.agent_retention().unwrap(), "at the cap: hourly gate");
+    insert(100_000, 600, T0);
+    assert!(store.agent_retention().unwrap(), "over the cap: runs");
+    assert_eq!(env.int("SELECT COUNT(*) FROM agent_events"), cap);
+}
+
 /// Two byte-identical permission prompts in one turn, an activity between them, all inside
 /// one 3 s bucket (notes.md §5 item 2): the second "needs you" is not a duplicate. A
 /// delivery of the same firing (same millisecond) still is, and activity keeps the bucket.

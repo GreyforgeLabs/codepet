@@ -26,6 +26,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// The longest one retention pass keeps deleting `agent_events` rounds (the fold's run
+/// budget is 5 s).
+pub const RETENTION_RUN: Duration = Duration::from_secs(1);
+
 /// The schema the fold, the agent export and the treat jar need. WP0 keeps
 /// [`crate::SCHEMA_VERSION`] at 4 until WP1's v5 migration lands; then both are 5.
 pub const AGENT_SCHEMA_VERSION: i64 = 5;
@@ -166,35 +170,67 @@ impl Store {
         Ok(out)
     }
 
-    /// Hourly retention (§6.4) in its own transaction; `Ok(false)` when it ran less than
-    /// an hour ago. Deletes are indexed and capped at [`RETENTION_LIMIT`] rows each.
+    /// Retention (§6.4): at most hourly, or at once while `agent_events` is over its row
+    /// cap; `Ok(false)` when it did not run. Deletes are indexed and capped at
+    /// [`RETENTION_LIMIT`] rows per statement; the `agent_events` deletes repeat, each round
+    /// in its own short transaction, until a round removes fewer than the limit or
+    /// [`RETENTION_RUN`] has passed, so heavy use cannot outgrow the 7-day and row bounds.
     /// `activity_turns` and `activity_xp` rows are never deleted, only coarsened.
     pub fn agent_retention(&mut self) -> Result<bool> {
+        let started = std::time::Instant::now();
         let now = self.clock.now_ms();
+        let max_rows = i64::from(AGENT_EVENTS_MAX_ROWS);
+        let limit = i64::from(RETENTION_LIMIT);
+        {
+            let tx = self
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Deferred)?;
+            if user_version(&tx)? != AGENT_SCHEMA_VERSION {
+                return Ok(false);
+            }
+            let last: Option<i64> =
+                tx.query_row("SELECT retention_at_ms FROM meta WHERE id = 1", [], |r| {
+                    r.get(0)
+                })?;
+            let hourly_done = last.is_some_and(|l| l <= now && now - l < RETENTION_INTERVAL_MS);
+            // An upper bound of the row count from the primary key (two index probes).
+            let span: i64 = tx.query_row(
+                "SELECT COALESCE(MAX(id) - MIN(id) + 1, 0) FROM agent_events",
+                [],
+                |r| r.get(0),
+            )?;
+            if hourly_done
+                && (span <= max_rows
+                    || tx.query_row("SELECT COUNT(*) FROM agent_events", [], |r| {
+                        r.get::<_, i64>(0)
+                    })? <= max_rows)
+            {
+                return Ok(false);
+            }
+        }
+        loop {
+            let tx = self
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let old = tx.execute(
+                "DELETE FROM agent_events WHERE id IN
+                   (SELECT id FROM agent_events WHERE at_ms < ?1 ORDER BY at_ms LIMIT ?2)",
+                params![now - AGENT_EVENTS_KEEP_MS, limit],
+            )?;
+            let over = tx.execute(
+                "DELETE FROM agent_events WHERE id IN
+                   (SELECT id FROM agent_events ORDER BY id DESC LIMIT ?2 OFFSET ?1)",
+                params![max_rows, limit],
+            )?;
+            tx.commit()?;
+            let full = |n: usize| i64::try_from(n).unwrap_or(i64::MAX) >= limit;
+            if !(full(old) || full(over)) || started.elapsed() >= RETENTION_RUN {
+                break;
+            }
+        }
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if user_version(&tx)? != AGENT_SCHEMA_VERSION {
-            return Ok(false);
-        }
-        let last: Option<i64> =
-            tx.query_row("SELECT retention_at_ms FROM meta WHERE id = 1", [], |r| {
-                r.get(0)
-            })?;
-        if last.is_some_and(|l| l <= now && now - l < RETENTION_INTERVAL_MS) {
-            return Ok(false);
-        }
-        let limit = i64::from(RETENTION_LIMIT);
-        tx.execute(
-            "DELETE FROM agent_events WHERE id IN
-               (SELECT id FROM agent_events WHERE at_ms < ?1 ORDER BY at_ms LIMIT ?2)",
-            params![now - AGENT_EVENTS_KEEP_MS, limit],
-        )?;
-        tx.execute(
-            "DELETE FROM agent_events WHERE id IN
-               (SELECT id FROM agent_events ORDER BY id DESC LIMIT ?2 OFFSET ?1)",
-            params![i64::from(AGENT_EVENTS_MAX_ROWS), limit],
-        )?;
         // Ended sessions after 30 days; a session that never reported its end stopped
         // counting 30 minutes after its last event, so after 30 days it goes too.
         tx.execute(
