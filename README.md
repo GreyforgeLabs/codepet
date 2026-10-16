@@ -1,14 +1,28 @@
+<p align="center">
+  <img src="docs/screenshots/codepet-cover.jpg" alt="CodePet — fifteen animated companions for your Omarchy desktop" width="100%">
+</p>
+
 # CodePet
 
-A desktop pet that keeps you company while you code. Pick a pet, tap **Let's go!**,
-and feed and play with it using big picture buttons. Connect your coding apps and
-it reacts when they work, need you, or finish. Give it earned treats to help it grow.
+**A little company while you code.**
 
-![The fifteen CodePet companions at their three stages](docs/screenshots/codepet-v0.2-roster.webp)
+Pick a companion. Feed it, play with it, and watch it grow. Connect your coding
+apps and your pet reacts as they work, wait for you, and finish. Good work earns
+treats; you choose when to give them.
 
-**v0.3.0** is the new simple-interface release candidate (MIT).
+[**Download v0.3.0**](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.3.0)
+ · [Get started](#quick-start)
+ · [Meet the pets](#meet-your-companion)
+ · [How it works](docs/architecture.md)
+ · [MIT license](LICENSE)
+
+Built for **Omarchy 4 + Hyprland**. Local, quiet, and yours.
 `codepet --version` prints `codepet 0.3.0`.
 See the [changelog](CHANGELOG.md) and [qualification record](docs/validation.md).
+
+<p align="center">
+  <img src="docs/screenshots/codepet-cat-states.gif" alt="CodePet's orange cat animating through its pet states" width="640">
+</p>
 
 ## Features
 
@@ -32,6 +46,25 @@ See the [changelog](CHANGELOG.md) and [qualification record](docs/validation.md)
 - **Memories** of arrivals, growth, new looks, recovery and past pets.
 - **No resident Rust daemon**, notifications, sounds or streaks.
 
+## Made for small moments
+
+<p align="center">
+  <img src="docs/screenshots/codepet-v0.3-home.png" alt="The v0.3 Home screen: Ginger helping Claude Code and Grok, with Feed, Water, Play and Bath buttons" width="364">
+</p>
+
+Big picture buttons keep care a tap away. Your pet shows which coding friends are
+busy, while Helpers keeps the connection details out of the way. The image above
+is the real v0.3 interface rendered with a sample two-app activity state.
+
+## Meet your companion
+
+![The fifteen CodePet companions at their three stages](docs/screenshots/codepet-v0.2-roster.webp)
+
+From a tiny cat to a crowned capybara: **15 companions, three stages each**.
+Change your pet's look whenever you like without losing its name, care or growth.
+
+![A CodePet cat growing through three stages](docs/screenshots/codepet-evolution.png)
+
 ## Requirements
 
 - Omarchy 4 on Hyprland for the bar plugin (developed against the 4.0.4 plugin API).
@@ -45,23 +78,9 @@ fixture window. See [validation](docs/validation.md) for checks actually complet
 
 ## Quick start
 
-From a source checkout:
-
-```sh
-git clone https://github.com/GreyforgeLabs/codepet
-cd codepet
-packaging/omarchy/install.sh --dry-run
-packaging/omarchy/install.sh
-```
-
-The installer stages the binary, desktop runtime and bar plugin, asks the running
-Omarchy shell to rescan, and migrates saved state with a backup. It never
-restarts the shell or arms your pet. Use the installer rather than
-`omarchy plugin add`: the plugin also needs the binary and shared runtime.
-
-### Install from an archive
-
-For `codepet-0.3.0-x86_64-linux.tar.gz` and its `SHA256SUMS`:
+Download **`codepet-0.3.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
+[the latest release](https://github.com/GreyforgeLabs/codepet/releases/latest),
+then run these commands in the download directory:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
@@ -71,8 +90,24 @@ packaging/omarchy/install.sh --dry-run
 packaging/omarchy/install.sh
 ```
 
-The archive includes the binary, so nothing is compiled. Downloads are listed on
-[GitHub Releases](https://github.com/GreyforgeLabs/codepet/releases).
+The archive includes the binary; nothing is compiled. The installer adds the
+bar plugin and desktop pet, asks Omarchy to rescan its plugins, and upgrades
+saved state with a backup. It never restarts your shell or starts your pet's life.
+Use the installer: the plugin needs the bundled binary and shared runtime too.
+
+<details>
+<summary>Build and install from source</summary>
+
+Requires Rust 1.85 or later, Cargo, and a C compiler.
+
+```sh
+git clone https://github.com/GreyforgeLabs/codepet
+cd codepet
+packaging/omarchy/install.sh --dry-run
+packaging/omarchy/install.sh
+```
+
+</details>
 
 ### First run
 
