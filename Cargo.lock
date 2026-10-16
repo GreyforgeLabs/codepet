@@ -48,6 +48,7 @@ dependencies = [
  "codepet-storage",
  "rusqlite",
  "rustix",
+ "serde",
  "serde_json",
  "tempfile",
 ]

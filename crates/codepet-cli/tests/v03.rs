@@ -181,7 +181,7 @@ fn off_is_total_and_on_resumes() {
     assert!(env.state_dir().join("off").is_file());
 
     // protocol.json `off_behaviour`: every refused method answers INVALID_STATE
-    // "CodePet is off"; the clients methods are WP3 and answer NOT_IMPLEMENTED here.
+    // "CodePet is off" (the clients methods too, before any client is detected).
     let p = protocol();
     let off = &p["off_behaviour"];
     let params = |m: &str| -> Value {
@@ -215,12 +215,8 @@ fn off_is_total_and_on_resumes() {
         let r = env.call(m, params(m));
         let resp = r.response();
         assert_eq!(resp["ok"], false, "{m}");
-        if m.starts_with("clients.") {
-            assert_eq!(resp["error"]["code"], "NOT_IMPLEMENTED", "{m}");
-        } else {
-            assert_eq!(resp["error"]["code"], "INVALID_STATE", "{m}: {resp}");
-            assert_eq!(resp["error"]["message"], "CodePet is off", "{m}");
-        }
+        assert_eq!(resp["error"]["code"], "INVALID_STATE", "{m}: {resp}");
+        assert_eq!(resp["error"]["message"], "CodePet is off", "{m}");
     }
     // Allowed methods run while Off.
     let allowed = off["allowed"].as_array().unwrap();

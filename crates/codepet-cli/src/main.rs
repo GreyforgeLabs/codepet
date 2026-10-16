@@ -2,10 +2,10 @@
 //! exits. (With the retired `legacy-tasks` feature only, a successful `rpc` task.start
 //! continues as that job's mock supervisor.)
 //!
-//! v0.3 (spec §6.3): `migrate`, `on`, `off`, `helpers` and `forget-history` are WP1;
-//! `fold`, `clients-job`, `connect`, `disconnect` and `doctor` still answer
-//! `NOT_IMPLEMENTED` (exit 1, one stderr line, no state touched) until their work package
-//! lands. `hook` keeps invariant O2: it always exits 0 silently.
+//! v0.3 (spec §6.3): `migrate`, `on`, `off`, `helpers` and `forget-history` (WP1); `hook`
+//! and `fold` (WP2; the hook keeps invariant O2: it always exits 0 silently); `connect`,
+//! `disconnect`, `doctor` and the internal `clients-job` and `clients-refresh` (WP3).
+mod clients;
 mod clients_job;
 mod commands;
 #[cfg(feature = "legacy-tasks")]
@@ -14,6 +14,7 @@ mod doctor;
 mod errors;
 mod fold;
 mod hook;
+mod install;
 mod rpc;
 #[cfg(feature = "legacy-tasks")]
 mod supervisor;
@@ -27,6 +28,11 @@ const HELP: &str = "CodePet: a desktop pet that keeps you company while your cod
   codepet on | off         Turn CodePet on or off (Off freezes the pet; nothing runs)
   codepet helpers on|off   Count background helpers (headless coding sessions) or not
   codepet forget-history   Forget coding history (treats and growth are kept)
+  codepet connect <app>... | --all
+                           Let the pet watch coding apps (claude-code, codex, opencode,
+                           hermes, grok-cli); --all skips Codex, which needs a grown-up step
+  codepet disconnect <app> Stop watching a coding app
+  codepet doctor [--json]  Plain-word health check (changes nothing)
   codepet --version        Print the version
 No daemon and no background polling. CodePet only observes coding apps you connect; it never
 starts, stops, blocks or answers them.";
@@ -89,7 +95,9 @@ fn main() {
         (Some(Some(c @ ("migrate" | "on" | "off" | "forget-history"))), _) => {
             usage(&format!("{c} takes no arguments"))
         }
-        (Some(Some(c @ ("connect" | "disconnect"))), _) => not_implemented(c),
+        (Some(Some("connect")), _) => clients::connect_cli(&args[1..]),
+        (Some(Some("disconnect")), _) => clients::disconnect_cli(&args[1..]),
+        (Some(Some("clients-refresh")), 1) => clients::refresh_cli(),
         #[cfg(feature = "legacy-tasks")]
         (Some(Some(c @ ("providers" | "mock-demo"))), _) => {
             usage(&format!("{c} takes no arguments"))
@@ -117,18 +125,6 @@ fn state() -> i32 {
             1
         }
     }
-}
-
-/// The v0.3 skeleton's answer for a routed command whose work package has not landed:
-/// one stderr line naming the protocol code, exit 1, nothing read or written.
-pub(crate) fn not_implemented(command: &str) -> i32 {
-    let _ = writeln!(
-        std::io::stderr(),
-        "{}: codepet {command} is {}",
-        codepet_protocol::ErrorCode::NotImplemented,
-        codepet_protocol::V03_PENDING_MESSAGE
-    );
-    1
 }
 
 fn usage(message: &str) -> i32 {

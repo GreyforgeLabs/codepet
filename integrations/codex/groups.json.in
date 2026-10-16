@@ -1,0 +1,76 @@
+[
+  {
+    "event": "UserPromptSubmit",
+    "group": {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "@CODEPET_SHIM@ codex >/dev/null 2>&1 || true",
+          "timeout": 2
+        }
+      ]
+    }
+  },
+  {
+    "event": "PermissionRequest",
+    "group": {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "@CODEPET_SHIM@ codex >/dev/null 2>&1 || true",
+          "timeout": 2,
+          "async": true
+        }
+      ]
+    }
+  },
+  {
+    "event": "PostToolUse",
+    "group": {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "@CODEPET_SHIM@ codex >/dev/null 2>&1 || true",
+          "timeout": 2,
+          "async": true
+        }
+      ]
+    }
+  },
+  {
+    "event": "Stop",
+    "group": {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "@CODEPET_SHIM@ codex >/dev/null 2>&1 || true",
+          "timeout": 2
+        }
+      ]
+    }
+  },
+  {
+    "event": "Interrupt",
+    "group": {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "@CODEPET_SHIM@ codex >/dev/null 2>&1 || true",
+          "timeout": 2
+        }
+      ]
+    }
+  },
+  {
+    "event": "SessionEnd",
+    "group": {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "@CODEPET_SHIM@ codex >/dev/null 2>&1 || true",
+          "timeout": 2
+        }
+      ]
+    }
+  }
+]

@@ -1,16 +1,21 @@
 #!/bin/sh
 # codepet-overlay: verb launcher for the CodePet desktop overlay (Quickshell).
 #
-#   codepet-overlay show|hide|toggle|tasks|care|companion|life|refresh|status|quit [--force]
+#   codepet-overlay show|hide|toggle|panel|tasks|care|companion|life|refresh|status|quit [--force]
 #
 # The overlay is one separate, detached `qs` process. This script finds a running
 # instance and sends it an IPC verb; it never starts a second copy. `hide`,
 # `refresh`, `status` and `quit` never start the overlay. `hide` only hides the pet;
-# `quit` ends the overlay process (`qs kill`), for example before an uninstall. It
-# refuses while a simulation task is executing, and also when the overlay's status
-# reply does not say (an empty reply, or one without the `supervisor` field, as from
-# an overlay of CodePet 0.2.0). `quit --force` skips only that second refusal, for
-# when you know no task is running; it never ends an overlay reporting a running task.
+# `quit` ends the overlay process (`qs kill`), for example before an uninstall.
+#
+# It refuses while a CodePet 0.2 simulation task is executing, and also when the
+# overlay's status reply does not say (an empty reply, or one without the `supervisor`
+# field, as from an overlay of CodePet 0.2.0). `quit --force` skips only that second
+# refusal; it never ends an overlay reporting a running task. (The v0.3 installer does not
+# use `quit`: it stops a running overlay by its exact PID before an upgrade.)
+#
+# v0.3: `panel` opens the pet's panel; `tasks`, `care`, `companion` and `life` are kept for
+# a CodePet 0.2 bar that is still loaded until the shell reloads.
 #
 # Exit status: 0 success (status: running), 1 failure (status: not running),
 # 2 usage error.
@@ -27,7 +32,7 @@ set -u
 PROG=codepet-overlay
 TOKEN="codepet-overlay"
 
-USAGE="usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status|quit [--force]"
+USAGE="usage: $PROG show|hide|toggle|panel|tasks|care|companion|life|refresh|status|quit [--force]"
 
 usage() {
     echo "$USAGE" >&2
@@ -42,7 +47,7 @@ case "$#" in
 esac
 VERB=$1
 case "$VERB" in
-    show|hide|toggle|tasks|care|companion|life|refresh|status|quit) ;;
+    show|hide|toggle|panel|tasks|care|companion|life|refresh|status|quit) ;;
     -h|--help) echo "$USAGE"; exit 0 ;;
     *) usage ;;
 esac
@@ -155,7 +160,7 @@ start_overlay() {
         return 1
     fi
     case "$VERB" in
-        tasks|care|companion|life) open=$VERB ;;
+        panel|tasks|care|companion|life) open=$VERB ;;
         *) open= ;;
     esac
     # -n refuses a duplicate of this config even if two launchers race.

@@ -151,25 +151,26 @@ fn state_command_reports_a_failed_publish_on_one_line_only() {
 // ---- v0.3 skeleton (spec §6.3) ----
 
 #[test]
-fn v03_commands_of_later_packages_are_routed_but_not_implemented_and_touch_nothing() {
+fn v03_wp3_commands_validate_their_arguments_before_touching_state() {
     let env = Env::new();
-    for args in [
-        &["clients-job", "job-1"],
-        &["connect", "--all"],
-        &["disconnect", "codex"],
-        &["doctor", "--json"],
+    for (args, code) in [
+        (&["clients-job", "job-1"][..], 2),
+        (&["clients-job"][..], 2),
+        (&["connect"][..], 2),
+        (&["connect", "crush"][..], 2),
+        (&["disconnect"][..], 2),
+        (&["disconnect", "codex", "x"][..], 2),
+        (&["doctor", "--bogus"][..], 2),
     ] {
         let output = env.run(args);
-        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert_eq!(output.status.code(), Some(code), "{args:?}");
         assert!(output.stdout.is_empty(), "{args:?}");
-        let err = String::from_utf8(output.stderr).unwrap();
-        assert!(
-            err.starts_with("NOT_IMPLEMENTED: codepet "),
-            "{args:?}: {err}"
-        );
-        assert_eq!(err.lines().count(), 1, "{args:?}");
     }
-    assert!(!env.xdg().exists(), "skeleton commands create no state");
+    assert!(!env.xdg().exists(), "refused commands create no state");
+    // Doctor on a fresh home reports and creates nothing.
+    let output = env.run(&["doctor", "--json"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(!env.xdg().exists(), "doctor creates no state");
     // v0.3 WP2: the fold is implemented; a missing state dir fails with one plain line
     // and creates nothing (it never creates directories).
     let output = env.run(&["fold", "--state-dir", "/nonexistent"]);

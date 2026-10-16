@@ -1,0 +1,94 @@
+{
+  "description": "CodePet: observe only; prints nothing; always exits 0",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 2,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ claude-code >/dev/null 2>&1 || true",
+            "timeout": 1
+          }
+        ]
+      }
+    ]
+  }
+}

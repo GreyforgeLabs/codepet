@@ -13,6 +13,7 @@ publish.workspace = true
 codepet-core = { path = "../codepet-core" }
 codepet-protocol = { path = "../codepet-protocol" }
 codepet-storage = { path = "../codepet-storage" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The hook and the fold (v0.3 WP2): poll(2) for the bounded stdin read, flock(2) for
 # fold.lock, setsid/nice/umask for the detached fold. Safe wrappers only (unsafe code is

@@ -142,12 +142,14 @@ function paths(cfg, env) {
         launcher: home + "/.local/bin/codepet-overlay",
         shellConfig: configHome + "/omarchy/shell.json",
         testState: testState,
-        // Extra environment for every BarRpc process; empty = inherit.
-        childEnv: testState ? { XDG_STATE_HOME: cfg.stateHome } : {},
+        // Extra environment for every BarRpc process; empty = inherit. A test state home
+        // also sets CODEPET_TEST_STATE=1: the CLI then refuses Connect, Stop watching and
+        // the ready check (TEST_STATE), so a test never touches the owner's coding apps.
+        childEnv: testState ? { XDG_STATE_HOME: cfg.stateHome, CODEPET_TEST_STATE: "1" } : {},
         // env(1) words for the desktop-pet launcher: the configured binary and a test
-        // state home reach the overlay too. Empty = inherit.
+        // state home (with its CODEPET_TEST_STATE) reach the overlay too. Empty = inherit.
         launcherEnv: (cfg.binary ? ["CODEPET_BIN=" + cfg.binary] : [])
-            .concat(testState ? ["XDG_STATE_HOME=" + cfg.stateHome] : [])
+            .concat(testState ? ["XDG_STATE_HOME=" + cfg.stateHome, "CODEPET_TEST_STATE=1"] : [])
     }
 }
 

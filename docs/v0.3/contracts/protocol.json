@@ -672,7 +672,8 @@
       "clients-job <job_id>": "internal detached Connect/Disconnect/test job; job_id must match job_id_pattern; WP3",
       "on | off": "wrappers for app.set_enabled; WP1",
       "helpers on|off": "wrapper for app.set_helpers; WP1",
-      "connect [id...|--all] / disconnect <id>": "wrappers for clients.*; wait for the job and print plain words; WP3. --all = every installed supported client that is not connected and has no running job, except codex (the UI's Connect all); Codex only when named: `codepet connect codex`. Ids are the client ids; anything else exits 2 with the usage line. Refused while Off (off_behaviour)",
+      "connect [--repoint] [id...|--all] / disconnect <id>": "wrappers for clients.*; wait for the job and print plain words; WP3. --all = every installed supported client that is not connected and has no running job, except codex (the UI's Connect all); Codex only when named: `codepet connect codex`. Ids are the client ids; anything else exits 2 with the usage line. Refused while Off (off_behaviour). Post-freeze (notes.md section 10 item 16): `--repoint` (first, with named ids, never --all) lets this Connect repoint a hook shim that serves another existing state dir or binary (otherwise blocked). `disconnect <id>` for an app with no CodePet files that is not connected prints '<name>: CodePet is not connected there; nothing to stop', exits 0 and records nothing",
+      "clients-refresh": "internal (installer step 7), post-freeze (notes.md section 10 item 2): refreshes connected clients' wholly CodePet-owned files whose marker is present and whose bytes differ, and upgrades an older shim in place with its own S/B; never runs a client and never edits a shared file; WP3",
       "forget-history": "wrapper for agent.forget_history; WP1",
       "doctor [--json]": "plain words, changes nothing; --json stable and never includes config contents; WP3"
     },

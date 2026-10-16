@@ -15,6 +15,7 @@ mod agent_store;
 mod app;
 mod bar_export;
 mod care;
+mod clients_store;
 mod life;
 mod lifecycle_store;
 mod model;
@@ -35,6 +36,10 @@ pub use bar_export::{
     BAR_SCHEMA, BAR_SCHEMA_V2, MAX_BAR_STATE_BYTES, MAX_READINESS_REASONS, MAX_REASON_BYTES,
 };
 pub use care::{BATHROOM_LIMIT, DEMO_XP, EXECUTION_LIMIT_MS, SESSION_LIMIT, SLEEP_MS};
+pub use clients_store::{
+    ClientRow, DoctorMeta, JobClientResult, JobTarget, StatusUpdate, JOB_KINDS, REASONS,
+    STEP_CODEX_HOOKS_OFF, STEP_CODEX_TRUST,
+};
 /// Lifecycle enums used by the life API, re-exported for callers of `adopt`/`set_rules`.
 pub use codepet_core::lifecycle::{Mode, Pace};
 pub use life::{
@@ -58,6 +63,11 @@ pub use paths::{
 pub use store::{AcceptRequest, SealOutcome, Step};
 pub use store::{MigrationReport, Store};
 pub use sys::Supervisor;
+
+/// Lowercase hex SHA-256 of `data` (Codex trust hashes, shim digests in `doctor`).
+pub fn sha256_hex(data: &[u8]) -> String {
+    sys::sha256_hex(data)
+}
 pub use treats::{caps_allow, CapCheck, Earned};
 // v0.3 ingestion (WP2): the hook inbox and the fold.
 pub use agent_store::{FoldBatch, AGENT_SCHEMA_VERSION};
@@ -93,8 +103,9 @@ pub const MAX_CARE_RECEIPTS: i64 = 256;
 /// pipeline's points (`accept_*`, `start_after_commit`, `supervisor_running`,
 /// `review_before_commit`; still honoured by the `legacy-tasks` build, see
 /// [`LEGACY_FAULT_POINTS`]) and adds `fold_before_commit`, `treat_before_commit`,
-/// `enable_before_commit` and `connect_after_artifact`.
-pub const FAULT_POINTS: [&str; 8] = [
+/// `enable_before_commit`, `connect_after_artifact`, `disconnect_after_flag` and
+/// `test_after_begin` (the clients job, killed between its steps).
+pub const FAULT_POINTS: [&str; 10] = [
     "death_before_commit",
     "adopt_before_commit",
     "evolve_before_commit",
@@ -103,6 +114,8 @@ pub const FAULT_POINTS: [&str; 8] = [
     "treat_before_commit",
     "enable_before_commit",
     "connect_after_artifact",
+    "disconnect_after_flag",
+    "test_after_begin",
 ];
 /// The retired task pipeline's fault points (`legacy-tasks` only; deleted in v0.3.1).
 #[cfg(feature = "legacy-tasks")]
@@ -141,6 +154,8 @@ pub enum StorageError {
     LifeNotFound,
     /// `BUSY`: the fold holds `fold.lock` (`agent.forget_history`); retry shortly.
     FoldRunning,
+    /// `BUSY`: a Connect, Disconnect or ready-check job already runs for that client.
+    JobRunning,
     /// `NO_ACTIVE_PET` for a command whose own settlement made a pending end final: the
     /// end is committed and the command refused.
     PassedAway,
@@ -176,7 +191,7 @@ pub enum StorageError {
 impl StorageError {
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Busy | Self::FoldRunning => "BUSY",
+            Self::Busy | Self::FoldRunning | Self::JobRunning => "BUSY",
             Self::NoActivePet | Self::PassedAway => "NO_ACTIVE_PET",
             Self::InvalidState(_) | Self::Off => "INVALID_STATE",
             Self::AlreadyArmed => "ALREADY_ARMED",
@@ -232,6 +247,9 @@ impl fmt::Display for StorageError {
                 f.write_str("The companion needs care first (asleep, paused or fainted).")
             }
             Self::LifeNotFound => f.write_str("That companion was not found."),
+            Self::JobRunning => {
+                f.write_str("That app is already being connected or checked; try again shortly.")
+            }
             Self::FoldRunning => {
                 f.write_str("Coding activity is being recorded right now; try again shortly.")
             }

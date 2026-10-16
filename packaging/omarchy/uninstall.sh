@@ -1,13 +1,21 @@
 #!/bin/bash
-# uninstall.sh: disable the CodePet bar plugin and move the plugin and the overlay
-# runtime out of the way (spec §15).
+# uninstall.sh: stop watching every coding app, disable the CodePet bar plugin and move
+# the plugin and the overlay runtime out of the way (v0.3, SPEC-v0.3 §5.1, §7.3).
 #
 #   packaging/omarchy/uninstall.sh [--dry-run]
 #
-# Nothing is deleted: the plugin folder and ~/.local/share/codepet/{current,releases}
-# move to ~/.cache/codepet/uninstall-<timestamp>/. The pet's data in
-# $XDG_STATE_HOME/codepet is never read, moved or deleted, and the `codepet` and
-# `codepet-overlay` commands stay in ~/.local/bin (remove them by hand if you want).
+# First every coding app is disconnected with `codepet disconnect <app>` (Claude Code and
+# Hermes through their own CLIs, Codex without renumbering other hooks); an app CodePet was
+# never connected to and has no files in is only reported ("nothing to stop"), never
+# recorded or warned about. Then the hook
+# shim ~/.local/share/codepet/bin/codepet-hook is replaced by the tombstone (it drains
+# stdin and exits 0, printing nothing), never deleted: a coding app may still reference it
+# (a Codex line that other hooks follow, or an app whose disconnect failed; those are
+# listed). Nothing else is deleted: the plugin folder and ~/.local/share/codepet/
+# {current,releases} move to ~/.cache/codepet/uninstall-<timestamp>/. The pet's data in
+# $XDG_STATE_HOME/codepet is kept (the disconnects record themselves there), and the
+# `codepet` and `codepet-overlay` commands stay in ~/.local/bin (remove them by hand if you
+# want).
 # A running desktop overlay is left alone and the uninstall refuses until it is stopped
 # (`codepet-overlay quit`). If `omarchy plugin disable` fails (no running shell, or the
 # shell never loaded the plugin), a warning names the command to run later and the
@@ -50,6 +58,14 @@ PLUGIN_DIR="$CONFIG_HOME/omarchy/plugins/$PLUGIN_ID"
 SHELL_JSON="$CONFIG_HOME/omarchy/shell.json"
 BACKUP="$CACHE_HOME/codepet/uninstall-$(date +%Y%m%d-%H%M%S)-$$"
 LAUNCHER="$HOME/.local/bin/codepet-overlay"
+CODEPET="$HOME/.local/bin/codepet"
+SHIM="$RUNTIME/bin/codepet-hook"
+CLIENTS=(claude-code codex opencode hermes grok-cli)
+TOMBSTONE='#!/bin/sh
+# managed by codepet: tombstone
+exec >/dev/null 2>&1
+timeout -s KILL 0.3 cat >/dev/null 2>&1; exit 0
+'
 
 if [ -x "$LAUNCHER" ] && "$LAUNCHER" status >/dev/null 2>&1; then
     die "the desktop overlay is running; stop it first (codepet-overlay quit), then rerun"
@@ -64,12 +80,43 @@ enabled=0
 
 if [ "$DRY" -eq 1 ]; then
     echo "CodePet uninstall plan (dry run: nothing is changed)"
+    if [ -e "$SHIM" ]; then
+        echo "would stop watching: ${CLIENTS[*]} (codepet disconnect <app>)"
+        echo "would tombstone: $SHIM"
+    fi
     if [ "$enabled" -eq 1 ]; then
         echo "would disable: omarchy plugin disable $PLUGIN_ID (if that fails, a warning is printed and the uninstall continues)"
     fi
     for m in "${moves[@]}"; do echo "would move: ${m%:*} -> $BACKUP/${m##*:}"; done
-    echo "state: $STATE_HOME/codepet is never touched"
+    echo "state: $STATE_HOME/codepet is kept"
     exit 0
+fi
+
+# Stop watching every coding app, then tombstone the shim (never delete it).
+if [ -e "$SHIM" ] || [ -L "$SHIM" ]; then
+    still=()
+    if [ -x "$CODEPET" ]; then
+        for app in "${CLIENTS[@]}"; do
+            if out=$("$CODEPET" disconnect "$app" 2>&1); then
+                printf 'apps: %s\n' "$out"
+            else
+                still+=("$app")
+                printf '%s: warning: %s\n' "$PROG" "${out//$'\n'/ }" >&2
+            fi
+        done
+    else
+        still=("${CLIENTS[@]}")
+        echo "$PROG: warning: $CODEPET is missing; coding apps were not disconnected" >&2
+    fi
+    shim_dir=$(dirname -- "$SHIM")
+    printf '%s' "$TOMBSTONE" >"$shim_dir/.codepet-hook.tombstone-$$"
+    chmod 0755 "$shim_dir/.codepet-hook.tombstone-$$"
+    mv -f -- "$shim_dir/.codepet-hook.tombstone-$$" "$SHIM"
+    echo "tombstoned: $SHIM (it does nothing; kept because a coding app may still name it)"
+    if [ "${#still[@]}" -gt 0 ]; then
+        echo "warning: could not stop watching: ${still[*]}. Their hooks now reach the tombstone and do nothing;"
+        echo "  see codepet doctor, or remove CodePet from those apps by hand (README, Help)."
+    fi
 fi
 
 DISABLE_FAILED=0
@@ -99,4 +146,4 @@ if [ "$DISABLE_FAILED" -eq 1 ]; then
     echo "  omarchy plugin disable $PLUGIN_ID"
     echo "or remove \"$PLUGIN_ID\" from the bar layout in $SHELL_JSON."
 fi
-echo "state: $STATE_HOME/codepet was not touched"
+echo "state: $STATE_HOME/codepet was kept"

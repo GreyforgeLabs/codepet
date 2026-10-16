@@ -1,0 +1,182 @@
+// managed by codepet: observe-only bridge for OpenCode (SPEC-v0.3 section 5.5).
+// It uses only the `event` hook, which OpenCode does not await; it never blocks, answers
+// or changes anything, never reads message text, and spawns the CodePet shim only on
+// state transitions. Remove this file to disconnect.
+import { spawn } from "node:child_process";
+
+const SHIM = "@CODEPET_SHIM@";
+const USED = new Set([
+  "session.created", "session.updated", "session.status", "session.idle", "session.error",
+  "session.deleted", "permission.asked", "permission.replied", "question.asked",
+  "question.replied", "question.rejected", "message.part.updated",
+]);
+const MAX_SESSIONS = 256;
+const MAX_TOOLS = 1000;
+const ID = /^[A-Za-z0-9._:-]{1,128}$/;
+
+function send(obj) {
+  try {
+    const c = spawn(SHIM, ["opencode"], { stdio: ["pipe", "ignore", "ignore"], detached: true });
+    c.on("error", () => {});
+    c.stdin.on("error", () => {});
+    c.stdin.end(JSON.stringify(obj) + "\n");
+    c.unref();
+  } catch {}
+}
+
+function interactiveFrom(argv) {
+  try {
+    const args = Array.isArray(argv) ? argv.slice(2) : [];
+    return !(args.includes("run") || args.includes("serve"));
+  } catch {
+    return true;
+  }
+}
+
+function makeBridge(startMs, interactive, emit) {
+  const sessions = new Map();
+  let turns = 0;
+  function entry(id) {
+    let e = sessions.get(id);
+    if (e) {
+      sessions.delete(id);
+    } else {
+      e = { parent: null, seen: false, busy: false, turn: null, tools: 0, parts: new Set() };
+      if (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value);
+    }
+    sessions.set(id, e);
+    return e;
+  }
+  function root(id) {
+    let cur = id;
+    for (let i = 0; i < 16; i++) {
+      const e = sessions.get(cur);
+      if (!e || !e.parent || !ID.test(e.parent)) return cur;
+      cur = e.parent;
+    }
+    return cur;
+  }
+  function out(kind, sid, e, extra) {
+    const body = { codepet_v: 1, event: kind, session_id: sid, interactive };
+    if (e && e.turn) body.turn_id = e.turn;
+    emit(Object.assign(body, extra || {}));
+  }
+  function hello(sid, e) {
+    if (!e.seen) {
+      e.seen = true;
+      out("session_start", sid, null);
+    }
+  }
+  function close(sid, e, kind) {
+    if (!e.busy) return;
+    if (kind === "turn_done") out(kind, sid, e, { tools: Math.min(e.tools, MAX_TOOLS) });
+    else out(kind, sid, e);
+    e.busy = false;
+    e.turn = null;
+    e.tools = 0;
+    e.parts = new Set();
+  }
+  function onEvent(event) {
+    if (!event || typeof event.type !== "string" || !USED.has(event.type)) return;
+    const p = event.properties || {};
+    const type = event.type;
+    if (type === "message.part.updated") {
+      const part = p.part;
+      if (!part || part.type !== "tool" || !part.state || part.state.status !== "completed") return;
+      const sid = typeof part.sessionID === "string" ? part.sessionID : p.sessionID;
+      if (typeof sid !== "string" || !ID.test(sid)) return;
+      const r = root(sid);
+      const e = sessions.get(r);
+      if (!e || !e.busy) return;
+      const key = typeof part.id === "string" ? part.id : String(e.tools);
+      if (e.parts.has(key) || e.parts.size >= MAX_TOOLS) return;
+      e.parts.add(key);
+      e.tools += 1;
+      return;
+    }
+    const info = p.info;
+    if (info && typeof info.id === "string" && ID.test(info.id)) {
+      const e = entry(info.id);
+      if (typeof info.parentID === "string" && ID.test(info.parentID)) e.parent = info.parentID;
+    }
+    const sid = typeof p.sessionID === "string" ? p.sessionID : info && info.id;
+    if (typeof sid !== "string" || !ID.test(sid)) return;
+    const isChild = Boolean(sessions.get(sid) && sessions.get(sid).parent);
+    const r = root(sid);
+    const e = entry(r);
+    hello(r, e);
+    switch (type) {
+      case "session.status": {
+        const st = p.status && p.status.type;
+        if (isChild) return;
+        if ((st === "busy" || st === "retry") && !e.busy) {
+          turns += 1;
+          e.busy = true;
+          e.turn = `${startMs}-${turns}`;
+          e.tools = 0;
+          e.parts = new Set();
+          out("turn_start", r, e);
+        } else if (st === "idle") {
+          close(r, e, "turn_done");
+        }
+        return;
+      }
+      case "session.idle":
+        if (!isChild) close(r, e, "turn_done");
+        return;
+      case "session.error":
+        if (isChild) return;
+        close(r, e, p.error && p.error.name === "MessageAbortedError" ? "turn_cancelled" : "turn_failed");
+        return;
+      case "permission.asked":
+      case "question.asked":
+        out("waiting", r, e.busy ? e : null);
+        return;
+      case "permission.replied":
+      case "question.replied":
+      case "question.rejected":
+        out("activity", r, e.busy ? e : null);
+        return;
+      case "session.deleted":
+        if (isChild) {
+          sessions.delete(sid);
+          return;
+        }
+        out("session_end", r, null);
+        sessions.delete(r);
+        return;
+      default:
+        return;
+    }
+  }
+  function dispose() {
+    let n = 0;
+    for (const [sid, e] of sessions) {
+      if (!e.parent && e.seen && n < 16) {
+        n += 1;
+        out("session_end", sid, null);
+      }
+    }
+    sessions.clear();
+  }
+  return { onEvent, dispose, size: () => sessions.size };
+}
+
+export const CodePetPlugin = async () => {
+  const bridge = makeBridge(Date.now(), interactiveFrom(process.argv), send);
+  return {
+    event: async ({ event }) => {
+      try {
+        bridge.onEvent(event);
+      } catch {}
+    },
+    dispose: async () => {
+      try {
+        bridge.dispose();
+      } catch {}
+    },
+  };
+};
+
+// V1 (1.18.29+) calls server(); V2 calls setup() (wiring verified in WP7).
+export default { id: "codepet.opencode", server: CodePetPlugin, setup() {} };

@@ -64,6 +64,11 @@ jobs:
         run: |
           node --version
           node --test qml/tests/*.mjs
+      # v0.3 WP3: the OpenCode and Hermes plugins, offline (stand-in shim, no client runs).
+      - name: Client integration plugins
+        run: |
+          node --test integrations/opencode/codepet.test.mjs
+          python3 integrations/hermes/test_plugin.py
       - name: CI matrix covers every test; release docs present
         run: |
           python3 qml/tests/test_ci_matrix.py
