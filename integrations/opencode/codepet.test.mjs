@@ -190,3 +190,53 @@ test("100 000 streaming events spawn nothing and keep memory flat", async () => 
     await hooks.event(ev("session.updated", { info: { id: `ses_${i}`, parentID: "ses_S" } }));
   }
 });
+
+test("live metadata projection covers observed values in a synthetic SDK envelope", async () => {
+  const path = join(HERE, "../../crates/codepet-cli/tests/fixtures/live-2026-10-16/opencode.json");
+  const evidence = JSON.parse(readFileSync(path, "utf8"));
+  const rows = evidence.upstream_captures;
+  const toolParts = rows.filter((row) => row.part_type === "tool");
+  assert.deepEqual(toolParts.map((row) => row.part_status), ["pending", "running", "completed"]);
+  assert.equal(new Set(toolParts.map((row) => row.part)).size, 1);
+  assert.ok(rows.some((row) => row.session_status === "busy"));
+  assert.ok(rows.some((row) => row.session_status === "idle"));
+  assert.ok(rows.every((row) => row.parent === null), "this capture has no child-session coverage");
+
+  const r = render(LOGGING_SHIM);
+  const hooks = await load(r.file);
+  for (const row of rows) {
+    // Reconstruction is limited to the SDK envelope, whose nesting was NOT captured.
+    // Every id/event/state value below comes from the metadata projection. No text,
+    // native tool name, version, timestamp or tool count is restored into the evidence.
+    let properties;
+    if (row.type === "session.created" || row.type === "session.updated") {
+      properties = { info: { id: row.session } };
+    } else if (row.type === "session.status") {
+      properties = { sessionID: row.session, status: { type: row.session_status } };
+    } else if (row.type === "message.part.updated") {
+      properties = { part: { id: row.part, sessionID: row.session, type: row.part_type,
+        state: { status: row.part_status } } };
+    } else {
+      properties = { sessionID: row.session };
+    }
+    await hooks.event(ev(row.type, properties));
+  }
+  // dispose is a synthetic lifecycle action: the upstream observer did not retain it.
+  // Its emitted session_end WAS observed in the downstream capture.
+  await hooks.dispose();
+  const expected = evidence.hook_captures.map((row) => row.metadata);
+  const got = await lines(r.log, expected.length);
+  for (const payload of got) checkPayload(payload);
+  const observedTurn = expected.find((row) => row.event === "turn_start").turn_id;
+  const replayTurns = got.filter((row) => row.turn_id).map((row) => row.turn_id);
+  assert.equal(new Set(replayTurns).size, 1, "the repeated busy events remain one turn");
+  const projected = got.map(({ codepet_v, tools, ...payload }) => {
+    // Version/count were omitted by capture; generated turn ids differ on every replay.
+    void codepet_v;
+    void tools;
+    if (payload.turn_id) payload.turn_id = observedTurn;
+    return payload;
+  });
+  const byEvent = (a, b) => a.event.localeCompare(b.event);
+  assert.deepEqual(projected.sort(byEvent), expected.sort(byEvent));
+});

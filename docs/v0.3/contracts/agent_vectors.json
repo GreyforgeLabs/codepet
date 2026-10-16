@@ -4519,7 +4519,6 @@
      "bar": "working",
      "line": "act.working.two",
      "vars": {
-      "name": "Ginger",
       "app": "claude-code",
       "app2": "grok-cli"
      },

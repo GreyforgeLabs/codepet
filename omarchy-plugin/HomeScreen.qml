@@ -197,10 +197,6 @@ Item {
             font.pixelSize: home.t.fontHeading
             font.bold: true
             color: home.t.text
-            // A long pair of app names in a wide monospace theme font steps down (at most to
-            // Style.font.body) instead of wrapping (notes.md §8); the elide is the last resort.
-            fontSizeMode: Text.HorizontalFit
-            minimumPixelSize: home.t.fontBody
             elide: Text.ElideRight
         }
         Item { width: 1; height: home.t.u(8) }

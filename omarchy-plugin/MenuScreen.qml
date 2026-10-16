@@ -38,10 +38,7 @@ Item {
             checked: menu.app.cfg.overlayOnLoad === true
             textOn: menu.app.s("header.on")
             textOff: menu.app.s("header.off")
-            onToggled: c => {
-                menu.app.ctl.setSetting("overlayOnLoad", c)
-                if (c) menu.app.ctl.launch("show")
-            }
+            onToggled: c => menu.app.setDesktop(c)
         }
         MenuRow {
             objectName: "cp.menu.helpers"

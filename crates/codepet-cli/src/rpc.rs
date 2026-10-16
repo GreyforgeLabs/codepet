@@ -19,8 +19,8 @@ use codepet_protocol::{
     AppSetHelpersParams, ClientsConnectParams, ClientsDisconnectParams, ClientsStatusParams,
     ClientsTestParams, EmptyParams, ErrorCode, HelloParams, LifecycleRulesParams, Method,
     PetAdoptParams, PetCareParams, PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams,
-    PetPauseParams, PetRenameParams, PetRetireParams, PetRulesParams, PetSelectParams,
-    PetStartParams, ProtocolError, Request, Response, TreatsGiveParams,
+    PetMemoriesParams, PetPauseParams, PetRenameParams, PetRetireParams, PetRulesParams,
+    PetSelectParams, PetStartParams, ProtocolError, Request, Response, TreatsGiveParams,
 };
 #[cfg(feature = "legacy-tasks")]
 use codepet_protocol::{
@@ -482,6 +482,12 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                     .memorial(m.before_ordinal, Some(m.limit_or_default()))?,
             ))
         }
+        Method::PetMemories => {
+            let m: PetMemoriesParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.memories(m.before_seq, m.limit)?,
+            ))
+        }
         // Static ruleset text: answered without opening (or creating) the state directory.
         Method::LifecycleRules => {
             let _: LifecycleRulesParams = parse_params(p)?;
@@ -670,6 +676,7 @@ mod tests {
             ("clients.connect", r#"{"clients":["claude-code"]}"#),
             ("clients.disconnect", r#"{"client":"codex"}"#),
             ("clients.test", "{}"),
+            ("pet.memories", "{}"),
         ];
         assert_eq!(cases.len(), Method::V03_ADDED.len());
         assert!(

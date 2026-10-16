@@ -1,11 +1,12 @@
 import QtQuick
 import "../../omarchy-plugin/CodePetBar.js" as Model
+import "../../omarchy-plugin/DesktopPetFlow.js" as DesktopFlow
 import "../../omarchy-plugin/petstate.js" as PetState
 
 // Test-only controller for the bar plugin's PopupApp (the role BarWidget plays in the
 // shell): it serves a bar-v2 fixture, records requests and answers them from `responses`
 // on the next event-loop turn (or holds them while `hold` is set). Like BarWidget.request it
-// applies the widget's own follow-ups (CodePetBar.responseEffects) before the callback.
+// applies the widget's own follow-ups (DesktopPetFlow.responseEffects) before the callback.
 QtObject {
     id: ctl
     property var barState: null
@@ -42,6 +43,8 @@ QtObject {
         if (r && typeof r === "object" && (r.ok === true || r.ok === false)) return r
         if (r === undefined && method === "clients.status") return { ok: false, error: { code: "NOT_IMPLEMENTED" } }
         if (r === undefined && method === "pet.memorial") return { ok: true, result: { entries: [], next_before_ordinal: null } }
+        if (r === undefined && method === "pet.memories") return { ok: true, result: {
+            entries: [{ seq: 1, kind: "born", at_ms: ctl.now, name: "Ginger", appearance: "cat", stage: 1, past: false }], next_before_seq: null } }
         return { ok: true, result: r !== undefined ? r : { changed: true } }
     }
     function request(method, params, callback) {
@@ -57,7 +60,7 @@ QtObject {
         return true
     }
     function deliver(job) {
-        var fx = Model.responseEffects(job.method, job.params, job.resp, ctl.cfg)
+        var fx = DesktopFlow.responseEffects(job.method, job.params, job.resp, ctl.cfg)
         for (var i = 0; i < fx.length; i++) {
             if (fx[i].setting !== undefined) ctl.setSetting(fx[i].setting, fx[i].value)
             if (fx[i].launch !== undefined) ctl.launch(fx[i].launch)

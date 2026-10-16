@@ -10,33 +10,28 @@ Item {
     readonly property var t: app.t
     property var entries: []
     property bool loaded: false
-    readonly property var life: app.life
-    readonly property var snapLife: app.ctl && app.ctl.snapshot && app.ctl.snapshot.life ? app.ctl.snapshot.life : null
+    property var beforeSeq: null
+    property var nextSeq: null
     readonly property real tz: -new Date(app.now).getTimezoneOffset()
-    readonly property var items: {
-        var out = []
-        if (memories.life)
-            out.push({ name: memories.life.name, appearance: memories.life.appearance, stage: Model.stageOf(memories.life),
-                       key: "memories.born", at: memories.snapLife ? memories.snapLife.adopted_at_ms : null, past: false })
-        for (var i = 0; i < memories.entries.length && out.length < 12; i++) {
-            var e = memories.entries[i]
-            out.push({ name: e.name, appearance: e.appearance, stage: e.final_stage,
-                       key: e.end_cause === "retired" ? "memories.retired" : "memories.died", at: e.ended_at_ms, past: true })
-        }
-        return out
-    }
 
     implicitWidth: t.u(448)
-    implicitHeight: Math.min(t.u(536), Math.max(t.u(120), list.contentHeight))
+    implicitHeight: Math.min(t.u(536), Math.max(t.u(120), list.contentHeight + pager.height))
 
-    Component.onCompleted: memories.app.request("pet.memorial", {}, function (resp) {
-        memories.loaded = true
-        if (resp.ok && resp.result && Array.isArray(resp.result.entries)) memories.entries = resp.result.entries
-    })
+    function loadPage(cursor) {
+        memories.app.request("pet.memories", { before_seq: cursor }, function (resp) {
+            memories.loaded = true
+            if (!resp.ok || !resp.result || !Array.isArray(resp.result.entries)) return
+            memories.beforeSeq = cursor
+            memories.nextSeq = resp.result.next_before_seq
+            memories.entries = resp.result.entries
+            list.positionViewAtBeginning()
+        })
+    }
+    Component.onCompleted: loadPage(null)
 
     Text {
         objectName: "cp.memoriesEmpty"
-        visible: memories.items.length === 0
+        visible: memories.loaded && memories.entries.length === 0
         anchors.centerIn: parent
         text: memories.app.s("memories.empty")
         textFormat: Text.PlainText
@@ -47,10 +42,13 @@ Item {
     }
     ListView {
         id: list
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: pager.top
         clip: true
         spacing: memories.t.u(6)
-        model: memories.items
+        model: memories.entries
         boundsBehavior: Flickable.StopAtBounds
         delegate: Rectangle {
             id: entry
@@ -80,7 +78,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 Text {
                     width: parent.width
-                    text: memories.app.sFor(entry.modelData.key, "floor", { name: entry.modelData.name })
+                    text: memories.app.sFor("memories." + entry.modelData.kind, "floor", { name: entry.modelData.name })
                     textFormat: Text.PlainText
                     font.family: memories.t.family
                     font.pixelSize: memories.t.fontTitle
@@ -90,14 +88,41 @@ Item {
                 }
                 Text {
                     width: parent.width
-                    visible: entry.modelData.at !== null && entry.modelData.at !== undefined
-                    text: memories.app.s(Model.whenKey(entry.modelData.at, memories.app.now, memories.tz))
+                    visible: entry.modelData.at_ms !== null && entry.modelData.at_ms !== undefined
+                    text: memories.app.s(Model.whenKey(entry.modelData.at_ms, memories.app.now, memories.tz))
                     textFormat: Text.PlainText
                     font.family: memories.t.family
                     font.pixelSize: memories.t.fontBody
                     color: memories.t.dim
                 }
             }
+        }
+    }
+    Row {
+        id: pager
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        spacing: memories.t.u(8)
+        height: visible ? memories.t.u(48) : 0
+        visible: memories.nextSeq !== null || memories.beforeSeq !== null
+        BigButton {
+            objectName: "cp.memoriesNewest"
+            visible: memories.beforeSeq !== null
+            width: (pager.width - pager.spacing) / 2
+            t: memories.t
+            text: memories.app.s("memories.newest")
+            kind: "secondary"
+            onTapped: memories.loadPage(null)
+        }
+        BigButton {
+            objectName: "cp.memoriesOlder"
+            visible: memories.nextSeq !== null
+            width: (pager.width - pager.spacing) / 2
+            t: memories.t
+            text: memories.app.s("memories.older")
+            kind: "secondary"
+            onTapped: memories.loadPage(memories.nextSeq)
         }
     }
 }

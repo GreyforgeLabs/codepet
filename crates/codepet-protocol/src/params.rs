@@ -382,6 +382,25 @@ impl Validate for PetMemorialParams {
     }
 }
 
+/// `pet.memories`: a bounded, read-only journal page, newest sequence first.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PetMemoriesParams {
+    #[serde(default)]
+    pub before_seq: Option<i64>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+impl Validate for PetMemoriesParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        check_limit(self.limit, MAX_MEMORIAL_LIMIT)?;
+        if self.before_seq.is_some_and(|seq| seq < 0) {
+            return Err(invalid_params("before_seq must not be negative"));
+        }
+        Ok(())
+    }
+}
+
 /// `lifecycle.rules` takes no params.
 pub type LifecycleRulesParams = EmptyParams;
 

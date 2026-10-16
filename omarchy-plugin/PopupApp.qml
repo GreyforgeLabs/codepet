@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "CodePetBar.js" as Model
+import "DesktopPetFlow.js" as DesktopFlow
 import "Strings.js" as Strings
 
 // Everything inside the CodePet popup card (SPEC-v0.3 §3): the shared header with the power
@@ -40,6 +41,12 @@ Item {
     readonly property real now: ctl && ctl.now ? ctl.now : Date.now()
 
     // ---------------------------------------------------------------- copy
+
+    function setDesktop(on) {
+        var change = DesktopFlow.setDesktopPet(popupRoot.cfg, on)
+        if (change.changed) popupRoot.ctl.setSetting(DesktopFlow.SETTING, change.settings[DesktopFlow.SETTING])
+        if (change.launch) popupRoot.ctl.launch(change.launch)
+    }
 
     function s(key, vars) {
         var v = {}
@@ -101,7 +108,7 @@ Item {
     // The popup can close (its Loader destroys it) while a request is in flight: an answer
     // that arrives after that is dropped here, since every callback reaches into the popup.
     // The widget's own follow-ups (the desktop pet after Let's go! or Turn on) do not depend
-    // on it (BarWidget.request, CodePetBar.responseEffects). `lifetime` is a plain JS object the
+    // on it (BarWidget.request, DesktopPetFlow.responseEffects). `lifetime` is a plain JS object the
     // callbacks capture, so the check works after the popup's items are gone.
     property var lifetime: ({ alive: true })
     Component.onDestruction: popupRoot.lifetime.alive = false

@@ -739,3 +739,54 @@ fn ended_lives_are_immutable_through_every_method() {
         );
     }
 }
+
+#[test]
+fn memories_page_the_journal_while_off_without_changing_state() {
+    let env = Env::with_first_run_pet();
+    let start = env.ok(
+        "pet.start",
+        json!({"species":"cat", "mode":"gentle", "acknowledge_rules":true}),
+    );
+    let id = start["life"]["life_id"].clone();
+    env.ok("pet.select", json!({"life_id":id, "pet_id":"goldfish"}));
+    env.ok("pet.retire", json!({"life_id":id, "confirm_name":"Ginger"}));
+    env.ok("app.set_enabled", json!({"enabled":false}));
+    let before = env.bar_state().unwrap();
+    let page = env.ok("pet.memories", json!({"limit":1}));
+    assert_eq!(page["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(page["entries"][0]["kind"], "retired");
+    assert_eq!(page["entries"][0]["name"], "Ginger");
+    assert_eq!(page["entries"][0]["appearance"], "goldfish");
+    assert_eq!(page["entries"][0]["past"], true);
+    let cursor = page["next_before_seq"].as_i64().unwrap();
+    let rest = env.ok("pet.memories", json!({"before_seq":cursor}));
+    let entries = rest["entries"].as_array().unwrap();
+    assert!(entries.iter().all(|e| e["seq"].as_i64().unwrap() < cursor));
+    assert!(entries.iter().any(|e| e["kind"] == "appearance_changed"));
+    assert!(entries.iter().any(|e| e["kind"] == "armed"));
+    assert!(entries.iter().any(|e| e["kind"] == "born"));
+    assert!(entries.iter().all(|e| {
+        let o = e.as_object().unwrap();
+        o.len() == 7
+            && !o.contains_key("data")
+            && !o.contains_key("task_id")
+            && !o.contains_key("request_id")
+    }));
+    assert_eq!(rest["next_before_seq"], Value::Null);
+    assert_eq!(
+        env.bar_state().unwrap(),
+        before,
+        "reads must not settle, export or acknowledge events"
+    );
+    for params in [
+        json!({"before_seq":-1}),
+        json!({"limit":0}),
+        json!({"limit":21}),
+        json!({"raw":true}),
+    ] {
+        assert_eq!(
+            error_code(&env.call("pet.memories", params)),
+            "INVALID_PARAMS"
+        );
+    }
+}

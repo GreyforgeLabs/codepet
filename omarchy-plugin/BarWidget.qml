@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 import "CodePetBar.js" as Model
+import "DesktopPetFlow.js" as DesktopFlow
 import "petstate.js" as PetState
 import "Strings.js" as Strings
 
@@ -202,7 +203,7 @@ BarWidget {
             if (key !== undefined) root.careRetry = Model.retryRelease(root.careRetry, key, resp, Date.now())
             if (resp && resp.ok && resp.result && typeof resp.result === "object" && resp.result.count_helpers !== undefined)
                 root.snapshot = resp.result
-            root.applyEffects(Model.responseEffects(method, params, resp, root.cfg))
+            root.applyEffects(DesktopFlow.responseEffects(method, params, resp, root.cfg))
             if (callback) callback(resp)
         }, key)
     }
@@ -222,9 +223,8 @@ BarWidget {
             if (resp.ok) root.snapshot = resp.result
             // The desktop pet comes back only when its switch is on, CodePet is On and a pet
             // was started (an unarmed or missing life has nothing to show yet).
-            var life = resp.ok && resp.result ? resp.result.life : null
-            if (resp.ok && resp.result.enabled !== false && root.cfg.overlayOnLoad && life && life.armed === true)
-                root.launch("show")
+            var verb = resp.ok ? DesktopFlow.launchOnLoad(root.cfg, resp.result) : null
+            if (verb) root.launch(verb)
         })
     }
     Component.onCompleted: {
@@ -296,9 +296,7 @@ BarWidget {
     // A left click on the Off cell turns CodePet on and opens Home: one click (SPEC-v0.3 §3.1).
     function turnOnAndOpen() {
         root.openPopup("popup", "")
-        rpc.request("app.set_enabled", { enabled: true }, function (resp) {
-            if (resp.ok && root.cfg.overlayOnLoad) root.launch("show")
-        })
+        root.request("app.set_enabled", { enabled: true }, null)
     }
 
     // When the popup closes, what it showed counts as seen: a celebration ends, and a

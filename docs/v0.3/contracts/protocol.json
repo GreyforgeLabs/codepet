@@ -610,6 +610,76 @@
           }
         ]
       }
+    },
+    {
+      "method": "pet.memories",
+      "wp": "WP7",
+      "mutating": false,
+      "receipt": false,
+      "receipt_note": "Read-only journal projection; no settlement or acknowledgement.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "before_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 20
+          }
+        }
+      },
+      "result": {
+        "entries": "up to 20 {seq, kind, at_ms, name, appearance, stage, past}; closed memory kinds only",
+        "next_before_seq": "exclusive cursor, or null"
+      },
+      "errors": [
+        "INVALID_PARAMS"
+      ],
+      "semantics": "Read all lives newest sequence first. Only born, armed, evolved, appearance_changed, paused, resumed, critical, recovered, fainted, died and retired are shown. Current/final pet name, look and stage; no raw data, ids or task content. Allowed while Off.",
+      "examples": {
+        "valid": [
+          {},
+          {
+            "before_seq": 123,
+            "limit": 1
+          },
+          {
+            "before_seq": null,
+            "limit": null
+          }
+        ],
+        "invalid": [
+          {
+            "before_seq": -1
+          },
+          {
+            "limit": 0
+          },
+          {
+            "limit": 21
+          },
+          {
+            "limit": 1.5
+          },
+          {
+            "life_id": "x"
+          },
+          {
+            "before_seq": 9223372036854775808
+          }
+        ]
+      }
     }
   ],
   "error_codes_added": {
@@ -941,7 +1011,8 @@
       "app.set_helpers",
       "agent.forget_history",
       "clients.status",
-      "clients.disconnect"
+      "clients.disconnect",
+      "pet.memories"
     ],
     "refused": [
       "pet.start",

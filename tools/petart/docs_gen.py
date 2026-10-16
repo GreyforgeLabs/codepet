@@ -12,7 +12,7 @@ ROUTE = ("GPT Image 2 (OpenAI image generation) via the Codex CLI image tool on 
          "owner's ChatGPT plan, with each sheet anchored on the species' PR #7 source sheet "
          "(`docs/art-library/source/…`, merged in v0.2.0)")
 ASSET = "codepet-art-sources-v0.2.tar"
-ASSET_URL = "https://github.com/GreyforgeLabs/codepet/releases/download/v0.2.1/" + ASSET
+ASSET_URL = "https://github.com/GreyforgeLabs/codepet/releases/download/v0.3.0/" + ASSET
 
 LICENCE = ("Distributed under the repository MIT licence (`qml/assets/pets/LICENSE`) by "
            "Greyforge Labs. The frames are AI-generated with OpenAI image generation; no "
@@ -41,7 +41,7 @@ def provenance_md(manifests, src_root=None):
       "factors 0.82 / 0.92 / 1.0, ground line y = 184). Extraction is deterministic; "
       "`extract.py --check` rebuilds and byte-compares.")
     w(f"- **Source sheets are not in Git** (about 200 MB). They are the release asset "
-      f"[`{ASSET}`]({ASSET_URL}) of v0.2.1 (its sha256 is in that release's `SHA256SUMS`); "
+      f"[`{ASSET}`]({ASSET_URL}) of v0.3.0 (its sha256 is in that release's `SHA256SUMS`); "
       "every sheet's sha256 is listed below and in each `manifest.json` (`source.sheets`). "
       "Reproduction steps: `docs/pets.md`.")
     w("- **PR #7 library:** the 15 PR #7 sheets in `docs/art-library/` are the style anchors "
@@ -200,11 +200,11 @@ def pets_md(manifests):
     w("")
     w("### Reproducing the frames")
     w("")
-    w(f"The source sheets are the v0.2.1 release asset [`{ASSET}`]({ASSET_URL}). "
+    w(f"The source sheets are the v0.3.0 release asset [`{ASSET}`]({ASSET_URL}). "
       "From the repository root:")
     w("")
     w("```")
-    w(f"# download {ASSET} and SHA256SUMS from the v0.2.1 release, then:")
+    w(f"# download {ASSET} and SHA256SUMS from the v0.3.0 release, then:")
     w("sha256sum -c SHA256SUMS --ignore-missing")
     w(f"tar tf {ASSET} | head          # every path starts with v0.2/")
     w(f"mkdir -p art-src && tar xf {ASSET} -C art-src")

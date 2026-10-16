@@ -812,7 +812,7 @@ priority["vectors"] = [
     pv("paused_looks_asleep_and_hides_treats", "paused", T, out("paused", "sleep", "mood.asleep", "sleep", G)),
     pv("fainted_beats_waiting", "fainted", T, out("fainted", "sleep_bandage", "mood.fainted", "sleep", G, bubble={"bandage": True}, wake=T + 1790000)),
     pv("working_one", "working-one", T, out("working", "working", "act.working.one", "working", {"name": "Ginger", "app": "claude-code"}, bubble={"apps": ["claude-code"]}, wake=T + 540000)),
-    pv("working_two", "working-two", T, out("working", "working", "act.working.two", "working", {"name": "Ginger", "app": "claude-code", "app2": "grok-cli"}, bubble={"apps": ["claude-code", "grok-cli"]}, wake=T + 540000)),
+    pv("working_two", "working-two", T, out("working", "working", "act.working.two", "working", {"app": "claude-code", "app2": "grok-cli"}, bubble={"apps": ["claude-code", "grok-cli"]}, wake=T + 540000)),
     pv("working_many", "working-many", T, out("working", "working", "act.working.many", "working", G, bubble={"apps": ["claude-code", "opencode", "grok-cli"]}, wake=T + 540000)),
     pv("waiting_beats_need_now_and_working", "waiting", T, out("waiting", "hand", "act.waiting", "waiting", {"app": "codex"}, pulse=True, bubble={"apps": ["codex"]}, wake=T + 540000)),
     pv("working_beats_celebration", "finished-while-working", T, out("working", "working", "act.working.one", "working", {"name": "Ginger", "app": "claude-code"}, bubble={"apps": ["claude-code"]}, wake=T + 20000)),

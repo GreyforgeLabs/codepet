@@ -125,9 +125,10 @@ fn every_method_parses_and_round_trips() {
         "clients.connect",
         "clients.disconnect",
         "clients.test",
+        "pet.memories",
     ];
     assert_eq!(Method::ALL.len(), names.len());
-    assert_eq!(Method::ALL.len(), 41);
+    assert_eq!(Method::ALL.len(), 42);
     for (m, name) in Method::ALL.into_iter().zip(names) {
         assert_eq!(m.as_str(), name);
         assert_eq!(m.to_string(), name);
@@ -170,6 +171,7 @@ fn mutating_and_implemented_classification() {
         Method::TaskLogs,
         Method::HistoryList,
         Method::PetMemorial,
+        Method::PetMemories,
         Method::LifecycleRules,
     ];
     for m in Method::ALL {
@@ -946,6 +948,7 @@ fn is_mutating_table_for_every_method() {
         ("clients.connect", true),
         ("clients.disconnect", true),
         ("clients.test", true),
+        ("pet.memories", false),
     ];
     assert_eq!(table.len(), Method::ALL.len());
     for (m, (name, mutating)) in Method::ALL.into_iter().zip(table) {
@@ -1355,7 +1358,8 @@ fn v03_method_lists_partition_the_spec_tables() {
             "clients.status",
             "clients.connect",
             "clients.disconnect",
-            "clients.test"
+            "clients.test",
+            "pet.memories"
         ]
     );
     let removed: Vec<&str> = Method::V03_REMOVED.iter().map(|m| m.as_str()).collect();
@@ -1383,7 +1387,7 @@ fn v03_method_lists_partition_the_spec_tables() {
     );
     for m in Method::V03_ADDED {
         assert!(!Method::V03_REMOVED.contains(&m));
-        assert!(m.is_mutating(), "{m}");
+        assert_eq!(m.is_mutating(), m != Method::PetMemories, "{m}");
     }
     // Kept: everything else (14 methods, including hello).
     let kept = Method::ALL
@@ -1565,6 +1569,7 @@ fn v03_protocol_contract_matches_the_crate() {
                 Method::ClientsConnect => parse_params::<ClientsConnectParams>(p).map(drop),
                 Method::ClientsDisconnect => parse_params::<ClientsDisconnectParams>(p).map(drop),
                 Method::ClientsTest => parse_params::<ClientsTestParams>(p).map(drop),
+                Method::PetMemories => parse_params::<PetMemoriesParams>(p).map(drop),
                 other => panic!("{other} is not a v0.3 method"),
             }
         };

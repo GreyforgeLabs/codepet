@@ -201,6 +201,10 @@ fn a_manual_fold_takes_the_lock_itself_and_yields_to_a_holder() {
     let out = hk.cmd(["fold", "--state-dir", &dir]).output().unwrap();
     assert_silent_ok(&out, "busy");
     assert_eq!(hk.inbox_names().len(), 1);
+    // Other tests spawn children concurrently. Even a CLOEXEC descriptor can be
+    // inherited between fork and exec: closing our copy alone need not release
+    // its open-file-description lock yet. Explicitly end the simulated holder.
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::Unlock).unwrap();
     drop(lock);
     let out = hk.cmd(["fold", "--state-dir", &dir]).output().unwrap();
     assert_silent_ok(&out, "manual fold");

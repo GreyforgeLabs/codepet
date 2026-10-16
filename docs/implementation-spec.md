@@ -1,3 +1,9 @@
+> Historical task-execution design. v0.3 is an observe-only coding companion;
+> its shipped architecture, privacy rules and frozen contracts are documented in
+> [architecture.md](architecture.md), [security.md](security.md) and
+> [v0.3/contracts/README.md](v0.3/contracts/README.md). Task execution and the four-tab
+> UI below are not routed by the default v0.3 build.
+
 # CodePet implementation specification
 
 Version: 1.1 · Status: implementation-ready design, not implemented or benchmarked · Target: supported Linux desktops; Omarchy integration by default

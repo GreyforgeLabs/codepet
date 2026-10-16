@@ -1,0 +1,240 @@
+{
+  "format": "codepet-live-projection-v1",
+  "captured_date": "2026-10-16",
+  "client": "grok-cli",
+  "installed_version_observed": "1.0.60",
+  "version_observation": "live TUI",
+  "outcome": {
+    "submitted": true,
+    "model_turn_completed": true,
+    "outcome": "turn_completed"
+  },
+  "identity_transform": "All capture id hashes replaced by deterministic synthetic qa identifiers in first-seen order; equality retained within this file only.",
+  "projection_limits": [
+    "Metadata projections, not complete raw client payloads.",
+    "Unallowlisted enum strings became other; the original value cannot be recovered.",
+    "codepet_v, tools/counts, prompt_id, session mode fields outside the allowlist, content and paths were not retained.",
+    "capture_and_shim_us measures observer plus shim only, not native total hook latency."
+  ],
+  "hook_captures": [
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "session_start",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "source": "new",
+        "hook_event_name": "SessionStart",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 57035
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "session_end",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "reason": "shutdown",
+        "hook_event_name": "SessionEnd",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 15719
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "stop",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "reason": "shutdown",
+        "stopHookActive": false,
+        "hook_event_name": "Stop",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7617
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "session_start",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "source": "load",
+        "hook_event_name": "SessionStart",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7831
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "other",
+        "sessionId": "qa-grok-cli-001",
+        "promptId": "qa-grok-cli-002",
+        "permissionMode": "default",
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7672
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "other",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "hook_event_name": "PreToolUse",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default",
+        "tool_name": "other",
+        "tool_use_id": "qa-grok-cli-003"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7617
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "stop",
+        "sessionId": "qa-grok-cli-001",
+        "promptId": "qa-grok-cli-002",
+        "permissionMode": "default",
+        "reason": "end_turn",
+        "stopHookActive": false,
+        "hook_event_name": "Stop",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default",
+        "stop_hook_active": false
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7749
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "other",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "notificationType": "idle_prompt",
+        "hook_event_name": "Notification",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default",
+        "notification_type": "idle_prompt"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7626
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "session_end",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "reason": "shutdown",
+        "hook_event_name": "SessionEnd",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7599
+    },
+    {
+      "client": "grok-cli",
+      "input_over_limit": false,
+      "metadata": {
+        "hookEventName": "stop",
+        "sessionId": "qa-grok-cli-001",
+        "permissionMode": "default",
+        "reason": "shutdown",
+        "stopHookActive": false,
+        "hook_event_name": "Stop",
+        "session_id": "qa-grok-cli-001",
+        "permission_mode": "default",
+        "stop_hook_active": false
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": true,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7665
+    }
+  ],
+  "source_captures": [
+    {
+      "file": "grok-cli.jsonl",
+      "sha256": "30cb31ceb1042a5b7aa446e55c49bd74de28b50fa4e4c9388996c125c10a5268"
+    }
+  ],
+  "unverified": [
+    "native_total_hook_latency",
+    "native_session_mode",
+    "claude_plugin_compatibility_loading"
+  ]
+}

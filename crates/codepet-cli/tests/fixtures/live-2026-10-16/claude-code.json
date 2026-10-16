@@ -1,0 +1,97 @@
+{
+  "format": "codepet-live-projection-v1",
+  "captured_date": "2026-10-16",
+  "client": "claude-code",
+  "installed_version_observed": "2.1.294",
+  "version_observation": "readiness --version; not retained in hook payload",
+  "outcome": {
+    "submitted": true,
+    "model_turn_completed": false,
+    "outcome": "weekly_limit"
+  },
+  "identity_transform": "All capture id hashes replaced by deterministic synthetic qa identifiers in first-seen order; equality retained within this file only.",
+  "projection_limits": [
+    "Metadata projections, not complete raw client payloads.",
+    "Unallowlisted enum strings became other; the original value cannot be recovered.",
+    "codepet_v, tools/counts, prompt_id, session mode fields outside the allowlist, content and paths were not retained.",
+    "capture_and_shim_us measures observer plus shim only, not native total hook latency."
+  ],
+  "hook_captures": [
+    {
+      "client": "claude-code",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-claude-code-001",
+        "hook_event_name": "SessionStart",
+        "source": "startup"
+      },
+      "environment": {
+        "claude_entrypoint": "cli",
+        "grok_hook_event_present": false,
+        "claude_pid_present": true
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 8769
+    },
+    {
+      "client": "claude-code",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-claude-code-001",
+        "permission_mode": "default",
+        "hook_event_name": "UserPromptSubmit"
+      },
+      "environment": {
+        "claude_entrypoint": "cli",
+        "grok_hook_event_present": false,
+        "claude_pid_present": true
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7791
+    },
+    {
+      "client": "claude-code",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-claude-code-001",
+        "hook_event_name": "StopFailure",
+        "error": "rate_limit"
+      },
+      "environment": {
+        "claude_entrypoint": "cli",
+        "grok_hook_event_present": false,
+        "claude_pid_present": true
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7841
+    },
+    {
+      "client": "claude-code",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-claude-code-001",
+        "hook_event_name": "SessionEnd",
+        "reason": "other"
+      },
+      "environment": {
+        "claude_entrypoint": "cli",
+        "grok_hook_event_present": false,
+        "claude_pid_present": true
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7798
+    }
+  ],
+  "source_captures": [
+    {
+      "file": "claude-code.jsonl",
+      "sha256": "aa43060d19eeef7498070a019948e1dc7af11d9d83495cd74e72f74a4aac12fa"
+    }
+  ],
+  "unverified": [
+    "native_total_hook_latency",
+    "successful_model_turn",
+    "successful_Stop",
+    "successful_tool_use"
+  ]
+}

@@ -1,12 +1,36 @@
 # Changelog
 
-All notable changes to CodePet. Real providers stay disabled; every task is a mock
-(simulation) task.
+All notable changes to CodePet.
+
+## 0.3.0 — release candidate
+
+CodePet now keeps company with your real coding apps. The old mock task window is
+replaced by one simple popup with painted care buttons and an obvious power switch.
+
+- Pick a pet and tap Let's go! Gentle mode is the default; existing pets and their
+  growth survive. Hardcore lives in Help behind a typed-name acknowledgement.
+- Connect Claude Code, Grok CLI, OpenCode and Hermes; Codex has a guided review of
+  its hook entries. CodePet observes only and stores no chats, code or paths.
+- Qualifying finished work earns bounded treats. Tap Treats to give one and help
+  the pet grow. Failed, cancelled and test work never earns.
+- Off freezes the pet, stops recording presence and exits the desktop pet. Hooks
+  short-circuit before CodePet starts; Codex still starts its own login shell.
+- Home, Helpers, More, Memories and the desktop pet share the same state priority.
+  Memories includes the saved life journal with pages for older entries.
+- Crash-safe client jobs, nonblocking hooks, bounded inbox/fold processing,
+  metadata-only diagnostics, migration backups and uninstall tombstones.
+- The default binary no longer routes task methods. Historical tables remain;
+  the mock pipeline is behind non-default `legacy-tasks` until v0.3.1.
+
+Qualification is in [validation](docs/validation.md). See
+[architecture](docs/architecture.md), [security](docs/security.md),
+[lifecycle](docs/lifecycle.md) and [bar installation](docs/omarchy-plugin.md).
+
 
 ## 0.2.1 - 2026-10-15
 
-The first public release. No change to the lifecycle rules, the companions' art or the
-storage schema.
+Prepared release candidate, superseded by v0.3.0 before publication. No change to
+the lifecycle rules, the companions' art or the storage schema.
 
 ### Install and release packaging
 - The release archive installs as shipped: `packaging/omarchy/install.sh` reads the
@@ -17,8 +41,8 @@ storage schema.
   build-machine paths in the binary (path remapping, stripped symbols), owner 0:0 entries,
   tag-pinned links for files it does not ship, and release notes with absolute links. It
   gates on a dry run, an install and an uninstall of the extracted archive in a throwaway
-  HOME. `tools/release/art_sources.py` builds `codepet-art-sources-v0.2.tar`, now a v0.2.1
-  release asset, from cleaned provenance files.
+  HOME. `tools/release/art_sources.py` builds `codepet-art-sources-v0.2.tar` from cleaned provenance files; the preserved
+  archive accompanies the first public v0.3.0 release.
 - [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) carries the licence texts of every
   crate linked into `codepet`, plus SQLite's public-domain dedication, and ships in the
   archive; CI checks it against `Cargo.lock`.

@@ -1,3 +1,38 @@
+# v0.3.0 qualification (in progress, 2026-10-16)
+
+Current implementation: `v0.3`, following the frozen
+[contracts](v0.3/contracts/README.md). This section distinguishes source tests,
+offscreen UI, nested compositor behavior, live clients and human acceptance.
+It does not inherit passes from v0.2 records below.
+
+| Gate | Current evidence |
+|---|---|
+| Default Rust baseline at a81f2a8 | passed; final implementation gates below |
+| Memories read-only paging and privacy | storage and CLI regression tests passed |
+| Big status text (K3) | HomeSmoke: 979 checks, zero failures; heading size enforced |
+| Memories navigation | MoreSmoke: 137 checks, zero failures, including older/newest pages |
+| Contract vectors, copy lint, bar model | passed after contract amendments |
+| Full default/legacy Rust and strict clippy | 401 / 554 tests passed; 3 explicit/release-only tests ignored in each; fmt and strict clippy passed |
+| Rust 1.85 minimum supported version | same 401 / 554 tests passed, 3 ignored each; fmt and strict clippy passed on both feature sets |
+| Full QML/assets/install suite | All 14 offscreen QML smokes, 169 Node tests, Python UI/assets/install suites, both client plugin suites, copy lint, 267 contract vectors and notices passed |
+| Nested compositor, input/focus, rename bursts and Off process exit | passed in a dedicated nested Hyprland: first-run one click + one tap in under 1 s; five real renames correlated by state version; Off removed overlay and stopped UI schedulers; outside-pet input reached the underlying window; startup preserved focus; pet click opened Home exactly once |
+| Real client turns and redacted captures | Codex 0.163.0, Grok 1.0.60, OpenCode 1.19.0 and Hermes 0.21.3 completed one read-only turn each. Claude Code 2.1.294 hit its weekly limit; only its failure lifecycle and ENTRYPOINT were verified. Sanitized projections and three native-hook replay tests plus adapter replays passed; see [capture limits](../crates/codepet-cli/tests/fixtures/live-2026-10-16/README.md) |
+| Hook latency | Corrected isolated harness: 16,000 measured calls + 1,600 warmups, all silent exit 0; loaded direct-hook p99 2.91–7.27 ms; Off baseline p50 2.43–2.80 ms. No measured budget failures. Only 28/40 baseline groups met the host-idle criterion. All 10 Codex login-shell groups remain explicitly unmeasured; earlier login-shell timing observations were not isolation-qualified |
+| Nested visual coverage | 165 captures, observed font scales 0.75 / 1.0 / 1.25 at base sizes 12 / 16 / 20; five Helpers rows and hints, Connect cards with 1–4 apps. Independent review found no clipping in the sampled screens. Earlier mislabeled-size runs are superseded |
+| Release archive install/uninstall and rollback | pending v0.3 |
+| Kid read-aloud (K12) | pending human feedback; never inferred from automated checks |
+| Live installed desktop and resource behavior | pending v0.3 |
+
+Offscreen source/runtime checks are not compositor or live-desktop acceptance.
+The candidate is not yet qualified for release. Human K12 acceptance, native total
+hook latency, Grok compatibility loading/session-mode details and Hermes approval
+key correlation remain unverified. No additional model turns were submitted to fill
+those gaps. The preserved art-source archive will accompany v0.3.0; v0.2.1 was a
+prepared candidate and was not published. Previous results remain below as historical
+evidence.
+
+---
+
 # v0.2.1 validation: first public release, local Omarchy workstation, 2026-10-15
 
 Branch `release/v0.2.1`: the 0.2.0 code plus the release-readiness changes listed in

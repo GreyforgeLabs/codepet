@@ -330,7 +330,7 @@ class SourceContract(unittest.TestCase):
         for name in ("PopupApp.qml",):
             self.assertNotIn('launch("show")', self.qml[name], name)
             self.assertNotIn('setSetting("overlayOnLoad", true)', self.qml[name], name)
-        self.assertIn("Model.responseEffects(method, params, resp, root.cfg)", function_bodies(self.qml["BarWidget.qml"])["request"])
+        self.assertIn("DesktopFlow.responseEffects(method, params, resp, root.cfg)", function_bodies(self.qml["BarWidget.qml"])["request"])
 
     def test_desktop_pet_switch_follows_the_overlay_contract(self):
         # On shows the pet; off writes the setting only (the overlay exits by itself).
@@ -339,7 +339,9 @@ class SourceContract(unittest.TestCase):
             self.assertNotIn('launch("hide")', text, name)
             self.assertNotIn("? \"show\" : \"hide\"", text, name)
         start = function_bodies(self.qml["BarWidget.qml"])["startup"]
-        self.assertIn("root.cfg.overlayOnLoad && life && life.armed === true", start)
+        self.assertIn("DesktopFlow.launchOnLoad(root.cfg, resp.result)", start)
+        for name, var in (("MoreScreen.qml", "more"), ("MenuScreen.qml", "menu")):
+            self.assertIn(f"{var}.app.setDesktop(c)", self.qml[name])
 
     def test_state_home_reaches_files_rpc_and_launcher(self):
         bw = self.qml["BarWidget.qml"]

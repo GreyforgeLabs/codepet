@@ -211,9 +211,10 @@ pub enum Method {
     ClientsConnect,
     ClientsDisconnect,
     ClientsTest,
+    PetMemories,
 }
 impl Method {
-    pub const ALL: [Self; 41] = [
+    pub const ALL: [Self; 42] = [
         Self::Hello,
         Self::StateGet,
         Self::EventsSubscribe,
@@ -255,9 +256,10 @@ impl Method {
         Self::ClientsConnect,
         Self::ClientsDisconnect,
         Self::ClientsTest,
+        Self::PetMemories,
     ];
     /// The v0.3 methods (spec §6.2 "Added"), in `ALL` order.
-    pub const V03_ADDED: [Self; 10] = [
+    pub const V03_ADDED: [Self; 11] = [
         Self::PetStart,
         Self::PetRename,
         Self::TreatsGive,
@@ -268,6 +270,7 @@ impl Method {
         Self::ClientsConnect,
         Self::ClientsDisconnect,
         Self::ClientsTest,
+        Self::PetMemories,
     ];
     /// The v0.2 methods v0.3 unroutes (spec §6.2 "Removed"; `hello` stays, only its
     /// supervisor handshake is retired). The default build parses none of them (they answer
@@ -324,6 +327,7 @@ impl Method {
             Self::PetRetire => "pet.retire",
             Self::PetEventsSeen => "pet.events_seen",
             Self::PetMemorial => "pet.memorial",
+            Self::PetMemories => "pet.memories",
             Self::LifecycleRules => "lifecycle.rules",
             Self::PetStart => "pet.start",
             Self::PetRename => "pet.rename",
@@ -367,6 +371,7 @@ impl Method {
             | Self::TaskLogs
             | Self::HistoryList
             | Self::PetMemorial
+            | Self::PetMemories
             | Self::LifecycleRules => false,
             Self::StateGet
             | Self::TaskCreate

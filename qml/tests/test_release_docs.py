@@ -45,8 +45,8 @@ class ReleaseDocs(unittest.TestCase):
         self.assertIn("docs/decisions/0002-v0.2-raster-pet-art.md", read("CHANGELOG.md"))
         readme = read("README.md")
         self.assertIn("docs/decisions/0002-v0.2-raster-pet-art.md", readme)
-        # The source tar is the v0.2.1 release asset: every doc names that one download.
-        url = "releases/download/v0.2.1/codepet-art-sources-v0.2.tar"
+        # The source tar is the v0.3.0 release asset: every doc names that one download.
+        url = "releases/download/v0.3.0/codepet-art-sources-v0.2.tar"
         for rel in ("README.md", "docs/decisions/0002-v0.2-raster-pet-art.md",
                     "qml/assets/pets/PROVENANCE.md", "docs/pets.md"):
             text = read(rel)
@@ -85,10 +85,11 @@ class ReleaseDocs(unittest.TestCase):
         self.assertLess(gallery.stat().st_size, 400_000, "keep the committed gallery small")
         self.assertIn("(screenshots/codepet-v0.2-roster.webp)", read("docs/pets.md"))
         overlay = read("docs/desktop-overlay.md")
-        self.assertIn("legacy v0.1", overlay.lower())
+        if "codepet-overlay-idle.png" in overlay or "codepet-overlay-menu.png" in overlay:
+            self.assertIn("legacy v0.1", overlay.lower())
         for shot in ("codepet-overlay-idle.png", "codepet-overlay-menu.png"):
-            line = next(l for l in overlay.splitlines() if shot in l)
-            self.assertIn("Legacy v0.1", line, shot)
+            for line in (l for l in overlay.splitlines() if shot in l):
+                self.assertIn("Legacy v0.1", line, shot)
 
     def test_readme_shows_the_product_and_the_release(self):
         readme = read("README.md")

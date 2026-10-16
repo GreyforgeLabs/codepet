@@ -67,3 +67,18 @@ function launchOnLoad(settings, barState) {
 function launchOnEnabled(settings, wasEnabled, enabled) {
     return wasEnabled === false && enabled === true && desktopPetOn(settings) ? "show" : null
 }
+
+// What the bar widget itself does after an answer, whether or not the popup is still open
+// (it may have closed while the request was in flight): Let's go! (pet.start) turns the
+// desktop pet on and shows it; turning CodePet on shows it when its switch is on (notes.md
+// §8 item 7). Each effect is { setting, value } or { launch }.
+function responseEffects(method, params, resp, cfg) {
+    if (!isObject(resp) || resp.ok !== true) return []
+    if (method === "pet.start") {
+        var started = afterStart(cfg)
+        return [{ setting: SETTING, value: started.settings[SETTING] }, { launch: started.launch }]
+    }
+    if (method === "app.set_enabled" && isObject(params) && params.enabled === true && launchOnEnabled(cfg, false, true) !== null)
+        return [{ launch: "show" }]
+    return []
+}

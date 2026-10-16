@@ -208,6 +208,33 @@ class Plugin(unittest.TestCase):
                 self.assertIsNone(cb(session_id="s", platform="cli", turn_id="t", completed=True,
                                      surface="cli", session_key="k", tool_name="clarify"))
 
+    def test_live_metadata_projection(self):
+        """Replay captured kwargs only; omitted wire version/counts are not live facts."""
+        path = HERE / "../../crates/codepet-cli/tests/fixtures/live-2026-10-16/hermes.json"
+        evidence = json.loads(path.read_text())
+        hooks = self.load()
+        upstream = evidence["upstream_captures"]
+        self.assertEqual([row["event"] for row in upstream], [
+            "on_session_start", "pre_llm_call", "pre_tool_call", "post_tool_call",
+            "on_session_end", "on_session_finalize",
+        ])
+        final = next(row["metadata"] for row in upstream if row["event"] == "on_session_end")
+        self.assertEqual((final["completed"], final["failed"], final["interrupted"]),
+                         (True, False, False))
+        self.assertEqual(final["platform"], "cli")
+        for row in upstream:
+            # "other" remains the capture's lossy enum marker. Never restore a tool name.
+            self.assertIsNone(hooks[row["event"]](**row["metadata"]))
+        expected = [row["metadata"] for row in evidence["hook_captures"]]
+        got = self.events(len(expected))
+        for payload in got:
+            self.check(payload)
+        # The adapter supplies these at replay time; neither was recorded by the observer.
+        projected = [{key: value for key, value in row.items()
+                      if key not in {"codepet_v", "tools"}} for row in got]
+        self.assertEqual(sorted(projected, key=lambda row: row["event"]),
+                         sorted(expected, key=lambda row: row["event"]))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

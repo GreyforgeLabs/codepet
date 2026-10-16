@@ -20,8 +20,7 @@ v0.3 kid copy (SPEC-v0.3 §1.2 K1, K2, K8), over everything that reaches a kid-f
 - the species manifest fields that reach the screen: displayName, defaultName and careWords
   (at most two plain words each); careLabels and careHints must never be read by the plugin;
 - the Home status line: every face line, filled with a typical name and every app pair, fits
-  one line of the 448 px card in a monospace font at Style.font.heading, or steps down no
-  further than Style.font.body (the status line's HorizontalFit floor; notes.md §8).
+  one line of the 448 px card in a monospace font at Style.font.heading.
 K1: no digit or %, except the literal /reload-plugins. K2: none of the jargon words, except the
 verb phrases "turn on/off", "turned on/off" and "turn {name} into". K8: at most 8 words a line,
 and at most 6 words for 90% of them.
@@ -321,11 +320,10 @@ K1_EXEMPT_LITERALS = ["/reload-plugins"]
 ADULT_QML = {"HelpScreen.qml", "CodexGuide.qml", "BarRpc.qml", "PresenceRecorder.qml"}
 APP_NAMES = ["Claude Code", "Codex", "OpenCode", "Hermes", "Grok"]
 # Status line fit (SPEC-v0.3 §3.2): inner card width at base 16, monospace advance 0.6 em,
-# Style.font.heading = round(16 x 1.333) and the HorizontalFit floor Style.font.body = 16.
+# Style.font.heading = round(16 x 1.333).
 CARD_INNER_PX = 448
 MONO_ADVANCE = 0.6
 HEADING_PX = round(16 * 1.333)
-BODY_PX = 16
 STATUS_KEYS = re.compile(r"^(?:(?:aquatic|robot)\.)?(?:mood\.|act\.|grew$|off\.line$|picker\.welcome$|treats\.full$)")
 
 
@@ -371,10 +369,8 @@ def lint_strings(table: dict) -> tuple[list[str], list[str]]:
             kid_counts.append(words(text))
         if STATUS_KEYS.search(key):
             for fill in status_fills(text):
-                if status_width_px(fill, BODY_PX) > CARD_INNER_PX:
-                    findings.append(f"{PLUGIN_STRINGS}: {key}: status line does not fit one line even at body size: {fill!r}")
-                elif status_width_px(fill, HEADING_PX) > CARD_INNER_PX:
-                    notes.append(f"status line steps down below heading to fit: {fill!r}")
+                if status_width_px(fill, HEADING_PX) > CARD_INNER_PX:
+                    findings.append(f"{PLUGIN_STRINGS}: {key}: status line does not fit at heading size: {fill!r}")
     short = sum(1 for n in kid_counts if n <= 6)
     if kid_counts and short / len(kid_counts) < 0.9:
         findings.append(f"{PLUGIN_STRINGS}: K8 only {short}/{len(kid_counts)} kid lines have <= 6 words")
@@ -470,7 +466,7 @@ def kid_self_test() -> None:
     f, _ = lint_strings({"tile.food": "Feed the xp", "codex.step1": "one two three four five six seven eight nine"})
     assert any("K2 xp" in x for x in f) and any("K8 9" in x for x in f), f
     f, _ = lint_strings({"act.x": "{name} " + "w" * 60})
-    assert any("even at body size" in x for x in f), f
+    assert any("at heading size" in x for x in f), f
 
 
 def main(argv: list[str]) -> int:

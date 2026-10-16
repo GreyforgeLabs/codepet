@@ -874,3 +874,27 @@ sections were renumbered so each package keeps its own: 7 owner decisions, 8 WP5
      tree on purpose until WP7 bumps it (§10 item 13).
    - The top-level `README.md` still describes v0.2 (verbs, tasks); WP7 docs.
    - The §8 item 20 contract-owner items (K3 copy, Memories journal, WP5 strings).
+
+## 12. Final integration (WP7, 2026-10-16)
+
+1. **K3 status copy:** the two-app line is now "Helping {app} and {app2}."; fainted
+   lines are "{name} fainted!" / "{name} shut down!". The relevant care tiles remain
+   visible below. Home no longer shrinks status text below heading size. Both the copy
+   lint and the QML measurement require heading size, including every app pair.
+2. **One copy contract:** the seven WP5 additions now live in the frozen `strings.json`;
+   `strings-wp5.json` is empty. Both generated plugin copies match that source.
+3. **Memories:** added read-only `pet.memories` (exclusive `before_seq`, limit 1–20,
+   default 20), with bounded pages across living and ended pets. It projects only the
+   eleven kid-facing journal kinds; never raw journal JSON or task/request ids. Names,
+   appearances and stages are the life's current/final ones. Reads work while Off and
+   do not settle time, acknowledge celebrations, update state_version or re-export.
+   The screen can page older entries and return to newest, rather than dropping history
+   after twelve rows. The protocol contract, Rust tests and More smoke cover this path.
+4. **Desktop pet:** `DesktopPetFlow.js` now owns startup, response and switch decisions.
+   The widget, popup and fake controller consume it; the duplicate response policy was
+   removed from `CodePetBar.js`. Successful On replies take the same path even after the
+   popup closes.
+5. **Upgrade window:** retain the `codepet.bar.v1` envelope label for v0.3.0. The added
+   fields are additive and both v0.3 readers accept v1/v2. Changing the label would break
+   a loaded v0.2.1 bar before its hot reload. This is an intentional compatibility choice,
+   not an unfinished schema bump; schema-v5 SQLite is unchanged.

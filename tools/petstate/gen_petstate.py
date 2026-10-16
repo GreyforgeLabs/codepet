@@ -209,7 +209,7 @@ function sharedPriority(doc, now, seen) {
     } else if (working.length > 0) {
         var line = "act.working.many", vars = { name: name }
         if (working.length === 1) { line = "act.working.one"; vars = { name: name, app: working[0] } }
-        else if (working.length === 2) { line = "act.working.two"; vars = { name: name, app: working[0], app2: working[1] } }
+        else if (working.length === 2) { line = "act.working.two"; vars = { app: working[0], app2: working[1] } }
         setFace(res, "working", "working", line, vars, "working", { apps: working.slice(0, 3) })
     } else if (testing) {
         var tc = t.client === undefined ? null : t.client

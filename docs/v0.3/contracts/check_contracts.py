@@ -836,7 +836,7 @@ def shared_priority(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
         if len(working) == 1:
             line, vars_ = "act.working.one", {"name": name, "app": working[0]}
         elif len(working) == 2:
-            line, vars_ = "act.working.two", {"name": name, "app": working[0], "app2": working[1]}
+            line, vars_ = "act.working.two", {"app": working[0], "app2": working[1]}
         else:
             line, vars_ = "act.working.many", {"name": name}
         res.update(state="working", bar="working", line=line, vars=vars_, overlay="working",

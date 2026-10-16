@@ -1,0 +1,156 @@
+{
+  "format": "codepet-live-projection-v1",
+  "captured_date": "2026-10-16",
+  "client": "hermes",
+  "installed_version_observed": "0.21.3",
+  "version_observation": "readiness --version; not retained in hook payload",
+  "outcome": {
+    "submitted": true,
+    "model_turn_completed": true,
+    "outcome": "turn_completed"
+  },
+  "identity_transform": "All capture id hashes replaced by deterministic synthetic qa identifiers in first-seen order; equality retained within this file only.",
+  "projection_limits": [
+    "Metadata projections, not complete raw client payloads.",
+    "Unallowlisted enum strings became other; the original value cannot be recovered.",
+    "codepet_v, tools/counts, prompt_id, session mode fields outside the allowlist, content and paths were not retained.",
+    "capture_and_shim_us measures observer plus shim only, not native total hook latency."
+  ],
+  "hook_captures": [
+    {
+      "client": "hermes",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "session_start",
+        "session_id": "qa-hermes-001",
+        "interactive": true
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7669
+    },
+    {
+      "client": "hermes",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "turn_start",
+        "session_id": "qa-hermes-001",
+        "interactive": true,
+        "turn_id": "qa-hermes-002"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7680
+    },
+    {
+      "client": "hermes",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "turn_done",
+        "session_id": "qa-hermes-001",
+        "interactive": true,
+        "turn_id": "qa-hermes-002"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7671
+    },
+    {
+      "client": "hermes",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "session_end",
+        "session_id": "qa-hermes-001",
+        "interactive": true
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7725
+    }
+  ],
+  "upstream_projection_kind": "hook name plus allowlisted keyword-argument projection",
+  "upstream_captures": [
+    {
+      "event": "on_session_start",
+      "metadata": {
+        "session_id": "qa-hermes-001",
+        "platform": "cli"
+      }
+    },
+    {
+      "event": "pre_llm_call",
+      "metadata": {
+        "session_id": "qa-hermes-001",
+        "turn_id": "qa-hermes-002",
+        "platform": "cli"
+      }
+    },
+    {
+      "event": "pre_tool_call",
+      "metadata": {
+        "tool_name": "other",
+        "session_id": "qa-hermes-001",
+        "turn_id": "qa-hermes-002"
+      }
+    },
+    {
+      "event": "post_tool_call",
+      "metadata": {
+        "tool_name": "other",
+        "session_id": "qa-hermes-001",
+        "turn_id": "qa-hermes-002",
+        "status": "other"
+      }
+    },
+    {
+      "event": "on_session_end",
+      "metadata": {
+        "session_id": "qa-hermes-001",
+        "turn_id": "qa-hermes-002",
+        "completed": true,
+        "failed": false,
+        "interrupted": false,
+        "turn_exit_reason": "other",
+        "platform": "cli"
+      }
+    },
+    {
+      "event": "on_session_finalize",
+      "metadata": {
+        "session_id": "qa-hermes-001",
+        "platform": "cli",
+        "reason": "shutdown"
+      }
+    }
+  ],
+  "source_captures": [
+    {
+      "file": "hermes.jsonl",
+      "sha256": "3b0837a87948e9c7a514facf50df060aeed6ad1ca35fafdeeb860ac3ef52a90e"
+    },
+    {
+      "file": "hermes-upstream.jsonl",
+      "sha256": "7049d50d168a4eb2e33a562d78f40d970f4940fdd0752b35fd9fadf376332ce2"
+    }
+  ],
+  "unverified": [
+    "native_total_hook_latency",
+    "approval_session_key_to_session_id_relation"
+  ]
+}

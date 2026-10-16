@@ -67,3 +67,14 @@ test('turning CodePet back on brings the pet back, only then', () => {
     assert.equal(D.launchOnEnabled(on, true, false), null, 'Off: the pet exits by itself');
     assert.equal(D.launchOnEnabled({ overlayOnLoad: false }, false, true), null);
 });
+
+test('the widget follows up Let\'s go! and Turn on itself (desktop pet)', () => {
+    const ok = { ok: true, result: {} };
+    assert.deepEqual(plain(D.responseEffects('pet.start', {}, ok, { overlayOnLoad: false })),
+        [{ setting: 'overlayOnLoad', value: true }, { launch: 'show' }]);
+    assert.deepEqual(plain(D.responseEffects('pet.start', {}, { ok: false, error: { code: 'ALREADY_ARMED' } }, {})), []);
+    assert.deepEqual(plain(D.responseEffects('app.set_enabled', { enabled: true }, ok, { overlayOnLoad: true })), [{ launch: 'show' }]);
+    assert.deepEqual(plain(D.responseEffects('app.set_enabled', { enabled: true }, ok, { overlayOnLoad: false })), []);
+    assert.deepEqual(plain(D.responseEffects('app.set_enabled', { enabled: false }, ok, { overlayOnLoad: true })), []);
+    assert.deepEqual(plain(D.responseEffects('pet.care', { action: 'food' }, ok, { overlayOnLoad: true })), []);
+});

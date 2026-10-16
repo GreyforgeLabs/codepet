@@ -15,10 +15,6 @@ Item {
 
     // On shows the desktop pet; off needs no verb: the pet reads the switch and exits by
     // itself (notes.md §9 item 2).
-    function setDesktop(on) {
-        more.app.ctl.setSetting("overlayOnLoad", on)
-        if (on) more.app.ctl.launch("show")
-    }
     function setCalm(on) { more.app.ctl.setSetting("calm", on) }
     function bedtime() {
         more.app.request("pet.sleep", {}, function (resp) {
@@ -41,7 +37,7 @@ Item {
             checked: more.app.cfg.overlayOnLoad === true
             textOn: more.app.s("header.on")
             textOff: more.app.s("header.off")
-            onToggled: c => more.setDesktop(c)
+            onToggled: c => more.app.setDesktop(c)
         }
         MenuRow {
             objectName: "cp.more.bedtime"

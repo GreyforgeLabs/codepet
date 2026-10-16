@@ -204,7 +204,7 @@ test('copy resolution: habitat overrides, careWords and plain verbs', () => {
     assert.equal(M.t(S, 'tile.food', 'robot'), 'Charge');
     assert.equal(M.t(S, 'rules.1', 'robot'), "Charge me when I'm low!");
     assert.equal(M.t(S, 'act.working.two', 'floor', { name: 'Ginger', app: 'claude-code', app2: 'grok-cli' }),
-        'Ginger is helping Claude Code and Grok.');
+        'Helping Claude Code and Grok.');
     const word = M.careWord(REG, 'cat', 'food');
     assert.equal(M.reactText(S, REG, 'cat', 'food', false, 'Ginger'), `Yum! ${word}!`);
     assert.equal(M.reactText(S, REG, 'cat', 'wash', false, 'Ginger'), 'Squeaky clean!');
@@ -438,16 +438,6 @@ test('each care or treat press gets its own key; only an unconfirmed one is reus
     assert.deepEqual(plain(M.RETRY_METHODS), ['pet.care', 'treats.give']);
 });
 
-test('the widget follows up Let\'s go! and Turn on itself (desktop pet)', () => {
-    const ok = { ok: true, result: {} };
-    assert.deepEqual(plain(M.responseEffects('pet.start', {}, ok, { overlayOnLoad: false })),
-        [{ setting: 'overlayOnLoad', value: true }, { launch: 'show' }]);
-    assert.deepEqual(plain(M.responseEffects('pet.start', {}, { ok: false, error: { code: 'ALREADY_ARMED' } }, {})), []);
-    assert.deepEqual(plain(M.responseEffects('app.set_enabled', { enabled: true }, ok, { overlayOnLoad: true })), [{ launch: 'show' }]);
-    assert.deepEqual(plain(M.responseEffects('app.set_enabled', { enabled: true }, ok, { overlayOnLoad: false })), []);
-    assert.deepEqual(plain(M.responseEffects('app.set_enabled', { enabled: false }, ok, { overlayOnLoad: true })), []);
-    assert.deepEqual(plain(M.responseEffects('pet.care', { action: 'food' }, ok, { overlayOnLoad: true })), []);
-});
 
 test('the Connect card row after Connect: refused, stale and new failures', () => {
     const failed = { connected: false, failed_reason: 'too_old', job: null };

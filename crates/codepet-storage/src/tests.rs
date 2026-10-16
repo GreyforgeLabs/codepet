@@ -2736,3 +2736,6 @@ const SLOT_STATE_LIST: [State; 7] = [
     State::Cancelling,
     State::RecoveryRequired,
 ];
+
+#[path = "memories_tests.rs"]
+mod memories_cases;

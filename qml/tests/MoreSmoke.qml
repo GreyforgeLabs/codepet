@@ -94,19 +94,33 @@ Window {
         function () { kit.check(app.screen === "help", "How it works opens Help"); app.back() },
         function () { kit.check(app.screen === "more", "‹ Back returns to More"); win.find("cp.more.memories").tapped() },
         function () {
-            kit.check(app.screen === "memories" && ctl.count("pet.memorial") >= 1, "Memories asks for the memorial")
+            kit.check(app.screen === "memories" && ctl.count("pet.memories") >= 1, "Memories asks for the journal")
             kit.check(win.hasText("Ginger came home."), "the pet of today")
-            ctl.responses = { "pet.memorial": { entries: [{ life_id: "life-old", name: "Pip", species: "dog", appearance: "dog", ordinal: 1,
-                mode: "gentle", pace: "steady", final_level: 2, final_stage: 2, stage_name_key: "dog.grown", life_xp: 90, tasks_accepted: 0,
-                adopted_at_ms: 1790000000000, ended_at_ms: 1790500000000, end_cause: "retired", final_meters: {}, attended_ms: 1 }],
-                next_before_ordinal: null } }
+            ctl.responses = { "pet.memories": { entries: [
+                { seq: 9, kind: "evolved", at_ms: ctl.now, name: "Ginger", appearance: "goldfish", stage: 2, past: false },
+                { seq: 8, kind: "retired", at_ms: 1790500000000, name: "Pip", appearance: "dog", stage: 2, past: true }
+            ], next_before_seq: 8 } }
             app.back()
         },
         function () { win.find("cp.more.memories").tapped() },
         function () {
             kit.check(win.hasText("Pip has gone.") && win.hasText("A while ago"), "a past pet, with a when-word")
+            kit.check(win.hasText("Ginger grew up!"), "growth remains in Memories after its celebration")
             kit.kidCopy(app, "memories with a past pet")
+            kit.check(win.shown("cp.memoriesOlder"), "older memories are reachable")
+            ctl.responses = { "pet.memories": { entries: [{ seq: 1, kind: "born", at_ms: 1790000000000,
+                name: "Pip", appearance: "dog", stage: 2, past: true }], next_before_seq: null } }
+            win.find("cp.memoriesOlder").tapped()
+        },
+        function () {
+            kit.check(ctl.last("pet.memories").params.before_seq === 8, "older page uses exclusive sequence cursor")
+            kit.check(win.hasText("Pip came home.") && !win.hasText("Ginger grew up!"), "paging replaces the bounded page")
+            kit.check(win.shown("cp.memoriesNewest") && !win.shown("cp.memoriesOlder"), "last page can return to newest")
             ctl.responses = {}
+            win.find("cp.memoriesNewest").tapped()
+        },
+        function () {
+            kit.check(ctl.last("pet.memories").params.before_seq === null && win.hasText("Ginger came home."), "return to newest")
             app.back()
         },
         // ---- Say goodbye: the button appears only for the typed name

@@ -202,14 +202,8 @@ Item {
         metrics.font.pixelSize = kit.styleFont.heading
         metrics.text = line.text
         var atHeading = metrics.advanceWidth <= line.width
-        metrics.font.pixelSize = kit.styleFont.body
-        var atTitle = metrics.advanceWidth <= line.width
-        if (!atHeading && atTitle && kit.shrunk.indexOf(line.text) < 0) {
-            kit.shrunk = kit.shrunk.concat([line.text])
-            console.log("NOTE status line steps down from heading to fit: " + line.text)
-        }
-        return kit.check(line.lineCount <= 1 && atTitle && !line.truncated,
-                         label + ": status line on one line (" + line.text + ")")
+        return kit.check(line.lineCount <= 1 && atHeading && !line.truncated,
+                         label + ": status line at heading size (" + line.text + ")")
     }
 
     // No visible kid-facing text is cut off: an elided or line-capped Text reports

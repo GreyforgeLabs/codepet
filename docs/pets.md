@@ -120,10 +120,10 @@ python3 qml/tests/test_pet_distinctness.py
 
 ### Reproducing the frames
 
-The source sheets are the v0.2.1 release asset [`codepet-art-sources-v0.2.tar`](https://github.com/GreyforgeLabs/codepet/releases/download/v0.2.1/codepet-art-sources-v0.2.tar). From the repository root:
+The source sheets are the v0.3.0 release asset [`codepet-art-sources-v0.2.tar`](https://github.com/GreyforgeLabs/codepet/releases/download/v0.3.0/codepet-art-sources-v0.2.tar). From the repository root:
 
 ```
-# download codepet-art-sources-v0.2.tar and SHA256SUMS from the v0.2.1 release, then:
+# download codepet-art-sources-v0.2.tar and SHA256SUMS from the v0.3.0 release, then:
 sha256sum -c SHA256SUMS --ignore-missing
 tar tf codepet-art-sources-v0.2.tar | head          # every path starts with v0.2/
 mkdir -p art-src && tar xf codepet-art-sources-v0.2.tar -C art-src

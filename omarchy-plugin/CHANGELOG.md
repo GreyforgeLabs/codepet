@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (v0.3)
+## 0.3.0 (release candidate)
 
 The "a 5-year-old can use it" popup (SPEC-v0.3 §3).
 

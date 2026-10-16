@@ -18,6 +18,7 @@ mod care;
 mod clients_store;
 mod life;
 mod lifecycle_store;
+mod memories;
 mod model;
 mod paths;
 mod presence_io;
@@ -46,6 +47,7 @@ pub use life::{
     lifecycle_rules_json, lifecycle_rules_sha256, AdoptRequest, Leniency, StartRequest,
     MAX_MEMORIAL_PAGE,
 };
+pub use memories::{MemoriesPage, Memory};
 pub use model::{
     AcceptOutcome, CareOutcome, CareView, CriticalView, DecayView, Event, EventData, EventsPage,
     HistoryCursor, HistoryPage, LifeOutcome, LifeSummary, LifeView, LifecycleView, MasteryView,

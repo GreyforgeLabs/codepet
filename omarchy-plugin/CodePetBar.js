@@ -20,7 +20,7 @@ var MAX_REGISTRY_BYTES = 262144
 // pet.configure_life are never sent from the shell process.
 var ALLOWED_METHODS = [
     "state.get", "pet.care", "pet.sleep", "pet.wake", "pet.pause", "pet.events_seen",
-    "pet.start", "pet.rename", "pet.select", "pet.rules", "pet.retire", "pet.memorial",
+    "pet.start", "pet.rename", "pet.select", "pet.rules", "pet.retire", "pet.memorial", "pet.memories",
     "treats.give", "app.set_enabled", "app.set_helpers", "agent.forget_history",
     "clients.status", "clients.connect", "clients.disconnect", "clients.test"
 ]
@@ -263,18 +263,6 @@ function retryRelease(book, key, resp, now) {
     if (isObject(resp) && resp.ok === true) delete next[key]
     else next[key] = { signature: e.signature, expiresAt: (isNum(now) ? now : 0) + RETRY_WINDOW_MS, pending: false }
     return next
-}
-
-// What the bar widget itself does after an answer, whether or not the popup is still open
-// (it may have closed while the request was in flight): Let's go! (pet.start) turns the
-// desktop pet on and shows it; turning CodePet on shows it when its switch is on (notes.md
-// §8 item 7). Each effect is { setting, value } or { launch }.
-function responseEffects(method, params, resp, cfg) {
-    if (!isObject(resp) || resp.ok !== true) return []
-    if (method === "pet.start") return [{ setting: "overlayOnLoad", value: true }, { launch: "show" }]
-    if (method === "app.set_enabled" && isObject(params) && params.enabled === true && isObject(cfg) && cfg.overlayOnLoad === true)
-        return [{ launch: "show" }]
-    return []
 }
 
 // ---------------------------------------------------------------- registry + art
