@@ -13,7 +13,10 @@
 # use is possible. It prints each command's --json line with the scratch path replaced by
 # /home/u, plus the throwaway settings.json before and after, and checks that the
 # environment override is honoured (everything lands under <scratch dir>). It never reads
-# or writes the caller's real ~/.claude.
+# or writes the caller's real ~/.claude. Last, it prints the sha256 of the shipped sources
+# it validated (sha256sum format): save them as
+# crates/codepet-cli/tests/fixtures/claude-cli/validated-sources-<version>.sha256, which a
+# unit test compares with the shipped sources, so a changed manifest needs this gate again.
 set -euo pipefail
 [ "$#" -eq 2 ] || { echo "usage: $0 <claude binary> <scratch dir>" >&2; exit 2; }
 CLAUDE=$1
@@ -57,3 +60,7 @@ show "installed_plugins.json after uninstall" "$H/.claude/plugins/installed_plug
 # The override was honoured: the install records live in the throwaway config dir.
 grep -q '"plugins": {}' "$H/.claude/plugins/installed_plugins.json"
 echo "gate: passed (CLAUDE_CONFIG_DIR honoured; install, already-installed, list, uninstall, marketplace remove captured)"
+echo "== validated sources (sha256)"
+(cd "$REPO" && sha256sum integrations/claude-code/.claude-plugin/marketplace.json \
+    integrations/claude-code/plugin/.claude-plugin/plugin.json.in \
+    integrations/claude-code/plugin/hooks/hooks.json.in)

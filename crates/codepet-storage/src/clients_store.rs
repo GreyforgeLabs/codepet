@@ -447,6 +447,23 @@ impl Store {
         Ok(now)
     }
 
+    /// Abandons a running ready check without a verdict (CodePet was turned Off, so no
+    /// record could arrive): `test_state` and `test_client` go back to `NULL` and no client
+    /// gets a `ready_check` failure. Returns whether a check was running.
+    pub fn cancel_ready_check(&mut self) -> Result<bool> {
+        let tx = rusqlite::Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        let n = tx.execute(
+            "UPDATE meta SET test_state = NULL, test_client = NULL
+             WHERE id = 1 AND test_state = 'running'",
+            [],
+        )?;
+        if n > 0 {
+            bump(&tx)?;
+        }
+        tx.commit()?;
+        Ok(n > 0)
+    }
+
     /// The tested clients whose ready-check `turn_done` record was folded since `since_ms`.
     pub fn ready_check_arrivals(
         &self,

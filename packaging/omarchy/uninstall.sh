@@ -5,7 +5,9 @@
 #   packaging/omarchy/uninstall.sh [--dry-run]
 #
 # First every coding app is disconnected with `codepet disconnect <app>` (Claude Code and
-# Hermes through their own CLIs, Codex without renumbering other hooks). Then the hook
+# Hermes through their own CLIs, Codex without renumbering other hooks); an app CodePet was
+# never connected to and has no files in is only reported ("nothing to stop"), never
+# recorded or warned about. Then the hook
 # shim ~/.local/share/codepet/bin/codepet-hook is replaced by the tombstone (it drains
 # stdin and exits 0, printing nothing), never deleted: a coding app may still reference it
 # (a Codex line that other hooks follow, or an app whose disconnect failed; those are

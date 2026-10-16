@@ -173,6 +173,34 @@ class Plugin(unittest.TestCase):
             self.mod._session({"session_id": f"m{i}"}, "cli")
         self.assertLessEqual(len(self.mod._platform), 256)
 
+    def test_per_session_state_stays_bounded(self):
+        # 1000 sessions whose turns fail, are cancelled or just stop (no finalize), with a
+        # clarify left waiting: every map stays within the platform bound (spec 5.6).
+        hooks = self.load(None)
+        for i in range(1000):
+            sid = f"s{i}"
+            hooks["on_session_start"](session_id=sid, platform="cli")
+            hooks["pre_llm_call"](session_id=sid, turn_id="t", platform="cli")
+            hooks["post_tool_call"](session_id=sid, tool_name="terminal")
+            hooks["pre_tool_call"](session_id=sid, tool_name="clarify")
+            if i % 3 == 0:
+                hooks["on_session_end"](session_id=sid, turn_id="t", failed=True)
+            elif i % 3 == 1:
+                hooks["on_session_end"](session_id=sid, turn_id="t", interrupted=True)
+        m = self.mod
+        self.assertLessEqual(len(m._platform), 256)
+        self.assertLessEqual(len(m._tools), 256)
+        self.assertLessEqual(len(m._waiting), 256)
+        self.assertTrue(set(m._tools) <= set(m._platform) and m._waiting <= set(m._platform))
+        # Failed and cancelled turns leave nothing behind; finalize forgets the session.
+        hooks["on_session_end"](session_id="s998", turn_id="t", failed=True)
+        self.assertNotIn("s998", m._tools)
+        self.assertNotIn("s998", m._waiting)
+        hooks["on_session_finalize"](session_id="s999", platform="cli")
+        self.assertNotIn("s999", m._platform)
+        self.assertNotIn("s999", m._tools)
+        self.assertNotIn("s999", m._waiting)
+
     def test_a_missing_or_broken_shim_never_raises(self):
         for body, mode in ((None, 0o755), (LOGGING_SHIM, 0o644), ("#!/bin/sh\nexit 0\n", 0o755)):
             hooks = self.load(body, mode)

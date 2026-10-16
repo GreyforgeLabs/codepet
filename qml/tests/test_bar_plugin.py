@@ -395,7 +395,8 @@ state_home = os.environ.get("XDG_STATE_HOME", "")
 req = json.loads(sys.stdin.readline())
 with open(os.path.join(home, "rpc.log"), "a") as log:
     log.write(json.dumps({{"method": req["method"], "id": req["id"], "params": req["params"],
-                          "argv": sys.argv[1:], "state_home": state_home}}) + "\n")
+                          "argv": sys.argv[1:], "state_home": state_home,
+                          "test_state": os.environ.get("CODEPET_TEST_STATE")}}) + "\n")
 result = {{"changed": True}}
 if req["method"] == "state.get":
     sdir = os.path.join(state_home or os.path.join(home, ".local/state"), "codepet")
@@ -421,7 +422,8 @@ FAKE_LAUNCHER = r'''#!{python} -I
 import json, os, sys
 with open(os.path.join(os.environ["HOME"], "launch.log"), "a") as log:
     log.write(json.dumps({{"argv": sys.argv[1:], "state_home": os.environ.get("XDG_STATE_HOME", ""),
-                          "bin": os.environ.get("CODEPET_BIN")}}) + "\n")
+                          "bin": os.environ.get("CODEPET_BIN"),
+                          "test_state": os.environ.get("CODEPET_TEST_STATE")}}) + "\n")
 '''
 
 # A wrong `binary` setting: prints a non-protocol line, then would wait for a minute.
@@ -712,6 +714,8 @@ class QuickshellPluginLoad(unittest.TestCase):
         time.sleep(0.5)
         self.assertEqual([e["argv"] for e in self.launch_log()], [["toggle"]])
         self.assertEqual(self.launch_log()[0]["state_home"], str(self.home / ".local/state"))
+        self.assertIsNone(self.launch_log()[0]["test_state"], "only a stateHome override is a test")
+        self.assertTrue(all(e["test_state"] is None for e in self.rpc_log()))
 
         # Settings go through the shell facade only.
         self.call("label", "status")
@@ -737,6 +741,8 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.start(shell_entry={"stateHome": str(qa), "label": "status"}, state=bar_state(version=7), state_home=qa)
         self.assertTrue(self.wait_for(lambda: len(self.rpc_log()) >= 1))
         self.assertEqual(self.rpc_log()[0]["state_home"], str(qa))
+        # The CLI is told it runs under a test state home (TEST_STATE for clients.*).
+        self.assertEqual(self.rpc_log()[0]["test_state"], "1")
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] == 8))
         d = self.dump()
         self.assertTrue(d["w1"]["testState"])
@@ -745,7 +751,8 @@ class QuickshellPluginLoad(unittest.TestCase):
         # (`qs ipc call` would read "show" as its own subcommand, so another verb is used.)
         self.call("launch", "companion")
         self.assertTrue(self.wait_for(lambda: len(self.launch_log()) >= 1))
-        self.assertEqual(self.launch_log()[0], {"argv": ["companion"], "state_home": str(qa), "bin": None})
+        self.assertEqual(self.launch_log()[0], {"argv": ["companion"], "state_home": str(qa), "bin": None,
+                                                "test_state": "1"})
         self.assertFalse((self.home / ".local/state/codepet").exists(), "the default state home is untouched")
 
     def test_binary_setting_reaches_the_launcher(self):

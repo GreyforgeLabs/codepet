@@ -82,8 +82,20 @@ fn tree_current(ctx: &Ctx) -> bool {
     })
 }
 
+/// The user turned CodePet off in Claude Code's `/plugin` list: `settings.json` holds
+/// `enabledPlugins."codepet@codepet-local": false` (only that entry is read).
+pub fn turned_off_in_claude(ctx: &Ctx) -> bool {
+    read_settings(&ctx.env.claude_dir).is_ok_and(|m| {
+        m.get("enabledPlugins")
+            .and_then(|e| e.get(PLUGIN_ID))
+            .is_some_and(|v| v == &Value::Bool(false))
+    })
+}
+
+/// `Missing` also when CodePet is turned off in Claude's `/plugin` list: no event can
+/// arrive, so the row says "Tap to connect" (and Connect explains what to do).
 pub fn status(ctx: &Ctx) -> Artifact {
-    if !plugin_recorded(ctx) {
+    if !plugin_recorded(ctx) || turned_off_in_claude(ctx) {
         return Artifact::Missing;
     }
     if tree_current(ctx) {
@@ -212,6 +224,14 @@ pub fn connect(ctx: &Ctx, bin: &Path) -> Result<Connected, Failed> {
             Failed::new(Reason::Blocked, "claude plugin install did not succeed").installed(),
         );
     }
+    // `install` answers `ok` ("already installed") but leaves a plugin the user turned off
+    // in `/plugin` turned off: no event could ever arrive.
+    if !after.as_ref().is_ok_and(settings_enable_ours) {
+        return Err(Failed::new(
+            Reason::Blocked,
+            "CodePet is turned off in Claude Code; type /plugin there and turn it on",
+        ));
+    }
     Ok(Connected {
         connected: true,
         needs_step: None,
@@ -287,6 +307,41 @@ mod tests {
 
     fn obj(v: Value) -> Map<String, Value> {
         v.as_object().unwrap().clone()
+    }
+
+    /// The shipped manifests are the bytes `claude plugin validate` passed in the day-0
+    /// gate (`tools/integrations/claude-day0-gate.sh`); a change needs that gate again and
+    /// a new `validated-sources-<version>.sha256`.
+    #[test]
+    fn shipped_manifests_are_the_validated_ones() {
+        let pinned =
+            include_str!("../../tests/fixtures/claude-cli/validated-sources-2.1.294.sha256");
+        let shipped = [
+            (
+                "integrations/claude-code/.claude-plugin/marketplace.json",
+                MARKETPLACE_JSON,
+            ),
+            (
+                "integrations/claude-code/plugin/.claude-plugin/plugin.json.in",
+                PLUGIN_JSON,
+            ),
+            (
+                "integrations/claude-code/plugin/hooks/hooks.json.in",
+                HOOKS_JSON,
+            ),
+        ];
+        assert_eq!(pinned.lines().count(), shipped.len());
+        for (path, text) in shipped {
+            let want = pinned
+                .lines()
+                .find_map(|l| l.strip_suffix(path).map(|h| h.trim_end().to_owned()))
+                .unwrap_or_else(|| panic!("{path} is not pinned"));
+            assert_eq!(
+                codepet_storage::sha256_hex(text.as_bytes()),
+                want,
+                "{path} changed since the day-0 gate validated it: run tools/integrations/claude-day0-gate.sh again"
+            );
+        }
     }
 
     #[test]

@@ -10,7 +10,8 @@ installed"; `plugin uninstall` and `plugin marketplace remove` answer outcome fa
 failureCode not_installed / not_configured when there is nothing to remove, and leave
 `extraKnownMarketplaces: {}` behind. It never reads anything outside CLAUDE_CONFIG_DIR
 (else $HOME/.claude). Knobs: FAKE_CLAUDE_TAMPER (also edits hooks), FAKE_CLAUDE_FAIL
-(install fails), FAKE_CLAUDE_HANG (sleeps past the CLI timeout). Every call is logged to
+(install fails), FAKE_CLAUDE_HANG (sleeps past the CLI timeout), $HOME/claude-slow
+(install takes 2 s). Every call is logged to
 $HOME/claude-calls.log with the environment's variable names.
 """
 import json, os, sys, time
@@ -54,6 +55,8 @@ def emit(obj, code=0):
 
 
 if args[:2] == ["plugin", "install"] and "--marketplace" in args:
+    if os.path.exists(os.path.join(home, "claude-slow")):
+        time.sleep(2)
     name = args[2]
     mdir = args[args.index("--marketplace") + 1]
     market = load(os.path.join(mdir, ".claude-plugin", "marketplace.json"), None)
@@ -70,7 +73,10 @@ if args[:2] == ["plugin", "install"] and "--marketplace" in args:
         os.makedirs(plugins_dir, exist_ok=True)
         with open(installed_p, "w") as f:
             f.write(json.dumps(inst, indent=2))
-    s.setdefault("enabledPlugins", {})[pid] = True
+    # Like the real CLI's "already installed" answer, a plugin the user turned off in
+    # /plugin stays off.
+    if not (already and s.get("enabledPlugins", {}).get(pid) is False):
+        s.setdefault("enabledPlugins", {})[pid] = True
     s.setdefault("extraKnownMarketplaces", {})["codepet-local"] = {"source": {"source": "directory", "path": mdir}}
     if os.environ.get("FAKE_CLAUDE_TAMPER") or os.path.exists(os.path.join(home, "claude-tamper")):
         s.setdefault("hooks", {})["Stop"] = []

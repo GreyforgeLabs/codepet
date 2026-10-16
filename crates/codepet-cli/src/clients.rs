@@ -6,7 +6,10 @@
 //! `client_hooks` and re-exports. `clients.connect`, `clients.disconnect` and
 //! `clients.test` start a detached `codepet clients-job` and return `{job_id}` at once;
 //! they answer `TEST_STATE` while the bar runs with a `stateHome` test override (the bar
-//! then sets `CODEPET_TEST_STATE=1`), so a test can never repoint the owner's real shim.
+//! then sets `CODEPET_TEST_STATE=1`). Independently of that signal, a Connect never
+//! repoints a shim that serves another existing state dir or binary
+//! ([`install::shim_conflict`], `blocked`), so a test can never take over the owner's
+//! real shim.
 use crate::clients_job::{self, Journal};
 use crate::errors::Failure;
 use crate::install::{self, codex, detect, Artifact, Ctx, Env};
@@ -21,7 +24,7 @@ use std::time::{Duration, Instant};
 /// Set by the bar when it runs with a `stateHome` test override.
 pub const TEST_STATE_ENV: &str = "CODEPET_TEST_STATE";
 
-fn test_state() -> bool {
+pub(crate) fn test_state() -> bool {
     std::env::var_os(TEST_STATE_ENV).is_some_and(|v| !v.is_empty())
 }
 
@@ -104,6 +107,18 @@ pub fn start(
     kind: &str,
     target: JobTarget,
 ) -> Result<Value, Failure> {
+    start_with(store, request_id, method, kind, target, false)
+}
+
+/// [`start`]; `repoint` is `codepet connect --repoint` (never from the bar).
+fn start_with(
+    store: &mut Store,
+    request_id: &str,
+    method: &str,
+    kind: &str,
+    target: JobTarget,
+    repoint: bool,
+) -> Result<Value, Failure> {
     if test_state() {
         return Err(Failure::new(
             ErrorCode::TestState,
@@ -119,6 +134,11 @@ pub fn start(
         }
         JobTarget::Connected(one) => json!({ "client": one.map(ClientId::as_str) }).to_string(),
     };
+    let canonical = if repoint {
+        format!("{canonical} repoint")
+    } else {
+        canonical
+    };
     let ctx = context(store)?;
     let job_id = clients_job::new_job_id()
         .map_err(|_| Failure::new(ErrorCode::Internal, "no random job id"))?;
@@ -129,7 +149,7 @@ pub fn start(
         JobTarget::Named(list) => list.clone(),
         JobTarget::Connected(_) => Vec::new(),
     };
-    clients_job::create_journal(&ctx.paths, &job_id, kind, &guess, &ctx.bin)
+    clients_job::create_journal(&ctx.paths, &job_id, kind, &guess, &ctx.bin, repoint)
         .map_err(|_| Failure::new(ErrorCode::Internal, "could not write the job journal"))?;
     let drop_journal = || {
         let _ = install::remove_file(&ctx.paths.job_path(&job_id));
@@ -159,7 +179,7 @@ pub fn start(
     let spawned = (if clients == guess {
         Ok(())
     } else {
-        clients_job::create_journal(&ctx.paths, &job_id, kind, &clients, &ctx.bin)
+        clients_job::create_journal(&ctx.paths, &job_id, kind, &clients, &ctx.bin, repoint)
     })
     .and_then(|()| clients_job::spawn(&job_id));
     if spawned.is_err() {
@@ -175,7 +195,7 @@ pub fn start(
 
 // ---- `codepet connect` / `codepet disconnect` ----------------------------------------
 
-const USAGE_CONNECT: &str = "usage: codepet connect <client>... | --all   (clients: claude-code, codex, opencode, hermes, grok-cli)";
+const USAGE_CONNECT: &str = "usage: codepet connect [--repoint] <client>... | --all   (clients: claude-code, codex, opencode, hermes, grok-cli)";
 const USAGE_DISCONNECT: &str = "usage: codepet disconnect <client>   (clients: claude-code, codex, opencode, hermes, grok-cli)";
 /// How long the wrappers wait for their job.
 const WAIT: Duration = Duration::from_secs(120);
@@ -201,9 +221,15 @@ fn waited_journal(store: &Store, job_id: &str) -> Option<Journal> {
     None
 }
 
-fn plain(r: &clients_job::JournalResult) -> String {
+/// One result line; `kind` is the job's (`connect`, `disconnect` or `test`).
+fn plain(kind: &str, r: &clients_job::JournalResult) -> String {
     let c = ClientId::parse(&r.id).expect("journal ids are client ids");
     let name = c.display_name();
+    let verb = match kind {
+        "disconnect" => "stop watching",
+        "test" => "check",
+        _ => "connect",
+    };
     match (r.outcome.as_str(), r.step.as_deref(), r.reason.as_deref()) {
         ("connected", ..) => format!("{name}: connected. Open a new {name} window{}.", if c == ClientId::ClaudeCode { " (or type /reload-plugins)" } else { "" }),
         ("needs_step", Some("codex_hooks_off"), _) => format!("{name}: hooks are turned off in Codex ([features] hooks = false); CodePet changed nothing"),
@@ -213,8 +239,7 @@ fn plain(r: &clients_job::JournalResult) -> String {
             None => format!("{name}: stopped watching"),
         },
         (_, _, Some(reason)) => format!(
-            "{name}: couldn't {} ({}){}",
-            "connect",
+            "{name}: couldn't {verb} ({}){}",
             match reason {
                 "not_installed" => "not installed",
                 "too_old" => "too old",
@@ -228,7 +253,7 @@ fn plain(r: &clients_job::JournalResult) -> String {
     }
 }
 
-fn run_job(method: codepet_protocol::Method, params: Value) -> i32 {
+fn run_job(method: codepet_protocol::Method, params: Value, repoint: bool) -> i32 {
     let opened = crate::rpc::open_current();
     let mut store = match opened {
         Ok(s) => s,
@@ -249,12 +274,13 @@ fn run_job(method: codepet_protocol::Method, params: Value) -> i32 {
                 .flatten()
                 .filter_map(|v| v.as_str().and_then(ClientId::parse))
                 .collect();
-            start(
+            start_with(
                 &mut store,
                 &id,
                 "clients.connect",
                 "connect",
                 JobTarget::Named(list),
+                repoint,
             )
         }
         _ => {
@@ -296,7 +322,7 @@ fn run_job(method: codepet_protocol::Method, params: Value) -> i32 {
     };
     let mut ok = true;
     for r in &j.results {
-        say(&plain(r));
+        say(&plain(&j.kind, r));
         ok &= r.outcome != "failed";
     }
     match j.test.as_deref() {
@@ -312,10 +338,19 @@ fn run_job(method: codepet_protocol::Method, params: Value) -> i32 {
 
 /// `codepet connect <id>... | --all`.
 pub fn connect_cli(args: &[std::ffi::OsString]) -> i32 {
-    let args: Vec<&str> = match args.iter().map(|a| a.to_str()).collect::<Option<Vec<_>>>() {
+    let mut args: Vec<&str> = match args.iter().map(|a| a.to_str()).collect::<Option<Vec<_>>>() {
         Some(a) => a,
         None => return usage(USAGE_CONNECT),
     };
+    // `--repoint` (first): let this Connect repoint a hook shim that serves another
+    // CodePet state folder or binary that still exists. Never with --all.
+    let repoint = args.first() == Some(&"--repoint");
+    if repoint {
+        args.remove(0);
+        if args.is_empty() || args.contains(&"--all") {
+            return usage(USAGE_CONNECT);
+        }
+    }
     let list: Vec<ClientId> = if args == ["--all"] {
         let mut store = match crate::rpc::open_current() {
             Ok(s) => s,
@@ -358,6 +393,7 @@ pub fn connect_cli(args: &[std::ffi::OsString]) -> i32 {
     run_job(
         codepet_protocol::Method::ClientsConnect,
         json!({ "clients": ids }),
+        repoint,
     )
 }
 
@@ -369,9 +405,28 @@ pub fn disconnect_cli(args: &[std::ffi::OsString]) -> i32 {
     let Some(c) = one.to_str().and_then(ClientId::parse) else {
         return usage(USAGE_DISCONNECT);
     };
+    // Nothing of CodePet's there and not connected: nothing to stop, and nothing is
+    // recorded (no flag, no row), so uninstall never reports apps CodePet never touched.
+    if let Ok(store) = crate::rpc::open_current() {
+        if let Ok(ctx) = context(&store) {
+            let connected = store
+                .client_rows()
+                .unwrap_or_default()
+                .iter()
+                .any(|r| r.client == c.as_str() && (r.connected || r.job_id.is_some()));
+            if !connected && !install::anything_installed(&ctx, c) {
+                say(&format!(
+                    "{}: CodePet is not connected there; nothing to stop",
+                    c.display_name()
+                ));
+                return 0;
+            }
+        }
+    }
     run_job(
         codepet_protocol::Method::ClientsDisconnect,
         json!({ "client": c.as_str() }),
+        false,
     )
 }
 
@@ -408,7 +463,7 @@ pub fn refresh_cli() -> i32 {
             },
             ..ctx.clone()
         };
-        if install::install_shim(&old).is_ok() {
+        if install::install_shim(&old, false).is_ok() {
             say("refreshed: the CodePet hook shim");
         }
     }
@@ -426,4 +481,42 @@ pub fn refresh_cli() -> i32 {
         }
     }
     i32::from(failed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clients_job::JournalResult;
+
+    fn failed(id: &str, reason: &str) -> JournalResult {
+        JournalResult {
+            id: id.to_owned(),
+            outcome: "failed".to_owned(),
+            reason: Some(reason.to_owned()),
+            ..JournalResult::default()
+        }
+    }
+
+    #[test]
+    fn result_lines_use_the_jobs_own_verb() {
+        let r = failed("hermes", "blocked");
+        assert_eq!(
+            plain("connect", &r),
+            "Hermes: couldn't connect (something blocked it)"
+        );
+        assert_eq!(
+            plain("disconnect", &r),
+            "Hermes: couldn't stop watching (something blocked it)"
+        );
+        assert_eq!(
+            plain("test", &r),
+            "Hermes: couldn't check (something blocked it)"
+        );
+        let ok = JournalResult {
+            id: "grok-cli".to_owned(),
+            outcome: "disconnected".to_owned(),
+            ..JournalResult::default()
+        };
+        assert_eq!(plain("disconnect", &ok), "Grok: stopped watching");
+    }
 }

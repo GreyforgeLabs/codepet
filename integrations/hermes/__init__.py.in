@@ -37,13 +37,19 @@ def _send(body):
         pass
 
 
+def _forget(sid):
+    _platform.pop(sid, None)
+    _tools.pop(sid, None)
+    _waiting.discard(sid)
+
+
 def _session(kw, platform=None):
     sid = kw.get("session_id")
     if not _ok(sid):
         return None
     if platform is not None:
         if len(_platform) >= _MAX and sid not in _platform:
-            _platform.pop(next(iter(_platform)))
+            _forget(next(iter(_platform)))
         _platform[sid] = platform
     return sid if _platform.get(sid) in _PLATFORMS else None
 
@@ -120,7 +126,9 @@ def _session_end(**kw):
         kind = "turn_done" if kw.get("completed") is True else "turn_failed" if kw.get("failed") is True \
             else "turn_cancelled" if kw.get("interrupted") is True else None
         if kind:
-            extra = {"tools": _tools.pop(sid, 0)} if kind == "turn_done" else {}
+            tools = _tools.pop(sid, 0)
+            _waiting.discard(sid)
+            extra = {"tools": tools} if kind == "turn_done" else {}
             _event(kind, sid, kw.get("turn_id"), **extra)
     except Exception:
         pass
@@ -130,6 +138,8 @@ def _loop_stopped(**kw):
     try:
         sid = _session(kw)
         if sid:
+            _tools.pop(sid, None)
+            _waiting.discard(sid)
             _event("turn_cancelled", sid)
     except Exception:
         pass
@@ -140,7 +150,7 @@ def _finalize(**kw):
         sid = _session(kw, kw.get("platform") or _platform.get(kw.get("session_id")))
         if sid:
             _event("session_end", sid)
-        _platform.pop(kw.get("session_id"), None)
+        _forget(kw.get("session_id"))
     except Exception:
         pass
 

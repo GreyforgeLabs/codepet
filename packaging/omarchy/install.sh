@@ -37,8 +37,11 @@
 # The bar icons ship twice (omarchy-plugin/assets/icons for the bar, qml/assets/icons for
 # the overlay); the install refuses when the two copies differ.
 #
-# An update keeps the replaced release tree and plugin under ~/.cache/codepet as
-# release-backup-<version>-<ts> and plugin-backup-<ts>; only the newest of each is kept.
+# An update keeps the replaced binary, release tree and plugin under ~/.cache/codepet as
+# codepet-backup-<old version>-<ts>, release-backup-<version>-<ts> and plugin-backup-<ts>;
+# only the newest of each is kept (the binary's once the data is migrated). When
+# `codepet migrate` fails, the exact commands that put the previous binary, plugin and
+# overlay runtime back are printed (the data itself was not changed).
 # Under ~/.local/share/codepet/releases it keeps the new release and the one `current`
 # pointed to before; older release trees are removed, unless an overlay is running (it may
 # still read its own release tree). Pruning never touches ~/.local/share/codepet/{bin,
@@ -244,12 +247,12 @@ esac
 [ "$got" = "codepet $VERSION" ] || die "$BIN_SRC reports '$got', expected 'codepet $VERSION'; nothing was changed"
 
 # prune_backups <prefix> <kept>: after a successful swap, remove this script's earlier
-# backups named $WORK/<prefix>*, keeping only <kept> (the one just made), so repeated
-# installs do not grow ~/.cache by a release tree each time.
+# backups named $WORK/<prefix>* (trees, or the binary's single file), keeping only <kept>
+# (the one just made), so repeated installs do not grow ~/.cache each time.
 prune_backups() {
     local old
     for old in "$WORK/$1"*; do
-        if [ "$old" = "$2" ] || [ ! -d "$old" ] || [ -L "$old" ]; then
+        if [ "$old" = "$2" ] || [ -L "$old" ] || { [ ! -d "$old" ] && [ ! -f "$old" ]; }; then
             continue
         fi
         rm -rf -- "$old"
@@ -317,7 +320,17 @@ install_file() { # install_file <src> <dest>
     install -m 0755 -- "$1" "$2.tmp-$TS"
     mv -f -- "$2.tmp-$TS" "$2"
 }
-mkdir -p -- "$BIN_DIR"
+mkdir -p -- "$BIN_DIR" "$WORK"
+# The binary being replaced is kept, so a failed migration can be rolled back by hand.
+BIN_BACKUP=
+if [ -f "$BIN_DIR/codepet" ] && [ ! -L "$BIN_DIR/codepet" ]; then
+    old=$("$BIN_DIR/codepet" --version 2>/dev/null || true)
+    old=${old#codepet }
+    [[ "$old" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || old=unknown
+    BIN_BACKUP="$WORK/codepet-backup-$old-$TS"
+    cp -p -- "$BIN_DIR/codepet" "$BIN_BACKUP"
+    echo "binary: previous codepet ($old) kept at $BIN_BACKUP"
+fi
 install_file "$BIN_SRC" "$BIN_DIR/codepet"
 got=$("$BIN_DIR/codepet" --version 2>/dev/null || true)
 [ "$got" = "codepet $VERSION" ] || die "installed codepet reports '$got', expected 'codepet $VERSION'"
@@ -387,6 +400,7 @@ discovered() {
     return 1
 }
 RELOADED=0
+PLUGIN_BACKUP=
 if [ "$NO_PLUGIN" -eq 0 ]; then
     # Staged beside plugins/ (same filesystem, so every move below is one rename) but
     # outside it, so the shell's plugin watcher never sees a partial tree.
@@ -405,6 +419,7 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
             stage="$stage.old"
         fi
         mv -T -- "$stage" "$WORK/plugin-backup-$TS"
+        PLUGIN_BACKUP="$WORK/plugin-backup-$TS"
         echo "plugin: updated $PLUGIN_DIR (previous copy: $WORK/plugin-backup-$TS)"
         prune_backups plugin-backup- "$WORK/plugin-backup-$TS"
         # Ask the running shell to rescan, so it reloads the swapped plugin now.
@@ -434,10 +449,25 @@ fi
 FAILED=0
 if migrated=$("$BIN_DIR/codepet" migrate 2>&1); then
     echo "data: $migrated"
+    [ -z "$BIN_BACKUP" ] || prune_backups codepet-backup- "$BIN_BACKUP"
 else
     FAILED=1
     echo "$PROG: codepet migrate failed; the pet's data in $STATE_HOME/codepet was not changed:" >&2
     printf '%s\n' "$migrated" >&2
+    # The new binary, runtime and plugin are in place; this is the way back.
+    if [ -n "$BIN_BACKUP" ] || [ -n "$PLUGIN_BACKUP" ] || { [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$VERSION" ]; }; then
+        echo "To go back to the CodePet you had before, run:" >&2
+        [ -z "$BIN_BACKUP" ] || printf '  install -m 0755 -- %q %q\n' "$BIN_BACKUP" "$BIN_DIR/codepet" >&2
+        if [ -n "$PLUGIN_BACKUP" ]; then
+            printf '  mv -T -- %q %q && mv -T -- %q %q\n' "$PLUGIN_DIR" "$WORK/plugin-$VERSION-$TS" \
+                "$PLUGIN_BACKUP" "$PLUGIN_DIR" >&2
+        fi
+        if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$VERSION" ]; then
+            printf '  ln -sfn -- %q %q\n' "releases/$PREVIOUS" "$RUNTIME/current" >&2
+        fi
+    else
+        echo "Nothing to go back to: this was a first install. Fix the problem above and run the installer again." >&2
+    fi
 fi
 
 # 7. connected coding apps: refresh CodePet-owned files whose bytes changed

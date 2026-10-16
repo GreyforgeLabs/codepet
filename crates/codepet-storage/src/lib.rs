@@ -103,8 +103,9 @@ pub const MAX_CARE_RECEIPTS: i64 = 256;
 /// pipeline's points (`accept_*`, `start_after_commit`, `supervisor_running`,
 /// `review_before_commit`; still honoured by the `legacy-tasks` build, see
 /// [`LEGACY_FAULT_POINTS`]) and adds `fold_before_commit`, `treat_before_commit`,
-/// `enable_before_commit` and `connect_after_artifact`.
-pub const FAULT_POINTS: [&str; 8] = [
+/// `enable_before_commit`, `connect_after_artifact`, `disconnect_after_flag` and
+/// `test_after_begin` (the clients job, killed between its steps).
+pub const FAULT_POINTS: [&str; 10] = [
     "death_before_commit",
     "adopt_before_commit",
     "evolve_before_commit",
@@ -113,6 +114,8 @@ pub const FAULT_POINTS: [&str; 8] = [
     "treat_before_commit",
     "enable_before_commit",
     "connect_after_artifact",
+    "disconnect_after_flag",
+    "test_after_begin",
 ];
 /// The retired task pipeline's fault points (`legacy-tasks` only; deleted in v0.3.1).
 #[cfg(feature = "legacy-tasks")]

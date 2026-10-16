@@ -347,11 +347,22 @@ shim are tested byte for byte against them at the reference paths). These entrie
 what WP3 had to decide; where they differ from the SPEC text, they win.
 
 1. **`TEST_STATE` signal (new contract for WP5).** The CLI cannot tell a `stateHome` test
-   override from a user's own `XDG_STATE_HOME`. The bar must set `CODEPET_TEST_STATE=1` in
-   the child environment whenever it runs with a `stateHome` override; `clients.connect`,
-   `clients.disconnect` and `clients.test` then answer `TEST_STATE`. `clients.status` runs.
-2. **Internal command `codepet clients-refresh`** (not in `protocol.json` `cli`): the
-   installer's step 5 (§6.6). It refreshes connected clients' wholly CodePet-owned files
+   override from a user's own `XDG_STATE_HOME`. The bar sets `CODEPET_TEST_STATE=1` in the
+   child environment (and the desktop-pet launcher's) whenever it runs with a `stateHome`
+   override (`CodePetBar.js` `paths().childEnv`/`launcherEnv`, tested);
+   `clients.connect`, `clients.disconnect` and `clients.test` then answer `TEST_STATE`,
+   `clients.status` runs, and no clients job is resumed or run in such a process.
+   **Fail-closed backstop (review round 2):** the signal is not trusted alone. A Connect
+   never repoints an installed CodePet shim whose `S` is another state dir that still
+   exists, or whose `B` is another `codepet` that still exists (`install::shim_conflict`):
+   it fails `blocked` with a detail naming the other folder or binary, and a ready check
+   (`clients.test`) refuses to run through such a shim. A tombstone, a missing shim or one
+   whose old paths are gone is repointed as before. `codepet connect --repoint <id>...` is
+   the explicit override (item 16). `codepet doctor` shows the conflict
+   (`shim.conflict`, "Connect is blocked: ...").
+2. **Internal command `codepet clients-refresh`** (post-freeze entry in `protocol.json`
+   `cli.added`; `check_contracts.py` now compares the commands `main.rs` routes with that
+   list): the installer's step 7 (§6.6). It refreshes connected clients' wholly CodePet-owned files
    (Claude marketplace tree, OpenCode `codepet.js`, Hermes plugin dir, Grok `codepet.json`)
    only when the marker is present and the bytes differ, upgrades an older shim in place
    with its own `S`/`B`, never runs a client and never edits Codex's shared file.
@@ -380,7 +391,16 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
    `{}` and allows only CodePet's own entries (`codepet@codepet-local`, `codepet-local`)
    to appear, change or go. A connected, enabled plugin skips the CLI (no rewrite on a
    second Connect). It also keeps a copy under `plugins/cache/codepet-local/` but loads in
-   place from CodePet's marketplace dir.
+   place from CodePet's marketplace dir. **Turned off in `/plugin`** (review round 2):
+   `install` answers `ok` ("already installed") but would leave the plugin off, so Connect
+   requires `enabledPlugins."codepet@codepet-local": true` afterwards and otherwise fails
+   `blocked` ("CodePet is turned off in Claude Code; type /plugin there and turn it on"),
+   and status reads that one entry of `settings.json` (with the installed-plugins entry,
+   the only Claude keys status reads; O1) and reports such a plugin as not connected.
+   `claude plugin enable` was not captured by the gate, so CodePet does not run it. The
+   validated sources are pinned (`tests/fixtures/claude-cli/validated-sources-2.1.294.sha256`,
+   unit test `shipped_manifests_are_the_validated_ones`): changing a manifest fails the
+   test until the gate is run again.
 6. **Hermes.** The key check compares `hooks`, `hooks_auto_accept`, `approvals`,
    `command_allowlist`, `permissions` and `plugins` (where only `codepet` may move between
    `enabled` and `disabled`, compared as sets because Hermes rewrites them sorted, and a
@@ -396,15 +416,27 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
    and registration passed" with 9 hooks, and `enable`/`disable` rewrite `config.yaml`
    (lists re-indented and sorted, `disabled: []`, a new top-level `_config_version` and
    appended comment blocks), which the key check accepts. A read-only probe parsed the
-   owner's real `config.yaml` with the reader (only the result was printed).
+   owner's real `config.yaml` with the reader (only the result was printed). Review round
+   2: Stop watching without CodePet's plugin dir does not need `config.yaml` (one the
+   reader cannot parse is no failure), and the plugin's per-session maps (`_tools`,
+   `_waiting`) are dropped with the session on failed or cancelled turns, on finalize and
+   when the 256-entry platform map evicts it (bounded, §5.6). That change was tested
+   offline (`integrations/hermes/test_plugin.py`); the Hermes offline gate was not re-run.
 7. **Codex.** A CodePet group is one whose every handler runs `*/codepet-hook codex`. The
    tombstone is the group left byte-identical (still trusted, so Codex shows no review
    prompt; the `disconnected` flag makes the shim exit); a later pass removes it once it is
-   last, and an event array CodePet emptied is removed. Each Connect/Disconnect writes
-   `hooks.json.codepet-orig` (once) and `hooks.json.codepet-last` (0600), keeps the file's
-   mode, and checks every foreign `[hooks.state]` position (literal and canonical path)
-   for the same handler fingerprint before and after; otherwise it restores the old bytes
-   and fails `blocked`. A CodePet line with `enabled = false` in `/hooks` reports
+   last, and an event array CodePet emptied is removed. Each Connect/Disconnect checks on
+   the edited tree that every foreign `[hooks.state]` position (literal and canonical path)
+   keeps the same handler fingerprint (else `blocked`, nothing written), writes
+   `hooks.json.codepet-orig` (once) and `hooks.json.codepet-last` (0600), builds and fsyncs
+   the new file, and compares the file's bytes with what it read as the very last step
+   before the rename (3 tries, then `blocked`), keeping the file's mode. Nothing is ever
+   restored after the rename: bytes that differ from CodePet's then belong to a writer that
+   came after (herdr, slopbrake, Codex) and are left alone; the caller's status check
+   decides whether CodePet's lines are in place. A `hooks.json` that is a symlink (stow,
+   chezmoi) is never replaced: a change fails `blocked` ("add the lines by hand or set
+   CODEX_HOME to the real folder"); with nothing of CodePet's in it Stop watching is a
+   no-op. A CodePet line with `enabled = false` in `/hooks` reports
    `needs_step: codex_hooks_off` ("! Turned off in Codex"), like `[features] hooks = false`.
    `codepet doctor` warns when other hooks follow CodePet lines (Stop watching would leave
    them as tombstones). A read-only probe recomputed the fingerprints of the owner's four
@@ -424,6 +456,21 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
     again). Finished journals are kept 7 days (at most 20). `clients.test` with no
     connected client answers `INVALID_STATE` ("no connected app to check"); a client that
     already has a running job answers `BUSY` (new storage error `JobRunning`).
+    Review round 2: a journal without a pid counts as starting for 150 s (longer than the
+    120 s lock wait, so a job queued behind another is never started twice). Journals are
+    written only under `$STATE/jobs/.lock`: recovery takes it without waiting and leaves
+    every unfinished journal (and its running mark) alone while a job holds it, so it can
+    never rewrite a journal the running job just finished. A job ends itself after 5
+    minutes (then resumed or rolled back like a killed one), and a client CLI's output is
+    read with a deadline, so a helper that escaped the process group while holding stdout
+    cannot hang a job. **Off (E2):** a Connect or test job found while Off is ended
+    without running anything (unrecorded clients `failed: blocked`, "CodePet was off"; a
+    running ready check is abandoned: `test_state` back to null, no `ready_check` failure,
+    new storage call `cancel_ready_check`); a Connect turned Off midway skips its ready
+    check. Stop watching still runs while Off. Every Connect also sweeps CodePet's stale
+    staging dirs (`<data_dir>/staging/.<name>.partial-<pid>`) and its temporary names
+    beside Codex's `hooks.json` (`.hooks.json.codepet-*`). Fault points
+    `disconnect_after_flag` and `test_after_begin` join `connect_after_artifact`.
 11. **Ready check.** Stored commands run with only `PATH` and `HOME` (shell clients through
     `/bin/sh -c`), bounded to 3 s each. `meta.test_at_ms` is set again when the check ends,
     for both outcomes, so the "{name} is ready!" window starts at the result. A client that
@@ -435,7 +482,10 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
 13. **Installer (§6.6).** The installer never restarts the shell (the restart-shell
     lesson): on an update it asks the running shell to rescan, which reloads the swapped
     plugin, and prints the restart command (with the live `HYPRLAND_INSTANCE_SIGNATURE`)
-    only when the shell cannot be reached. The 0.3.x gate checks the binary before anything
+    only when the shell cannot be reached. It keeps the replaced `codepet` binary as
+    `~/.cache/codepet/codepet-backup-<old version>-<ts>` (pruned to the newest once the
+    data is migrated); when `codepet migrate` fails it prints the exact commands that put
+    the previous binary, plugin and `current` runtime link back (§6.6.7 needs no rebuild). The 0.3.x gate checks the binary before anything
     is replaced and refuses a tree whose version is not 0.3.x: **until WP7 bumps the
     workspace version (still 0.2.1), `install.sh` and `tools/release/package.sh` refuse this
     branch on purpose**; the installer tests install from a copy whose version is 0.3.0.
@@ -445,6 +495,17 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
     (`waiting`, `dropped`, `overflow`), `fold_backoff`, `clients[]` (detection, row,
     `artifact`, the `disconnected` flag, Codex trust counts) and `codex_login_shell`
     (`shell`, `ms`, `silent`, `timed_out`; only when Codex is installed). It opens no
-    missing state dir.
+    missing state dir. Review round 2: `shim.conflict` (why a Connect would refuse to
+    repoint the shim, else null), and the login shell runs in its own process group with
+    both pipes drained (capped) and never waited on past the 5 s deadline.
 15. **OpenCode `setup()`** is a no-op, as herdr's plugin; which loader 1.19.0 uses stays a
     WP7 check (§5.5).
+16. **`codepet connect --repoint` and a no-op `codepet disconnect`** (review round 2,
+    post-freeze `protocol.json` `cli` entry). `--repoint` (first, with named ids, never
+    `--all`; the bar never sends it) lets that Connect repoint a shim that serves another
+    existing state dir or binary (item 1). `codepet disconnect <id>` for an app that is
+    not connected and has none of CodePet's files prints "<name>: CodePet is not connected
+    there; nothing to stop", exits 0 and records nothing (no flag, no row), so uninstall
+    (which runs it for all five apps) never reports or warns about apps CodePet never
+    touched. The bar's Stop watching still always runs the job. Result lines use the
+    job's own verb ("couldn't stop watching" for a Disconnect).

@@ -443,7 +443,12 @@ fn a_foreign_codepet_named_file_is_never_clobbered() {
 #[test]
 fn hermes_plugin_dir_and_config_key_check() {
     if !python_has_yaml() {
-        eprintln!("skipped: python3 has no yaml module for the Hermes stand-in");
+        // CI installs PyYAML (rust.yml): there a missing module is a failure, not a skip.
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "python3 has no yaml module for the Hermes stand-in (CI must install PyYAML)"
+        );
+        eprintln!("SKIPPED: python3 has no yaml module for the Hermes stand-in");
         return;
     }
     let h = Home::new();
@@ -952,4 +957,565 @@ fn clients_refresh_rewrites_only_stale_codepet_files() {
     let out = h.run(&["clients-refresh"]);
     assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
     assert_eq!(fs::read_to_string(&js).unwrap(), "// mine\n");
+}
+
+/// Waits until `job` died after its first attempt (a `CODEPET_FAULT` abort).
+fn wait_dead(h: &Home, job: &str) -> Value {
+    let started = std::time::Instant::now();
+    loop {
+        let j = h.journal(job).unwrap();
+        if j["attempts"] == 1
+            && j["pid"]
+                .as_u64()
+                .is_some_and(|p| !std::path::Path::new(&format!("/proc/{p}")).exists())
+        {
+            return j;
+        }
+        assert!(started.elapsed().as_secs() < 20, "{j}");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+fn job_of(r: &Value) -> String {
+    assert_eq!(r["ok"], true, "{r}");
+    r["result"]["job_id"].as_str().unwrap().to_owned()
+}
+
+/// spec §5.1 / notes §7 item 1: a Connect from another state dir (a `stateHome` test bar
+/// that did not say so) never repoints the owner's shim; `--repoint` is the explicit way.
+#[test]
+fn a_connect_from_another_state_dir_never_repoints_the_shim() {
+    let h = Home::new();
+    h.install_grok();
+    let j = h.connect(&["grok-cli"]);
+    assert_eq!(j["test"], "done", "{j}");
+    let real = fs::read(h.shim()).unwrap();
+    let grok = fs::read(h.home().join(".grok/hooks/codepet.json")).unwrap();
+    // A second state home B: only XDG_STATE_HOME differs (no CODEPET_TEST_STATE).
+    let b_home = h.home().parent().unwrap().join("state-b");
+    let b = b_home.to_str().unwrap().to_owned();
+    let env = [("XDG_STATE_HOME", b.as_str())];
+    let r = h.rpc_with(
+        "b1",
+        "clients.connect",
+        json!({"clients": ["grok-cli"]}),
+        &env,
+    );
+    let wait_b = |job: &str| -> Value {
+        let path = b_home.join(format!("codepet/jobs/{job}.json"));
+        let started = std::time::Instant::now();
+        loop {
+            if let Some(j) = fs::read_to_string(&path)
+                .ok()
+                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+                .filter(|j| j["done"] == true)
+            {
+                return j;
+            }
+            assert!(started.elapsed().as_secs() < 30);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    let jb = wait_b(&job_of(&r));
+    let res = h.result_of(&jb, "grok-cli");
+    assert_eq!(
+        (res["outcome"].clone(), res["reason"].clone()),
+        (json!("failed"), json!("blocked")),
+        "{jb}"
+    );
+    let detail = res["detail"].as_str().unwrap();
+    assert!(
+        detail.contains(h.state_dir().to_str().unwrap()) && detail.contains("--repoint"),
+        "{detail}"
+    );
+    assert_eq!(jb["test"], Value::Null, "no ready check ran: {jb}");
+    assert_eq!(
+        fs::read(h.shim()).unwrap(),
+        real,
+        "the owner's shim is unchanged"
+    );
+    assert_eq!(
+        fs::read(h.home().join(".grok/hooks/codepet.json")).unwrap(),
+        grok
+    );
+    // A ready check started from B (whose files say Grok is connected) never runs the
+    // owner's shim either: it would test, and write into, A.
+    let a_test = h.bar()["agent"]["test"].clone();
+    let jb = wait_b(&job_of(&h.rpc_with("b2", "clients.test", json!({}), &env)));
+    assert_eq!(jb["test"], "failed", "{jb}");
+    assert_eq!(h.result_of(&jb, "grok-cli")["reason"], "blocked", "{jb}");
+    assert_eq!(h.bar()["agent"]["test"], a_test, "nothing reached A");
+    // Doctor (from B) says why Connect is blocked.
+    let d = h
+        .cmd(&["doctor", "--json"])
+        .env("XDG_STATE_HOME", &b)
+        .output()
+        .unwrap();
+    let dj: Value = serde_json::from_slice(&d.stdout).unwrap();
+    assert!(dj["shim"]["conflict"]
+        .as_str()
+        .is_some_and(|c| c.contains("another state folder")));
+    let d = h
+        .cmd(&["doctor"])
+        .env("XDG_STATE_HOME", &b)
+        .output()
+        .unwrap();
+    assert!(String::from_utf8(d.stdout)
+        .unwrap()
+        .contains("Connect is blocked"));
+    // From A everything is as before.
+    assert_eq!(h.run(&["doctor", "--json"]).status.code(), Some(0));
+    // The explicit repoint.
+    let out = h
+        .cmd(&["connect", "--repoint", "grok-cli"])
+        .env("XDG_STATE_HOME", &b)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(fs::read_to_string(h.shim())
+        .unwrap()
+        .contains(&format!("S='{}/codepet'", b)));
+    // A's Connect is now the one refused; once B's state is gone, A takes it back.
+    let j = h.connect(&["grok-cli"]);
+    assert_eq!(h.result_of(&j, "grok-cli")["reason"], "blocked", "{j}");
+    fs::remove_dir_all(&b_home).unwrap();
+    let j = h.connect(&["grok-cli"]);
+    assert_eq!(h.result_of(&j, "grok-cli")["outcome"], "connected", "{j}");
+    assert_eq!(fs::read(h.shim()).unwrap(), real);
+    for bad in [
+        &["connect", "--repoint"][..],
+        &["connect", "--repoint", "--all"],
+    ] {
+        assert_eq!(h.run(bad).status.code(), Some(2), "{bad:?}");
+    }
+}
+
+/// E2: a job found while Off runs nothing; a Connect turned Off midway skips its ready
+/// check and records no `ready_check` failure.
+#[test]
+fn nothing_runs_in_the_background_while_off() {
+    // A killed Connect, then Off, then the popup opens (state.get).
+    let h = Home::new();
+    h.install_grok();
+    let r = h.rpc_with(
+        "k1",
+        "clients.connect",
+        json!({"clients": ["grok-cli"]}),
+        &[("CODEPET_FAULT", "connect_after_artifact")],
+    );
+    let job = job_of(&r);
+    let dead = wait_dead(&h, &job);
+    h.ok("app.set_enabled", json!({"enabled": false}));
+    h.ok("state.get", json!({}));
+    let j = h.journal(&job).unwrap();
+    assert_eq!(j["done"], true, "ended, not resumed: {j}");
+    assert_eq!(
+        (j["attempts"].clone(), j["pid"].clone()),
+        (dead["attempts"].clone(), dead["pid"].clone()),
+        "no job process ran"
+    );
+    assert_eq!(j["test"], Value::Null);
+    let res = h.result_of(&j, "grok-cli");
+    assert_eq!(
+        (res["reason"].clone(), res["detail"].clone()),
+        (json!("blocked"), json!("CodePet was off"))
+    );
+    assert!(!h.state_dir().join("test.nonce").exists());
+    let bar = h.bar();
+    assert_eq!(bar["clients"]["grok-cli"]["job"], Value::Null);
+    assert_ne!(bar["clients"]["grok-cli"]["failed_reason"], "ready_check");
+    assert_eq!(bar["agent"]["test"], Value::Null, "no ready check ran");
+    h.ok("app.set_enabled", json!({"enabled": true}));
+
+    // A ready check killed midway, then Off: abandoned without a verdict.
+    let r = h.rpc_with(
+        "k2",
+        "clients.test",
+        json!({}),
+        &[("CODEPET_FAULT", "test_after_begin")],
+    );
+    let job = job_of(&r);
+    wait_dead(&h, &job);
+    h.ok("app.set_enabled", json!({"enabled": false}));
+    h.ok("state.get", json!({}));
+    let j = h.journal(&job).unwrap();
+    assert_eq!(
+        (j["done"].clone(), j["test"].clone()),
+        (json!(true), Value::Null),
+        "{j}"
+    );
+    let bar = h.bar();
+    assert_eq!(bar["agent"]["test"], Value::Null, "{bar}");
+    assert_ne!(bar["clients"]["grok-cli"]["failed_reason"], "ready_check");
+    h.ok("app.set_enabled", json!({"enabled": true}));
+
+    // Off while a Connect runs (Claude's install takes 2 s): no ready check afterwards.
+    let h = Home::new();
+    h.install_claude();
+    fs::write(h.home().join("claude-slow"), "").unwrap();
+    let job = job_of(&h.rpc("clients.connect", json!({"clients": ["claude-code"]})));
+    let started = std::time::Instant::now();
+    while !h
+        .calls("claude-calls.log")
+        .iter()
+        .any(|c| c["argv"][1] == "install")
+    {
+        assert!(started.elapsed().as_secs() < 20);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    h.ok("app.set_enabled", json!({"enabled": false}));
+    let j = h.wait_job(&job);
+    assert_eq!(
+        h.result_of(&j, "claude-code")["outcome"],
+        "connected",
+        "{j}"
+    );
+    assert_eq!(j["test"], Value::Null, "no ready check while Off: {j}");
+    let st = h.status_of("claude-code");
+    assert_eq!(st["failed_reason"], Value::Null, "{st}");
+    assert_eq!(h.bar()["agent"]["test"], Value::Null);
+    // Stop watching still runs while Off.
+    let j = h.disconnect("claude-code");
+    assert_eq!(
+        h.result_of(&j, "claude-code")["outcome"],
+        "disconnected",
+        "{j}"
+    );
+}
+
+/// A job queued behind another job's lock is never taken for dead (and started twice),
+/// and recovery never rewrites a journal while a job holds the lock.
+#[test]
+fn a_queued_job_is_not_duplicated_and_recovery_waits_for_the_lock() {
+    use std::os::unix::fs::DirBuilderExt;
+    let h = Home::new();
+    h.install_grok();
+    h.ok("clients.status", json!({}));
+    let jobs = h.state_dir().join("jobs");
+    if !jobs.exists() {
+        fs::DirBuilder::new().mode(0o700).create(&jobs).unwrap();
+    }
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(jobs.join(".lock"))
+        .unwrap();
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::LockExclusive).unwrap();
+    let job = job_of(&h.rpc("clients.connect", json!({"clients": ["grok-cli"]})));
+    // Queued for a minute already (the old 30 s start grace would call it dead).
+    let path = jobs.join(format!("{job}.json"));
+    let mut j: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(j["pid"], Value::Null, "still waiting for the lock: {j}");
+    j["created_ms"] = json!(j["created_ms"].as_i64().unwrap() - 60_000);
+    fs::write(&path, serde_json::to_vec_pretty(&j).unwrap()).unwrap();
+    let before = fs::read(&path).unwrap();
+    for _ in 0..3 {
+        h.ok("state.get", json!({}));
+    }
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        before,
+        "not restarted, not rewritten"
+    );
+    assert_eq!(h.bar()["clients"]["grok-cli"]["job"]["kind"], "connect");
+    drop(lock);
+    let j = h.wait_job(&job);
+    assert_eq!(j["attempts"], 1, "ran exactly once: {j}");
+    assert_eq!(h.result_of(&j, "grok-cli")["outcome"], "connected");
+}
+
+/// notes §7 item 10: BUSY for a client with a running job, INVALID_STATE for a ready
+/// check without a connected app.
+#[test]
+fn busy_and_no_connected_app_errors() {
+    let h = Home::new();
+    h.install_grok();
+    assert_eq!(h.err_code("clients.test", json!({})), "INVALID_STATE");
+    assert_eq!(
+        h.err_code("clients.test", json!({"client": "grok-cli"})),
+        "INVALID_STATE"
+    );
+    // A killed Connect stays marked running; the next clients.* call resumes it, and a
+    // second job for the same client is refused while it runs.
+    let r = h.rpc_with(
+        "busy1",
+        "clients.connect",
+        json!({"clients": ["grok-cli"]}),
+        &[("CODEPET_FAULT", "connect_after_artifact")],
+    );
+    let job = job_of(&r);
+    wait_dead(&h, &job);
+    assert_eq!(
+        h.err_code("clients.connect", json!({"clients": ["grok-cli"]})),
+        "BUSY"
+    );
+    assert_eq!(
+        h.err_code("clients.disconnect", json!({"client": "grok-cli"})),
+        "BUSY"
+    );
+    let j = h.wait_job(&job);
+    assert_eq!(h.result_of(&j, "grok-cli")["outcome"], "connected");
+    assert_eq!(j["attempts"], 2);
+}
+
+/// §5.2: every Connect clears first_seen, so the first real event after it says hello
+/// exactly once.
+#[test]
+fn each_connect_waits_for_one_new_hello() {
+    let h = Home::new();
+    h.install_grok();
+    h.connect(&["grok-cli"]);
+    let send = |fixture: &str| {
+        let f: Value = serde_json::from_str(
+            &fs::read_to_string(format!(
+                "{}/tests/fixtures/grok-cli/{fixture}.json",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let cmd = format!("{} grok-cli >/dev/null 2>&1 || true", h.shim().display());
+        let mut child = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&cmd)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", h.home())
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(f["stdin"].as_str().unwrap().as_bytes())
+            .unwrap();
+        assert!(child.wait().unwrap().success());
+    };
+    let wait_hello = |n: u64| {
+        let started = std::time::Instant::now();
+        loop {
+            let bar = h.bar();
+            if bar["agent"]["hello_seq"].as_u64() == Some(n) {
+                return bar;
+            }
+            assert!(started.elapsed().as_secs() < 10, "{}", bar["agent"]);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    assert_eq!(h.status_of("grok-cli")["first_seen_ms"], Value::Null);
+    send("01-session-start");
+    let bar = wait_hello(1);
+    assert_eq!(bar["agent"]["hello_app"], "grok-cli");
+    assert!(h.status_of("grok-cli")["first_seen_ms"].is_i64());
+    send("02-prompt-submit");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert_eq!(wait_hello(1)["agent"]["hello_seq"], 1, "no second hello");
+    // Connect again: waiting for the app again, then one more hello.
+    let j = h.connect(&["grok-cli"]);
+    assert_eq!(h.result_of(&j, "grok-cli")["outcome"], "connected");
+    assert_eq!(h.status_of("grok-cli")["first_seen_ms"], Value::Null);
+    assert_eq!(
+        h.bar()["agent"]["hello_seq"],
+        1,
+        "the ready check is no hello"
+    );
+    send("09-stop-end-turn");
+    wait_hello(2);
+    assert!(h.status_of("grok-cli")["first_seen_ms"].is_i64());
+}
+
+/// §9.2 "kill the clients job after each step": a killed Stop watching and a killed ready
+/// check resume on the next state.get; a Stop watching that keeps dying rolls back.
+#[test]
+fn killed_disconnect_and_ready_check_jobs_resume_or_roll_back() {
+    let h = Home::new();
+    h.install_grok();
+    h.connect(&["grok-cli"]);
+    let fault = [("CODEPET_FAULT", "disconnect_after_flag")];
+    let job = job_of(&h.rpc_with(
+        "kd1",
+        "clients.disconnect",
+        json!({"client": "grok-cli"}),
+        &fault,
+    ));
+    wait_dead(&h, &job);
+    assert!(h
+        .state_dir()
+        .join("clients/grok-cli.disconnected")
+        .is_file());
+    h.ok("state.get", json!({}));
+    let j = h.wait_job(&job);
+    assert_eq!(
+        (
+            j["attempts"].clone(),
+            h.result_of(&j, "grok-cli")["outcome"].clone()
+        ),
+        (json!(2), json!("disconnected")),
+        "{j}"
+    );
+    assert!(!h.home().join(".grok/hooks/codepet.json").exists());
+
+    h.connect(&["grok-cli"]);
+    let fault = [("CODEPET_FAULT", "test_after_begin")];
+    let job = job_of(&h.rpc_with("kt1", "clients.test", json!({}), &fault));
+    wait_dead(&h, &job);
+    h.ok("state.get", json!({}));
+    let j = h.wait_job(&job);
+    assert_eq!(
+        (j["attempts"].clone(), j["test"].clone()),
+        (json!(2), json!("done")),
+        "{j}"
+    );
+    assert_eq!(h.bar()["agent"]["test"]["state"], "done");
+
+    // A Stop watching that dies every time: rolled back after three attempts.
+    let fault = [("CODEPET_FAULT", "disconnect_after_flag")];
+    let job = job_of(&h.rpc_with(
+        "kd2",
+        "clients.disconnect",
+        json!({"client": "grok-cli"}),
+        &fault,
+    ));
+    let started = std::time::Instant::now();
+    let j = loop {
+        let j = h.journal(&job).unwrap();
+        if j["done"] == true {
+            break j;
+        }
+        assert!(started.elapsed().as_secs() < 60, "{j}");
+        h.rpc_with(
+            &format!("s{}", started.elapsed().as_millis()),
+            "state.get",
+            json!({}),
+            &fault,
+        );
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    };
+    let res = h.result_of(&j, "grok-cli");
+    assert_eq!(
+        (res["reason"].clone(), res["detail"].clone()),
+        (json!("blocked"), json!("the job stopped too often")),
+        "{j}"
+    );
+    assert_eq!(
+        h.status_of("grok-cli")["connected"],
+        false,
+        "the flag keeps the shim silent"
+    );
+}
+
+/// §5.1: every Connect sweeps CodePet's stale temporary names (a job killed mid-write).
+#[test]
+fn connect_sweeps_stale_codepet_temps() {
+    let h = Home::new();
+    h.install_grok();
+    let staging = h.data_dir().join("staging");
+    fs::create_dir_all(staging.join(".claude-code.partial-99999/plugin")).unwrap();
+    fs::write(staging.join(".claude-code.partial-99999/plugin/x"), "x").unwrap();
+    let codex = h.home().join(".codex");
+    fs::create_dir_all(&codex).unwrap();
+    for n in [
+        ".hooks.json.codepet-99999",
+        ".hooks.json.codepet-last.tmp",
+        ".hooks.json.codepet-orig.tmp",
+        ".hooks.json.codepet-restore",
+    ] {
+        fs::write(codex.join(n), "{}").unwrap();
+    }
+    fs::write(codex.join(".hooks.json.mine"), "keep").unwrap();
+    fs::write(codex.join("hooks.json"), "{}").unwrap();
+    let j = h.connect(&["grok-cli"]);
+    assert_eq!(h.result_of(&j, "grok-cli")["outcome"], "connected");
+    assert_eq!(fs::read_dir(&staging).unwrap().count(), 0);
+    let mut left: Vec<String> = fs::read_dir(&codex)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(left, [".hooks.json.mine", "hooks.json"]);
+}
+
+/// Uninstall runs `codepet disconnect` for every app: an app CodePet never touched is
+/// reported as nothing to stop (no flag, no row), even with a config the reader cannot
+/// parse; Hermes' Stop watching needs no config.yaml without CodePet's plugin dir.
+#[test]
+fn stop_watching_an_untouched_app_records_nothing_and_never_warns() {
+    let h = Home::new();
+    h.install_hermes();
+    // An anchor: valid YAML that CodePet's small block reader refuses.
+    fs::write(
+        h.home().join(".hermes/config.yaml"),
+        "model: &m gpt\nother: *m\n",
+    )
+    .unwrap();
+    h.ok("clients.status", json!({}));
+    let rows_before = h.status_of("hermes");
+    let out = h.run(&["disconnect", "hermes"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap(),
+        "Hermes: CodePet is not connected there; nothing to stop\n"
+    );
+    assert!(!h.state_dir().join("clients/hermes.disconnected").exists());
+    assert!(
+        !h.state_dir().join("jobs").exists()
+            || fs::read_dir(h.state_dir().join("jobs"))
+                .unwrap()
+                .flatten()
+                .all(|e| !e.file_name().to_string_lossy().ends_with(".json"))
+    );
+    assert_eq!(h.status_of("hermes"), rows_before);
+    for app in ["claude-code", "codex", "opencode", "grok-cli"] {
+        let out = h.run(&["disconnect", app]);
+        assert_eq!(out.status.code(), Some(0), "{app}");
+    }
+    // The bar's Stop watching still runs the job, which succeeds.
+    let j = h.disconnect("hermes");
+    assert_eq!(h.result_of(&j, "hermes")["outcome"], "disconnected", "{j}");
+    assert!(h.calls("hermes-calls.log").is_empty(), "hermes never ran");
+}
+
+/// A plugin the user turned off in Claude Code's /plugin list is not connected, and
+/// Connect says what to do instead of reporting success.
+#[test]
+fn claude_code_turned_off_in_its_plugin_list_is_not_connected() {
+    let h = Home::new();
+    h.install_claude();
+    let settings = h.home().join(".claude/settings.json");
+    fs::write(&settings, pretty(&claude_settings())).unwrap();
+    h.connect(&["claude-code"]);
+    assert_eq!(h.status_of("claude-code")["connected"], true);
+    let mut s: Value = serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+    s["enabledPlugins"]["codepet@codepet-local"] = json!(false);
+    fs::write(&settings, pretty(&s)).unwrap();
+    assert_eq!(h.status_of("claude-code")["connected"], false);
+    let j = h.connect(&["claude-code"]);
+    let r = h.result_of(&j, "claude-code");
+    assert_eq!(
+        (r["outcome"].clone(), r["reason"].clone()),
+        (json!("failed"), json!("blocked")),
+        "{j}"
+    );
+    assert!(r["detail"].as_str().unwrap().contains("/plugin"), "{j}");
+    assert_eq!(j["test"], Value::Null, "{j}");
+    // Turned on again in Claude: Connect succeeds.
+    s["enabledPlugins"]["codepet@codepet-local"] = json!(true);
+    fs::write(&settings, pretty(&s)).unwrap();
+    let j = h.connect(&["claude-code"]);
+    assert_eq!(
+        h.result_of(&j, "claude-code")["outcome"],
+        "connected",
+        "{j}"
+    );
 }

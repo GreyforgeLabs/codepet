@@ -331,7 +331,8 @@ class InstallForReal(unittest.TestCase):
         releases = list((e.cache / "codepet").glob("release-backup-*"))
         self.assertEqual(len(releases), 1, releases)
         self.assertEqual((releases[0] / "qml/marker").read_text(), "second runtime")
-        self.assertEqual(r.stdout.count("removed older backup: "), 2, r.stdout)
+        self.assertEqual(len(list((e.cache / "codepet").glob("codepet-backup-*"))), 1)
+        self.assertEqual(r.stdout.count("removed older backup: "), 3, r.stdout)
         enables = [c for c in e.calls() if c.startswith("omarchy plugin enable")]
         self.assertEqual(len(enables), 1, "already listed in shell.json: not enabled twice")
         self.assertIn("already listed", r.stdout)
@@ -532,6 +533,43 @@ class InstallForReal(unittest.TestCase):
         self.assertIn("SCHEMA_UNSUPPORTED", r.stderr)
         self.assertNotIn("codepet clients-refresh", e.calls())
         self.assertNotIn("done: ", r.stdout)
+
+    def test_a_failed_migration_after_an_upgrade_prints_the_way_back(self):
+        e = Env(self)
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("codepet-backup", r.stdout, "a first install has no binary to keep")
+        # The installed binary is now an older CodePet; the upgrade's migration fails.
+        codepet = e.home / ".local/bin/codepet"
+        old = '#!/bin/sh\n[ "$1" = --version ] && echo "codepet 0.2.1"\nexit 0\n'
+        codepet.write_text(old)
+        (e.home / "migrate-fails").write_text("")
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        backups = sorted((e.cache / "codepet").glob("codepet-backup-0.2.1-*"))
+        self.assertEqual(len(backups), 1, r.stdout)
+        self.assertEqual(backups[0].read_text(), old, "the replaced binary, byte for byte")
+        self.assertIn("To go back to the CodePet you had before, run:", r.stderr)
+        lines = [l.strip() for l in r.stderr.splitlines() if l.startswith("  ")]
+        self.assertIn(f"install -m 0755 -- {backups[0]} {codepet}", lines)
+        plugin_backup = sorted((e.cache / "codepet").glob("plugin-backup-*"))
+        self.assertEqual(len(plugin_backup), 1)
+        self.assertTrue(any(l.startswith("mv -T -- ") and str(plugin_backup[0]) in l for l in lines), lines)
+        # The printed command really restores the old binary.
+        subprocess.run(["bash", "-c", lines[0]], check=True, env=e.env)
+        self.assertEqual(codepet.read_text(), old)
+        # A later successful upgrade keeps only the newest binary backup.
+        (e.home / "migrate-fails").unlink()
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(list((e.cache / "codepet").glob("codepet-backup-*"))), 1)
+
+    def test_a_failed_first_install_says_there_is_nothing_to_go_back_to(self):
+        e = Env(self)
+        (e.home / "migrate-fails").write_text("")
+        r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Nothing to go back to: this was a first install.", r.stderr)
 
     def test_pruning_never_touches_the_shim_integrations_or_staging(self):
         e = Env(self)

@@ -323,23 +323,50 @@ pub fn remove_file(path: &Path) -> io::Result<bool> {
 
 /// Removes CodePet's stale temporary names (`.codepet*.partial*`) from a scanned dir.
 pub fn sweep_temps(dir: &Path) {
+    sweep_where(dir, |n| n.starts_with(".codepet") && n.contains(".partial"));
+}
+
+/// Removes the entries of `dir` whose name `stale` accepts (a dir with its contents),
+/// except this process's own temporary names (they end in `-<pid>`, `-<pid>.tmp` or
+/// `.partial-<pid>`).
+fn sweep_where(dir: &Path, stale: impl Fn(&str) -> bool) {
     let Ok(rd) = fs::read_dir(dir) else {
         return;
     };
+    let me = std::process::id().to_string();
     for e in rd.flatten() {
         let name = e.file_name();
         let Some(name) = name.to_str() else {
             continue;
         };
-        if name.starts_with(".codepet") && name.contains(".partial") {
-            let p = e.path();
-            if fs::symlink_metadata(&p).is_ok_and(|m| m.is_dir()) {
-                let _ = fs::remove_dir_all(&p);
-            } else {
-                let _ = fs::remove_file(&p);
-            }
+        let mine = name
+            .trim_end_matches(".tmp")
+            .rsplit(['-', '.'])
+            .next()
+            .is_some_and(|tail| tail == me);
+        if !stale(name) || mine {
+            continue;
+        }
+        let p = e.path();
+        if fs::symlink_metadata(&p).is_ok_and(|m| m.is_dir()) {
+            let _ = fs::remove_dir_all(&p);
+        } else {
+            let _ = fs::remove_file(&p);
         }
     }
+}
+
+/// At every Connect (spec §5.1): CodePet's leftovers from a job killed mid-write, in its
+/// own staging dir (`.<name>.partial-<pid>`) and beside Codex's `hooks.json`
+/// (`.hooks.json.codepet-<pid>` and the backups' `.hooks.json.codepet-*.tmp`). The client
+/// plugin dirs are swept by their own Connect.
+pub fn sweep_connect_temps(ctx: &Ctx) {
+    sweep_where(&ctx.staging, |n| {
+        n.starts_with('.') && n.contains(".partial-")
+    });
+    sweep_where(&ctx.env.codex_dir, |n| {
+        n.starts_with(".hooks.json.codepet-")
+    });
 }
 
 /// Installs a directory tree built in `staging` at `target` (same filesystem): a new
@@ -445,7 +472,13 @@ fn count_files(dir: &Path) -> usize {
 
 /// Installs or refreshes the shim (temp + fsync + rename, 0755). Its bytes depend only on
 /// the state dir and the binary path. Returns whether it wrote.
-pub fn install_shim(ctx: &Ctx) -> Result<bool, Failed> {
+///
+/// Fails closed (`blocked`) instead of repointing a CodePet shim whose `S` names another
+/// state dir that still exists, or whose `B` is another `codepet` that still exists
+/// ([`shim_conflict`]): every connected client runs this one shim, so repointing it would
+/// silently send the owner's real events elsewhere (a test-state bar, a QA run, a dev
+/// build). `repoint` (`codepet connect --repoint`) is the explicit override.
+pub fn install_shim(ctx: &Ctx, repoint: bool) -> Result<bool, Failed> {
     let body = shim::render(&ctx.paths.state_dir, &ctx.bin)
         .map_err(|_| Failed::new(Reason::Blocked, "a path cannot be written into the shim"))?;
     ctx.shim_literal()?;
@@ -459,8 +492,47 @@ pub fn install_shim(ctx: &Ctx) -> Result<bool, Failed> {
     {
         return Ok(false);
     }
+    if !repoint {
+        if let Some(why) = shim_conflict(ctx) {
+            return Err(Failed::new(Reason::Blocked, why));
+        }
+    }
     shim::write_atomically(&ctx.shim, &body)?;
     Ok(true)
+}
+
+/// The same file (path, or the same canonical path).
+fn same_file(a: &Path, b: &Path) -> bool {
+    a == b
+        || matches!(
+            (fs::canonicalize(a), fs::canonicalize(b)),
+            (Ok(x), Ok(y)) if x == y
+        )
+}
+
+/// Why the installed shim must not be repointed at this context's `S`/`B` without an
+/// explicit `--repoint`: it is a CodePet shim whose `S` is another state dir that still
+/// exists, or whose `B` is another existing `codepet`. A tombstone, a missing shim, one
+/// whose old paths are gone, or an older shim with the same paths is fine.
+pub fn shim_conflict(ctx: &Ctx) -> Option<String> {
+    let ShimState::Shim { state_dir, bin, .. } = shim_state(&ctx.shim) else {
+        return None;
+    };
+    let s = Path::new(&state_dir);
+    if !same_file(s, &ctx.paths.state_dir) && fs::symlink_metadata(s).is_ok() {
+        return Some(format!(
+            "the CodePet hook already sends events to another state folder ({state_dir}); \
+             connect from that CodePet, or run codepet connect --repoint"
+        ));
+    }
+    let b = Path::new(&bin);
+    if !same_file(b, &ctx.bin) && fs::metadata(b).is_ok_and(|m| m.is_file()) {
+        return Some(format!(
+            "the CodePet hook already runs another codepet ({bin}); \
+             connect with that one, or run codepet connect --repoint"
+        ));
+    }
+    None
 }
 
 /// What the installed shim holds.
@@ -530,6 +602,18 @@ pub fn status(ctx: &Ctx, client: ClientId) -> Artifact {
         ClientId::Hermes => hermes::status(ctx),
         ClientId::GrokCli => grok::status(ctx),
     }
+}
+
+/// Anything of CodePet's is in the client's files: its artifact (current or stale, Codex
+/// tombstones included), the Claude marketplace dir or the Hermes plugin dir. Stop
+/// watching has nothing to do otherwise (`codepet disconnect`, uninstall).
+pub fn anything_installed(ctx: &Ctx, client: ClientId) -> bool {
+    status(ctx, client) != Artifact::Missing
+        || match client {
+            ClientId::ClaudeCode => fs::symlink_metadata(claude::marketplace_dir(ctx)).is_ok(),
+            ClientId::Hermes => fs::symlink_metadata(hermes::plugin_dir(ctx)).is_ok(),
+            _ => false,
+        }
 }
 
 /// Refreshes a connected client's wholly CodePet-owned files whose marker is present and

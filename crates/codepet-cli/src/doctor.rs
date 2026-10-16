@@ -13,7 +13,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
@@ -44,38 +44,25 @@ fn ago(ms: i64) -> String {
 }
 
 /// `$SHELL -lc true`: how long it takes and whether it printed anything (bounded to 5 s).
+/// The shell runs in its own process group (killed whole on timeout); both pipes are
+/// drained while it runs, capped, and never waited on past the deadline, so a profile that
+/// prints a lot or leaves a background process holding a pipe cannot stall doctor.
 fn login_shell(env: &Env) -> Option<Value> {
     let shell = std::env::var_os("SHELL").filter(|s| Path::new(s).is_absolute())?;
+    time_shell(Path::new(&shell), env, Duration::from_secs(5))
+}
+
+fn time_shell(shell: &Path, env: &Env, timeout: Duration) -> Option<Value> {
     let started = Instant::now();
-    let mut child = Command::new(&shell)
-        .args(["-lc", "true"])
-        .env("HOME", &env.home)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .ok()?;
-    let mut timed_out = false;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if started.elapsed() < Duration::from_secs(5) => {
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            _ => {
-                timed_out = true;
-                let _ = child.kill();
-                break;
-            }
-        }
-    }
+    let mut cmd = Command::new(shell);
+    cmd.args(["-lc", "true"]).env("HOME", &env.home);
+    let out = install::runner::capture(cmd, timeout, 4096, true).ok()?;
     let ms = started.elapsed().as_millis();
-    let out = child.wait_with_output().ok()?;
     Some(json!({
         "shell": shell.to_string_lossy(),
         "ms": u64::try_from(ms).unwrap_or(u64::MAX),
         "silent": out.stdout.is_empty() && out.stderr.is_empty(),
-        "timed_out": timed_out,
+        "timed_out": out.timed_out,
     }))
 }
 
@@ -165,7 +152,9 @@ pub fn report(
                 (if *current { "current" } else { "outdated" }, s_ok && b_ok)
             }
         };
-        json!({ "path": p.to_string_lossy(), "state": word, "sha256": sha, "paths_match": paths_match })
+        // Why a Connect would refuse to repoint it (it serves another state dir or binary).
+        let conflict = ctx.as_ref().and_then(install::shim_conflict);
+        json!({ "path": p.to_string_lossy(), "state": word, "sha256": sha, "paths_match": paths_match, "conflict": conflict })
     });
     let clients: Vec<Value> = ClientId::ALL
         .iter()
@@ -311,6 +300,10 @@ pub fn plain(r: &Value) -> Vec<String> {
                 .map(|h| format!(", sha256 {h}"))
                 .unwrap_or_default(),
             match s["state"].as_str() {
+                _ if s["conflict"].is_string() => format!(
+                    "; Connect is blocked: {}",
+                    s["conflict"].as_str().unwrap_or_default()
+                ),
                 Some("current" | "outdated") if s["paths_match"] == true =>
                     ", paths match this install".to_owned(),
                 Some("current" | "outdated") =>
@@ -368,4 +361,49 @@ pub fn run(args: &[OsString]) -> i32 {
         plain(&r).iter().try_for_each(|l| writeln!(out, "{l}"))
     };
     i32::from(written.is_err())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn shell(dir: &Path, body: &str) -> std::path::PathBuf {
+        let p = dir.join("sh");
+        fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    #[test]
+    fn a_noisy_or_lingering_profile_never_stalls_doctor() {
+        let t = tempfile::tempdir().unwrap();
+        let env = Env::resolve(|k| (k == "HOME").then(|| t.path().as_os_str().to_owned())).unwrap();
+        // More than a pipe buffer on both pipes, then a background process that left the
+        // group and keeps stdout open.
+        let sh = shell(
+            t.path(),
+            "head -c 200000 /dev/zero; head -c 200000 /dev/zero >&2; setsid sleep 5 & exit 0",
+        );
+        let started = Instant::now();
+        let v = time_shell(&sh, &env, Duration::from_secs(5)).unwrap();
+        assert!(started.elapsed() < Duration::from_secs(3), "{v}");
+        assert_eq!(
+            (v["silent"].clone(), v["timed_out"].clone()),
+            (json!(false), json!(false))
+        );
+        // A silent profile.
+        let sh = shell(t.path(), "exit 0");
+        let v = time_shell(&sh, &env, Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            (v["silent"].clone(), v["timed_out"].clone()),
+            (json!(true), json!(false))
+        );
+        // A stuck one: killed with its group at the deadline.
+        let sh = shell(t.path(), "sleep 30 & sleep 30");
+        let started = Instant::now();
+        let v = time_shell(&sh, &env, Duration::from_millis(300)).unwrap();
+        assert!(started.elapsed() < Duration::from_secs(2), "{v}");
+        assert_eq!(v["timed_out"], true);
+    }
 }

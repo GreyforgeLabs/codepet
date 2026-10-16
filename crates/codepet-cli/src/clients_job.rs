@@ -13,7 +13,18 @@
 //! Kill safety: every step re-checks what it changes. A journal whose process is dead is
 //! resumed by the next `state.get` or `clients.*` call ([`recover`]); after
 //! [`MAX_ATTEMPTS`] the job rolls back instead (the clients it had not recorded become
-//! `failed: blocked`, a Connect's file-owned artifacts are removed again).
+//! `failed: blocked`, a Connect's file-owned artifacts are removed again). A job that runs
+//! longer than [`JOB_DEADLINE`] ends itself, and is then resumed or rolled back the same
+//! way. Journals are written only under `$STATE/jobs/.lock` (by the job, or by
+//! [`recover`], which takes the lock without waiting and leaves everything alone while a
+//! job holds it), so a resume can never undo a finished job.
+//!
+//! Off (E2): while CodePet is Off no Connect or ready check runs in the background. A
+//! Connect or test job found while Off is ended without running anything (its unrecorded
+//! clients `failed: blocked`, "CodePet was off"; a running ready check is abandoned
+//! without a verdict); a Connect turned Off midway skips its ready check. Stop watching
+//! still runs. A process started under a `stateHome` test override
+//! (`CODEPET_TEST_STATE`) runs no job at all.
 use crate::install::{self, detect, runner, Artifact, Ctx, Env, Failed, Reason};
 use codepet_core::agent::{ClientId, TEST_ARRIVAL_MS, TEST_DONE_DELAY_MS};
 use codepet_storage::{JobClientResult, StatePaths, Store, SystemClock};
@@ -30,12 +41,21 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// A job that died this often is rolled back instead of resumed.
 pub const MAX_ATTEMPTS: u32 = 3;
-/// A journal that never recorded a pid is considered dead after this long.
-const START_GRACE_MS: i64 = 30_000;
+/// A journal that never recorded a pid is considered dead after this long: longer than a
+/// queued job waits for the lock ([`LOCK_WAIT`]), so a job queued behind another is never
+/// taken for dead and started twice.
+const START_GRACE_MS: i64 = 150_000;
 /// Finished journals older than this are deleted by [`recover`].
 const KEEP_DONE_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// How long a job waits for another job's lock.
 const LOCK_WAIT: Duration = Duration::from_secs(120);
+const _: () = assert!(START_GRACE_MS > LOCK_WAIT.as_millis() as i64 + 10_000);
+/// The longest a job runs once it holds the lock (every client CLI is bounded to 10 s and
+/// the ready check to a few seconds; this only catches a hang). The job then exits and is
+/// resumed, then rolled back after [`MAX_ATTEMPTS`].
+pub const JOB_DEADLINE: Duration = Duration::from_secs(300);
+/// Detail of a job ended because CodePet was Off.
+const OFF_DETAIL: &str = "CodePet was off";
 /// The ready-check payloads (`commands.json` `ready_check`), the frozen contract itself.
 const COMMANDS_JSON: &str = include_str!("../../../docs/v0.3/contracts/commands.json");
 
@@ -72,6 +92,10 @@ pub struct Journal {
     /// The ready check's outcome (`done` or `failed`), when it ran.
     pub test: Option<String>,
     pub done: bool,
+    /// `codepet connect --repoint`: the shim may be repointed from another state dir or
+    /// binary that still exists.
+    #[serde(default)]
+    pub repoint: bool,
 }
 
 pub fn now_ms() -> i64 {
@@ -172,28 +196,42 @@ pub fn spawn(id: &str) -> std::io::Result<()> {
 
 /// Resumes or rolls back jobs whose process died, clears running marks no journal backs,
 /// and deletes old finished journals. Called before `state.get` and every `clients.*`.
+///
+/// It takes `$STATE/jobs/.lock` without waiting: while a job holds it, every unfinished
+/// journal is left alone (and its running mark kept), so a stale read can never rewrite a
+/// journal the running job just finished. While Off, an unfinished Connect or test job is
+/// ended without running anything ([`end_while_off`]); under a `stateHome` test override
+/// nothing is resumed.
 pub fn recover(store: &mut Store) {
     let paths = store.paths().clone();
     let mut keep: Vec<String> = Vec::new();
     if let Ok(rd) = fs::read_dir(paths.jobs_dir()) {
+        let lock = try_job_lock(&paths);
+        let off = !store.doctor_meta().is_ok_and(|m| m.enabled);
+        let test_state = crate::clients::test_state();
         let mut done: Vec<(i64, PathBuf)> = Vec::new();
         for e in rd.flatten() {
             let name = e.file_name();
             let Some(id) = name.to_str().and_then(|n| n.strip_suffix(".json")) else {
                 continue;
             };
-            let Some(j) = read_journal(&paths, id) else {
+            let Some(mut j) = read_journal(&paths, id) else {
                 continue;
             };
             if j.done {
                 done.push((j.created_ms, e.path()));
                 continue;
             }
-            if alive(&j) {
+            if lock.is_none() || alive(&j) || test_state {
                 keep.push(j.id.clone());
                 continue;
             }
-            // Resume: mark the restart first, so a second caller sees a starting job.
+            if off && j.kind != "disconnect" {
+                end_while_off(store, &paths, &mut j);
+                continue;
+            }
+            // Resume (under the lock, so no job writes this journal meanwhile): mark the
+            // restart first, so a second caller sees a starting job.
             let mut restart = j.clone();
             restart.pid = None;
             restart.pid_start = None;
@@ -202,6 +240,7 @@ pub fn recover(store: &mut Store) {
                 keep.push(j.id.clone());
             }
         }
+        drop(lock);
         done.sort();
         let n = done.len();
         for (i, (created, p)) in done.into_iter().enumerate() {
@@ -213,6 +252,45 @@ pub fn recover(store: &mut Store) {
     if store.clear_dead_jobs(&keep).is_ok_and(|d| !d.is_empty()) {
         crate::rpc::publish_bar_state(store);
     }
+}
+
+/// Ends a Connect or test job while CodePet is Off, running nothing: its unrecorded
+/// clients become `failed: blocked` ("CodePet was off", `connected` from the files), a
+/// ready check it left running is abandoned without a verdict (no `ready_check` failure),
+/// and the journal is marked done. The caller holds the job lock.
+fn end_while_off(store: &mut Store, paths: &StatePaths, j: &mut Journal) {
+    let ctx =
+        Env::from_process().and_then(|env| Ctx::new(env, paths.clone(), PathBuf::from(&j.bin)));
+    if j.kind == "connect" {
+        for c in parse_clients(j) {
+            if j.steps.get(c.as_str()).map(String::as_str) == Some("recorded") {
+                continue;
+            }
+            let connected = ctx.as_ref().is_some_and(|ctx| {
+                install::status(ctx, c) == Artifact::Current
+                    && !paths.disconnected_flag_path(c.as_str()).exists()
+            });
+            let _ = store.record_job_result(&JobClientResult {
+                client: c,
+                outcome: "failed",
+                connected,
+                needs_step: None,
+                reason: Some(Reason::Blocked.as_str()),
+                installed_version: None,
+                reset_first_seen: false,
+            });
+            push_result(j, c, "failed", None, Some(Reason::Blocked), OFF_DETAIL);
+            j.steps.insert(c.as_str().to_owned(), "recorded".to_owned());
+        }
+    }
+    let _ = store.cancel_ready_check();
+    let _ = install::remove_file(&paths.test_nonce_path());
+    j.test = None;
+    finish(store, paths, j);
+}
+
+fn is_off(store: &Store) -> bool {
+    !store.doctor_meta().is_ok_and(|m| m.enabled)
 }
 
 /// The `codepet` binary the shim should call: the absolute `argv[0]` when it is the same
@@ -247,6 +325,7 @@ pub fn create_journal(
     kind: &str,
     clients: &[ClientId],
     bin: &Path,
+    repoint: bool,
 ) -> std::io::Result<()> {
     write_journal(
         paths,
@@ -257,6 +336,7 @@ pub fn create_journal(
             clients: clients.iter().map(|c| c.as_str().to_owned()).collect(),
             bin: bin.to_string_lossy().into_owned(),
             created_ms: now_ms(),
+            repoint,
             ..Journal::default()
         },
     )
@@ -296,9 +376,27 @@ pub fn run(args: &[OsString]) -> i32 {
     if write_journal(&paths, &j).is_err() {
         return 1;
     }
+    // A hang anywhere (a client CLI, the file system) ends the job; it is then resumed or
+    // rolled back like a killed one.
+    std::thread::spawn(|| {
+        std::thread::sleep(JOB_DEADLINE);
+        std::process::exit(75);
+    });
     let Ok(mut store) = Store::open_current(&paths, Arc::new(SystemClock)) else {
         return 1;
     };
+    if crate::clients::test_state() {
+        return fail_all(
+            &mut store,
+            &paths,
+            &mut j,
+            "the bar runs with a test state home",
+        );
+    }
+    if j.kind != "disconnect" && is_off(&store) {
+        end_while_off(&mut store, &paths, &mut j);
+        return 0;
+    }
     let Some(env) = Env::from_process() else {
         return fail_all(&mut store, &paths, &mut j, "no HOME");
     };
@@ -311,15 +409,26 @@ pub fn run(args: &[OsString]) -> i32 {
         match j.kind.as_str() {
             "connect" => connect(&mut store, &ctx, &mut j),
             "disconnect" => disconnect(&mut store, &ctx, &mut j),
-            "test" => {
-                let clients = parse_clients(&j);
-                let outcome = ready_check(&mut store, &ctx, &clients);
-                j.test = Some(outcome.to_owned());
-            }
+            "test" => test(&mut store, &ctx, &mut j),
             _ => {}
         }
     }
     finish(&mut store, &paths, &mut j)
+}
+
+/// `clients.test`: the ready check through the installed shim, unless that shim sends its
+/// events to another state dir or binary (it would test, and write into, someone else's
+/// CodePet): then `failed`, with a `blocked` detail per client and no row changed.
+fn test(store: &mut Store, ctx: &Ctx, j: &mut Journal) {
+    let clients = parse_clients(j);
+    if let Some(why) = install::shim_conflict(ctx) {
+        for c in &clients {
+            push_result(j, *c, "failed", None, Some(Reason::Blocked), &why);
+        }
+        j.test = Some("failed".to_owned());
+        return;
+    }
+    j.test = ready_check(store, ctx, &clients).map(str::to_owned);
 }
 
 fn parse_clients(j: &Journal) -> Vec<ClientId> {
@@ -343,6 +452,11 @@ fn finish(store: &mut Store, paths: &StatePaths, j: &mut Journal) -> i32 {
 
 fn fail_all(store: &mut Store, paths: &StatePaths, j: &mut Journal, why: &str) -> i32 {
     for c in parse_clients(j) {
+        if j.kind == "test" {
+            // A ready check that never ran changes no row.
+            push_result(j, c, "failed", None, Some(Reason::Blocked), why);
+            continue;
+        }
         let _ = store.record_job_result(&JobClientResult {
             client: c,
             outcome: "failed",
@@ -357,10 +471,9 @@ fn fail_all(store: &mut Store, paths: &StatePaths, j: &mut Journal, why: &str) -
     finish(store, paths, j)
 }
 
-/// `$STATE/jobs/.lock`: one job at a time (waits up to [`LOCK_WAIT`]).
-fn job_lock(paths: &StatePaths) -> Option<fs::File> {
+fn open_job_lock(paths: &StatePaths) -> Option<fs::File> {
     let dir = jobs_dir(paths).ok()?;
-    let f = OpenOptions::new()
+    OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
@@ -368,7 +481,20 @@ fn job_lock(paths: &StatePaths) -> Option<fs::File> {
         .mode(0o600)
         .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::CLOEXEC).bits() as i32)
         .open(dir.join(".lock"))
-        .ok()?;
+        .ok()
+}
+
+/// `$STATE/jobs/.lock` without waiting (`recover`); `None` while a job holds it.
+fn try_job_lock(paths: &StatePaths) -> Option<fs::File> {
+    let f = open_job_lock(paths)?;
+    rustix::fs::flock(&f, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+        .ok()
+        .map(|()| f)
+}
+
+/// `$STATE/jobs/.lock`: one job at a time (waits up to [`LOCK_WAIT`]).
+fn job_lock(paths: &StatePaths) -> Option<fs::File> {
+    let f = open_job_lock(paths)?;
     let started = Instant::now();
     loop {
         match rustix::fs::flock(&f, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
@@ -454,6 +580,7 @@ fn connect_one(
     store: &mut Store,
     ctx: &Ctx,
     c: ClientId,
+    repoint: bool,
 ) -> Result<(install::Connected, Option<String>), Failed> {
     let d = detect::detect(&ctx.env, c);
     if !d.installed() {
@@ -472,7 +599,7 @@ fn connect_one(
     }
     // The shim drains and exits while `$S/inbox` is missing; the job creates it (0700).
     install::ensure_private_dir(&ctx.paths.inbox_dir())?;
-    install::install_shim(ctx)?;
+    install::install_shim(ctx, repoint)?;
     let bin = d.binary.as_deref().expect("installed");
     let connected = match c {
         ClientId::ClaudeCode => install::claude::connect(ctx, bin)?,
@@ -487,6 +614,7 @@ fn connect_one(
 }
 
 fn connect(store: &mut Store, ctx: &Ctx, j: &mut Journal) {
+    install::sweep_connect_temps(ctx);
     let mut tested = Vec::new();
     for c in parse_clients(j) {
         if j.steps.get(c.as_str()).map(String::as_str) == Some("recorded") {
@@ -498,7 +626,7 @@ fn connect(store: &mut Store, ctx: &Ctx, j: &mut Journal) {
             }
             continue;
         }
-        let result = connect_one(store, ctx, c);
+        let result = connect_one(store, ctx, c, j.repoint);
         let rec = match &result {
             Ok((conn, version)) => {
                 let _ = set_disconnected_flag(&ctx.paths, c, false);
@@ -540,9 +668,9 @@ fn connect(store: &mut Store, ctx: &Ctx, j: &mut Journal) {
         mark_step(store, j, c, "recorded");
         crate::rpc::publish_bar_state(store);
     }
-    if !tested.is_empty() {
-        let outcome = ready_check(store, ctx, &tested);
-        j.test = Some(outcome.to_owned());
+    // Turned Off midway: no ready check (it could only fail, and nothing runs while Off).
+    if !tested.is_empty() && !is_off(store) {
+        j.test = ready_check(store, ctx, &tested).map(str::to_owned);
     }
 }
 
@@ -552,7 +680,9 @@ fn disconnect(store: &mut Store, ctx: &Ctx, j: &mut Journal) {
             continue;
         }
         // The shim exits at once from here on.
-        if let Err(e) = set_disconnected_flag(&ctx.paths, c, true) {
+        let flagged = set_disconnected_flag(&ctx.paths, c, true);
+        codepet_storage::fault("disconnect_after_flag");
+        if let Err(e) = flagged {
             let f = Failed::from(e);
             push_result(j, c, "failed", None, Some(f.reason), &f.detail);
             let _ = store.record_job_result(&JobClientResult {
@@ -723,18 +853,20 @@ pub fn run_stored(ctx: &Ctx, client: ClientId, line: &str) -> bool {
 /// The ready check (`protocol.json` `clients.test`): a fresh nonce, `test_state` running,
 /// each tested client's stored command with its `turn_start` then (1.5 s later) its
 /// `turn_done` payload, then wait for the folded `turn_done` records. Returns `done` or
-/// `failed`.
-pub fn ready_check(store: &mut Store, ctx: &Ctx, tested: &[ClientId]) -> &'static str {
+/// `failed`, or `None` when CodePet was turned Off meanwhile (the check is abandoned
+/// without a verdict: no client gets a `ready_check` failure).
+pub fn ready_check(store: &mut Store, ctx: &Ctx, tested: &[ClientId]) -> Option<&'static str> {
     let nonce_path = ctx.paths.test_nonce_path();
     let _ = install::ensure_private_dir(&ctx.paths.inbox_dir());
     let Ok(nonce) = random_hex(16) else {
         let _ = store.finish_ready_check(tested, &[]);
-        return "failed";
+        return Some("failed");
     };
     let since = match store.begin_ready_check(tested) {
         Ok(at) => at,
-        Err(_) => return "failed",
+        Err(_) => return Some("failed"),
     };
+    codepet_storage::fault("test_after_begin");
     if install::write_file(
         &nonce_path,
         ".test.nonce.tmp",
@@ -744,7 +876,7 @@ pub fn ready_check(store: &mut Store, ctx: &Ctx, tested: &[ClientId]) -> &'stati
     .is_err()
     {
         let _ = store.finish_ready_check(tested, &[]);
-        return "failed";
+        return Some("failed");
     }
     crate::rpc::publish_bar_state(store);
     for c in tested {
@@ -772,13 +904,14 @@ pub fn ready_check(store: &mut Store, ctx: &Ctx, tested: &[ClientId]) -> &'stati
         std::thread::sleep(Duration::from_millis(100));
     }
     let _ = install::remove_file(&nonce_path);
+    if arrived.len() < tested.len() && is_off(store) {
+        let _ = store.cancel_ready_check();
+        crate::rpc::publish_bar_state(store);
+        return None;
+    }
     let done = store.finish_ready_check(tested, &arrived).unwrap_or(false);
     crate::rpc::publish_bar_state(store);
-    if done {
-        "done"
-    } else {
-        "failed"
-    }
+    Some(if done { "done" } else { "failed" })
 }
 
 #[cfg(test)]

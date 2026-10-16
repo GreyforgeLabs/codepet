@@ -7,11 +7,14 @@
 //! - Disconnect: a CodePet group is removed only while no foreign group follows it in its
 //!   array; otherwise it stays as a tombstone (the `disconnected` flag makes the shim exit),
 //!   and a later pass removes it once it is last;
-//! - every write keeps `hooks.json.codepet-orig` (first touch) and `hooks.json.codepet-last`
-//!   (the bytes before this write) beside the file, compares and swaps against concurrent
-//!   writers (3 tries, then `blocked`), keeps the file's mode, re-reads it, and checks that
-//!   every foreign `[hooks.state]` position still holds the same handler (else it restores
-//!   `codepet-last` and fails `blocked`).
+//! - every write checks first that every foreign `[hooks.state]` position still holds the
+//!   same handler in the edited tree (else `blocked`, nothing written), keeps
+//!   `hooks.json.codepet-orig` (first touch) and `hooks.json.codepet-last` (the bytes before
+//!   this write) beside the file, builds and fsyncs the new file, then compares the bytes
+//!   with what it read as the very last step before the rename (3 tries against concurrent
+//!   writers, then `blocked`) and keeps the file's mode. A writer that comes after the
+//!   rename is never overwritten or restored over. A symlinked `hooks.json` is never
+//!   replaced (`blocked`).
 //!
 //! `config.toml` is read only for `[features] hooks`/`codex_hooks` and `[hooks.state]`; it
 //! is never written, logged or copied. CodePet never writes `trusted_hash`
@@ -371,12 +374,30 @@ fn remove_groups(tree: &mut J) -> Result<(bool, usize), Failed> {
     Ok((changed, left))
 }
 
-/// Read, edit, compare-and-swap write, verify, foreign-trust check. `between` runs after
-/// each read and before the swap (tests use it to race a concurrent writer).
+/// Where a test races a concurrent writer inside [`edit`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Race {
+    /// The new bytes and the backups are written; the final compare comes next.
+    BeforeSwap,
+    /// CodePet's bytes were just renamed in; the re-read comes next.
+    AfterSwap,
+}
+
+/// Read, edit, foreign-trust check, backups and temp file, compare-and-swap rename,
+/// verify. `race` runs at the two [`Race`] points (tests use it to race a writer).
+///
+/// The compare is the last step before the rename (everything slow happens first), so the
+/// window in which another writer (herdr, slopbrake, Codex itself) can be overwritten is
+/// one read and one rename. The foreign-trust check runs on the edited tree before
+/// anything is written. After the rename the file is re-read: when it holds exactly
+/// CodePet's bytes the write is done; when it holds anything else, another writer changed
+/// it after CodePet, and its bytes are left alone (never restored over).
+///
+/// A `hooks.json` that is a symlink (a dotfiles manager) is never replaced: `blocked`.
 fn edit(
     ctx: &Ctx,
     mut change: impl FnMut(&mut J) -> Result<bool, Failed>,
-    mut between: impl FnMut(u32),
+    mut race: impl FnMut(Race, u32),
 ) -> Result<bool, Failed> {
     let path = hooks_path(ctx);
     let cfg = read_config(ctx);
@@ -391,17 +412,24 @@ fn edit(
         if !change(&mut tree)? {
             return Ok(false);
         }
-        let text = jsonish::to_pretty(&tree) + "\n";
-        between(attempt);
-        // Compare and swap: the file must still hold what was read.
-        let now = match fs::read(&path) {
-            Ok(b) => Some(b),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e.into()),
-        };
-        if now != old_bytes {
-            continue;
+        if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(Failed::new(
+                Reason::Blocked,
+                "Codex's hooks.json is a link (a dotfiles setup) and CodePet never replaces \
+                 links; add CodePet's lines by hand (README) or set CODEX_HOME to the real folder",
+            ));
         }
+        // Every foreign trusted position must hold the same handler in the new tree.
+        let foreign_ok = foreign_positions(&before_tree, &cfg, &prefixes)
+            .iter()
+            .all(|(ev, g, h, hash)| hash_at(&tree, ev, *g, *h).is_some_and(|now| now == *hash));
+        if !foreign_ok {
+            return Err(Failed::new(
+                Reason::Blocked,
+                "a foreign Codex hook would have moved; nothing was written",
+            ));
+        }
+        let text = jsonish::to_pretty(&tree) + "\n";
         let mode = fs::metadata(&path)
             .map(|m| m.permissions().mode() & 0o7777)
             .unwrap_or(0o644);
@@ -420,7 +448,7 @@ fn edit(
         super::ensure_dir(&ctx.env.codex_dir, 0o700)?;
         let tmp = path.with_file_name(format!(".hooks.json.codepet-{}", std::process::id()));
         let _ = fs::remove_file(&tmp);
-        {
+        let built = (|| {
             let mut f = fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -428,37 +456,35 @@ fn edit(
                 .open(&tmp)?;
             f.write_all(text.as_bytes())?;
             f.set_permissions(fs::Permissions::from_mode(mode))?;
-            f.sync_all()?;
+            f.sync_all()
+        })();
+        if let Err(e) = built {
+            let _ = fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        race(Race::BeforeSwap, attempt);
+        // Compare and swap, as the last step: the file must still hold what was read.
+        let now = match fs::read(&path) {
+            Ok(b) => Some(b),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+            Err(e) => {
+                let _ = fs::remove_file(&tmp);
+                return Err(e.into());
+            }
+        };
+        if now != old_bytes || fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink())
+        {
+            let _ = fs::remove_file(&tmp);
+            continue;
         }
         if let Err(e) = fs::rename(&tmp, &path) {
             let _ = fs::remove_file(&tmp);
             return Err(e.into());
         }
-        // Re-read and verify, then the foreign-trust check.
-        let after = read_tree(&path).ok().flatten().map(|(_, t)| t);
-        let foreign_ok =
-            foreign_positions(&before_tree, &cfg, &prefixes)
-                .iter()
-                .all(|(ev, g, h, hash)| {
-                    after
-                        .as_ref()
-                        .and_then(|t| hash_at(t, ev, *g, *h))
-                        .is_some_and(|now| now == *hash)
-                });
-        if after.as_ref() != Some(&tree) || !foreign_ok {
-            match &old_bytes {
-                Some(old) => {
-                    let _ = super::write_file(&path, ".hooks.json.codepet-restore", old, mode);
-                }
-                None => {
-                    let _ = fs::remove_file(&path);
-                }
-            }
-            return Err(Failed::new(
-                Reason::Blocked,
-                "a foreign Codex hook would have moved; restored",
-            ));
-        }
+        race(Race::AfterSwap, attempt);
+        // Nothing is restored after the rename: the file holds CodePet's bytes, or those of
+        // a writer that came after CodePet, which are left alone. The caller re-reads the
+        // file (`status`) to decide whether CodePet's lines are in place.
         return Ok(true);
     }
     Err(Failed::new(
@@ -467,7 +493,7 @@ fn edit(
     ))
 }
 
-fn connect_with(ctx: &Ctx, between: impl FnMut(u32)) -> Result<Connected, Failed> {
+fn connect_with(ctx: &Ctx, between: impl FnMut(Race, u32)) -> Result<Connected, Failed> {
     if read_config(ctx).hooks_off {
         return Ok(Connected {
             connected: false,
@@ -494,10 +520,10 @@ fn connect_with(ctx: &Ctx, between: impl FnMut(u32)) -> Result<Connected, Failed
 }
 
 pub fn connect(ctx: &Ctx) -> Result<Connected, Failed> {
-    connect_with(ctx, |_| {})
+    connect_with(ctx, |_, _| {})
 }
 
-fn disconnect_with(ctx: &Ctx, between: impl FnMut(u32)) -> Result<MergeReport, Failed> {
+fn disconnect_with(ctx: &Ctx, between: impl FnMut(Race, u32)) -> Result<MergeReport, Failed> {
     let mut left = 0;
     let wrote = edit(
         ctx,
@@ -515,7 +541,7 @@ fn disconnect_with(ctx: &Ctx, between: impl FnMut(u32)) -> Result<MergeReport, F
 }
 
 pub fn disconnect(ctx: &Ctx) -> Result<MergeReport, Failed> {
-    disconnect_with(ctx, |_| {})
+    disconnect_with(ctx, |_, _| {})
 }
 
 #[cfg(test)]
@@ -746,8 +772,8 @@ mod tests {
             "\"Stop\": [",
             "\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"herdr stop\"}]}, ",
         );
-        let c = connect_with(&ctx, |attempt| {
-            if attempt == 0 {
+        let c = connect_with(&ctx, |at, attempt| {
+            if at == Race::BeforeSwap && attempt == 0 {
                 fs::write(&path, &raced).unwrap();
             }
         })
@@ -770,12 +796,86 @@ mod tests {
         let ctx2 = ctx_at(t2.path());
         write_hooks(&ctx2, FOREIGN);
         let p2 = hooks_path(&ctx2);
-        let err = connect_with(&ctx2, |n| {
-            fs::write(&p2, format!("{FOREIGN}\n{}", " ".repeat(n as usize + 1))).unwrap()
+        let err = connect_with(&ctx2, |at, n| {
+            if at == Race::BeforeSwap {
+                fs::write(&p2, format!("{FOREIGN}\n{}", " ".repeat(n as usize + 1))).unwrap()
+            }
         })
         .unwrap_err();
         assert_eq!(err.reason, Reason::Blocked);
         assert!(!fs::read_to_string(&p2).unwrap().contains("codepet-hook"));
+        let leftovers: Vec<_> = fs::read_dir(&ctx2.env.codex_dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(".hooks.json.codepet-"))
+            .collect();
+        assert!(leftovers.is_empty(), "no temp left: {leftovers:?}");
+    }
+
+    #[test]
+    fn a_writer_after_the_rename_keeps_its_bytes() {
+        // Another tool (slopbrake adding a guardrail) writes right after CodePet's rename:
+        // nothing restores over it.
+        for kind in ["connect", "disconnect"] {
+            let t = tempfile::tempdir().unwrap();
+            let ctx = ctx_at(t.path());
+            write_hooks(&ctx, FOREIGN);
+            if kind == "disconnect" {
+                connect(&ctx).unwrap();
+            }
+            let path = hooks_path(&ctx);
+            let mut theirs = String::new();
+            let mut race = |at: Race, _| {
+                if at == Race::AfterSwap {
+                    let mine = fs::read_to_string(&path).unwrap();
+                    theirs = mine.replacen(
+                        "\"hooks\": {",
+                        "\"hooks\": {\n    \"PreCompact\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"slopbrake-hook guard\"}]}],",
+                        1,
+                    );
+                    assert_ne!(theirs, mine);
+                    fs::write(&path, &theirs).unwrap();
+                }
+            };
+            if kind == "connect" {
+                let c = connect_with(&ctx, &mut race).unwrap();
+                assert!(c.connected, "CodePet's lines are still there");
+            } else {
+                disconnect_with(&ctx, &mut race).unwrap();
+            }
+            assert_eq!(fs::read_to_string(&path).unwrap(), theirs, "{kind}");
+        }
+    }
+
+    #[test]
+    fn a_symlinked_hooks_json_is_never_replaced() {
+        let t = tempfile::tempdir().unwrap();
+        let ctx = ctx_at(t.path());
+        let dots = t.path().join("dotfiles/codex");
+        fs::create_dir_all(&dots).unwrap();
+        fs::write(dots.join("hooks.json"), FOREIGN).unwrap();
+        fs::create_dir_all(&ctx.env.codex_dir).unwrap();
+        std::os::unix::fs::symlink(dots.join("hooks.json"), hooks_path(&ctx)).unwrap();
+        let err = connect(&ctx).unwrap_err();
+        assert_eq!(err.reason, Reason::Blocked);
+        assert!(err.detail.contains("link"), "{}", err.detail);
+        // Nothing of CodePet's in it: Stop watching has nothing to do and says so.
+        assert_eq!(disconnect(&ctx).unwrap(), MergeReport::default());
+        assert!(fs::symlink_metadata(hooks_path(&ctx))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::read_to_string(dots.join("hooks.json")).unwrap(),
+            FOREIGN
+        );
+        assert_eq!(
+            fs::read_dir(&ctx.env.codex_dir).unwrap().count(),
+            1,
+            "no backups, no temps"
+        );
+        assert_eq!(fs::read_dir(&dots).unwrap().count(), 1);
     }
 
     #[test]
@@ -888,11 +988,15 @@ mod tests {
                 );
                 Ok(true)
             },
-            |_| {},
+            |_, _| {},
         )
         .unwrap_err();
         assert_eq!(err.reason, Reason::Blocked);
         assert_eq!(fs::read_to_string(&path).unwrap(), FOREIGN);
+        assert!(
+            !ctx.env.codex_dir.join("hooks.json.codepet-last").exists(),
+            "refused before anything was written"
+        );
     }
 
     #[test]

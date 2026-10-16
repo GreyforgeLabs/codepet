@@ -1269,6 +1269,33 @@ def check_protocol(proto: dict, bar: dict) -> None:
         fail("protocol: off must be the first frozen reason of a living life")
 
 
+def check_cli(proto: dict) -> None:
+    """The commands the binary routes (crates/codepet-cli/src/main.rs) are exactly the
+    contract's `cli` kept + added (plus the `help` alias and the legacy-tasks commands)."""
+    main_rs = REPO / "crates/codepet-cli/src/main.rs"
+    if not main_rs.is_file():
+        return
+    text = main_rs.read_text(encoding="utf-8")
+    routed = set()
+    for m in re.finditer(r"Some\(Some\((?:\w+ @ )?\(?((?:\"[^\"]+\"\s*\|?\s*)+)\)", text):
+        routed.update(re.findall(r'"([^"]+)"', m.group(1)))
+    cli = proto["cli"]
+    contract = set()
+    for key in list(cli["kept"]) + list(cli["added"]):
+        for part in key.split(" / "):
+            words = part.split()
+            contract.add(words[0])
+            if len(words) > 2 and words[1] == "|":
+                contract.add(words[2])
+    legacy = {r.split()[0] for r in cli["removed_in_wp1"]}
+    extra = routed - contract - legacy - {"help"}
+    missing = contract - routed
+    if extra:
+        fail(f"protocol.json cli: main.rs routes commands the contract does not list: {sorted(extra)}")
+    if missing:
+        fail(f"protocol.json cli: the contract lists commands main.rs does not route: {sorted(missing)}")
+
+
 def main() -> int:
     files = ["strings.json", "icons.json", "pixel-budgets.json", "protocol.json", "agent_vectors.json",
              "bar.v2.schema.json", "commands.json", "plugin-payload.schema.json"]
@@ -1286,6 +1313,7 @@ def main() -> int:
     check_icons(docs["icons.json"], docs["agent_vectors.json"])
     check_ddl()
     check_protocol(docs["protocol.json"], docs["bar.v2.schema.json"])
+    check_cli(docs["protocol.json"])
     check_vectors(docs["agent_vectors.json"], docs["strings.json"], docs["bar.v2.schema.json"])
     check_commands(docs["agent_vectors.json"])
     try:  # Cross-check the subset validator with the real one when it happens to be installed.

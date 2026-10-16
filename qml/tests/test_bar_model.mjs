@@ -173,8 +173,9 @@ test('paths: defaults, XDG overrides, and a test stateHome for both files and ch
     assert.equal(t.presence, '/home/u/qa/codepet/presence.json');
     assert.equal(t.binary, '/opt/codepet');
     assert.equal(t.testState, true);
-    assert.deepEqual(plain(t.childEnv), { XDG_STATE_HOME: '/home/u/qa' });
-    assert.deepEqual(plain(t.launcherEnv), ['CODEPET_BIN=/opt/codepet', 'XDG_STATE_HOME=/home/u/qa'],
+    assert.deepEqual(plain(t.childEnv), { XDG_STATE_HOME: '/home/u/qa', CODEPET_TEST_STATE: '1' },
+        'a test state home also tells the CLI (TEST_STATE: no Connect, Stop watching or ready check)');
+    assert.deepEqual(plain(t.launcherEnv), ['CODEPET_BIN=/opt/codepet', 'XDG_STATE_HOME=/home/u/qa', 'CODEPET_TEST_STATE=1'],
         'the configured binary and a test state home reach the desktop-pet launcher');
     const b = M.paths(M.config({ binary: '/opt/codepet' }), { HOME: '/home/u' });
     assert.deepEqual(plain(b.launcherEnv), ['CODEPET_BIN=/opt/codepet']);

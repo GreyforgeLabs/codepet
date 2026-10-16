@@ -191,8 +191,19 @@ pub fn connect(ctx: &Ctx, bin: &Path) -> Result<Connected, Failed> {
 
 /// Disables with Hermes's CLI (when enabled), then removes the plugin dir.
 pub fn disconnect(ctx: &Ctx, bin: Option<&Path>) -> Result<(), Failed> {
-    let before = read_config(ctx)
-        .map_err(|()| Failed::new(Reason::Blocked, "config.yaml is not readable YAML"))?;
+    let dir = plugin_dir(ctx);
+    let before = match read_config(ctx) {
+        Ok(c) => c,
+        // Without CodePet's plugin dir there is nothing of CodePet's to stop, and a
+        // `config.yaml` the small reader cannot parse is no reason to report a failure.
+        Err(()) if fs::symlink_metadata(&dir).is_err() => return Ok(()),
+        Err(()) => {
+            return Err(Failed::new(
+                Reason::Blocked,
+                "config.yaml is not readable YAML",
+            ))
+        }
+    };
     if enabled_in(&before) {
         let bin =
             bin.ok_or_else(|| Failed::new(Reason::Blocked, "hermes is not installed").installed())?;
@@ -214,7 +225,6 @@ pub fn disconnect(ctx: &Ctx, bin: Option<&Path>) -> Result<(), Failed> {
             );
         }
     }
-    let dir = plugin_dir(ctx);
     if fs::symlink_metadata(&dir).is_ok() {
         if !ours(&dir) {
             return Err(Failed::new(
