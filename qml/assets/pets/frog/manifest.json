@@ -17,6 +17,13 @@
   "sleep": "Leaf crouch"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Bugs",
+  "water": "Puddle",
+  "play": "Lily pads",
+  "wash": "Rain"
+ },
  "stages": [
   {
    "stage": 1,

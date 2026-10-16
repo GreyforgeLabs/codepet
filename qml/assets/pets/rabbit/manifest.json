@@ -17,6 +17,13 @@
   "sleep": "Ears-down loaf"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Hay",
+  "water": "Cool water",
+  "play": "Ball",
+  "wash": "Brushing"
+ },
  "stages": [
   {
    "stage": 1,

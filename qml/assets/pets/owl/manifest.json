@@ -17,6 +17,13 @@
   "sleep": "Shoulder tuck"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Dinner",
+  "water": "Cool water",
+  "play": "Beads",
+  "wash": "Fluffy feathers"
+ },
  "stages": [
   {
    "stage": 1,

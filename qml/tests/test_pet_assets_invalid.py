@@ -184,6 +184,30 @@ class InvalidPacks(unittest.TestCase):
         self.write_manifest("axolotl", man)
         self.assertRejected("axolotl: placeholder:true (release gate")
 
+    def test_care_icon_set_wrong_or_missing(self):
+        man = self.manifest("goldfish")
+        man["careIconSet"] = "floor"
+        self.write_manifest("goldfish", man)
+        self.assertRejected("goldfish: careIconSet 'floor' != habitat default 'aquatic'")
+        man["careIconSet"] = "space"
+        self.write_manifest("goldfish", man)
+        self.assertRejected("goldfish: careIconSet must be one of")
+
+    def test_care_words_shape_and_lint(self):
+        good = self.manifest("cat")
+        man = json.loads(json.dumps(good))
+        del man["careWords"]["wash"]
+        self.write_manifest("cat", man)
+        self.assertRejected("cat: careWords must give exactly food, water, play and wash")
+        cases = [("Kibble 2", "one or two plain words"), ("Big yummy kibble", "one or two plain words"),
+                 ("Token", "forbidden word 'token'"), ("Hooks", "forbidden word 'hook'"),
+                 ("kibble", "one or two plain words")]
+        for word, needle in cases:
+            man = json.loads(json.dumps(good))
+            man["careWords"]["food"] = word
+            self.write_manifest("cat", man)
+            self.assertRejected(needle)
+
     def test_registry_drift(self):
         man = self.manifest("cat")
         man["careLabels"]["food"] = "Something else"

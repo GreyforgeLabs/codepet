@@ -17,6 +17,13 @@
   "sleep": "Lengthwise rest"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Leaves",
+  "water": "Dew drops",
+  "play": "Sunshine",
+  "wash": "Mist"
+ },
  "stages": [
   {
    "stage": 1,

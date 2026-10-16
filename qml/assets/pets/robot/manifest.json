@@ -20,6 +20,13 @@
   "food": "Robots don't eat; this swaps in a fresh energy cell.",
   "water": "Robots don't drink; this checks the coolant."
  },
+ "careIconSet": "robot",
+ "careWords": {
+  "food": "Battery",
+  "water": "Cool breeze",
+  "play": "Magnets",
+  "wash": "Polish"
+ },
  "stages": [
   {
    "stage": 1,

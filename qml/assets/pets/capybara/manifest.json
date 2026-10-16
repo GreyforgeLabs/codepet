@@ -17,6 +17,13 @@
   "sleep": "Side rest"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Sweet grass",
+  "water": "Cool water",
+  "play": "Splash",
+  "wash": "Warm bath"
+ },
  "stages": [
   {
    "stage": 1,

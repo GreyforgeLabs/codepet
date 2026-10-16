@@ -17,6 +17,13 @@
   "sleep": "Cushion nap"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Kibble",
+  "water": "Cool water",
+  "play": "Fetch",
+  "wash": "Bubble bath"
+ },
  "stages": [
   {
    "stage": 1,

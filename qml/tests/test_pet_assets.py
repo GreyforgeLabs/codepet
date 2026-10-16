@@ -11,7 +11,10 @@ airborne frames exposed on the species locomotion block, per-stage hit boxes no 
 open-eyed sleep frames for species that rest with their eyes open, recorded anchors (pivot on
 groundY for floor species, prop and badge anchors in the canvas, swim bounds inside their
 water box and below its water line, globally and per stage), and the provenance and docs
-coverage.
+coverage. v0.3 (SPEC-v0.3 §4.1): every manifest states `careIconSet` (floor | aquatic |
+robot, equal to the habitat default and to docs/v0.3/contracts/icons.json when present) and
+`careWords` (food/water/play/wash, each one or two plain words: letters only, no digits, no
+K2 jargon, no calm-copy banned term, and every `{word}` bubble at most 8 words).
 
 Strict by default: all 15 species must be extracted (`placeholder: false`). With
 CODEPET_ALLOW_PARTIAL_ART=1, species still awaiting source sheets are skipped with a
@@ -36,12 +39,23 @@ ROOT = (Path(os.environ["CODEPET_ASSET_ROOT"]).resolve() if os.environ.get("CODE
 PETS = ROOT / "qml/assets/pets"
 REGISTRY_JS = ROOT / "qml/shared/PetRegistry.js"
 DOCS = ROOT / "docs/pets.md"
+ICONS_CONTRACT = ROOT / "docs/v0.3/contracts/icons.json"
 CORE = ROOT / "crates/codepet-core/src"
 
 STATE_NAMES = ("idle", "locomotion", "food", "water", "play", "wash", "bathroom",
                "sleep_enter", "sleep", "sleep_exit", "celebrate", "working", "waiting",
                "needs_care", "error")
 CARE = ("food", "water", "play", "wash", "bathroom")
+NEEDS = ("food", "water", "play", "wash")
+CARE_ICON_SETS = ("floor", "aquatic", "robot")
+# SPEC-v0.3 K2: never on a kid-facing screen (careWords reach the screen as {word}).
+JARGON = ("session", "hook", "turn", "provider", "xp", "level", "percent", "simulation", "preflight",
+          "token", "armed", "attended", "presence", "daemon", "config", "rpc", "plugin", "marketplace",
+          "client", "agent", "trust")
+CALM_BANNED = ("kill", "starv", "abandon", "guilt", "punish", "streak", "hurry")   # copy_lint.BANNED
+CARE_WORD_RE = re.compile(r"^[A-Z][a-z]*( [a-z]+)?$")
+# The {word} bubbles of strings.json (floor set; aquatic/robot override some of them).
+WORD_BUBBLES = {"food": "Yum! {word}!", "water": "Ahh! {word}!", "play": "Wheee! {word}!"}
 NO_FALLBACK = CARE + ("sleep_enter", "sleep", "sleep_exit")
 CANVAS, GROUND_Y, THUMB, MARGIN, GROUND_TOL = 192, 184, 96, 2, 6
 HOPPER_STYLES = ("hop", "leap")
@@ -179,6 +193,51 @@ docs = DOCS.read_text() if DOCS.is_file() else ""
 if not docs:
     fail("docs/pets.md missing")
 
+# ----------------------------------------------------------------- v0.3 care fields
+
+contract_sets = {}
+if ICONS_CONTRACT.is_file():
+    contract_sets = json.loads(ICONS_CONTRACT.read_text())["care_icon_set"]["resolved"]
+
+
+def care_word_problem(word):
+    """Why a careWords entry is not a plain kid word, or None."""
+    if not isinstance(word, str) or not CARE_WORD_RE.match(word):
+        return "must be one or two plain words (capitalised first word, letters only)"
+    if len(word) > 16:
+        return "is longer than 16 characters"
+    for w in word.lower().split():          # word-start match, as copy_lint does
+        for term in JARGON + CALM_BANNED:
+            if w.startswith(term):
+                return f"uses the forbidden word {term!r}"
+    return None
+
+
+def check_care_v03(pre, sid, man):
+    want = ("robot" if sid == "robot" else "aquatic" if man.get("habitat") == "aquatic" else "floor")
+    got = man.get("careIconSet")
+    if got not in CARE_ICON_SETS:
+        fail(f"{pre} careIconSet must be one of {CARE_ICON_SETS}")
+    elif got != want:
+        fail(f"{pre} careIconSet {got!r} != habitat default {want!r}")
+    if contract_sets and contract_sets.get(sid) != got:
+        fail(f"{pre} careIconSet {got!r} != icons.json care_icon_set.resolved {contract_sets.get(sid)!r}")
+    words = man.get("careWords")
+    if not isinstance(words, dict) or sorted(words) != sorted(NEEDS):
+        fail(f"{pre} careWords must give exactly food, water, play and wash")
+        return
+    labels = man.get("careLabels", {})
+    for need in NEEDS:
+        why = care_word_problem(words[need])
+        if why:
+            fail(f"{pre} careWords.{need} {words[need]!r} {why}")
+            continue
+        if need in WORD_BUBBLES and len(WORD_BUBBLES[need].replace("{word}", words[need]).split()) > 8:
+            fail(f"{pre} careWords.{need} makes a bubble longer than 8 words")
+    if words == {k: labels.get(k) for k in NEEDS}:
+        fail(f"{pre} careWords must not just copy careLabels")
+
+
 # ----------------------------------------------------------------- per species
 
 checked = 0
@@ -212,6 +271,7 @@ for idx, sid in enumerate(CORE_IDS):
         v = labels.get(action)
         if not isinstance(v, str) or not v.strip() or len(v) > 24:
             fail(f"{pre} careLabels.{action} must be 1..24 chars")
+    check_care_v03(pre, sid, man)
     stages = man.get("stages", [])
     if [s.get("stage") for s in stages] != [1, 2, 3] or [s.get("key") for s in stages] != ["young", "grown", "mature"]:
         fail(f"{pre} stages must be 1/young, 2/grown, 3/mature")

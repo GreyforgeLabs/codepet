@@ -17,6 +17,13 @@
   "sleep": "Spiral rest"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Dinner",
+  "water": "Cool water",
+  "play": "Hoops",
+  "wash": "Mist"
+ },
  "stages": [
   {
    "stage": 1,

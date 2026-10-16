@@ -21,6 +21,13 @@
   "bathroom": "Cleans the filter; the fish stays behind its plants.",
   "sleep": "Fish rest with their eyes open."
  },
+ "careIconSet": "aquatic",
+ "careWords": {
+  "food": "Fish flakes",
+  "water": "Fresh water",
+  "play": "Bubbles",
+  "wash": "Clean tank"
+ },
  "stages": [
   {
    "stage": 1,

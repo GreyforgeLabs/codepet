@@ -17,6 +17,13 @@
   "sleep": "Silk retreat"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Bug snack",
+  "water": "Dew drop",
+  "play": "Silk swing",
+  "wash": "Brushing"
+ },
  "stages": [
   {
    "stage": 1,
