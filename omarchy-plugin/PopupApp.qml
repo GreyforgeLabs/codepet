@@ -282,10 +282,15 @@ Item {
         }
     }
 
-    // A screen with its own inner pages (Helpers) walks back through them first: it sets
-    // backHook while it is shown.
-    property var backHook: null
-    function screenHandlesBack() { return typeof popupRoot.backHook === "function" && popupRoot.backHook() === true }
+    // A screen with its own inner pages (Helpers) walks back through them first: it answers
+    // backRequested and sets backTaken.
+    signal backRequested
+    property bool backTaken: false
+    function screenHandlesBack() {
+        popupRoot.backTaken = false
+        popupRoot.backRequested()
+        return popupRoot.backTaken
+    }
     function heightOf(loaded) { return loaded ? loaded.implicitHeight : 0 }
 
     function componentFor(name) {

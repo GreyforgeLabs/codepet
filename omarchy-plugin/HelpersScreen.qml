@@ -29,11 +29,11 @@ Item {
     implicitHeight: view === "list" ? list.implicitHeight : view === "sheet" ? sheet.implicitHeight
         : view === "confirm" ? confirm.implicitHeight : guideView.implicitHeight
 
-    Component.onCompleted: {
-        helpers.app.backHook = helpers.handleBack
-        helpers.app.request("clients.status", {}, null)
+    Component.onCompleted: helpers.app.request("clients.status", {}, null)
+    Connections {
+        target: helpers.app
+        function onBackRequested() { if (helpers.handleBack()) helpers.app.backTaken = true }
     }
-    Component.onDestruction: if (helpers.app.backHook === helpers.handleBack) helpers.app.backHook = null
 
     // ‹ Back walks back inside Helpers before it leaves it.
     function handleBack() {
