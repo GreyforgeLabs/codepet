@@ -183,13 +183,23 @@ BarWidget {
     property bool startupDone: false
 
     // Every popup request goes through here: the allow-list, the queue, and a snapshot
-    // kept when the answer is one.
+    // kept when the answer is one. A care or treat press retried soon after an unconfirmed
+    // answer reuses its request id, so the backend applies it at most once.
+    property var careRetry: null
+    property int careSeq: 0
     function request(method, params, callback) {
+        var key = undefined
+        if (Model.RETRY_METHODS.indexOf(method) >= 0) {
+            root.careSeq += 1
+            root.careRetry = Model.retryKey(root.careRetry, method + JSON.stringify(params || {}), Date.now(), root.careSeq)
+            key = root.careRetry.key
+        }
         return rpc.request(method, params, function (resp) {
+            if (key !== undefined) root.careRetry = Model.retryAfterResponse(root.careRetry, resp, Date.now())
             if (resp && resp.ok && resp.result && typeof resp.result === "object" && resp.result.count_helpers !== undefined)
                 root.snapshot = resp.result
             if (callback) callback(resp)
-        })
+        }, key)
     }
 
     // The leader's one startup read: settles presence, exports bar-state.json and creates

@@ -209,6 +209,31 @@ function allowedMethod(m) { return ALLOWED_METHODS.indexOf(m) >= 0 }
 function allowedCareAction(a) { return CARE_NEEDS.indexOf(a) >= 0 }
 function newRequestId(now, seq) { return "bar-rq-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)) }
 
+// Presses whose repeat must not count twice when an answer was lost (care and treats).
+var RETRY_METHODS = ["pet.care", "treats.give"]
+// How long an unconfirmed press may be retried under its own key. A press of the same
+// button after this window is a new press: reusing the old key would make the backend
+// replay the old receipt (no new care applied). The overlay uses the same window.
+var RETRY_WINDOW_MS = 120000
+
+// One retry key per press: the same press retried soon after an unconfirmed response (same
+// signature, within RETRY_WINDOW_MS) reuses its key, so the backend applies it at most
+// once. Anything else gets a fresh key.
+function retryKey(prev, signature, now, seq) {
+    if (isObject(prev) && prev.key && prev.signature === signature
+            && isNum(prev.expiresAt) && isNum(now) && now <= prev.expiresAt)
+        return prev
+    return { key: "bar-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)),
+             signature: signature, expiresAt: (isNum(now) ? now : 0) + RETRY_WINDOW_MS }
+}
+
+// The key to keep after a response: none after a confirmed one; after an unconfirmed one
+// (failure, timeout, lost response), the same key for RETRY_WINDOW_MS from now.
+function retryAfterResponse(prev, resp, now) {
+    if (!isObject(prev) || !prev.key || !isObject(resp) || resp.ok === true || !isNum(now)) return null
+    return { key: prev.key, signature: prev.signature, expiresAt: now + RETRY_WINDOW_MS }
+}
+
 // ---------------------------------------------------------------- registry + art
 
 function speciesMeta(reg, id) { return reg && isObject(reg.species) && isObject(reg.species[id]) ? reg.species[id] : null }

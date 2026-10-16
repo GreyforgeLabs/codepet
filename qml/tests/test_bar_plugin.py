@@ -785,7 +785,7 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: any(e["method"] == "pet.care" for e in self.rpc_log())))
         care = [e for e in self.rpc_log() if e["method"] == "pet.care"][0]
         self.assertEqual(care["params"], {"action": "food"})
-        self.assertRegex(care["id"], r"^bar-rq-[a-z0-9]+-\d+$")
+        self.assertRegex(care["id"], r"^bar-[a-z0-9]+-\d+$", "a care press carries its retry key")
 
         # Refusals happen client-side, before any process exists.
         self.assertIn("CLIENT_REFUSED", self.harness("refuse"))

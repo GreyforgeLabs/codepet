@@ -376,6 +376,20 @@ test('seenAfter advances only past the celebration the face shows', () => {
     assert.deepEqual(plain(M.seenAfter({}, doc, { state: 'idle' })), { finished_seq: 0, hello_seq: 0, test_at_ms: 0 });
 });
 
+test('a care or treat press reuses its key only while unconfirmed and inside the window', () => {
+    const sig = 'pet.care{"action":"water"}';
+    const a = M.retryKey(null, sig, 1000, 1);
+    assert.match(a.key, /^bar-[a-z0-9]+-1$/);
+    assert.equal(M.retryKey(a, sig, 1000 + M.RETRY_WINDOW_MS, 2).key, a.key, 'same press, inside the window');
+    assert.notEqual(M.retryKey(a, sig, 1001 + M.RETRY_WINDOW_MS, 2).key, a.key, 'after the window it is a new press');
+    assert.notEqual(M.retryKey(a, 'pet.care{"action":"food"}', 1000, 2).key, a.key, 'another action');
+    assert.equal(M.retryAfterResponse(a, { ok: true }, 5000), null, 'confirmed: forget the key');
+    const kept = M.retryAfterResponse(a, { ok: false, error: { code: 'CLIENT_TIMEOUT' } }, 5000);
+    assert.equal(kept.key, a.key);
+    assert.equal(kept.expiresAt, 5000 + M.RETRY_WINDOW_MS);
+    assert.deepEqual(plain(M.RETRY_METHODS), ['pet.care', 'treats.give']);
+});
+
 test('maxUnseenSeq and whenKey', () => {
     assert.equal(M.maxUnseenSeq([{ seq: 3, kind: 'evolved' }, { seq: 9 }, { seq: 12, kind: 'other' }]), 9);
     assert.equal(M.maxUnseenSeq(null), -1);
