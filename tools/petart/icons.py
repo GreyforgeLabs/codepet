@@ -8,7 +8,10 @@ Dev-time tool only; nothing here runs inside the app. Python 3, Pillow, numpy, s
     python3 tools/petart/icons.py --src <dir> --contact <png> # review sheet (64, 40 and 20 px)
 
 `tools/petart/icon_sheets.json` lists, per sheet, the selected source PNG and its sha256, the
-chroma key, the grid and the icon ids in cell order. Source sheets are not in Git; the default
+chroma key (per sheet: green `#00FF00` by default, magenta `#FF00FF` when a subject is green),
+the grid and the icon ids in cell order. A sheet may carry `patches`: smaller source sheets
+(same fields) whose cells replace the named ids of the base sheet, so one icon can be
+regenerated without re-rolling the reviewed rest of its sheet. Source sheets are not in Git; the default
 source directory is `art-src/icons-v0.3` at the repository root (`$CODEPET_ICON_SRC` or `--src`
 for another location). Keying and cell segmentation reuse `keying.py` (the pet pipeline).
 
@@ -96,21 +99,30 @@ def build(src, spec, log=print):
     """Return {relative file: bytes} for every icon plus index.json."""
     files, index = {}, {}
     for sheet in spec["sheets"]:
-        path = src / sheet["source"]
-        if not path.is_file():
-            raise SystemExit(f"{sheet['id']}: source sheet {path} missing")
-        data = path.read_bytes()
-        if sha256_bytes(data) != sheet["sha256"]:
-            raise SystemExit(f"{sheet['id']}: {path} sha256 differs from icon_sheets.json")
-        cols, rows = sheet["grid"]
-        cells, warnings = cut_cells(path, sheet["key"], cols, rows, sheet.get("keying", {}))
-        for w in warnings:
-            log(f"{sheet['id']}: {w}")
-        if len(cells) != len(sheet["ids"]):
-            raise SystemExit(f"{sheet['id']}: {len(cells)} cells for {len(sheet['ids'])} ids")
-        for icon_id, rgba in zip(sheet["ids"], cells):
+        cut = {}
+        for part in [sheet] + sheet.get("patches", []):
+            label = sheet["id"] if part is sheet else f"{sheet['id']} patch {part['source']}"
+            path = src / part["source"]
+            if not path.is_file():
+                raise SystemExit(f"{label}: source sheet {path} missing")
+            data = path.read_bytes()
+            if sha256_bytes(data) != part["sha256"]:
+                raise SystemExit(f"{label}: {path} sha256 differs from icon_sheets.json")
+            if part is not sheet and not set(part["ids"]) <= set(sheet["ids"]):
+                raise SystemExit(f"{label}: patches ids that are not on the sheet")
+            cols, rows = part["grid"]
+            cells, warnings = cut_cells(path, part["key"], cols, rows, part.get("keying", {}))
+            for w in warnings:
+                log(f"{label}: {w}")
+            if len(cells) != len(part["ids"]):
+                raise SystemExit(f"{label}: {len(cells)} cells for {len(part['ids'])} ids")
+            pad = part.get("pad", sheet.get("pad", 0.06))
+            for icon_id, rgba in zip(part["ids"], cells):
+                cut[icon_id] = (rgba, pad)
+        for icon_id in sheet["ids"]:
+            rgba, pad = cut[icon_id]
             rel = f"{sheet['id']}/{icon_id}.webp"
-            blob = encode(square(rgba, sheet["px"], sheet.get("pad", 0.06)))
+            blob = encode(square(rgba, sheet["px"], pad))
             files[rel] = blob
             index[f"{sheet['id']}/{icon_id}"] = {"file": rel, "px": sheet["px"], "sha256": sha256_bytes(blob)}
     files["index.json"] = (json.dumps({

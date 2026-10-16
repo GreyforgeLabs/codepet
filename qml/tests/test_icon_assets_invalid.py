@@ -37,6 +37,16 @@ def webp(size, rgba=(200, 120, 40, 255), alpha=True, key=None):
     return buf.getvalue()
 
 
+def drawn_webp(size, draw_fn):
+    """A transparent WebP canvas with one shape drawn on it by draw_fn(ImageDraw)."""
+    from PIL import Image, ImageDraw
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw_fn(ImageDraw.Draw(im))
+    buf = io.BytesIO()
+    im.save(buf, format="WEBP", quality=86, exact=False, alpha_quality=100)
+    return buf.getvalue()
+
+
 class InvalidIcons(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="codepet-icons-")
@@ -104,11 +114,71 @@ class InvalidIcons(unittest.TestCase):
             ip.write_text(json.dumps(idx, indent=1) + "\n")
         self.assertRejected("index.json apps/app_codex: sha256 mismatch")
 
-    def test_provenance_without_nonce(self):
+    def edit_provenance(self, fn):
         for t in TREES:
             p = self.root / t / "PROVENANCE.md"
-            p.write_text(p.read_text().replace("cpjob-", "job-"))
-        self.assertRejected("PROVENANCE.md must record the wrapper nonce")
+            p.write_text(fn(p.read_text()))
+
+    def test_provenance_without_source_sha(self):
+        spec = json.loads((self.root / "tools/petart/icon_sheets.json").read_text())
+        patch = spec["sheets"][0]["patches"][0]
+        self.edit_provenance(lambda t: t.replace(patch["sha256"], "0" * 64))
+        self.assertRejected(f"does not record the care-floor source sha256 of {patch['source']}")
+
+    def test_provenance_ships_private_details(self):
+        self.edit_provenance(lambda t: t + "\nWrapper nonce `cpjob-1792132667824361107-1003086-17821`\n")
+        self.assertRejected("ships a private build detail (wrapper nonce)")
+        self.edit_provenance(lambda t: t.replace("cpjob-", "") + "\nRollout `rollout-2026-10-16T02-37-48-01a1`\n")
+        self.assertRejected("ships a private build detail (Codex rollout id)")
+        self.edit_provenance(lambda t: t.replace("rollout-", "") + "\nSources in `~/Work/runs/x/icons-src/`\n")
+        self.assertRejected("ships a private build detail (home path)")
+        self.assertRejected("ships a private build detail (run folder)")
+
+    def test_bar_badge_that_turns_to_mush(self):
+        # a 1 px outline badge: solid at 64 px, almost nothing left at 20 and 16 px (SPEC §4.1)
+        self.replace_icon("bar/badge_ball.webp", drawn_webp(
+            64, lambda d: d.ellipse((4, 4, 59, 59), outline=(200, 30, 30, 255), width=1)))
+        self.assertRejected("bar/badge_ball.webp: at 20 px its solid share drops to")
+        self.assertRejected("(mush)")
+
+    def test_small_subject(self):
+        self.replace_icon("status/help.webp", drawn_webp(
+            256, lambda d: d.ellipse((78, 78, 178, 178), fill=(40, 90, 220, 255))))
+        self.assertRejected("status/help.webp: subject spans less than 80% of the canvas")
+
+    def test_icon_touching_the_edge(self):
+        self.replace_icon("ui/egg.webp", drawn_webp(
+            256, lambda d: d.ellipse((0, 0, 255, 255), fill=(240, 220, 180, 255))))
+        self.assertRejected("ui/egg.webp: alpha box (0, 0, 256, 256) leaves the 2 px margin")
+
+    def test_opaque_square(self):
+        self.replace_icon("care-floor/bed.webp", drawn_webp(
+            256, lambda d: d.rectangle((1, 1, 254, 254), fill=(180, 160, 220, 255))))
+        self.assertRejected("care-floor/bed.webp: opaque share")
+
+    def test_opaque_corners(self):
+        def full_with_a_hole(d):        # one clear hole keeps the alpha channel in the WebP
+            d.rectangle((0, 0, 255, 255), fill=(180, 160, 220, 255))
+            d.rectangle((120, 120, 135, 135), fill=(0, 0, 0, 0))
+        self.replace_icon("care-floor/bed.webp", drawn_webp(256, full_with_a_hole))
+        self.assertRejected("care-floor/bed.webp: corners are not transparent")
+
+    def test_magenta_key_residue_on_a_magenta_sheet(self):
+        self.replace_icon("status/leaf_calm.webp", webp(256, key=(255, 0, 255)))
+        self.assertRejected("still look like the #FF00FF key")
+
+    def test_care_icon_set_defaults_from_habitat(self):
+        # icons.json: careIconSet is optional; absent resolves from the habitat.
+        reg = self.root / "qml/assets/pets/registry.json"
+        data = json.loads(reg.read_text())
+        del data["species"]["goldfish"]["careIconSet"]
+        del data["species"]["cat"]["careIconSet"]
+        reg.write_text(json.dumps(data))
+        code, out = self.validate()
+        self.assertEqual(code, 0, out)
+        del data["species"]["robot"]["careIconSet"]          # robot must set 'robot' explicitly
+        reg.write_text(json.dumps(data))
+        self.assertRejected("robot: careIconSet 'floor' != contract 'robot'")
 
     def test_care_icon_set_without_icons(self):
         reg = self.root / "qml/assets/pets/registry.json"

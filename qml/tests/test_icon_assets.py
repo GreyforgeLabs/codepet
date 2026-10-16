@@ -6,12 +6,15 @@ Checks, for both install copies (qml/assets/icons/ and omarchy-plugin/assets/ico
   contract icon at `<sheet id>/<icon id>.webp`, and index.json lists every file with its sha256;
 - every icon is a square WebP with an alpha channel at its contract size (256 px; the bar
   badges at their 64 px source size), with transparent corners, a non-empty subject inside a
-  2 px margin, a sane fill share and no chroma-key residue (the key comes from
-  tools/petart/icon_sheets.json);
+  2 px margin, a subject spanning at least 80% of the canvas, a sane fill share and no
+  chroma-key residue (the key is per sheet, or per patch, in tools/petart/icon_sheets.json);
 - the bar badges keep at least 75% of their 64 px solid share when scaled to 20 and 16 px;
 - every bar badge and bar_cell badge the contract names exists, and every species'
-  careIconSet resolves to the four care icons of its set;
-- PROVENANCE.md records every sheet with its selected source sha256, prompt and nonce.
+  careIconSet (absent: the habitat default) resolves to the contract and to the four care
+  icons of its set;
+- PROVENANCE.md records every sheet and patch with its selected source sha256, and carries no
+  private build detail (wrapper nonces, Codex rollout ids, local paths): it ships to every
+  user inside the plugin. Those records stay with the source sheets.
 
 Images are read with Pillow when available, otherwise with PySide6's QImage. Every check is an
 explicit comparison, so `python3 -O` does not disable it.
@@ -24,6 +27,7 @@ Run: python3 qml/tests/test_icon_assets.py
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -38,6 +42,10 @@ MARGIN = 2
 ALPHA_ON = 16
 KEY_RESIDUE = 120        # key strength of an opaque pixel that still looks like the key colour
 KEY_RESIDUE_SHARE = 0.002
+
+# Build details that stay with the source sheets (they ship to every user otherwise).
+PRIVATE = (("wrapper nonce", r"cpjob-[0-9-]+"), ("Codex rollout id", r"rollout-[0-9T-]+"),
+           ("home path", r"(?:~|/home/[^/\s`]+)/"), ("run folder", r"Work/runs/"))
 
 failures = []
 
@@ -101,6 +109,14 @@ def key_residue(rgba, key):
         if k > KEY_RESIDUE:
             residue += 1
     return residue / max(opaque, 1)
+
+
+def icon_key(sheet, icon):
+    """The chroma key an icon was cut with: its patch's key, else its sheet's."""
+    for patch in sheet.get("patches", []):
+        if icon in patch.get("ids", []):
+            return patch.get("key", "#00FF00")
+    return sheet.get("key", "#00FF00")
 
 
 def scaled_fill(path, px):
@@ -194,7 +210,7 @@ def main():
         solid = sum(1 for v in rgba[3::4] if v >= 128) / (w * w)
         if not 0.12 <= solid <= 0.95:
             fail(f"{rel}: opaque share {solid:.2f} outside 0.12..0.95")
-        key = spec.get(sid, {}).get("key", "#00FF00")
+        key = icon_key(spec.get(sid, {}), rel.split("/", 1)[1][:-len(".webp")])
         res = key_residue(rgba, key)
         if res > KEY_RESIDUE_SHARE:
             fail(f"{rel}: {res:.2%} of opaque pixels still look like the {key} key")
@@ -221,7 +237,8 @@ def main():
     registry = json.loads(REGISTRY.read_text())["species"]
     resolved = contract["care_icon_set"]["resolved"]
     for species, man in registry.items():
-        cis = man.get("careIconSet")
+        # icons.json default_rule: absent -> 'aquatic' for aquatic habitats, else 'floor'.
+        cis = man.get("careIconSet", "aquatic" if man.get("habitat") == "aquatic" else "floor")
         if cis != resolved.get(species):
             fail(f"{species}: careIconSet {cis!r} != contract {resolved.get(species)!r}")
         for need in NEEDS:
@@ -230,16 +247,19 @@ def main():
 
     prov = (base / "PROVENANCE.md").read_text() if (base / "PROVENANCE.md").is_file() else ""
     for phrase in ("GPT Image 2", "Codex CLI", "ChatGPT plan", "MIT", "not been legally reviewed",
-                   "gen-safe.sh", "brand-neutral"):
+                   "brand-neutral", "codepet-icon-sources-v0.3.tar"):
         if phrase not in prov:
             fail(f"PROVENANCE.md must state {phrase!r}")
     for sid, s in spec.items():
         if f"## {sid}" not in prov:
             fail(f"PROVENANCE.md has no section for {sid}")
-        if s.get("sha256", "-") not in prov:
-            fail(f"PROVENANCE.md does not record the {sid} source sha256")
-    if prov.count("cpjob-") < len(spec):
-        fail("PROVENANCE.md must record the wrapper nonce of every selected sheet")
+        for part in [s] + s.get("patches", []):
+            if part.get("sha256", "-") not in prov:
+                fail(f"PROVENANCE.md does not record the {sid} source sha256 of {part.get('source')}")
+    for what, pattern in PRIVATE:
+        m = re.search(pattern, prov)
+        if m:
+            fail(f"PROVENANCE.md ships a private build detail ({what}): {m.group(0)!r}")
 
     if failures:
         for f in failures[:80]:

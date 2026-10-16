@@ -1,9 +1,13 @@
 {
  "schema": "codepet.icon-sheets.v1",
- "note": "Selected GPT Image 2 source sheets for tools/petart/icons.py (SPEC-v0.3 §4). Prompts, nonces and rejects: qml/assets/icons/PROVENANCE.md.",
+ "note": "Selected GPT Image 2 source sheets for tools/petart/icons.py (SPEC-v0.3 §4). key: per sheet, #00FF00 by default, #FF00FF when a subject is green. patches: smaller sheets whose cells replace the named ids. Prompts, hashes and rejects: qml/assets/icons/PROVENANCE.md.",
  "sheets": [
   {"id": "care-floor", "source": "raw/care-floor.a1.png", "sha256": "8460746af3d236b1d5a947b8c6ee119e96884c3dc71181334c79489e9a009cea", "key": "#00FF00", "grid": [4, 3], "px": 256, "pad": 0.06,
-   "ids": ["food", "water", "play", "wash", "treat_jar", "bed", "sun_wake", "wand_change", "gear_more", "star", "power", "heart"]},
+   "ids": ["food", "water", "play", "wash", "treat_jar", "bed", "sun_wake", "wand_change", "gear_more", "star", "power", "heart"],
+   "patches": [
+    {"source": "raw/care-floor-play.a1.png", "sha256": "d2b787045c4b294eacfc7b259634d02668822192566557b63b6be35e20f522c0", "key": "#00FF00", "grid": [1, 1], "pad": 0.06,
+     "ids": ["play"], "why": "a generic red striped ball that matches bar/badge_ball; the base sheet's yarn ball is the cat's signature toy, kept for a later cat careIcons override"}
+   ]},
   {"id": "care-aquatic", "source": "raw/care-aquatic.a1.png", "sha256": "c5c40d910143297d5d5e46a42cb5e05e7a5762bfc636ca3107655347930d0269", "key": "#FF00FF", "grid": [2, 2], "px": 256, "pad": 0.06,
    "ids": ["food", "water", "play", "wash"]},
   {"id": "care-robot", "source": "raw/care-robot.a1.png", "sha256": "37e5bebcc4560c8e1e62dbf07bc78855ed2bdca0c3953c20f6c5b9a9cc16f785", "key": "#00FF00", "grid": [2, 2], "px": 256, "pad": 0.06,
