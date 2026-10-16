@@ -1,0 +1,223 @@
+{
+  "schema": "codepet.icons.v1",
+  "spec": "SPEC-v0.3 §4.1",
+  "install_dirs": [
+    "omarchy-plugin/assets/icons/",
+    "qml/assets/icons/"
+  ],
+  "format": {
+    "ship": "WebP, quality 86, lossless alpha, square, centred",
+    "source_key": "#00FF00",
+    "provenance": "one PROVENANCE.md entry per sheet"
+  },
+  "sheets": [
+    {
+      "id": "care-floor",
+      "grid": [
+        4,
+        3
+      ],
+      "ship_px": 256,
+      "ids": [
+        "food",
+        "water",
+        "play",
+        "wash",
+        "treat_jar",
+        "bed",
+        "sun_wake",
+        "wand_change",
+        "gear_more",
+        "star",
+        "power",
+        "heart"
+      ],
+      "shown_at_px": {
+        "tile": [
+          64,
+          80
+        ],
+        "round_button": [
+          40,
+          48
+        ],
+        "ring": [
+          64,
+          64
+        ],
+        "bubble": [
+          40,
+          48
+        ]
+      }
+    },
+    {
+      "id": "care-aquatic",
+      "grid": [
+        2,
+        2
+      ],
+      "ship_px": 256,
+      "ids": [
+        "food",
+        "water",
+        "play",
+        "wash"
+      ],
+      "subjects": {
+        "food": "flakes",
+        "water": "fresh tank water",
+        "play": "plant arch",
+        "wash": "tank clean"
+      },
+      "for_care_icon_set": "aquatic"
+    },
+    {
+      "id": "care-robot",
+      "grid": [
+        2,
+        2
+      ],
+      "ship_px": 256,
+      "ids": [
+        "food",
+        "water",
+        "play",
+        "wash"
+      ],
+      "subjects": {
+        "food": "energy cell",
+        "water": "coolant/fan",
+        "play": "magnet blocks",
+        "wash": "polish brush"
+      },
+      "for_care_icon_set": "robot"
+    },
+    {
+      "id": "status",
+      "grid": [
+        4,
+        3
+      ],
+      "ship_px": 256,
+      "ids": [
+        "laptop",
+        "bubble_wait",
+        "bandage",
+        "moon",
+        "screen",
+        "leaf_calm",
+        "flame_hardcore",
+        "robot_helpers",
+        "help",
+        "memories",
+        "wave_goodbye",
+        "confetti"
+      ]
+    },
+    {
+      "id": "apps",
+      "grid": [
+        1,
+        5
+      ],
+      "ship_px": 256,
+      "ids": [
+        "app_claude_code",
+        "app_codex",
+        "app_opencode",
+        "app_hermes",
+        "app_grok"
+      ],
+      "client_ids": [
+        "claude-code",
+        "codex",
+        "opencode",
+        "hermes",
+        "grok-cli"
+      ],
+      "rule": "brand-neutral: distinct coloured rounded square + generic glyph (spark, terminal prompt, open book, bird, comet); no vendor logos; the app name text is always shown next to the tile",
+      "glyphs": {
+        "app_claude_code": "spark",
+        "app_codex": "terminal prompt",
+        "app_opencode": "open book",
+        "app_hermes": "bird",
+        "app_grok": "comet"
+      }
+    },
+    {
+      "id": "bar",
+      "grid": [
+        4,
+        2
+      ],
+      "source_px": 64,
+      "rendered_px": [
+        16,
+        20
+      ],
+      "ids": [
+        "badge_hand",
+        "badge_drop",
+        "badge_bowl",
+        "badge_ball",
+        "badge_tub",
+        "badge_star",
+        "badge_bandage",
+        "badge_moon"
+      ],
+      "rule": "drawn separately: thick outlines, no painted detail"
+    }
+  ],
+  "bar_badges": {
+    "needs_you": "badge_hand",
+    "need.food": "badge_bowl",
+    "need.water": "badge_drop",
+    "need.play": "badge_ball",
+    "need.wash": "badge_tub",
+    "star": "badge_star",
+    "fainted": "badge_bandage",
+    "off": "badge_moon"
+  },
+  "care_icon_set": {
+    "values": [
+      "floor",
+      "aquatic",
+      "robot"
+    ],
+    "manifest_field": "careIconSet (optional)",
+    "default_rule": "absent -> 'aquatic' when habitat == 'aquatic', else 'floor'; robot sets 'robot' explicitly",
+    "resolved": {
+      "cat": "floor",
+      "dog": "floor",
+      "capybara": "floor",
+      "penguin": "floor",
+      "robot": "robot",
+      "iguana": "floor",
+      "spider": "floor",
+      "snake": "floor",
+      "goldfish": "aquatic",
+      "rabbit": "floor",
+      "turtle": "floor",
+      "frog": "floor",
+      "owl": "floor",
+      "red_panda": "floor",
+      "axolotl": "aquatic"
+    }
+  },
+  "care_words": {
+    "manifest_field": "careWords (optional): {food|water|play|wash: <= 2 plain words}",
+    "examples": {
+      "cat": {
+        "food": "Kibble",
+        "water": "Fresh water",
+        "play": "Yarn"
+      },
+      "goldfish": {
+        "food": "Fish flakes"
+      }
+    },
+    "fallback": "plain verb bubble (react.<need>.plain); never careLabels"
+  },
+  "fallback": "a sheet that fails visual review twice: the species' own care-animation frame 3 for food/water/play/wash; bar badges fall back to a single accent dot"
+}

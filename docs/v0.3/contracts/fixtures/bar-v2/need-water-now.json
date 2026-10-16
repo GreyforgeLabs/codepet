@@ -1,0 +1,110 @@
+{
+ "schema": "codepet.bar.v2",
+ "state_version": 812,
+ "db_id": "db-2c852a39b6a7be9815dbd45e",
+ "generated_at_ms": 1792123900000,
+ "app_version": "0.3.0",
+ "ruleset": "lifecycle-v1",
+ "life": {
+  "life_id": "life-30b6f1816d7b922ab5befc25",
+  "ordinal": 1,
+  "name": "Ginger",
+  "appearance": "cat",
+  "stage": 1,
+  "level": 1,
+  "xp": 24,
+  "next_stage_xp": 80,
+  "status": "healthy",
+  "mode": "gentle",
+  "armed": true,
+  "pace": "steady",
+  "paused": false,
+  "fainted": false,
+  "death_pending": false
+ },
+ "meters": {
+  "hunger": 10000,
+  "thirst": 0,
+  "mental_health": 10000,
+  "hygiene": 10000
+ },
+ "needs": [
+  {
+   "need": "hunger",
+   "action": "food",
+   "state": "ok",
+   "until_warning_ms": 28800000,
+   "until_critical_ms": 46800000,
+   "until_end_ms": 68400000
+  },
+  {
+   "need": "thirst",
+   "action": "water",
+   "state": "empty",
+   "until_warning_ms": null,
+   "until_critical_ms": null,
+   "until_end_ms": null
+  },
+  {
+   "need": "mental_health",
+   "action": "play",
+   "state": "ok",
+   "until_warning_ms": 45600000,
+   "until_critical_ms": null,
+   "until_end_ms": null
+  },
+  {
+   "need": "hygiene",
+   "action": "wash",
+   "state": "ok",
+   "until_warning_ms": 54000000,
+   "until_critical_ms": null,
+   "until_end_ms": null
+  }
+ ],
+ "critical": null,
+ "care": {
+  "sleeping": false,
+  "sleep_remaining_ms": 120000,
+  "sleep_started_at_ms": null,
+  "sleep_due": false,
+  "bathroom_due": false,
+  "ready_to_work": false,
+  "readiness_reasons": []
+ },
+ "task": null,
+ "presence": {
+  "wanted": true,
+  "life_id": "life-30b6f1816d7b922ab5befc25",
+  "tick_ms": 60000,
+  "idle_timeout_s": 180
+ },
+ "unseen_events": [],
+ "memorial": {
+  "count": 0,
+  "latest_name": null
+ },
+ "enabled": true,
+ "agent": {
+  "state": "idle",
+  "apps": [],
+  "stale_at_ms": null,
+  "finished_seq": 0,
+  "finished_at_ms": null,
+  "finished_app": null,
+  "finished_treat": false,
+  "finished_jar_full": false,
+  "hello_seq": 0,
+  "hello_at_ms": null,
+  "hello_app": null,
+  "test": null,
+  "error_at_ms": null,
+  "error_app": null,
+  "helpers_busy": false
+ },
+ "treats": {
+  "jar": 0,
+  "full": false
+ },
+ "clients": {}
+}

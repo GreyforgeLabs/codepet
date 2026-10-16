@@ -50,6 +50,10 @@ jobs:
         run: python3 qml/tests/test_install_scripts.py
       - name: Copy rules
         run: python3 qml/tests/copy_lint.py
+      # v0.3 WP0 contracts: vectors replayed by a reference model, fixtures vs schema, v5 DDL,
+      # K1/K2/K8 over strings.json (standard library only).
+      - name: v0.3 contracts
+        run: python3 docs/v0.3/contracts/check_contracts.py
       - name: Node model tests (bar model, presence model, state machine, life text)
         run: |
           node --version

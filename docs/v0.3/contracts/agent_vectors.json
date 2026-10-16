@@ -1,0 +1,3113 @@
+{
+ "schema": "codepet.agent_vectors.v1",
+ "spec": "SPEC-v0.3 §5.8, §6.4, §8, §9.1",
+ "consumers": "Rust codepet-core::agent (WP2) and the generated petstate.js via test_state_machine.mjs / test_bar_model.mjs (WP6); replayed by docs/v0.3/contracts/check_contracts.py",
+ "clients": [
+  {
+   "id": "claude-code",
+   "name": "Claude Code",
+   "first_run_card": true,
+   "payload": "native snake_case",
+   "turn_key": "prompt_id",
+   "transport": "shell command via Claude plugin hooks.json"
+  },
+  {
+   "id": "codex",
+   "name": "Codex",
+   "first_run_card": false,
+   "payload": "native snake_case",
+   "turn_key": "turn_id",
+   "transport": "shell command via ~/.codex/hooks.json ($SHELL -lc)"
+  },
+  {
+   "id": "opencode",
+   "name": "OpenCode",
+   "first_run_card": true,
+   "payload": "synthesized codepet_v 1",
+   "turn_key": "turn_id (<pluginStartMs>-<n>)",
+   "transport": "argv spawn from codepet.js"
+  },
+  {
+   "id": "hermes",
+   "name": "Hermes",
+   "first_run_card": true,
+   "payload": "synthesized codepet_v 1",
+   "turn_key": "turn_id",
+   "transport": "argv spawn from the Hermes plugin"
+  },
+  {
+   "id": "grok-cli",
+   "name": "Grok",
+   "first_run_card": true,
+   "payload": "native camelCase + hook_event_name",
+   "turn_key": "promptId",
+   "transport": "shell command via ~/.grok/hooks/codepet.json"
+  }
+ ],
+ "kinds": [
+  "session_start",
+  "turn_start",
+  "activity",
+  "waiting",
+  "idle_prompt",
+  "turn_done",
+  "turn_failed",
+  "turn_cancelled",
+  "session_end"
+ ],
+ "session_states": [
+  "idle",
+  "working",
+  "waiting",
+  "error",
+  "ended"
+ ],
+ "app_states_rising": [
+  "idle",
+  "error",
+  "working",
+  "waiting"
+ ],
+ "constants": {
+  "stale_working_ms": 600000,
+  "stale_waiting_ms": 1800000,
+  "min_turn_ms": 30000,
+  "jar_max": 10,
+  "cap_session_ms": 30000,
+  "cap_per_hour": 12,
+  "cap_per_day": 48,
+  "late_tool_ms": 1000,
+  "celebrate_window_ms": 30000,
+  "celebrate_grace_ms": 2000,
+  "error_recent_ms": 120000,
+  "error_frame_ms": 3000,
+  "future_clamp_ms": 120000,
+  "max_event_age_ms": 86400000,
+  "treat_xp": 5,
+  "max_hook_read_bytes": 65536,
+  "hook_drain_ms": 250,
+  "max_inbox_record_bytes": 512,
+  "max_inbox_files": 2048,
+  "max_id_field_bytes": 128,
+  "event_bucket_ms": 3000,
+  "fold_batch_events": 64,
+  "fold_batch_ms": 50,
+  "fold_run_ms": 5000,
+  "fold_backoff_start_ms": 5000,
+  "fold_backoff_max_ms": 600000,
+  "agent_events_keep_ms": 604800000,
+  "agent_events_max_rows": 20000,
+  "agent_sessions_keep_ms": 2592000000,
+  "turn_times_exact_ms": 86400000,
+  "retention_interval_ms": 3600000,
+  "retention_limit": 500,
+  "export_min_interval_ms": 250,
+  "test_done_delay_ms": 1500,
+  "test_arrival_ms": 5000
+ },
+ "normalization": {
+  "rules": [
+   "argv client id is authoritative; the payload only passes a per-client schema sanity check",
+   "only top-level keys are read (depth 1); nested values are skipped unbuffered",
+   "id fields: strings <= 128 bytes of [A-Za-z0-9._:-], else the event is dropped",
+   "agent_id / subagentType present -> dropped before any write",
+   "unmapped event names or notification types -> dropped",
+   "Grok: prefer hook_event_name (PascalCase) over hookEventName (snake_case); camelCase ids",
+   "error: one of rate_limit|authentication_failed|invalid_request|server_error|max_output_tokens|overloaded|billing_error|unknown, else unknown"
+  ],
+  "event_names": {
+   "claude-code": {
+    "SessionStart": "session_start",
+    "UserPromptSubmit": "turn_start",
+    "PreToolUse": "activity",
+    "Notification": "by notification_type",
+    "Stop": "turn_done",
+    "StopFailure": "turn_failed",
+    "SessionEnd": "session_end"
+   },
+   "codex": {
+    "UserPromptSubmit": "turn_start",
+    "PermissionRequest": "waiting",
+    "PostToolUse": "activity",
+    "Stop": "turn_done",
+    "Interrupt": "turn_cancelled",
+    "SessionEnd": "session_end"
+   },
+   "grok-cli": {
+    "SessionStart": "session_start",
+    "UserPromptSubmit": "turn_start",
+    "PreToolUse": "activity; AskUserQuestion/ask_user_question -> waiting",
+    "Notification": "by notificationType",
+    "Stop": "reason end_turn -> turn_done; channel_closed/shutdown -> session_end; other -> dropped",
+    "StopFailure": "turn_failed",
+    "StopCancelled": "turn_cancelled",
+    "SessionEnd": "session_end"
+   },
+   "opencode": {
+    "(synthesized)": "event field is one of the nine kinds"
+   },
+   "hermes": {
+    "(synthesized)": "event field is one of the nine kinds"
+   }
+  },
+  "notification_types": {
+   "claude-code": {
+    "permission_prompt": "waiting",
+    "elicitation_dialog": "waiting",
+    "elicitation_url_dialog": "waiting",
+    "agent_needs_input": "waiting",
+    "idle_prompt": "idle_prompt"
+   },
+   "grok-cli": {
+    "permission_prompt": "waiting",
+    "idle_prompt": "idle_prompt"
+   }
+  },
+  "vectors": [
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "SessionStart",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "source": "startup",
+     "cwd": "/p"
+    },
+    "expect": {
+     "kind": "session_start",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "UserPromptSubmit",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "prompt_id": "p-1",
+     "prompt": "say \"session_id\":\"x\" please"
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "p-1",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "PreToolUse",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "prompt_id": "p-1",
+     "tool_name": "Bash",
+     "tool_use_id": "toolu_01",
+     "tool_input": {
+      "command": "ls",
+      "session_id": "spoof"
+     }
+    },
+    "expect": {
+     "kind": "activity",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "p-1",
+     "tool": "toolu_01",
+     "class": null
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Notification",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "notification_type": "permission_prompt",
+     "message": "Claude needs your permission"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": "permission_prompt"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Notification",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "notification_type": "idle_prompt"
+    },
+    "expect": {
+     "kind": "idle_prompt",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": "idle_prompt"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Notification",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "notification_type": "auth_success"
+    },
+    "expect": {
+     "drop": "unmapped"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Stop",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "prompt_id": "p-1",
+     "stop_hook_active": false
+    },
+    "expect": {
+     "kind": "turn_done",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "p-1",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "StopFailure",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "prompt_id": "p-1",
+     "error": "rate_limit"
+    },
+    "expect": {
+     "kind": "turn_failed",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "p-1",
+     "tool": null,
+     "class": "rate_limit"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "StopFailure",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "prompt_id": "p-1",
+     "error": "disk on fire"
+    },
+    "expect": {
+     "kind": "turn_failed",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "p-1",
+     "tool": null,
+     "class": "unknown"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "SessionEnd",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "reason": "prompt_input_exit"
+    },
+    "expect": {
+     "kind": "session_end",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "PreToolUse",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "agent_id": "def456",
+     "tool_use_id": "t"
+    },
+    "expect": {
+     "drop": "child"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "PreToolUse",
+     "session_id": "../etc/passwd",
+     "tool_use_id": "t"
+    },
+    "expect": {
+     "drop": "bad_id"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "SubagentStop",
+     "session_id": "11111111-2222-3333-4444-555555555555"
+    },
+    "expect": {
+     "drop": "unmapped"
+    }
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "UserPromptSubmit",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "turn_id": "7",
+     "prompt": "hi"
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "7",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "PermissionRequest",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "turn_id": "7",
+     "tool_name": "Bash",
+     "tool_input": {
+      "command": "cargo test"
+     }
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "7",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "PostToolUse",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "turn_id": "7",
+     "tool_use_id": "call_1",
+     "tool_name": "Bash"
+    },
+    "expect": {
+     "kind": "activity",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "7",
+     "tool": "call_1",
+     "class": null
+    }
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "Stop",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "turn_id": "7"
+    },
+    "expect": {
+     "kind": "turn_done",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "7",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "Interrupt",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "turn_id": "7"
+    },
+    "expect": {
+     "kind": "turn_cancelled",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "7",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "SessionEnd",
+     "session_id": "11111111-2222-3333-4444-555555555555"
+    },
+    "expect": {
+     "kind": "session_end",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "PreToolUse",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "turn_id": "7"
+    },
+    "expect": {
+     "drop": "unmapped"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "user_prompt_submit",
+     "hook_event_name": "UserPromptSubmit",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-1"
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-1",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "pre_tool_use",
+     "hook_event_name": "PreToolUse",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-1",
+     "toolName": "AskUserQuestion",
+     "toolUseId": "tu1"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-1",
+     "tool": "tu1",
+     "class": "ask_user"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "pre_tool_use",
+     "hook_event_name": "PreToolUse",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-1",
+     "toolName": "read_file",
+     "toolUseId": "tu2"
+    },
+    "expect": {
+     "kind": "activity",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-1",
+     "tool": "tu2",
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "notification",
+     "hook_event_name": "Notification",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "notificationType": "permission_prompt"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": "permission_prompt"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "stop",
+     "hook_event_name": "Stop",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-1",
+     "reason": "end_turn",
+     "stopHookActive": false,
+     "lastAssistantMessage": "do not store"
+    },
+    "expect": {
+     "kind": "turn_done",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-1",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "stop",
+     "hook_event_name": "Stop",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "reason": "channel_closed"
+    },
+    "expect": {
+     "kind": "session_end",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "stop",
+     "hook_event_name": "Stop",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "reason": "max_turns"
+    },
+    "expect": {
+     "drop": "unmapped"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "stop_cancelled",
+     "hook_event_name": "StopCancelled",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-1",
+     "reason": "user_interrupt"
+    },
+    "expect": {
+     "kind": "turn_cancelled",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-1",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "session_end",
+     "hook_event_name": "SessionEnd",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "subagentType": "explore"
+    },
+    "expect": {
+     "drop": "child"
+    }
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "ses_1",
+     "turn_id": "1792-3",
+     "tools": 4,
+     "interactive": true
+    },
+    "expect": {
+     "kind": "turn_done",
+     "session": "ses_1",
+     "turn": "1792-3",
+     "tool": null,
+     "class": null,
+     "tools": 4,
+     "interactive": true
+    }
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "explode",
+     "session_id": "ses_1"
+    },
+    "expect": {
+     "drop": "unmapped"
+    }
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "waiting",
+     "approval_key": "sk-cli-1"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": null,
+     "turn": null,
+     "tool": null,
+     "class": null,
+     "akey": "sk-cli-1"
+    }
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_cancelled",
+     "session_id": "h_1"
+    },
+    "expect": {
+     "kind": "turn_cancelled",
+     "session": "h_1",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   }
+  ]
+ },
+ "event_ids": {
+  "formula": "dig = hex(sha256(bytes read))[..16]; event_id = hex(sha256('codepet-ev1|' + client + '|' + kind + '|' + session + '|' + dig + '|' + floor(at_ms / 3000)))[..32]",
+  "notes": [
+   "cases 1 and 2 share a 3 s bucket and dedupe; case 3 is the next bucket and does not"
+  ],
+  "vectors": [
+   {
+    "client": "claude-code",
+    "kind": "turn_done",
+    "session": "11111111-2222-3333-4444-555555555555",
+    "payload_utf8": "{\"hook_event_name\":\"Stop\",\"session_id\":\"11111111-2222-3333-4444-555555555555\",\"prompt_id\":\"p-1\"}\n",
+    "at_ms": 1792123876111,
+    "expect": {
+     "dig": "35e6e00cfb35360a",
+     "event_id": "4786e01f4e9adc2d7d44da74a1d7be34"
+    }
+   },
+   {
+    "client": "claude-code",
+    "kind": "turn_done",
+    "session": "11111111-2222-3333-4444-555555555555",
+    "payload_utf8": "{\"hook_event_name\":\"Stop\",\"session_id\":\"11111111-2222-3333-4444-555555555555\",\"prompt_id\":\"p-1\"}\n",
+    "at_ms": 1792123877999,
+    "expect": {
+     "dig": "35e6e00cfb35360a",
+     "event_id": "4786e01f4e9adc2d7d44da74a1d7be34"
+    }
+   },
+   {
+    "client": "claude-code",
+    "kind": "turn_done",
+    "session": "11111111-2222-3333-4444-555555555555",
+    "payload_utf8": "{\"hook_event_name\":\"Stop\",\"session_id\":\"11111111-2222-3333-4444-555555555555\",\"prompt_id\":\"p-1\"}\n",
+    "at_ms": 1792123878000,
+    "expect": {
+     "dig": "35e6e00cfb35360a",
+     "event_id": "4c642febd30b7dae9f2cddd408b5c1dc"
+    }
+   },
+   {
+    "client": "codex",
+    "kind": "session_end",
+    "session": "11111111-2222-3333-4444-555555555555",
+    "payload_utf8": "{\"hook_event_name\":\"SessionEnd\",\"session_id\":\"11111111-2222-3333-4444-555555555555\"}",
+    "at_ms": 1792123800000,
+    "expect": {
+     "dig": "576d4ba6655f964c",
+     "event_id": "b91438cf2cd1e2e731bf82055f3481ee"
+    }
+   }
+  ]
+ },
+ "interactivity": {
+  "policy": "positive headless evidence -> non-interactive; no evidence or /proc unreadable -> interactive",
+  "hermes_platforms": [
+   "cli",
+   "tui",
+   "desktop",
+   "acp"
+  ],
+  "rules": {
+   "claude-code": "CLAUDE_CODE_ENTRYPOINT starts with 'sdk' -> false; else if the variable is absent, the nearest ancestor (depth <= 4) whose comm is 'claude' has an argv token exactly '-p' or '--print' -> false; else true",
+   "codex": "nearest 'codex' ancestor (depth <= 4): argv[1] == 'e', or any argv token exactly 'exec' or 'review' -> false",
+   "opencode": "the plugin's process.argv has the exact token 'run' or 'serve' after the binary -> false (sent as payload 'interactive')",
+   "grok-cli": "session-mode field once WP7 confirms it; until then the nearest 'grok' ancestor (depth <= 4) has an exact token in headless_flags, a token starting with one of headless_prefixes, or the adjacent pair 'agent' 'headless' -> false. 'agent stdio' (IDE/ACP), 'agent serve' and 'agent leader' stay interactive",
+   "hermes": "platform (remembered per session_id) not in hermes_platforms -> dropped by the plugin, never sent; background-review agents per WP7"
+  },
+  "grok_headless_flags": [
+   "-p",
+   "--single",
+   "--prompt-file",
+   "--prompt-json",
+   "--output-format",
+   "--json-schema"
+  ],
+  "grok_headless_prefixes": [
+   "--single=",
+   "--prompt-file=",
+   "--prompt-json=",
+   "--output-format=",
+   "--json-schema="
+  ],
+  "grok_source": "grok 1.0.52 (0920c8169e27) `grok --help` and `grok agent --help`, read 2026-10-16 under a throwaway HOME",
+  "vectors": [
+   {
+    "client": "claude-code",
+    "env": {
+     "CLAUDE_CODE_ENTRYPOINT": "cli"
+    },
+    "ancestor_argv": [
+     "claude",
+     "-p",
+     "x"
+    ],
+    "expect": true
+   },
+   {
+    "client": "claude-code",
+    "env": {
+     "CLAUDE_CODE_ENTRYPOINT": "sdk-cli"
+    },
+    "ancestor_argv": [
+     "claude"
+    ],
+    "expect": false
+   },
+   {
+    "client": "claude-code",
+    "env": {
+     "CLAUDE_CODE_ENTRYPOINT": "sdk-ts"
+    },
+    "ancestor_argv": null,
+    "expect": false
+   },
+   {
+    "client": "claude-code",
+    "env": {},
+    "ancestor_argv": [
+     "claude",
+     "--print",
+     "hi"
+    ],
+    "expect": false
+   },
+   {
+    "client": "claude-code",
+    "env": {},
+    "ancestor_argv": [
+     "claude",
+     "--prompt-p"
+    ],
+    "expect": true
+   },
+   {
+    "client": "claude-code",
+    "env": {},
+    "ancestor_argv": [
+     "claude",
+     "fix -p bug"
+    ],
+    "expect": true
+   },
+   {
+    "client": "claude-code",
+    "env": {},
+    "ancestor_argv": null,
+    "expect": true
+   },
+   {
+    "client": "codex",
+    "env": {},
+    "ancestor_argv": [
+     "codex",
+     "exec",
+     "hi"
+    ],
+    "expect": false
+   },
+   {
+    "client": "codex",
+    "env": {},
+    "ancestor_argv": [
+     "codex",
+     "e",
+     "hi"
+    ],
+    "expect": false
+   },
+   {
+    "client": "codex",
+    "env": {},
+    "ancestor_argv": [
+     "codex",
+     "review"
+    ],
+    "expect": false
+   },
+   {
+    "client": "codex",
+    "env": {},
+    "ancestor_argv": [
+     "codex",
+     "-m",
+     "gpt",
+     "e"
+    ],
+    "expect": true
+   },
+   {
+    "client": "codex",
+    "env": {},
+    "ancestor_argv": [
+     "codex",
+     "app-server"
+    ],
+    "expect": true
+   },
+   {
+    "client": "codex",
+    "env": {},
+    "ancestor_argv": [
+     "codex",
+     "explain exec please"
+    ],
+    "expect": true
+   },
+   {
+    "client": "codex",
+    "env": {},
+    "ancestor_argv": null,
+    "expect": true
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "-p",
+     "hi"
+    ],
+    "expect": false
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "--single=hi"
+    ],
+    "expect": false
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "--output-format",
+     "json"
+    ],
+    "expect": false
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "agent",
+     "headless"
+    ],
+    "expect": false
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "agent",
+     "stdio"
+    ],
+    "expect": true
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "agent",
+     "leader"
+    ],
+    "expect": true
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "--agent",
+     "headless"
+    ],
+    "expect": true
+   },
+   {
+    "client": "grok-cli",
+    "env": {},
+    "ancestor_argv": [
+     "grok",
+     "fix it"
+    ],
+    "expect": true
+   },
+   {
+    "client": "opencode",
+    "payload_interactive": false,
+    "expect": false
+   },
+   {
+    "client": "opencode",
+    "payload_interactive": true,
+    "expect": true
+   },
+   {
+    "client": "opencode",
+    "payload_interactive": null,
+    "expect": true
+   }
+  ]
+ },
+ "turn_qualifies": {
+  "rule": "matching turn was open AND (tools >= 1 OR duration_ms >= min_turn_ms) AND interactive AND NOT test",
+  "vectors": [
+   {
+    "open": true,
+    "tools": 1,
+    "duration_ms": 500,
+    "interactive": true,
+    "test": false,
+    "expect": true
+   },
+   {
+    "open": true,
+    "tools": 0,
+    "duration_ms": 29999,
+    "interactive": true,
+    "test": false,
+    "expect": false
+   },
+   {
+    "open": true,
+    "tools": 0,
+    "duration_ms": 30000,
+    "interactive": true,
+    "test": false,
+    "expect": true
+   },
+   {
+    "open": false,
+    "tools": 3,
+    "duration_ms": 60000,
+    "interactive": true,
+    "test": false,
+    "expect": false
+   },
+   {
+    "open": true,
+    "tools": 3,
+    "duration_ms": 60000,
+    "interactive": false,
+    "test": false,
+    "expect": false
+   },
+   {
+    "open": true,
+    "tools": 3,
+    "duration_ms": 60000,
+    "interactive": true,
+    "test": true,
+    "expect": false
+   }
+  ]
+ },
+ "caps": {
+  "rule": "jar_full if jar >= jar_max; else capped_session if any earned_at of this session > at - cap_session_ms; else capped_hour if count(earned_at > at - 1 h) >= cap_per_hour; else capped_day if count(earned_at > at - 24 h) >= cap_per_day; else allow. Windows are half-open: an earn exactly one window ago no longer counts. Forgotten rows (earned_at 0) never count.",
+  "vectors": [
+   {
+    "name": "empty",
+    "at": 360000000,
+    "jar": 0,
+    "session_earned": [],
+    "all_earned": [],
+    "expect": "allow"
+   },
+   {
+    "name": "jar_full_beats_caps",
+    "at": 360000000,
+    "jar": 10,
+    "session_earned": [
+     359999000
+    ],
+    "all_earned": [
+     359999000
+    ],
+    "expect": "jar_full"
+   },
+   {
+    "name": "session_30s",
+    "at": 360000000,
+    "jar": 1,
+    "session_earned": [
+     359990000
+    ],
+    "all_earned": [
+     359990000
+    ],
+    "expect": "capped_session"
+   },
+   {
+    "name": "session_exactly_30s_is_allowed",
+    "at": 360000000,
+    "jar": 1,
+    "session_earned": [
+     359970000
+    ],
+    "all_earned": [
+     359970000
+    ],
+    "expect": "allow"
+   },
+   {
+    "name": "hour_12",
+    "at": 360000000,
+    "jar": 5,
+    "session_earned": [],
+    "all_earned": [
+     359940000,
+     359880000,
+     359820000,
+     359760000,
+     359700000,
+     359640000,
+     359580000,
+     359520000,
+     359460000,
+     359400000,
+     359340000,
+     359280000
+    ],
+    "expect": "capped_hour"
+   },
+   {
+    "name": "hour_11_plus_one_expired",
+    "at": 360000000,
+    "jar": 5,
+    "session_earned": [],
+    "all_earned": [
+     359940000,
+     359880000,
+     359820000,
+     359760000,
+     359700000,
+     359640000,
+     359580000,
+     359520000,
+     359460000,
+     359400000,
+     359340000,
+     356400000
+    ],
+    "expect": "allow"
+   },
+   {
+    "name": "day_48",
+    "at": 360000000,
+    "jar": 5,
+    "session_earned": [],
+    "all_earned": [
+     352800000,
+     351600000,
+     350400000,
+     349200000,
+     348000000,
+     346800000,
+     345600000,
+     344400000,
+     343200000,
+     342000000,
+     340800000,
+     339600000,
+     338400000,
+     337200000,
+     336000000,
+     334800000,
+     333600000,
+     332400000,
+     331200000,
+     330000000,
+     328800000,
+     327600000,
+     326400000,
+     325200000,
+     324000000,
+     322800000,
+     321600000,
+     320400000,
+     319200000,
+     318000000,
+     316800000,
+     315600000,
+     314400000,
+     313200000,
+     312000000,
+     310800000,
+     309600000,
+     308400000,
+     307200000,
+     306000000,
+     304800000,
+     303600000,
+     302400000,
+     301200000,
+     300000000,
+     298800000,
+     297600000,
+     296400000
+    ],
+    "expect": "capped_day"
+   },
+   {
+    "name": "day_47_plus_forgotten",
+    "at": 360000000,
+    "jar": 5,
+    "session_earned": [],
+    "all_earned": [
+     352800000,
+     351600000,
+     350400000,
+     349200000,
+     348000000,
+     346800000,
+     345600000,
+     344400000,
+     343200000,
+     342000000,
+     340800000,
+     339600000,
+     338400000,
+     337200000,
+     336000000,
+     334800000,
+     333600000,
+     332400000,
+     331200000,
+     330000000,
+     328800000,
+     327600000,
+     326400000,
+     325200000,
+     324000000,
+     322800000,
+     321600000,
+     320400000,
+     319200000,
+     318000000,
+     316800000,
+     315600000,
+     314400000,
+     313200000,
+     312000000,
+     310800000,
+     309600000,
+     308400000,
+     307200000,
+     306000000,
+     304800000,
+     303600000,
+     302400000,
+     301200000,
+     300000000,
+     298800000,
+     297600000,
+     0
+    ],
+    "expect": "allow"
+   }
+  ]
+ },
+ "sessions": {
+  "model": {
+   "defaults": {
+    "session": "s1",
+    "interactive": true,
+    "test": false,
+    "enabled": true,
+    "life": true,
+    "jar": 0,
+    "now": "each event folds with now = its at (no clamping in these vectors)"
+   },
+   "per_event_expect": "state of the vector's session after the event, 'earned' = a treat dropped by this event",
+   "final_expect": "treats = treats earned in the vector; finished_seq = meta.finished_seq increments; open_turn = open turn key or null",
+   "transitions": {
+    "session_start": "state idle (an ended session restarts idle)",
+    "turn_start": "a still-open turn closes neutrally (no treat, no finished_seq); open the new turn (tools 0, started at); state working",
+    "activity": "(a) key == open turn: count a new distinct tool; waiting/idle -> working. (b) key == last done turn and at <= last_done_ms + late_tool_ms: count a new distinct tool toward the finished turn; if it earned nothing and was not re-checked, re-run the treat check once (duration = last_done_ms - its start). (c) key == last done turn, at > last_done_ms + late_tool_ms and a tool not seen in that turn: continuation - reopen the turn (same start, its tools + 1), state working. (d) otherwise only last_event_ms",
+    "waiting": "state waiting (approval rows: their own row)",
+    "idle_prompt": "state idle; the open turn stays open",
+    "turn_done": "closes the open turn with the same key: state idle, finished_seq++ (interactive sessions only), treat check with tools = counted + payload tools. No matching open turn -> only last_event_ms",
+    "turn_failed": "closes only the matching turn, no treat: state error, error_at_ms = at",
+    "turn_cancelled": "closes only the matching turn, no treat: state idle. Keyless: closes the open turn only if it started before at",
+    "session_end": "state ended; an open turn closes neutrally"
+   },
+   "approval_rows": "Hermes approval_key events use a separate row keyed by HMAC(approval_key): waiting -> waiting; activity with the same key -> idle; nothing else touches it",
+   "non_interactive": "tracked (state machine runs) but never counts for the face, never increments finished_seq and never earns",
+   "hello": "the first non-test event of a client since Connect sets first_seen_ms and hello_seq++ (any interactivity); see fold_vectors"
+  },
+  "vectors": [
+   {
+    "name": "claude_simple_turn_earns",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "session_start",
+      "turn": null,
+      "tool": null,
+      "expect": "idle"
+     },
+     {
+      "at": 1000,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 2000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 2500,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     },
+     {
+      "at": 6000,
+      "kind": "session_end",
+      "turn": null,
+      "tool": null,
+      "expect": "ended"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "short_turn_without_tools_celebrates_without_treat",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 10000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "thirty_second_turn_without_tools_earns",
+    "client": "grok-cli",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 30000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "stop_veto_continue_then_stop_one_treat",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     },
+     {
+      "at": 6500,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "b",
+      "expect": "working",
+      "note": "continuation (> late window, new tool)"
+     },
+     {
+      "at": 12000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "note": "X1: the turn already earned"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 2,
+     "open_turn": null,
+     "last_done_tools": 2
+    }
+   },
+   {
+    "name": "late_async_pretooluse_after_stop_counts_without_reopen",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 3000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     },
+     {
+      "at": 3500,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "b",
+      "expect": "idle",
+      "note": "late tool of the finished turn"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 2
+    }
+   },
+   {
+    "name": "codex_stop_folded_before_its_posttooluse_late_treat",
+    "client": "codex",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "7",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_done",
+      "turn": "7",
+      "tool": null,
+      "expect": "idle",
+      "note": "0 tools, 5 s: no treat yet"
+     },
+     {
+      "at": 4900,
+      "kind": "activity",
+      "turn": "7",
+      "tool": "call_1",
+      "expect": "idle",
+      "earned": true,
+      "note": "arrives in a later batch; at <= last_done + 1 s; re-check earns"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "grok_cancel_report_after_next_prompt_keeps_t2_open",
+    "client": "grok-cli",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "g1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_start",
+      "turn": "g2",
+      "tool": null,
+      "expect": "working",
+      "note": "g1 closes neutrally"
+     },
+     {
+      "at": 5100,
+      "kind": "turn_cancelled",
+      "turn": "g1",
+      "tool": null,
+      "expect": "working",
+      "note": "key mismatch: only last_event_ms"
+     },
+     {
+      "at": 6000,
+      "kind": "activity",
+      "turn": "g2",
+      "tool": "tu1",
+      "expect": "working"
+     },
+     {
+      "at": 9000,
+      "kind": "turn_done",
+      "turn": "g2",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "hermes_interrupted_then_loop_stopped_closes_once",
+    "client": "hermes",
+    "events": [
+     {
+      "at": 0,
+      "kind": "session_start",
+      "turn": null,
+      "tool": null,
+      "expect": "idle"
+     },
+     {
+      "at": 100,
+      "kind": "turn_start",
+      "turn": "h1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 2000,
+      "kind": "turn_cancelled",
+      "turn": "h1",
+      "tool": null,
+      "expect": "idle"
+     },
+     {
+      "at": 2100,
+      "kind": "turn_cancelled",
+      "turn": null,
+      "tool": null,
+      "expect": "idle",
+      "note": "keyless, nothing open: no-op"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "hermes_loop_stopped_alone_closes_the_open_turn",
+    "client": "hermes",
+    "events": [
+     {
+      "at": 100,
+      "kind": "turn_start",
+      "turn": "h1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 2100,
+      "kind": "turn_cancelled",
+      "turn": null,
+      "tool": null,
+      "expect": "idle",
+      "note": "keyless; turn started before it"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "second_permission_prompt_in_the_same_turn_waits_again",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "waiting",
+      "turn": "t1",
+      "tool": null,
+      "expect": "waiting"
+     },
+     {
+      "at": 2000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 3000,
+      "kind": "waiting",
+      "turn": "t1",
+      "tool": null,
+      "expect": "waiting"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": "t1",
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "opencode_restart_reusing_counters_gets_distinct_keys",
+    "client": "opencode",
+    "session": "ses_1",
+    "events": [
+     {
+      "at": 1000,
+      "kind": "turn_start",
+      "turn": "1000-1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_done",
+      "turn": "1000-1",
+      "tool": null,
+      "tools": 2,
+      "expect": "idle",
+      "earned": true
+     },
+     {
+      "at": 60000,
+      "kind": "session_start",
+      "turn": null,
+      "tool": null,
+      "expect": "idle",
+      "note": "OpenCode restarted; same session resumed"
+     },
+     {
+      "at": 61000,
+      "kind": "turn_start",
+      "turn": "60000-1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 65000,
+      "kind": "turn_done",
+      "turn": "60000-1",
+      "tool": null,
+      "tools": 1,
+      "expect": "idle",
+      "earned": true
+     }
+    ],
+    "final": {
+     "treats": 2,
+     "finished_seq": 2,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "hermes_approval_key_waiting_then_activity_clears",
+    "client": "hermes",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "h1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "waiting",
+      "turn": null,
+      "tool": null,
+      "akey": "k1",
+      "expect": "working",
+      "expect_approval": "waiting"
+     },
+     {
+      "at": 3000,
+      "kind": "activity",
+      "turn": null,
+      "tool": null,
+      "akey": "k1",
+      "expect": "working",
+      "expect_approval": "idle"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": "h1",
+     "last_done_tools": 0,
+     "approval_rows": {
+      "k1": "idle"
+     }
+    }
+   },
+   {
+    "name": "failed_turn_no_treat_error_state",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 2000,
+      "kind": "turn_failed",
+      "turn": "t1",
+      "tool": null,
+      "expect": "error"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": null,
+     "last_done_tools": 0,
+     "error_at_ms": 2000
+    }
+   },
+   {
+    "name": "cancelled_turn_is_neutral",
+    "client": "codex",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "7",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "7",
+      "tool": "c1",
+      "expect": "working"
+     },
+     {
+      "at": 2000,
+      "kind": "turn_cancelled",
+      "turn": "7",
+      "tool": null,
+      "expect": "idle"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "non_interactive_never_counts_or_earns",
+    "client": "claude-code",
+    "interactive": false,
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 40000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "duplicate_stop_after_close_is_a_noop",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     },
+     {
+      "at": 5200,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "turn_start_closes_the_previous_turn_neutrally",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 40000,
+      "kind": "turn_start",
+      "turn": "t2",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 41000,
+      "kind": "turn_done",
+      "turn": "t2",
+      "tool": null,
+      "expect": "idle"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "session_end_closes_an_open_turn_neutrally",
+    "client": "grok-cli",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "g1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "g1",
+      "tool": "x",
+      "expect": "working"
+     },
+     {
+      "at": 2000,
+      "kind": "session_end",
+      "turn": null,
+      "tool": null,
+      "expect": "ended"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "idle_prompt_is_never_waiting",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 31000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     },
+     {
+      "at": 91000,
+      "kind": "idle_prompt",
+      "turn": null,
+      "tool": null,
+      "expect": "idle"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "second_turn_within_30s_is_capped_but_celebrates",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "a",
+      "expect": "working"
+     },
+     {
+      "at": 2000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     },
+     {
+      "at": 3000,
+      "kind": "turn_start",
+      "turn": "t2",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 4000,
+      "kind": "activity",
+      "turn": "t2",
+      "tool": "b",
+      "expect": "working"
+     },
+     {
+      "at": 10000,
+      "kind": "turn_done",
+      "turn": "t2",
+      "tool": null,
+      "expect": "idle",
+      "note": "capped_session"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 2,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "full_jar_celebrates_without_a_treat",
+    "client": "codex",
+    "jar": 10,
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "7",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "activity",
+      "turn": "7",
+      "tool": "c1",
+      "expect": "working"
+     },
+     {
+      "at": 2000,
+      "kind": "turn_done",
+      "turn": "7",
+      "tool": null,
+      "expect": "idle",
+      "note": "jar_full -> finished_jar_full"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 1,
+     "finished_jar_full": true
+    }
+   }
+  ]
+ },
+ "fold": {
+  "rule": "outcomes in order: duplicate (dedupe_key exists: unlink, no row change) -> dropped_off (meta.enabled = 0) -> dropped_old (at < now - max_event_age_ms) -> clamp (at > now + future_clamp_ms -> at = now, still folded) -> dropped_child -> test (only test_state/test_at_ms) -> client record (+hello) -> no_life (stop) -> folded",
+  "now": 1792123900000,
+  "vectors": [
+   {
+    "name": "off_drops",
+    "enabled": false,
+    "life": true,
+    "event": {
+     "at": 1792123900000,
+     "kind": "turn_start",
+     "turn": "t"
+    },
+    "expect": {
+     "outcome": "dropped_off",
+     "client_record": false,
+     "hello": false
+    }
+   },
+   {
+    "name": "too_old_drops",
+    "enabled": true,
+    "life": true,
+    "event": {
+     "at": 1792037499999,
+     "kind": "turn_start",
+     "turn": "t"
+    },
+    "expect": {
+     "outcome": "dropped_old",
+     "client_record": false,
+     "hello": false
+    }
+   },
+   {
+    "name": "exactly_24h_is_kept",
+    "enabled": true,
+    "life": true,
+    "event": {
+     "at": 1792037500000,
+     "kind": "turn_start",
+     "turn": "t"
+    },
+    "expect": {
+     "outcome": "folded",
+     "client_record": true,
+     "hello": true,
+     "at": 1792037500000
+    }
+   },
+   {
+    "name": "future_is_clamped",
+    "enabled": true,
+    "life": true,
+    "event": {
+     "at": 1792124020001,
+     "kind": "turn_start",
+     "turn": "t"
+    },
+    "expect": {
+     "outcome": "folded",
+     "client_record": true,
+     "hello": true,
+     "at": 1792123900000
+    }
+   },
+   {
+    "name": "near_future_is_kept",
+    "enabled": true,
+    "life": true,
+    "event": {
+     "at": 1792124020000,
+     "kind": "turn_start",
+     "turn": "t"
+    },
+    "expect": {
+     "outcome": "folded",
+     "client_record": true,
+     "hello": true,
+     "at": 1792124020000
+    }
+   },
+   {
+    "name": "test_event_only_drives_agent_test",
+    "enabled": true,
+    "life": true,
+    "event": {
+     "at": 1792123900000,
+     "kind": "turn_done",
+     "turn": "t",
+     "test": true
+    },
+    "expect": {
+     "outcome": "test",
+     "client_record": false,
+     "hello": false,
+     "test_state": "done"
+    }
+   },
+   {
+    "name": "test_turn_start_is_running",
+    "enabled": true,
+    "life": true,
+    "event": {
+     "at": 1792123900000,
+     "kind": "turn_start",
+     "turn": "t",
+     "test": true
+    },
+    "expect": {
+     "outcome": "test",
+     "client_record": false,
+     "hello": false,
+     "test_state": "running"
+    }
+   },
+   {
+    "name": "no_life_still_greets",
+    "enabled": true,
+    "life": false,
+    "event": {
+     "at": 1792123900000,
+     "kind": "session_start"
+    },
+    "expect": {
+     "outcome": "no_life",
+     "client_record": true,
+     "hello": true
+    }
+   },
+   {
+    "name": "second_event_does_not_greet_again",
+    "enabled": true,
+    "life": true,
+    "first_seen": true,
+    "event": {
+     "at": 1792123900000,
+     "kind": "activity",
+     "turn": "t",
+     "tool": "x"
+    },
+    "expect": {
+     "outcome": "folded",
+     "client_record": true,
+     "hello": false
+    }
+   }
+  ]
+ },
+ "priority": {
+  "order": [
+   {
+    "row": 1,
+    "state": "off",
+    "when": "enabled == false",
+    "bar": "off",
+    "line": "off.line",
+    "overlay": "none"
+   },
+   {
+    "row": 1.5,
+    "state": "no_pet",
+    "when": "life == null (first run, or after a goodbye/death)",
+    "bar": "egg",
+    "line": null,
+    "overlay": "none"
+   },
+   {
+    "row": 2,
+    "state": "fainted|asleep",
+    "when": "life.fainted, else care.sleeping",
+    "bar": "sleep (+bandage)",
+    "line": "mood.fainted|mood.asleep",
+    "overlay": "sleep"
+   },
+   {
+    "row": 3,
+    "state": "waiting",
+    "when": "a counting app is waiting",
+    "bar": "hand (pulse)",
+    "line": "act.waiting",
+    "overlay": "waiting"
+   },
+   {
+    "row": 4,
+    "state": "need_now",
+    "when": "a need is empty (now) or critical",
+    "bar": "need badge",
+    "line": "mood.<need>.now|critical",
+    "overlay": "needs_care"
+   },
+   {
+    "row": 5,
+    "state": "working",
+    "when": "a counting app is working",
+    "bar": "working frame",
+    "line": "act.working.one|two|many",
+    "overlay": "working"
+   },
+   {
+    "row": 6,
+    "state": "celebrate",
+    "when": "a new test done, hello or finished_seq inside its window",
+    "bar": "star",
+    "line": "act.ready|act.hello|act.done*",
+    "overlay": "celebrate"
+   },
+   {
+    "row": 7,
+    "state": "oops",
+    "when": "error_at_ms within error_recent_ms",
+    "bar": "none (star if treats wait)",
+    "line": "act.oops",
+    "overlay": "error for error_frame_ms, then idle"
+   },
+   {
+    "row": 8,
+    "state": "need_soon",
+    "when": "a need is low (soon)",
+    "bar": "none (star if treats wait)",
+    "line": "mood.<need>.soon",
+    "overlay": "needs_care_frame"
+   },
+   {
+    "row": 9,
+    "state": "idle",
+    "when": "otherwise",
+    "bar": "none (star if treats wait)",
+    "line": "mood.happy",
+    "overlay": "wander"
+   }
+  ],
+  "need_levels": {
+   "ok": "happy",
+   "low": "soon",
+   "empty": "now",
+   "critical": "critical"
+  },
+  "need_priority": [
+   "food",
+   "water",
+   "play",
+   "wash"
+  ],
+  "need_pick": "among needs at the highest present group (now/critical first, then soon), pick by need_priority; the line uses that need's own level",
+  "counting_app": "an agent.apps entry whose stale_at_ms > now",
+  "app_order": "agent.apps order (since_ms ascending, then client order); {app} is the first app in the row's set, {app2} the second",
+  "waiting_app": "the waiting app with the latest since_ms (ties: client order)",
+  "celebrate": {
+   "candidates_in_order": [
+    "test",
+    "hello",
+    "finished"
+   ],
+   "test": "agent.test.state == 'done' and test.at_ms > seen.test_at_ms and now < at_ms + celebrate_window_ms",
+   "hello": "hello_seq > seen.hello_seq and now < hello_at_ms + celebrate_window_ms",
+   "finished": "finished_seq > seen.finished_seq and now >= finished_at_ms + celebrate_grace_ms and now < finished_at_ms + celebrate_window_ms and finished_app is not a counting working app",
+   "lines": {
+    "test": "act.ready",
+    "hello": "act.hello",
+    "finished": "act.done_full if finished_jar_full, else act.done_treat if finished_treat, else act.done"
+   },
+   "seen": "the UI records the celebrated seq/at and passes it back as `seen`"
+  },
+  "treats_visible": "treats.jar > 0 and life awake (not care.sleeping) and not fainted and enabled",
+  "star_badge": "rows 7-9 show the star badge when treats_visible",
+  "wake_at_ms": "null when Off. Otherwise the minimum of these future times (null when none), whatever row wins: stale_at_ms of each counting app; for each unseen celebration candidate whose window is still open, its grace end if still ahead, else its window end; the error frame end and the oops end while ahead",
+  "vars": "exactly the placeholders of the line template; {app}/{app2} are client ids (the UI maps them to display names)",
+  "bubble": {
+   "waiting": "apps: [waiting app]",
+   "need_now": "need: <need>",
+   "working": "apps: up to 3 working apps",
+   "fainted": "bandage",
+   "celebrate": "star",
+   "need_soon": "need: <need>",
+   "idle": "helpers when helpers_busy, else none"
+  },
+  "vectors": [
+   {
+    "name": "fresh_install_no_pet",
+    "fixture": "fresh-no-pet",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "no_pet",
+     "bar": "egg",
+     "line": null,
+     "vars": {},
+     "overlay": "none",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "off_wins_over_everything",
+    "fixture": "off",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "off",
+     "bar": "off",
+     "line": "off.line",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "none",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "off_before_any_pet",
+    "fixture": "off-no-pet",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "off",
+     "bar": "off",
+     "line": null,
+     "vars": {},
+     "overlay": "none",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "idle_happy",
+    "fixture": "idle-happy",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "none",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "idle_with_treats_shows_star",
+    "fixture": "idle-treats",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "star",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": true,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "need_soon",
+    "fixture": "need-food-soon",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "need_soon",
+     "bar": "none",
+     "line": "mood.food.soon",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "needs_care_frame",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "need": "food"
+     },
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "need_now",
+    "fixture": "need-water-now",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "need_now",
+     "bar": "need_water",
+     "line": "mood.water.now",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "needs_care",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "need": "water"
+     },
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "critical_food",
+    "fixture": "need-food-critical",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "need_now",
+     "bar": "need_food",
+     "line": "mood.food.critical",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "needs_care",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "need": "food"
+     },
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "several_needs_priority_order",
+    "fixture": "several-needs",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "need_now",
+     "bar": "need_water",
+     "line": "mood.water.now",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "needs_care",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "need": "water"
+     },
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "asleep",
+    "fixture": "asleep",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "asleep",
+     "bar": "sleep",
+     "line": "mood.asleep",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "sleep",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "fainted_beats_waiting",
+    "fixture": "fainted",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "fainted",
+     "bar": "sleep_bandage",
+     "line": "mood.fainted",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "sleep",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "bandage": true
+     },
+     "wake_at_ms": 1792125690000
+    }
+   },
+   {
+    "name": "working_one",
+    "fixture": "working-one",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "working",
+     "bar": "working",
+     "line": "act.working.one",
+     "vars": {
+      "name": "Ginger",
+      "app": "claude-code"
+     },
+     "overlay": "working",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "apps": [
+       "claude-code"
+      ]
+     },
+     "wake_at_ms": 1792124440000
+    }
+   },
+   {
+    "name": "working_two",
+    "fixture": "working-two",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "working",
+     "bar": "working",
+     "line": "act.working.two",
+     "vars": {
+      "name": "Ginger",
+      "app": "claude-code",
+      "app2": "grok-cli"
+     },
+     "overlay": "working",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "apps": [
+       "claude-code",
+       "grok-cli"
+      ]
+     },
+     "wake_at_ms": 1792124440000
+    }
+   },
+   {
+    "name": "working_many",
+    "fixture": "working-many",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "working",
+     "bar": "working",
+     "line": "act.working.many",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "working",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "apps": [
+       "claude-code",
+       "opencode",
+       "grok-cli"
+      ]
+     },
+     "wake_at_ms": 1792124440000
+    }
+   },
+   {
+    "name": "waiting_beats_need_now_and_working",
+    "fixture": "waiting",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "waiting",
+     "bar": "hand",
+     "line": "act.waiting",
+     "vars": {
+      "app": "codex"
+     },
+     "overlay": "waiting",
+     "pulse": true,
+     "treats_visible": false,
+     "bubble": {
+      "apps": [
+       "codex"
+      ]
+     },
+     "wake_at_ms": 1792124440000
+    }
+   },
+   {
+    "name": "working_beats_celebration",
+    "fixture": "finished-while-working",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "working",
+     "bar": "working",
+     "line": "act.working.one",
+     "vars": {
+      "name": "Ginger",
+      "app": "claude-code"
+     },
+     "overlay": "working",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "apps": [
+       "claude-code"
+      ]
+     },
+     "wake_at_ms": 1792123920000
+    }
+   },
+   {
+    "name": "finished_inside_grace_waits",
+    "fixture": "finished-treat",
+    "now": 1792123876000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "star",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": true,
+     "bubble": null,
+     "wake_at_ms": 1792123877000
+    }
+   },
+   {
+    "name": "finished_treat_celebrates",
+    "fixture": "finished-treat",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "celebrate",
+     "bar": "star",
+     "line": "act.done_treat",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "celebrate",
+     "pulse": false,
+     "treats_visible": true,
+     "bubble": {
+      "star": true
+     },
+     "wake_at_ms": 1792123905000
+    }
+   },
+   {
+    "name": "finished_already_seen",
+    "fixture": "finished-treat",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 5,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "star",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": true,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "finished_window_over",
+    "fixture": "finished-treat",
+    "now": 1792123905000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "star",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": true,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "finished_jar_full",
+    "fixture": "jar-full",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "celebrate",
+     "bar": "star",
+     "line": "act.done_full",
+     "vars": {},
+     "overlay": "celebrate",
+     "pulse": false,
+     "treats_visible": true,
+     "bubble": {
+      "star": true
+     },
+     "wake_at_ms": 1792123920000
+    }
+   },
+   {
+    "name": "hello_first_event",
+    "fixture": "hello",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "celebrate",
+     "bar": "star",
+     "line": "act.hello",
+     "vars": {
+      "name": "Ginger",
+      "app": "claude-code"
+     },
+     "overlay": "celebrate",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "star": true
+     },
+     "wake_at_ms": 1792123925000
+    }
+   },
+   {
+    "name": "ready_check_done",
+    "fixture": "ready-check-done",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "celebrate",
+     "bar": "star",
+     "line": "act.ready",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "celebrate",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "star": true
+     },
+     "wake_at_ms": 1792123928500
+    }
+   },
+   {
+    "name": "oops_frame",
+    "fixture": "oops",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "oops",
+     "bar": "none",
+     "line": "act.oops",
+     "vars": {
+      "app": "grok-cli"
+     },
+     "overlay": "error",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": 1792123902000
+    }
+   },
+   {
+    "name": "oops_after_frame",
+    "fixture": "oops",
+    "now": 1792123902000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "oops",
+     "bar": "none",
+     "line": "act.oops",
+     "vars": {
+      "app": "grok-cli"
+     },
+     "overlay": "idle",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": 1792124019000
+    }
+   },
+   {
+    "name": "oops_over",
+    "fixture": "oops",
+    "now": 1792124019000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "none",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "stale_app_no_longer_counts",
+    "fixture": "stale-working",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "none",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "helpers_busy_bubble_only",
+    "fixture": "helpers-busy",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "none",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "helpers": true
+     },
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "owner_goldfish_ginger_aquatic_need",
+    "fixture": "goldfish-ginger-owner",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "need_soon",
+     "bar": "none",
+     "line": "mood.wash.soon",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "needs_care_frame",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "need": "wash"
+     },
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "robot_needs_charge",
+    "fixture": "robot-bolt",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "need_now",
+     "bar": "need_food",
+     "line": "mood.food.now",
+     "vars": {
+      "name": "Bolt"
+     },
+     "overlay": "needs_care",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "need": "food"
+     },
+     "wake_at_ms": null
+    }
+   }
+  ]
+ }
+}

@@ -1,0 +1,678 @@
+{
+  "schema": "codepet.protocol.v03",
+  "spec": "SPEC-v0.3 §6.2, §6.3",
+  "envelope": "v1 unchanged: {v:1, id, method, params}; deny_unknown_fields everywhere; protocol_version 1",
+  "status_in_wp0": "Every added method parses and validates its params, then answers NOT_IMPLEMENTED (before opening storage) until its WP lands. Removed methods still parse until WP1 moves them behind the legacy-tasks feature, after which they answer UNKNOWN_METHOD in the default build.",
+  "kept": [
+    "hello",
+    "state.get",
+    "pet.pause",
+    "pet.care",
+    "pet.sleep",
+    "pet.wake",
+    "pet.select",
+    "pet.adopt",
+    "pet.rules",
+    "pet.configure_life",
+    "pet.retire",
+    "pet.events_seen",
+    "pet.memorial",
+    "lifecycle.rules"
+  ],
+  "kept_notes": {
+    "hello": "the supervisor field of its result is retired with the task pipeline (WP1)",
+    "pet.pause": "kept in the protocol; no UI ('Going away' removed, Off covers it)",
+    "pet.configure_life": "leniency only, as in v0.2.1",
+    "pet.rules": "also backs the Help Hardcore switch: permadeath->gentle any time; gentle->permadeath only with acknowledgement and a healthy pet (INVALID_STATE -> 'Make {name} happy first.')",
+    "state.get": "may migrate; first drains the inbox (fold.lock LOCK_NB, at most one batch); snapshot adds enabled, count_helpers, agent, clients, treats; drops active_task, recent, providers, settings, decay, care.ready_to_work, care.readiness_reasons (WP1); schema_version 5"
+  },
+  "removed": [
+    "events.subscribe",
+    "providers.inspect",
+    "task.create",
+    "task.get",
+    "task.update",
+    "task.preflight",
+    "task.start",
+    "task.cancel",
+    "task.review",
+    "task.logs",
+    "task.apply",
+    "task.accept_artifact",
+    "task.discard",
+    "task.rollback",
+    "task.recover",
+    "history.list",
+    "settings.update"
+  ],
+  "removed_also": [
+    "the hello.supervisor handshake"
+  ],
+  "added": [
+    {
+      "method": "pet.start",
+      "wp": "WP1",
+      "mutating": true,
+      "receipt": true,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "life_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "species": {
+            "enum": [
+              "cat",
+              "dog",
+              "capybara",
+              "penguin",
+              "robot",
+              "iguana",
+              "spider",
+              "snake",
+              "goldfish",
+              "rabbit",
+              "turtle",
+              "frog",
+              "owl",
+              "red_panda",
+              "axolotl"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "raw input <= 256 bytes, not blank, no NUL; content rule is core normalize_pet_name (1..=24 chars, <= 96 bytes) -> NAME_INVALID"
+          },
+          "mode": {
+            "enum": [
+              "gentle",
+              "permadeath"
+            ]
+          },
+          "acknowledge_rules": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "species",
+          "mode",
+          "acknowledge_rules"
+        ]
+      },
+      "result": "the state.get snapshot",
+      "errors": [
+        "ALREADY_ARMED",
+        "ACKNOWLEDGEMENT_REQUIRED",
+        "NAME_INVALID",
+        "INVALID_PARAMS",
+        "NO_ACTIVE_PET"
+      ],
+      "semantics": "One transaction. No living life -> adopt (pace steady). Living unarmed life -> select look, rename if a name is given, set rules with pet.rules semantics, arm. Then spend the welcome routine if welcome_care_available. life_id, when given, must name the living life (NOT_FOUND otherwise).",
+      "examples": {
+        "valid": [
+          {
+            "species": "cat",
+            "mode": "gentle",
+            "acknowledge_rules": true
+          },
+          {
+            "life_id": "life-0123456789abcdef01234567",
+            "species": "goldfish",
+            "name": "Ginger",
+            "mode": "gentle",
+            "acknowledge_rules": true
+          },
+          {
+            "species": "robot",
+            "mode": "permadeath",
+            "acknowledge_rules": false
+          }
+        ],
+        "invalid": [
+          {
+            "species": "cat",
+            "mode": "gentle"
+          },
+          {
+            "species": "unicorn",
+            "mode": "gentle",
+            "acknowledge_rules": true
+          },
+          {
+            "species": "cat",
+            "mode": "easy",
+            "acknowledge_rules": true
+          },
+          {
+            "species": "cat",
+            "mode": "gentle",
+            "acknowledge_rules": true,
+            "pace": "steady"
+          },
+          {
+            "species": "cat",
+            "mode": "gentle",
+            "acknowledge_rules": true,
+            "name": "   "
+          },
+          {
+            "species": "cat",
+            "mode": "gentle",
+            "acknowledge_rules": true,
+            "life_id": ""
+          }
+        ]
+      }
+    },
+    {
+      "method": "pet.rename",
+      "wp": "WP1",
+      "mutating": true,
+      "receipt": true,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "life_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "raw input <= 256 bytes, not blank, no NUL; content rule is core normalize_pet_name (1..=24 chars, <= 96 bytes) -> NAME_INVALID"
+          }
+        },
+        "required": [
+          "life_id",
+          "name"
+        ]
+      },
+      "result": "the state.get snapshot",
+      "errors": [
+        "NAME_INVALID",
+        "NO_ACTIVE_PET",
+        "NOT_FOUND",
+        "INVALID_PARAMS"
+      ],
+      "semantics": "Living lives only. Name validated in Rust (core normalize_pet_name) before the UPDATE, so the lives.name CHECK never fires.",
+      "examples": {
+        "valid": [
+          {
+            "life_id": "life-1",
+            "name": "Ginger"
+          },
+          {
+            "life_id": "life-1",
+            "name": "Mr Whiskers"
+          }
+        ],
+        "invalid": [
+          {
+            "life_id": "life-1"
+          },
+          {
+            "name": "Ginger"
+          },
+          {
+            "life_id": "life-1",
+            "name": ""
+          },
+          {
+            "life_id": "life-1",
+            "name": "Gin",
+            "extra": 1
+          }
+        ]
+      }
+    },
+    {
+      "method": "treats.give",
+      "wp": "WP1",
+      "mutating": true,
+      "receipt": true,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "life_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "life_id"
+        ]
+      },
+      "result": "the state.get snapshot",
+      "errors": [
+        "NO_TREATS",
+        "PET_NEEDS_CARE",
+        "NO_ACTIVE_PET",
+        "NOT_FOUND",
+        "INVALID_PARAMS"
+      ],
+      "semantics": "Gives one treat: marks the oldest unspent activity_turns row given and inserts one activity_xp row (5 XP) in the same transaction, then journals evolution. PET_NEEDS_CARE while asleep or fainted. Disabled (Off) -> INVALID_STATE.",
+      "examples": {
+        "valid": [
+          {
+            "life_id": "life-1"
+          }
+        ],
+        "invalid": [
+          {},
+          {
+            "life_id": "life-1",
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "method": "app.set_enabled",
+      "wp": "WP1",
+      "mutating": true,
+      "receipt": false,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "result": "the state.get snapshot",
+      "errors": [
+        "INVALID_PARAMS"
+      ],
+      "semantics": "SPEC §7.3. Off: settle presence and sleep up to now, meta.enabled=0, commit, create $STATE/off (0600), export enabled:false + presence.wanted:false. On: enabled=1, remove the flag, export; no catch-up. Idempotent; works with no living life.",
+      "examples": {
+        "valid": [
+          {
+            "enabled": false
+          },
+          {
+            "enabled": true
+          }
+        ],
+        "invalid": [
+          {},
+          {
+            "enabled": "off"
+          },
+          {
+            "enabled": 0
+          }
+        ]
+      }
+    },
+    {
+      "method": "app.set_helpers",
+      "wp": "WP1",
+      "mutating": true,
+      "receipt": false,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "result": "the state.get snapshot",
+      "errors": [
+        "INVALID_PARAMS"
+      ],
+      "semantics": "Sets meta.count_helpers and creates/removes $STATE/helpers (read by the shim).",
+      "examples": {
+        "valid": [
+          {
+            "enabled": true
+          }
+        ],
+        "invalid": [
+          {},
+          {
+            "enabled": null
+          }
+        ]
+      }
+    },
+    {
+      "method": "agent.forget_history",
+      "wp": "WP1",
+      "mutating": true,
+      "receipt": false,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "result": "the state.get snapshot",
+      "errors": [
+        "INVALID_PARAMS"
+      ],
+      "semantics": "SPEC §5.10. Deletes agent_events and agent_sessions; sets activity_turns.earned_at_ms to 0 and given_at_ms of given rows to 0 (unspent rows stay unspent). Unspent treats and earned XP stay. Takes fold.lock (LOCK_NB, BUSY if held) before the DB.",
+      "examples": {
+        "valid": [
+          {}
+        ],
+        "invalid": [
+          {
+            "all": true
+          }
+        ]
+      }
+    },
+    {
+      "method": "clients.status",
+      "wp": "WP3",
+      "mutating": true,
+      "receipt": false,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "result": {
+        "clients": "array, one entry per supported client in client order: {id, name, installed, version, connected, needs_step, last_seen_ms, first_seen_ms, events_7d, job, failed_reason}"
+      },
+      "errors": [
+        "INVALID_PARAMS",
+        "STORAGE_UNAVAILABLE"
+      ],
+      "semantics": "File-only (<= 50 ms): never runs a client binary, no network. Writes client_hooks and re-exports. events_7d = COUNT(agent_events) for the client in the last 7 days (not a column).",
+      "examples": {
+        "valid": [
+          {}
+        ],
+        "invalid": [
+          {
+            "refresh": true
+          }
+        ]
+      }
+    },
+    {
+      "method": "clients.connect",
+      "wp": "WP3",
+      "mutating": true,
+      "receipt": true,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "clients": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "claude-code",
+                "codex",
+                "opencode",
+                "hermes",
+                "grok-cli"
+              ]
+            }
+          }
+        },
+        "required": [
+          "clients"
+        ]
+      },
+      "result": {
+        "job_id": "string"
+      },
+      "errors": [
+        "TEST_STATE",
+        "INVALID_PARAMS",
+        "BUSY"
+      ],
+      "semantics": "Returns {job_id} at once; a detached `codepet clients-job` does the work (SPEC §5.2). This click is the consent. TEST_STATE while the bar runs with a stateHome test override.",
+      "examples": {
+        "valid": [
+          {
+            "clients": [
+              "claude-code"
+            ]
+          },
+          {
+            "clients": [
+              "claude-code",
+              "grok-cli",
+              "opencode",
+              "hermes"
+            ]
+          },
+          {
+            "clients": [
+              "claude-code",
+              "codex",
+              "opencode",
+              "hermes",
+              "grok-cli"
+            ]
+          }
+        ],
+        "invalid": [
+          {
+            "clients": []
+          },
+          {
+            "clients": [
+              "claude"
+            ]
+          },
+          {
+            "clients": [
+              "codex",
+              "codex"
+            ]
+          },
+          {
+            "clients": [
+              "muse-code"
+            ]
+          },
+          {
+            "clients": "codex"
+          },
+          {}
+        ]
+      }
+    },
+    {
+      "method": "clients.disconnect",
+      "wp": "WP3",
+      "mutating": true,
+      "receipt": true,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode",
+              "hermes",
+              "grok-cli"
+            ]
+          }
+        },
+        "required": [
+          "client"
+        ]
+      },
+      "result": {
+        "job_id": "string"
+      },
+      "errors": [
+        "TEST_STATE",
+        "INVALID_PARAMS",
+        "BUSY"
+      ],
+      "semantics": "Detached job: writes $STATE/clients/<id>.disconnected first, then removes exactly CodePet's artifact (Codex: tombstone rule).",
+      "examples": {
+        "valid": [
+          {
+            "client": "codex"
+          }
+        ],
+        "invalid": [
+          {
+            "client": "crush"
+          },
+          {},
+          {
+            "client": [
+              "codex"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "method": "clients.test",
+      "wp": "WP3",
+      "mutating": true,
+      "receipt": true,
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode",
+              "hermes",
+              "grok-cli"
+            ]
+          }
+        },
+        "required": []
+      },
+      "result": {
+        "job_id": "string"
+      },
+      "errors": [
+        "INVALID_PARAMS",
+        "BUSY"
+      ],
+      "semantics": "The ready check: writes a fresh $STATE/test.nonce (0600) and runs each connected client's exact stored command string with a client-shaped fixture carrying codepet_test=<nonce>: turn_start, then turn_done 1.5 s later. Test events drive only agent.test. No arrival within 5 s -> failed: ready_check.",
+      "examples": {
+        "valid": [
+          {},
+          {
+            "client": "hermes"
+          }
+        ],
+        "invalid": [
+          {
+            "client": "gemini"
+          },
+          {
+            "client": "muse-code"
+          },
+          {
+            "clients": [
+              "codex"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "error_codes_added": {
+    "NOT_IMPLEMENTED": "declared method not implemented in this build (WP0 skeleton)",
+    "ALREADY_ARMED": "pet.start on an armed life; the UI just opens Home",
+    "NAME_INVALID": "pet.start / pet.rename name fails normalize_pet_name; UI 'That name is too long.'",
+    "NO_TREATS": "treats.give with an empty jar",
+    "PET_NEEDS_CARE": "treats.give while asleep or fainted",
+    "TEST_STATE": "clients.connect / clients.disconnect while the bar runs with a stateHome test override"
+  },
+  "error_codes_reused": {
+    "RULES_NOT_ACKNOWLEDGED (spec)": "ACKNOWLEDGEMENT_REQUIRED (existing pet.adopt code)"
+  },
+  "client_ids": [
+    "claude-code",
+    "codex",
+    "opencode",
+    "hermes",
+    "grok-cli"
+  ],
+  "deferred_client_ids": [
+    "muse-code"
+  ],
+  "job_results": {
+    "outcome": [
+      "connected",
+      "needs_step",
+      "failed"
+    ],
+    "step": [
+      "codex_trust",
+      "codex_hooks_off"
+    ],
+    "reason": [
+      "not_installed",
+      "too_old",
+      "blocked",
+      "settings_changed",
+      "ready_check"
+    ],
+    "reason_to_copy": {
+      "too_old": "reason.too_old",
+      "not_installed": "reason.not_installed",
+      "blocked": "reason.blocked",
+      "settings_changed": "reason.blocked",
+      "ready_check": "reason.blocked"
+    }
+  },
+  "cli": {
+    "kept": [
+      "rpc",
+      "state",
+      "--version",
+      "--help"
+    ],
+    "added": {
+      "migrate": "explicit migration (installer); WP1",
+      "hook --state-dir <abs> <client-id>": "always exit 0 silently (O2); WP2",
+      "fold --state-dir <abs> [--lock-fd N]": "internal; safe by hand (takes the lock itself without --lock-fd); WP2",
+      "clients-job <job_id>": "internal detached Connect/Disconnect/test job; WP3",
+      "on | off": "wrappers for app.set_enabled; WP1",
+      "helpers on|off": "wrapper for app.set_helpers; WP1",
+      "connect [id...|--all] / disconnect <id>": "wrappers for clients.*; wait for the job and print plain words; WP3",
+      "forget-history": "wrapper for agent.forget_history; WP1",
+      "doctor [--json]": "plain words, changes nothing; --json stable and never includes config contents; WP3"
+    },
+    "removed_in_wp1": [
+      "providers",
+      "mock-demo (moves into tests behind legacy-tasks)",
+      "the supervisor entry"
+    ],
+    "wp0_behaviour": "added commands other than hook print 'NOT_IMPLEMENTED: codepet <cmd> is not implemented yet in this v0.3 build' on stderr and exit 1 without touching state; hook exits 0 silently"
+  }
+}
