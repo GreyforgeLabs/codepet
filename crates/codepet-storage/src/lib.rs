@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod agent_export;
 mod agent_store;
+mod app;
 mod bar_export;
 mod care;
 mod life;
@@ -23,6 +24,7 @@ mod schema;
 mod spool;
 mod store;
 mod sys;
+mod treats;
 
 pub use agent_export::{
     AgentExport, AppExport, ClientExport, ClientsExport, JobExport, TestExport, TreatsExport,
@@ -34,7 +36,8 @@ pub use care::{BATHROOM_LIMIT, DEMO_XP, EXECUTION_LIMIT_MS, SESSION_LIMIT, SLEEP
 /// Lifecycle enums used by the life API, re-exported for callers of `adopt`/`set_rules`.
 pub use codepet_core::lifecycle::{Mode, Pace};
 pub use life::{
-    lifecycle_rules_json, lifecycle_rules_sha256, AdoptRequest, Leniency, MAX_MEMORIAL_PAGE,
+    lifecycle_rules_json, lifecycle_rules_sha256, AdoptRequest, Leniency, StartRequest,
+    MAX_MEMORIAL_PAGE,
 };
 pub use model::{
     AcceptOutcome, CareOutcome, CareView, CriticalView, DecayView, Event, EventData, EventsPage,
@@ -49,13 +52,14 @@ pub use paths::{
     FOLD_LOCK_FILE, HELPERS_FLAG, INBOX_DIR, INBOX_OVERFLOW_FILE, INTEGRATIONS_DIR, JOBS_DIR,
     OFF_FLAG, PRESENCE_FILE, SHIM_REL_PATH, STAGING_DIR, TEST_NONCE_FILE,
 };
-pub use store::Store;
 #[cfg(feature = "legacy-tasks")]
 pub use store::{AcceptRequest, SealOutcome, Step};
+pub use store::{MigrationReport, Store};
 pub use sys::Supervisor;
+pub use treats::{caps_allow, CapCheck, Earned};
 
 /// Current SQLite `user_version`.
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 pub const DB_FILE: &str = "codepet.sqlite3";
 pub const TOKEN_TTL_MS: i64 = 5 * 60 * 1000;
 /// Responses must fit one 64 KiB frame, so stored text is bounded by its JSON-encoded size
@@ -115,6 +119,21 @@ pub enum StorageError {
     Busy,
     /// No living companion: care, sleep, pause and selection need one.
     NoActivePet,
+    /// `INVALID_STATE` "CodePet is off": a method that would age, arm, grow or end a life
+    /// while `meta.enabled = 0` (`protocol.json` `off_behaviour`).
+    Off,
+    /// `pet.start` on a life that is already armed; the UI just opens Home.
+    AlreadyArmed,
+    /// `pet.start` / `pet.rename`: the name fails core's `normalize_pet_name`.
+    NameInvalid(&'static str),
+    /// `treats.give` with an empty jar.
+    NoTreats,
+    /// `treats.give` while the pet is asleep, paused or fainted.
+    PetNeedsCare,
+    /// `NOT_FOUND` for a `life_id` that does not name the living companion.
+    LifeNotFound,
+    /// `BUSY`: the fold holds `fold.lock` (`agent.forget_history`); retry shortly.
+    FoldRunning,
     /// `NO_ACTIVE_PET` for a command whose own settlement made a pending end final: the
     /// end is committed and the command refused.
     PassedAway,
@@ -136,6 +155,9 @@ pub enum StorageError {
     ResyncRequired,
     /// Database `user_version` this build cannot handle; the file was not modified.
     SchemaUnsupported(i64),
+    /// An older database that only `codepet migrate` (or `state.get`) may upgrade; the file
+    /// was not modified.
+    MigrationRequired(i64),
     /// `quick_check` failed or the file is not a database; the file was not modified.
     Corrupt,
     /// State directory or database file failed an ownership/mode/symlink check.
@@ -147,9 +169,14 @@ pub enum StorageError {
 impl StorageError {
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Busy => "BUSY",
+            Self::Busy | Self::FoldRunning => "BUSY",
             Self::NoActivePet | Self::PassedAway => "NO_ACTIVE_PET",
-            Self::InvalidState(_) => "INVALID_STATE",
+            Self::InvalidState(_) | Self::Off => "INVALID_STATE",
+            Self::AlreadyArmed => "ALREADY_ARMED",
+            Self::NameInvalid(_) => "NAME_INVALID",
+            Self::NoTreats => "NO_TREATS",
+            Self::PetNeedsCare => "PET_NEEDS_CARE",
+            Self::LifeNotFound => "NOT_FOUND",
             Self::StaleRevision => "STALE_REVISION",
             Self::UnsupportedProvider => "UNSUPPORTED_PROVIDER",
             Self::NotFound => "NOT_FOUND",
@@ -162,7 +189,7 @@ impl StorageError {
             Self::InvalidParams(_) | Self::InvalidPath(_) => "INVALID_PARAMS",
             Self::Capacity => "CAPACITY",
             Self::ResyncRequired => "RESYNC_REQUIRED",
-            Self::SchemaUnsupported(_) => "SCHEMA_UNSUPPORTED",
+            Self::SchemaUnsupported(_) | Self::MigrationRequired(_) => "SCHEMA_UNSUPPORTED",
             Self::Corrupt
             | Self::UnsafeStateDir(_)
             | Self::Unavailable(_)
@@ -189,10 +216,21 @@ impl fmt::Display for StorageError {
                 "Your companion's grace time ran out and they have passed away. \
                  Their memorial is kept; adopt a companion whenever you're ready.",
             ),
-            Self::InvalidState(why) => write!(f, "Invalid task state: {why}."),
+            Self::InvalidState(why) => write!(f, "Invalid state: {why}."),
+            Self::Off => f.write_str("CodePet is off"),
+            Self::AlreadyArmed => f.write_str("The companion has already started."),
+            Self::NameInvalid(why) => write!(f, "That name is not allowed: {why}."),
+            Self::NoTreats => f.write_str("The treat jar is empty."),
+            Self::PetNeedsCare => {
+                f.write_str("The companion needs care first (asleep, paused or fainted).")
+            }
+            Self::LifeNotFound => f.write_str("That companion was not found."),
+            Self::FoldRunning => {
+                f.write_str("Coding activity is being recorded right now; try again shortly.")
+            }
             Self::StaleRevision => f.write_str("The revision changed. Reload and review it."),
             Self::UnsupportedProvider => f.write_str("Provider is not supported in this version."),
-            Self::NotFound => f.write_str("Task not found."),
+            Self::NotFound => f.write_str("Not found."),
             Self::TokenInvalid => f.write_str("Preflight token is invalid or already used."),
             Self::TokenExpired => f.write_str("Preflight token expired. Run preflight again."),
             Self::ReviewChanged => f.write_str("The review changed. Review it again."),
@@ -216,6 +254,10 @@ impl fmt::Display for StorageError {
                     "Database schema version {v} is not supported; left unchanged."
                 )
             }
+            Self::MigrationRequired(v) => write!(
+                f,
+                "Database schema version {v} needs `codepet migrate` first; left unchanged."
+            ),
             Self::Corrupt => f.write_str("Database failed its integrity check; left unchanged."),
             Self::UnsafeStateDir(why) => write!(f, "Unsafe state directory: {why}."),
             Self::Unavailable(why) => write!(f, "Storage unavailable: {why}."),

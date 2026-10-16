@@ -1,4 +1,5 @@
 //! Result shapes from docs/milestone-1.md. Enums serialize as their stable core strings.
+use crate::agent_export::{AgentExport, ClientsExport, TreatsExport};
 use codepet_core::{Category, Draft, Provider, State, Verification};
 use serde::{Deserialize, Serialize};
 
@@ -255,6 +256,17 @@ pub struct Snapshot {
     /// The living companion's evolutions no UI has acknowledged yet (`pet.events_seen`).
     pub unseen_events: Vec<UnseenEvent>,
     pub memorial: MemorialBrief,
+    // ---- v0.3 (spec §6.2): the same blocks as `bar-state.json` (one loader). ----
+    /// The On/Off switch (`meta.enabled`).
+    pub enabled: bool,
+    /// "Count background helpers" (`meta.count_helpers`).
+    pub count_helpers: bool,
+    /// Coding-app activity (`bar.v2.schema.json` `$defs/agent`).
+    pub agent: AgentExport,
+    /// Client records (`$defs/clients`).
+    pub clients: ClientsExport,
+    /// The living life's treat jar (`$defs/treats`).
+    pub treats: TreatsExport,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

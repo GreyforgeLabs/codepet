@@ -28,7 +28,7 @@ use codepet_protocol::{
     TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
 };
 use codepet_storage::{
-    lifecycle_rules_json, AdoptRequest, Leniency, StatePaths, Store, SystemClock,
+    lifecycle_rules_json, AdoptRequest, Leniency, StartRequest, StatePaths, Store, SystemClock,
 };
 #[cfg(feature = "legacy-tasks")]
 use codepet_storage::{
@@ -80,15 +80,22 @@ pub fn export_error_line(reason: &str) -> String {
     format!("codepet: bar-state.json not updated: {}", &flat[..end])
 }
 
-/// The storage handle of one request, opened only when a method needs it.
+/// The storage handle of one request, opened only when a method needs it. Only
+/// `state.get` may upgrade an older database (migration ownership, spec §6.2); every other
+/// method answers `SCHEMA_UNSUPPORTED` ("needs `codepet migrate`") for one, untouched.
 #[derive(Default)]
 struct Ctx {
     store: Option<Store>,
+    may_migrate: bool,
 }
 impl Ctx {
     fn store(&mut self) -> Result<&mut Store, Failure> {
         if self.store.is_none() {
-            self.store = Some(open()?);
+            self.store = Some(if self.may_migrate {
+                open()?
+            } else {
+                open_current()?
+            });
         }
         Ok(self.store.as_mut().expect("store was just opened"))
     }
@@ -144,7 +151,10 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
     };
     let id = request.id.clone();
     let method = request.method;
-    let mut ctx = Ctx::default();
+    let mut ctx = Ctx {
+        store: None,
+        may_migrate: method == Method::StateGet,
+    };
     match dispatch(request, &mut ctx) {
         Ok((result, job)) => {
             // Publish before answering, so a client that sees this response finds the
@@ -180,9 +190,16 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
 const COMMITTED_TOO_LARGE: &str = "The request may have been applied, but its result is too \
     large to return. Reload with state.get before retrying.";
 
+/// Opens and, when older, migrates the database (`state.get`, `codepet state`).
 fn open() -> Result<Store, Failure> {
     let paths = StatePaths::from_env()?;
     Ok(Store::open(&paths, Arc::new(SystemClock))?)
+}
+
+/// Opens a current database; an older one is refused untouched (run `codepet migrate`).
+pub(crate) fn open_current() -> Result<Store, Failure> {
+    let paths = StatePaths::from_env()?;
+    Ok(Store::open_current(&paths, Arc::new(SystemClock))?)
 }
 
 /// The v0.3 skeleton's refusal: params were valid, the body lands in a later work package.
@@ -465,32 +482,47 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
             let _: LifecycleRulesParams = parse_params(p)?;
             encode(serde_json::from_str(&lifecycle_rules_json()))
         }
-        // ---- v0.3 (spec §6.2): validated, then NOT_IMPLEMENTED until their WP lands. ----
-        // WP1: pet.start, pet.rename, treats.give, app.set_enabled, app.set_helpers,
-        // agent.forget_history.
+        // ---- v0.3 (spec §6.2). Each returns the `state.get` snapshot. ----
         Method::PetStart => {
-            let _: PetStartParams = parse_params(p)?;
-            pending()
+            let s: PetStartParams = parse_params(p)?;
+            let request = StartRequest {
+                life_id: s.life_id.as_deref(),
+                species: &s.species,
+                name: s.name.as_deref(),
+                mode: mode(&s.mode)?,
+                acknowledge_rules: s.acknowledge_rules,
+            };
+            encode(serde_json::to_value(
+                ctx.store()?.start_pet(&req.id, &request)?,
+            ))
         }
         Method::PetRename => {
-            let _: PetRenameParams = parse_params(p)?;
-            pending()
+            let r: PetRenameParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.rename(&req.id, &r.life_id, &r.name)?,
+            ))
         }
         Method::TreatsGive => {
-            let _: TreatsGiveParams = parse_params(p)?;
-            pending()
+            let t: TreatsGiveParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.give_treat(&req.id, &t.life_id)?,
+            ))
         }
         Method::AppSetEnabled => {
-            let _: AppSetEnabledParams = parse_params(p)?;
-            pending()
+            let e: AppSetEnabledParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.set_enabled(&req.id, e.enabled)?,
+            ))
         }
         Method::AppSetHelpers => {
-            let _: AppSetHelpersParams = parse_params(p)?;
-            pending()
+            let e: AppSetHelpersParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.set_helpers(&req.id, e.enabled)?,
+            ))
         }
         Method::AgentForgetHistory => {
             let _: AgentForgetHistoryParams = parse_params(p)?;
-            pending()
+            encode(serde_json::to_value(ctx.store()?.forget_history(&req.id)?))
         }
         // WP3: the clients methods. connect/disconnect refuse TEST_STATE under a test
         // state home; every job is detached and never holds the bar's RPC slot.
@@ -574,8 +606,10 @@ mod tests {
         assert!(line.len() - prefix.len() >= MAX_EXPORT_ERROR_BYTES - 1);
     }
 
+    /// In-process tests never open storage (the process environment is the developer's own):
+    /// the WP1 methods are exercised end to end by `tests/v03.rs` under a throwaway home.
     #[test]
-    fn v03_methods_are_validated_then_not_implemented_without_storage() {
+    fn v03_methods_are_validated_before_storage() {
         let cases = [
             (
                 "pet.start",
@@ -593,6 +627,20 @@ mod tests {
         ];
         assert_eq!(cases.len(), Method::V03_ADDED.len());
         for (method, params) in cases {
+            let m = Method::parse(method).unwrap();
+            // Bad params are INVALID_PARAMS before anything is opened.
+            let frame = format!(r#"{{"v":1,"id":"r","method":"{method}","params":{{"bogus":1}}}}"#);
+            let (response, job) = handle(&frame);
+            assert!(job.is_none());
+            assert_eq!(
+                response.error.expect(method).code,
+                ErrorCode::InvalidParams,
+                "{method}"
+            );
+            if !Method::V03_PENDING.contains(&m) {
+                continue;
+            }
+            // The clients methods (WP3) still answer NOT_IMPLEMENTED without storage.
             let frame = format!(r#"{{"v":1,"id":"r","method":"{method}","params":{params}}}"#);
             let (response, job) = handle(&frame);
             assert!(job.is_none());
@@ -600,14 +648,6 @@ mod tests {
             assert_eq!(error.code, ErrorCode::NotImplemented, "{method}");
             assert!(!error.retryable);
             assert_eq!(response.id.as_deref(), Some("r"));
-            // Bad params are still INVALID_PARAMS, before the stub refusal.
-            let frame = format!(r#"{{"v":1,"id":"r","method":"{method}","params":{{"bogus":1}}}}"#);
-            let (response, _) = handle(&frame);
-            assert_eq!(
-                response.error.expect(method).code,
-                ErrorCode::InvalidParams,
-                "{method}"
-            );
         }
     }
 

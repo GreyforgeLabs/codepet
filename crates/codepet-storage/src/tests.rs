@@ -223,6 +223,82 @@ fn fresh_open_has_defaults_and_safe_modes() {
     assert_eq!(env.count("SELECT count(*) FROM apply_transactions"), 0);
 }
 
+/// The v0.3 `state.get` shape (spec §6.2, `protocol.json` `snapshot_v03`): the v0.2 task
+/// fields are gone, the v0.3 blocks have the `bar.v2` shapes, `schema_version` is 5.
+#[cfg(not(feature = "legacy-tasks"))]
+#[test]
+fn v03_snapshot_json_shape_matches_contract() {
+    let env = Env::new();
+    let store = env.open();
+    let v = serde_json::to_value(store.snapshot().unwrap()).unwrap();
+    assert_eq!(
+        keys(&v),
+        set(&[
+            "schema_version",
+            "state_version",
+            "db_id",
+            "protocol_version",
+            "last_seq",
+            "meters",
+            "care",
+            "progression",
+            "life",
+            "lifecycle",
+            "unseen_events",
+            "memorial",
+            "enabled",
+            "count_helpers",
+            "agent",
+            "clients",
+            "treats"
+        ])
+    );
+    assert_eq!(
+        (v["schema_version"].clone(), v["protocol_version"].clone()),
+        (5.into(), 1.into())
+    );
+    assert_eq!(
+        keys(&v["care"]),
+        set(&[
+            "revision",
+            "bathroom_due",
+            "starts_since_bathroom",
+            "sleeping",
+            "sleep_due",
+            "sleep_remaining_ms",
+            "sleep_started_at_ms",
+            "work_sessions",
+            "execution_ms",
+            "welcome_care_available"
+        ])
+    );
+    assert_eq!(v["enabled"], true);
+    assert_eq!(v["count_helpers"], false);
+    assert_eq!(v["treats"], serde_json::json!({"jar": 0, "full": false}));
+    assert_eq!(v["clients"], serde_json::json!({}));
+    assert_eq!(
+        keys(&v["agent"]),
+        set(&[
+            "state",
+            "apps",
+            "stale_at_ms",
+            "finished_seq",
+            "finished_at_ms",
+            "finished_app",
+            "finished_treat",
+            "finished_jar_full",
+            "hello_seq",
+            "hello_at_ms",
+            "hello_app",
+            "test",
+            "error_at_ms",
+            "error_app",
+            "helpers_busy"
+        ])
+    );
+    assert_eq!(v["lifecycle"]["frozen_reason"], "unarmed");
+}
+
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn snapshot_json_shape_matches_contract() {
@@ -248,7 +324,12 @@ fn snapshot_json_shape_matches_contract() {
             "life",
             "lifecycle",
             "unseen_events",
-            "memorial"
+            "memorial",
+            "enabled",
+            "count_helpers",
+            "agent",
+            "clients",
+            "treats"
         ])
     );
     assert_eq!(
@@ -894,7 +975,6 @@ fn unique_index_enforces_slot_even_without_checks() {
     assert!(raw.execute("UPDATE pet_state SET hunger = -1", []).is_err());
 }
 
-#[cfg(feature = "legacy-tasks")]
 #[test]
 fn slot_state_list_matches_core() {
     for s in State::ALL {
@@ -1800,13 +1880,13 @@ fn newer_schema_is_refused_untouched() {
     env.paths.prepare().unwrap();
     {
         let c = env.raw();
-        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 5;")
+        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 6;")
             .unwrap();
     }
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(5))
+        Err(StorageError::SchemaUnsupported(6))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     assert_eq!(fs::read_dir(&env.paths.state_dir).unwrap().count(), 1);
@@ -1857,7 +1937,7 @@ fn corrupt_database_is_refused_untouched() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn migration_backs_up_older_versions_first() {
-    fn v5(tx: &rusqlite::Transaction<'_>, _at: &care::TimeMark) -> Result<()> {
+    fn v6(tx: &rusqlite::Transaction<'_>, _at: &care::TimeMark) -> Result<()> {
         Ok(tx.execute_batch("CREATE TABLE extra (x INTEGER)")?)
     }
     let env = Env::new();
@@ -1873,35 +1953,36 @@ fn migration_backs_up_older_versions_first() {
         schema::MIGRATIONS[1],
         schema::MIGRATIONS[2],
         schema::MIGRATIONS[3],
-        v5,
+        schema::MIGRATIONS[4],
+        v6,
     ];
     env.clock.set(T0 + 42);
     let store = Store::open_with(&env.paths, env.clock.clone(), migrations).unwrap();
     assert_eq!(store.task(&id).unwrap().task_id, id);
     drop(store);
-    assert_eq!(env.count("PRAGMA user_version"), 5);
+    assert_eq!(env.count("PRAGMA user_version"), 6);
     assert_eq!(env.count("SELECT count(*) FROM extra"), 0);
     let backup = env
         .paths
         .state_dir
-        .join(format!("codepet.sqlite3.bak-v4-{}", T0 + 42));
+        .join(format!("codepet.sqlite3.bak-v5-{}", T0 + 42));
     assert_eq!(mode(&backup), 0o600);
     let b = Connection::open(&backup).unwrap();
     let v: i64 = b
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(v, 4);
+    assert_eq!(v, 5);
     let n: i64 = b
         .query_row("SELECT count(*) FROM tasks WHERE id = ?1", [&id], |r| {
             r.get(0)
         })
         .unwrap();
     assert_eq!(n, 1);
-    // This build (v4) now refuses the upgraded file without touching it.
+    // This build (v5) now refuses the upgraded file without touching it.
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(5))
+        Err(StorageError::SchemaUnsupported(6))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     // Reopening at the same version neither migrates nor backs up again.
@@ -2581,8 +2662,12 @@ mod life_cases;
 mod lifecycle_cases;
 #[path = "migration_v4_tests.rs"]
 mod migration_v4_cases;
+#[path = "migration_v5_tests.rs"]
+mod migration_v5_cases;
 #[path = "presence_tests.rs"]
 mod presence_cases;
+#[path = "v03_tests.rs"]
+mod v03_cases;
 
 /// An armed (permadeath) companion with full meters, on a clock with a boot pair.
 fn armed(env: &Env) -> (Store, String) {

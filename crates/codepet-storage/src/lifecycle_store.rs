@@ -243,6 +243,8 @@ pub(crate) fn settle_presence(c: &Connection, paths: &StatePaths, at: &TimeMark)
     let paused: bool = c.query_row("SELECT decay_paused FROM pet_state WHERE id = 1", [], |r| {
         r.get(0)
     })?;
+    // Off is a blocker too (spec §7.3): the time is discarded, never banked, so On resumes
+    // with no catch-up.
     let blocked = match &life {
         None => true,
         Some(l) => {
@@ -251,6 +253,7 @@ pub(crate) fn settle_presence(c: &Connection, paths: &StatePaths, at: &TimeMark)
                 || paused
                 || row.death_pending
                 || life::slot_busy(c)?
+                || !crate::app::enabled(c)?
         }
     };
     if blocked {

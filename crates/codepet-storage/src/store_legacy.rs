@@ -977,7 +977,14 @@ fn accept_body(
     )?;
     transition(tx, &t, State::AcceptedArtifact, at)?;
     if let (Some(life_id), true) = (&performer, demo_xp > 0) {
-        if life::record_evolution(tx, life_id, &t.id, old_life_xp, demo_xp, now)? {
+        if life::record_evolution(
+            tx,
+            life_id,
+            life::EvolvedBy::Task(&t.id),
+            old_life_xp,
+            demo_xp,
+            now,
+        )? {
             fault("evolve_before_commit");
         }
     }

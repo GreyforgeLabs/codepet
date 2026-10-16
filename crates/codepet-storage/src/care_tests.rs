@@ -401,7 +401,8 @@ fn v1_migration_preserves_historical_care_receipts_and_inflight_tasks() {
         }
     );
     assert!(s.snapshot().unwrap().care.welcome_care_available);
-    assert_eq!(s.task("old-running").unwrap().state, State::Running);
+    // The v5 step closed the leftover running task, without a reward or a refund.
+    assert_eq!(s.task("old-running").unwrap().state, State::Interrupted);
     assert_eq!(
         s.task("old-accepted")
             .unwrap()

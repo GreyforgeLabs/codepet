@@ -74,7 +74,7 @@ fn old_db(env: &Env, version: usize) {
     );
 }
 
-const V1_ROWS: &str = "
+pub(super) const V1_ROWS: &str = "
 INSERT INTO tasks (id,revision,state,category,provider,folder,instructions,mock_outcome,
     mock_step_ms,created_at_ms,updated_at_ms,review_digest,review_verification,review_simulated)
 VALUES ('old-accepted',1,'accepted_artifact','hunger','mock','/project','Historical text',
@@ -173,6 +173,50 @@ fn life1(env: &Env) -> (String, String, String, i64, String) {
         .unwrap()
 }
 
+/// `tasks` / `task_events` after an upgrade to v5: identical to `before` except that the
+/// slot task `in-flight` (if any) moved to its v5 closing state at the migration time and
+/// gained exactly one `task_events` row.
+fn assert_v5_closure_only(c: &Connection, table: &str, before: &str, after: &str) {
+    use rusqlite::OptionalExtension;
+    let closed: Option<(String, i64)> = c
+        .query_row(
+            "SELECT state, updated_at_ms FROM tasks WHERE id = 'in-flight'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .unwrap();
+    let Some((state, at)) = closed else {
+        assert_eq!(before, after, "{table} changed");
+        return;
+    };
+    assert!(
+        matches!(state.as_str(), "interrupted" | "discarded"),
+        "{state}"
+    );
+    assert_eq!(at, T0, "closed at the migration time");
+    let (b, a): (Vec<&str>, Vec<&str>) = (before.lines().collect(), after.lines().collect());
+    if table == "task_events" {
+        assert_eq!(a.len(), b.len() + 1);
+        assert_eq!(&a[..b.len()], &b[..]);
+        assert!(a[b.len()].contains("\"in-flight\""), "{}", a[b.len()]);
+        assert!(
+            a[b.len()].contains(&format!("Text(\"{state}\")")),
+            "{}",
+            a[b.len()]
+        );
+    } else {
+        assert_eq!(a.len(), b.len());
+        for (x, y) in b.iter().zip(&a) {
+            if x.contains("Text(\"in-flight\")") {
+                assert!(y.contains(&format!("Text(\"{state}\")")), "{y}");
+            } else {
+                assert_eq!(x, y);
+            }
+        }
+    }
+}
+
 /// Shared assertions for any pre-v4 → v4 upgrade with `V1_ROWS` present.
 fn check_upgrade(
     env: &Env,
@@ -186,7 +230,11 @@ fn check_upgrade(
     // pending approvals are invalidated (as every schema step has done).
     let after = snapshot_all(&c, schema);
     for ((table, b), (_, a)) in before.iter().zip(&after) {
-        if table == "preflight_tokens" {
+        if table == "tasks" || table == "task_events" {
+            // The v5 step closes a leftover slot task (checked by v5_closure below); every
+            // other task row and every earlier event is untouched.
+            assert_v5_closure_only(&c, table, b, a);
+        } else if table == "preflight_tokens" {
             assert_eq!(
                 b.replace("'pending'", "'invalidated'")
                     .replace("Text(\"pending\")", "Text(\"invalidated\")"),
@@ -312,10 +360,11 @@ fn v2_or_v3_upgrade(from: usize, slot_state: &str) {
         env.count("SELECT count(*) FROM life_events WHERE kind = 'evolved' AND dedup_key = 'stage:2' AND seen_at_ms IS NOT NULL AND task_id IS NULL"),
         1
     );
-    // In-flight work is intact and still owns the slot.
+    // v5 closes in-flight work (no reward): the slot is free in every build.
     let t = store.task("in-flight").unwrap();
-    assert_eq!(t.state.as_str(), slot_state);
-    assert_eq!(s.active_task.unwrap().task_id, "in-flight");
+    let closed = schema::migration_close_state(State::parse(slot_state).unwrap()).unwrap();
+    assert_eq!(t.state, closed);
+    assert!(s.active_task.is_none());
     // A v2-era receipt replays (serde defaults for the new fields).
     let replay = accept(
         &mut store,

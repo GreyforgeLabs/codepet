@@ -49,18 +49,65 @@ impl std::fmt::Debug for Store {
     }
 }
 
+/// What [`Store::open_migrating`] found and did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrationReport {
+    /// `user_version` before opening; 0 for a fresh database.
+    pub from: i64,
+    /// `user_version` now ([`SCHEMA_VERSION`]).
+    pub to: i64,
+    /// The `VACUUM INTO` copy taken before an upgrade (none for a fresh database or one
+    /// that was already current).
+    pub backup: Option<PathBuf>,
+}
+
+/// Whether an open may upgrade an existing older database (spec §6.2 "Migration
+/// ownership": only `codepet migrate` and `state.get` may).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Upgrade {
+    Allowed,
+    Refused,
+}
+
 impl Store {
-    /// Opens (creating if needed) the database under checked paths. Refuses without
-    /// modifying the file when `quick_check` fails or `user_version` is newer than this build.
+    /// Opens (creating if needed) the database under checked paths and migrates an older
+    /// one to [`SCHEMA_VERSION`]. Only `codepet migrate`, `codepet state` and `rpc state.get`
+    /// use this (migration ownership, spec §6.2). Refuses without modifying the file when
+    /// `quick_check` fails or `user_version` is newer than this build.
     pub fn open(paths: &StatePaths, clock: Arc<dyn Clock>) -> Result<Self> {
-        Self::open_with(paths, clock, MIGRATIONS)
+        Ok(Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Allowed)?.0)
     }
 
+    /// [`open`](Self::open), also reporting the version found and the backup taken.
+    pub fn open_migrating(
+        paths: &StatePaths,
+        clock: Arc<dyn Clock>,
+    ) -> Result<(Self, MigrationReport)> {
+        Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Allowed)
+    }
+
+    /// Opens a current database for every other command. A fresh (empty) state creates the
+    /// current schema, which is an install, not a migration; an existing older database is
+    /// refused untouched with [`StorageError::MigrationRequired`] (run `codepet migrate`).
+    pub fn open_current(paths: &StatePaths, clock: Arc<dyn Clock>) -> Result<Self> {
+        Ok(Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Refused)?.0)
+    }
+
+    #[cfg(test)]
     pub(crate) fn open_with(
         paths: &StatePaths,
         clock: Arc<dyn Clock>,
         migrations: &[Migration],
     ) -> Result<Self> {
+        Ok(Self::open_with_mode(paths, clock, migrations, Upgrade::Allowed)?.0)
+    }
+
+    fn open_with_mode(
+        paths: &StatePaths,
+        clock: Arc<dyn Clock>,
+        migrations: &[Migration],
+        upgrade: Upgrade,
+    ) -> Result<(Self, MigrationReport)> {
         paths.prepare()?;
         let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
@@ -88,6 +135,10 @@ impl Store {
                 return Err(StorageError::SchemaUnsupported(0));
             }
         }
+        if version > 0 && version < target && upgrade == Upgrade::Refused {
+            // Checked before the first write (the WAL pragma): the file stays as it was.
+            return Err(StorageError::MigrationRequired(version));
+        }
         let mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], get0)?;
         if !mode.eq_ignore_ascii_case("wal") {
             return Err(StorageError::Unavailable("WAL journal mode unavailable"));
@@ -98,13 +149,20 @@ impl Store {
             clock,
             paths: paths.clone(),
         };
-        if version > 0 && version < target {
-            store.backup(version)?;
-        }
+        let backup = if version > 0 && version < target {
+            Some(store.backup(version)?)
+        } else {
+            None
+        };
         if version < target {
             store.migrate(migrations)?;
         }
-        Ok(store)
+        let report = MigrationReport {
+            from: version,
+            to: target,
+            backup,
+        };
+        Ok((store, report))
     }
 
     pub fn paths(&self) -> &StatePaths {
@@ -213,6 +271,7 @@ impl Store {
         };
         let (meters, _paused) = load_pet(&tx)?;
         let block = life::LifeBlock::load(&tx)?;
+        let v03 = crate::agent_export::V03Blocks::load(&tx)?;
         #[cfg(feature = "legacy-tasks")]
         let legacy = legacy::snapshot_block(&tx, _paused)?;
         let snapshot = Snapshot {
@@ -238,6 +297,11 @@ impl Store {
             lifecycle: block.lifecycle,
             unseen_events: block.unseen_events,
             memorial: block.memorial,
+            enabled: v03.enabled,
+            count_helpers: v03.count_helpers,
+            agent: v03.agent,
+            clients: v03.clients,
+            treats: v03.treats,
         };
         tx.commit()?;
         Ok(snapshot)
@@ -245,6 +309,44 @@ impl Store {
 
     pub fn last_seq(&self) -> Result<i64> {
         last_seq(&self.conn)
+    }
+
+    /// Runs one idempotent v0.3 mutation (spec §6.2): the settling prologue, the receipt
+    /// check (same id + params → replay; other params → `IDEMPOTENCY_CONFLICT`), the Off
+    /// policy, `body`, the epilogue (finalize, `state_version++`), the receipt, then the
+    /// commit. Returns the `state.get` snapshot taken after the commit, also on replay.
+    pub(crate) fn v03_command(
+        &mut self,
+        request_id: &str,
+        method: &str,
+        canonical_params: &str,
+        policy: V03Policy,
+        fault_point: Option<&str>,
+        body: impl FnOnce(&Connection, &care::TimeMark, bool) -> Result<bool>,
+    ) -> Result<Snapshot> {
+        validate_request_id(request_id)?;
+        let sha = sha256_hex(canonical_params.as_bytes());
+        let (tx, at, ended) = self.write_settled()?;
+        let (_receipt, replayed): (V03Receipt, bool) =
+            replay_or_run(&tx, request_id, method, &sha, at.wall, || {
+                if policy == V03Policy::RefusedWhileOff {
+                    crate::app::ensure_on(&tx)?;
+                }
+                // `ended`: this command's own prologue made a pending end final.
+                let changed = body(&tx, &at, ended)?;
+                seal(&tx, &at)?;
+                Ok(V03Receipt { changed })
+            })
+            .map_err(|e| passed_away_if(ended, e))?;
+        if !replayed {
+            if let Some(point) = fault_point {
+                crate::fault(point);
+            }
+            tx.commit()?;
+        } else {
+            drop(tx);
+        }
+        self.snapshot()
     }
 
     // ---- user actions ------------------------------------------------------------------
@@ -279,6 +381,8 @@ impl Store {
         let (tx, at, ended) = self.write_settled()?;
         let (result, replayed) =
             replay_or_run(&tx, request_id, method, &params_sha256, at.wall, || {
+                // Care, sleep and wake would age the life: refused while Off.
+                crate::app::ensure_on(&tx)?;
                 care_body(&tx, &at, request_id, action)
             })
             .map_err(|e| passed_away_if(ended, e))?;
@@ -293,6 +397,7 @@ impl Store {
     pub fn set_paused(&mut self, paused: bool) -> Result<PauseView> {
         let (tx, at, ended) = self.write_settled()?;
         let now = at.wall;
+        crate::app::ensure_on(&tx)?;
         let life = life::active_life(&tx)?
             .ok_or_else(|| passed_away_if(ended, StorageError::NoActivePet))?;
         if lifecycle_store::load(&tx)?.death_pending {
@@ -343,7 +448,10 @@ fn begin_settled<'c>(
 /// first, then rest. Presence reads the nap state before `settle_sleep` changes it.
 pub(crate) fn settle_all(tx: &Connection, paths: &StatePaths, at: &care::TimeMark) -> Result<()> {
     lifecycle_store::settle_presence(tx, paths, at)?;
-    care::settle_sleep(tx, at)?;
+    // Off freezes the nap too: `app.set_enabled(true)` moves its cursor to the On click.
+    if crate::app::enabled(tx)? {
+        care::settle_sleep(tx, at)?;
+    }
     Ok(())
 }
 
@@ -377,6 +485,27 @@ pub(crate) fn finish(tx: Transaction<'_>, at: &care::TimeMark) -> Result<()> {
 const CARE_METHODS: &str = "('pet.care','pet.sleep','pet.wake')";
 const LIFE_RECEIPT_METHODS: &str =
     "('pet.select','pet.events_seen','pet.rules','pet.configure_life')";
+/// Frequent v0.3 clicks, pruned like care receipts. `pet.start` receipts are kept, like
+/// adoption and retirement.
+const V03_RECEIPT_METHODS: &str =
+    "('pet.rename','treats.give','app.set_enabled','app.set_helpers','agent.forget_history')";
+
+/// How a v0.3 method treats `meta.enabled = 0` (`protocol.json` `off_behaviour`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum V03Policy {
+    /// Runs normally while Off (cosmetic or bookkeeping).
+    AllowedWhileOff,
+    /// `INVALID_STATE` "CodePet is off", checked after receipt replay.
+    RefusedWhileOff,
+}
+
+/// The stored receipt of a v0.3 method: whether it changed anything. Its result is always
+/// the fresh `state.get` snapshot (also on replay), never a stale copy.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct V03Receipt {
+    changed: bool,
+}
 
 /// Idempotency by envelope request id. The same id with the same method and params
 /// returns the stored response (`true` = replayed; the caller then commits nothing); the
@@ -423,6 +552,7 @@ where
     for (group, keep) in [
         (CARE_METHODS, MAX_CARE_RECEIPTS),
         (LIFE_RECEIPT_METHODS, crate::MAX_LIFE_RECEIPTS),
+        (V03_RECEIPT_METHODS, crate::MAX_LIFE_RECEIPTS),
     ] {
         if group.contains(&format!("'{method}'")) {
             tx.execute(
@@ -485,41 +615,7 @@ fn care_body(
                 "pet is sleeping; finish the nap or wake it before care",
             ));
         }
-        let filled: &[Category] = match action {
-            "food" => &[Category::Hunger],
-            "water" => &[Category::Thirst],
-            "play" => &[Category::MentalHealth],
-            "wash" | "bathroom" => &[Category::Hygiene],
-            "routine" => &Category::ALL,
-            _ => return Err(StorageError::InvalidParams("unknown care action")),
-        };
-        for category in filled {
-            let col = category.as_str();
-            changed |= tx.execute(
-                &format!(
-                    "UPDATE pet_state SET {col} = 10000,
-                updated_at_ms = ?1 WHERE id = 1 AND {col} != 10000"
-                ),
-                [at.wall],
-            )? > 0;
-        }
-        if action == "bathroom" || (action == "routine" && state.bathroom_due) {
-            changed |= tx.execute(
-                "UPDATE pet_care SET starts_since_bathroom = 0
-                WHERE id = 1 AND starts_since_bathroom != 0",
-                [],
-            )? > 0;
-        }
-        changed |= tx.execute(
-            "UPDATE pet_care SET welcome_care_available = 0
-            WHERE id = 1 AND welcome_care_available != 0 AND starts_since_bathroom < 2
-            AND EXISTS(SELECT 1 FROM pet_state WHERE id = 1 AND hunger = 10000
-                AND thirst = 10000 AND mental_health = 10000 AND hygiene = 10000)",
-            [],
-        )? > 0;
-        // Matching care restarts satiety holds, resets lethal neglect and may recover
-        // the companion. It is allowed while critical; no fresh grace is granted.
-        lifecycle_store::on_care(tx, filled, at.wall)?;
+        changed |= fill_care(tx, at, action, state.bathroom_due)?;
     }
     if changed {
         care::bump(tx)?;
@@ -534,6 +630,56 @@ fn care_body(
         care: care::view(tx, meters)?,
         lifecycle: Some(life::LifeBlock::load(tx)?.lifecycle),
     })
+}
+
+/// A care action's fill (`food`, `water`, `play`, `wash`, `bathroom`, `routine`): full
+/// meters, the bathroom counter for `bathroom` (and `routine` when due), the welcome routine
+/// spent once every meter is full, then the lifecycle care hook (satiety holds, lethal
+/// neglect, recovery; no fresh grace). The caller checked that the pet is awake. Returns
+/// whether anything changed; the caller bumps the care revision.
+pub(crate) fn fill_care(
+    tx: &Connection,
+    at: &care::TimeMark,
+    action: &str,
+    bathroom_due: bool,
+) -> Result<bool> {
+    let mut changed = false;
+    let filled: &[Category] = match action {
+        "food" => &[Category::Hunger],
+        "water" => &[Category::Thirst],
+        "play" => &[Category::MentalHealth],
+        "wash" | "bathroom" => &[Category::Hygiene],
+        "routine" => &Category::ALL,
+        _ => return Err(StorageError::InvalidParams("unknown care action")),
+    };
+    for category in filled {
+        let col = category.as_str();
+        changed |= tx.execute(
+            &format!(
+                "UPDATE pet_state SET {col} = 10000,
+            updated_at_ms = ?1 WHERE id = 1 AND {col} != 10000"
+            ),
+            [at.wall],
+        )? > 0;
+    }
+    if action == "bathroom" || (action == "routine" && bathroom_due) {
+        changed |= tx.execute(
+            "UPDATE pet_care SET starts_since_bathroom = 0
+            WHERE id = 1 AND starts_since_bathroom != 0",
+            [],
+        )? > 0;
+    }
+    changed |= tx.execute(
+        "UPDATE pet_care SET welcome_care_available = 0
+        WHERE id = 1 AND welcome_care_available != 0 AND starts_since_bathroom < 2
+        AND EXISTS(SELECT 1 FROM pet_state WHERE id = 1 AND hunger = 10000
+            AND thirst = 10000 AND mental_health = 10000 AND hygiene = 10000)",
+        [],
+    )? > 0;
+    // Matching care restarts satiety holds, resets lethal neglect and may recover
+    // the companion. It is allowed while critical; no fresh grace is granted.
+    lifecycle_store::on_care(tx, filled, at.wall)?;
+    Ok(changed)
 }
 
 fn get0<T: FromSql>(r: &Row<'_>) -> rusqlite::Result<T> {

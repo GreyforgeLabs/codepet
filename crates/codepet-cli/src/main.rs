@@ -1,11 +1,13 @@
 //! CodePet short commands. No daemon: each invocation answers one explicit request and
-//! exits; only a successful `rpc` task.start continues as that job's mock supervisor.
+//! exits. (With the retired `legacy-tasks` feature only, a successful `rpc` task.start
+//! continues as that job's mock supervisor.)
 //!
-//! v0.3 skeleton (spec §6.3): `migrate`, `fold`, `clients-job`, `on`, `off`, `helpers`,
-//! `connect`, `disconnect`, `forget-history` and `doctor` are routed and answer
+//! v0.3 (spec §6.3): `migrate`, `on`, `off`, `helpers` and `forget-history` are WP1;
+//! `fold`, `clients-job`, `connect`, `disconnect` and `doctor` still answer
 //! `NOT_IMPLEMENTED` (exit 1, one stderr line, no state touched) until their work package
-//! lands. `hook` already keeps invariant O2: it always exits 0 silently.
+//! lands. `hook` keeps invariant O2: it always exits 0 silently.
 mod clients_job;
+mod commands;
 #[cfg(feature = "legacy-tasks")]
 mod demo;
 mod doctor;
@@ -18,14 +20,20 @@ mod supervisor;
 
 use std::io::Write;
 
-const HELP: &str = "CodePet: a desktop companion with durable mock execution
+const HELP: &str = "CodePet: a desktop pet that keeps you company while your coding apps work
+  codepet state            Print the state.get snapshot as JSON
+  codepet rpc              Answer one protocol request frame read from stdin
+  codepet migrate          Upgrade the saved pet data to this version (the installer runs it)
+  codepet on | off         Turn CodePet on or off (Off freezes the pet; nothing runs)
+  codepet helpers on|off   Count background helpers (headless coding sessions) or not
+  codepet forget-history   Forget coding history (treats and growth are kept)
+  codepet --version        Print the version
+No daemon and no background polling. CodePet only observes coding apps you connect; it never
+starts, stops, blocks or answers them.";
+#[cfg(feature = "legacy-tasks")]
+const LEGACY_HELP: &str = "Retired (legacy-tasks build only):
   codepet providers   Show provider support (mock only)
-  codepet state       Print the state.get snapshot as JSON
-  codepet rpc         Answer one protocol request frame read from stdin
-  codepet mock-demo   Explicitly run an in-memory simulation
-  codepet --version   Print the version
-No daemon, real provider, project IO, timers or background polling. Only an explicit
-task.start runs a per-job mock supervisor, which spawns no process.";
+  codepet mock-demo   Explicitly run an in-memory simulation";
 
 /// `codepet --version`; printed without opening storage.
 const VERSION: &str = concat!("codepet ", env!("CARGO_PKG_VERSION"));
@@ -43,6 +51,8 @@ fn main() {
     let code = match (command, args.len()) {
         (None, _) | (Some(Some("--help" | "help")), 1) => {
             println!("{HELP}");
+            #[cfg(feature = "legacy-tasks")]
+            println!("{LEGACY_HELP}");
             0
         }
         (Some(Some("--version")), 1) => {
@@ -66,13 +76,20 @@ fn main() {
         (Some(Some("fold")), _) => fold::run(&args[1..]),
         (Some(Some("clients-job")), _) => clients_job::run(&args[1..]),
         (Some(Some("doctor")), _) => doctor::run(&args[1..]),
-        (
-            Some(Some(
-                c @ ("migrate" | "on" | "off" | "helpers" | "connect" | "disconnect"
-                | "forget-history"),
-            )),
-            _,
-        ) => not_implemented(c),
+        (Some(Some("migrate")), 1) => commands::migrate(),
+        (Some(Some("on")), 1) => commands::set_enabled(true),
+        (Some(Some("off")), 1) => commands::set_enabled(false),
+        (Some(Some("helpers")), 2) => match args[1].to_str() {
+            Some("on") => commands::set_helpers(true),
+            Some("off") => commands::set_helpers(false),
+            _ => usage("helpers takes on or off"),
+        },
+        (Some(Some("forget-history")), 1) => commands::forget_history(),
+        (Some(Some("helpers")), _) => usage("helpers takes on or off"),
+        (Some(Some(c @ ("migrate" | "on" | "off" | "forget-history"))), _) => {
+            usage(&format!("{c} takes no arguments"))
+        }
+        (Some(Some(c @ ("connect" | "disconnect"))), _) => not_implemented(c),
         #[cfg(feature = "legacy-tasks")]
         (Some(Some(c @ ("providers" | "mock-demo"))), _) => {
             usage(&format!("{c} takes no arguments"))

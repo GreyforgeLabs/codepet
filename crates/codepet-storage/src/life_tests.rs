@@ -868,8 +868,8 @@ fn stages_crossed_two_at_once_journal_two_events() {
         reviewed(&mut s, &env, Category::Hunger, Verification::NotVerified)
     };
     let c = store.conn();
-    assert!(life::record_evolution(c, &id, &task, 60, 400, T0).unwrap());
-    assert!(!life::record_evolution(c, &id, &task, 60, 400, T0).unwrap());
+    assert!(life::record_evolution(c, &id, life::EvolvedBy::Task(&task), 60, 400, T0).unwrap());
+    assert!(!life::record_evolution(c, &id, life::EvolvedBy::Task(&task), 60, 400, T0).unwrap());
     assert_eq!(life::evolved_by_task(c, &task).unwrap(), [2, 3]);
 }
 

@@ -4,7 +4,7 @@
 //! or provider error text. The file is written only under the database writer lock and
 //! only when this state is newer than what the file already holds, so it is monotonic in
 //! `state_version`. Readers never launch Rust in response to a change of this file.
-use crate::agent_export::{AgentExport, ClientsExport, TreatsExport};
+use crate::agent_export::{AgentExport, ClientsExport, TreatsExport, V03Blocks};
 use crate::model::MetersView;
 #[cfg(feature = "legacy-tasks")]
 use crate::schema::SLOT_STATES;
@@ -126,7 +126,7 @@ pub(crate) struct BarState {
     presence: BarPresence,
     unseen_events: Vec<BarUnseen>,
     memorial: BarMemorial,
-    // ---- v0.3 (spec §8). Defaults until WP1/WP2/WP3 fill them. ----
+    // ---- v0.3 (spec §8). `agent` and `clients` keep their defaults until WP2/WP3. ----
     /// The On/Off switch (`meta.enabled`, WP1).
     enabled: bool,
     /// Coding-app activity (WP2).
@@ -166,6 +166,7 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
         },
     )?;
     let care = care::view(c, meters)?;
+    let v03 = V03Blocks::load(c)?;
     // v0.3.0 keeps the v1 keys `task`, `care.ready_to_work` and `care.readiness_reasons` as
     // inert compatibility values (null, false, []), so a still-loaded v0.2 bar or overlay
     // degrades gracefully until the reload (spec §6.6); v0.3.1 drops them. Only the
@@ -265,10 +266,10 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             count: block.memorial.count,
             latest_name: block.memorial.latest.map(|l| l.name),
         },
-        enabled: true,
-        agent: AgentExport::default(),
-        treats: TreatsExport::default(),
-        clients: ClientsExport::new(),
+        enabled: v03.enabled,
+        agent: v03.agent,
+        treats: v03.treats,
+        clients: v03.clients,
     })
 }
 
@@ -321,6 +322,9 @@ impl Store {
     /// only ever moves forward.
     pub fn export_bar_state(&self) -> Result<bool> {
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        // The `off` and `helpers` flags always follow the database, even when the file
+        // itself is already current (a stray flag heals at the next command, spec §7.3).
+        crate::app::sync_flags(&tx, &self.paths)?;
         let state = build(&tx, self.clock.now_ms())?;
         let path = self.paths.bar_state_path();
         if state.state_version <= existing_version(&path, &state.db_id) {

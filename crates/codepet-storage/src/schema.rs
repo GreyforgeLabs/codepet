@@ -4,15 +4,15 @@ use crate::life;
 use codepet_core::evolution::{level_for_xp, stages_crossed};
 use codepet_core::lifecycle::{Vitals, RULESET_V1, RULES_V1};
 use codepet_core::species::SPECIES_IDS;
+use codepet_core::State;
 use codepet_core::{Settings, METER_START};
-use rusqlite::{params, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 /// One migration step. `at` is the single time sample `Store::migrate` takes before the
 /// transaction; v1–v3 use only `at.wall`, exactly where they used `now` before v0.2.
 pub(crate) type Migration = fn(&Transaction<'_>, &TimeMark) -> crate::Result<()>;
-pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3, v4];
+pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3, v4, v5];
 
-#[cfg(feature = "legacy-tasks")]
 /// Slot-occupying states; must equal `State::occupies_slot` (checked by a test).
 pub(crate) const SLOT_STATES: &str = "('preparing','running','waiting_for_user','verifying',\
 'review_ready','cancelling','recovery_required')";
@@ -481,5 +481,133 @@ fn v4(tx: &Transaction<'_>, at: &TimeMark) -> crate::Result<()> {
             params![life1, format!("stage:{stage}"), data.to_string(), now],
         )?;
     }
+    Ok(())
+}
+
+/// The v5 DDL, verbatim from the frozen contract (`docs/v0.3/contracts/schema-v5.sql`):
+/// `meta` additions (the On/Off switch, background helpers, the hook salt and the agent
+/// sequence fields) and the agent tables (`agent_events`, `agent_sessions`,
+/// `activity_turns`, `activity_xp`, `client_hooks`). One source, so the migration can never
+/// drift from the contract.
+const V5_DDL: &str = include_str!("../../../docs/v0.3/contracts/schema-v5.sql");
+
+/// Where a leftover slot task goes in the v5 migration (spec §6.6 step 3). `None` for a
+/// state that holds no slot.
+pub(crate) fn migration_close_state(from: State) -> Option<State> {
+    match from {
+        State::Preparing
+        | State::Running
+        | State::Verifying
+        | State::Cancelling
+        | State::WaitingForUser => Some(State::Interrupted),
+        State::ReviewReady | State::RecoveryRequired => Some(State::Discarded),
+        _ => None,
+    }
+}
+
+/// Closes one leftover slot task for the v5 migration (spec §6.5, §6.6): a raw state
+/// transition plus its `task_events` row, with no reward, refund or care change and no
+/// supervisor. It stays outside `legacy-tasks` because the default build's migration uses
+/// it. Refuses (`InvalidState`) a task that does not hold the slot or changed meanwhile.
+/// Returns the new state.
+pub(crate) fn close_task_for_migration(
+    c: &Connection,
+    task_id: &str,
+    now: i64,
+) -> crate::Result<State> {
+    let row: Option<(String, i64)> = c
+        .query_row(
+            "SELECT state, revision FROM tasks WHERE id = ?1",
+            [task_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let (state, revision) = row.ok_or(crate::StorageError::NotFound)?;
+    let from = State::parse(&state).ok_or(crate::StorageError::Corrupt)?;
+    // Validated against the same list the single-slot index and the v4 rules use.
+    if !SLOT_STATES.contains(&format!("'{}'", from.as_str())) {
+        return Err(crate::StorageError::InvalidState(
+            "only a slot task is closed by the migration",
+        ));
+    }
+    let to = migration_close_state(from).ok_or(crate::StorageError::Corrupt)?;
+    let n = c.execute(
+        "UPDATE tasks SET state = ?1, updated_at_ms = ?2 WHERE id = ?3 AND state = ?4
+         AND revision = ?5",
+        params![to.as_str(), now, task_id, from.as_str(), revision],
+    )?;
+    if n != 1 {
+        return Err(crate::StorageError::InvalidState(
+            "task changed concurrently",
+        ));
+    }
+    c.execute(
+        "INSERT INTO task_events (task_id, from_state, to_state, revision, at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![task_id, from.as_str(), to.as_str(), revision, now],
+    )?;
+    Ok(to)
+}
+
+/// Schema v5 (spec §6.6, `schema-v5.sql`): keeps every existing pet. Runs inside the
+/// migration transaction after the `VACUUM INTO …bak-v4-<ms>` backup; any failure rolls the
+/// whole migration back.
+///
+/// 1. The DDL (new tables, `meta` columns, triggers).
+/// 2. `meta.hook_salt` = 32 random bytes.
+/// 3. Leftover slot tasks closed with [`close_task_for_migration`] (no reward), pending
+///    preflight tokens invalidated.
+/// 4. `life_vitals.death_pending` cleared with a `recovered` journal note (`v5_migration`);
+///    normal settlement re-evaluates the life afterwards.
+/// 5. The rest counters zeroed (`work_sessions`, `execution_ms`, `rest_required`,
+///    `starts_since_bathroom`); a nap in progress is left alone.
+///
+/// Lives (name, look, XP, stage, mode, pace, armed state), the journal, memorials and the
+/// historic tables are untouched.
+fn v5(tx: &Transaction<'_>, at: &TimeMark) -> crate::Result<()> {
+    let now = at.wall;
+    tx.execute_batch(V5_DDL)?;
+    let salt = crate::sys::random_bytes::<32>()?;
+    tx.execute("UPDATE meta SET hook_salt = ?1 WHERE id = 1", [&salt[..]])?;
+    let slot_tasks: Vec<String> = tx
+        .prepare(&format!(
+            "SELECT id FROM tasks WHERE state IN {SLOT_STATES} ORDER BY rowid"
+        ))?
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    for id in &slot_tasks {
+        close_task_for_migration(tx, id, now)?;
+    }
+    tx.execute(
+        "UPDATE preflight_tokens SET status = 'invalidated' WHERE status = 'pending'",
+        [],
+    )?;
+    let pending: Option<String> = tx
+        .query_row(
+            "SELECT v.life_id FROM life_vitals v JOIN lives l ON l.life_id = v.life_id
+             WHERE v.id = 1 AND v.death_pending = 1
+             AND l.status IN ('healthy','warning','critical')",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(life_id) = pending {
+        tx.execute(
+            "INSERT INTO life_events (life_id, kind, dedup_key, data, at_ms)
+             VALUES (?1, 'recovered', 'v5_migration', ?2, ?3)
+             ON CONFLICT (life_id, kind, dedup_key) DO NOTHING",
+            params![
+                life_id,
+                serde_json::json!({ "reason": "v5_migration" }).to_string(),
+                now
+            ],
+        )?;
+    }
+    tx.execute("UPDATE life_vitals SET death_pending = 0 WHERE id = 1", [])?;
+    tx.execute(
+        "UPDATE pet_care SET work_sessions = 0, execution_ms = 0, rest_required = 0,
+            starts_since_bathroom = 0 WHERE id = 1",
+        [],
+    )?;
     Ok(())
 }
