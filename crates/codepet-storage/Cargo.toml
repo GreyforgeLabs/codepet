@@ -27,5 +27,11 @@ sha2 = "0.10"
 codepet-protocol = { path = "../codepet-protocol" }
 tempfile = "3"
 
+[features]
+# v0.3 (spec §6.5): the task pipeline, preflight tokens, review/acceptance and the care
+# readiness gates move behind this non-default feature in WP1 (their tests run with it
+# until v0.3.1 deletes them). `close_task_for_migration` stays outside it.
+legacy-tasks = ["codepet-core/legacy-tasks"]
+
 [lints]
 workspace = true
