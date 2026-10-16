@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod agent_export;
+mod agent_store;
 mod bar_export;
 mod care;
 mod life;
@@ -18,10 +20,16 @@ mod model;
 mod paths;
 mod presence_io;
 mod schema;
+mod spool;
 mod store;
 mod sys;
 
-pub use bar_export::{BAR_SCHEMA, MAX_BAR_STATE_BYTES, MAX_READINESS_REASONS, MAX_REASON_BYTES};
+pub use agent_export::{
+    AgentExport, AppExport, ClientExport, ClientsExport, JobExport, TestExport, TreatsExport,
+};
+pub use bar_export::{
+    BAR_SCHEMA, BAR_SCHEMA_V2, MAX_BAR_STATE_BYTES, MAX_READINESS_REASONS, MAX_REASON_BYTES,
+};
 pub use care::{BATHROOM_LIMIT, DEMO_XP, EXECUTION_LIMIT_MS, SESSION_LIMIT, SLEEP_MS};
 /// Lifecycle enums used by the life API, re-exported for callers of `adopt`/`set_rules`.
 pub use codepet_core::lifecycle::{Mode, Pace};
@@ -36,7 +44,11 @@ pub use model::{
     RecoverResult, RecoveryChange, ReviewBrief, ReviewView, RulesView, SettingsView, Snapshot,
     StartResult, TaskBrief, TaskInput, TaskSummary, UnseenEvent, XpView,
 };
-pub use paths::{StatePaths, BAR_STATE_FILE, PRESENCE_FILE};
+pub use paths::{
+    StatePaths, BAR_STATE_FILE, CLIENTS_DIR, DISCONNECTED_SUFFIX, FOLD_BACKOFF_FILE,
+    FOLD_LOCK_FILE, HELPERS_FLAG, INBOX_DIR, INBOX_OVERFLOW_FILE, INTEGRATIONS_DIR, JOBS_DIR,
+    OFF_FLAG, PRESENCE_FILE, SHIM_REL_PATH, STAGING_DIR, TEST_NONCE_FILE,
+};
 pub use store::{AcceptRequest, SealOutcome, Step, Store};
 pub use sys::Supervisor;
 

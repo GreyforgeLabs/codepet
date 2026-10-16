@@ -4,6 +4,7 @@
 //! or provider error text. The file is written only under the database writer lock and
 //! only when this state is newer than what the file already holds, so it is monotonic in
 //! `state_version`. Readers never launch Rust in response to a change of this file.
+use crate::agent_export::{AgentExport, ClientsExport, TreatsExport};
 use crate::model::MetersView;
 use crate::schema::SLOT_STATES;
 use crate::{care, life, sys, Result, StorageError, Store};
@@ -15,7 +16,12 @@ use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
 
+/// The schema label the export writes. It stays `codepet.bar.v1` (with the v0.3 blocks
+/// added) until both bar readers accept v2 (WP5 `CodePetBar.js`, WP6 `BarState.js`): the
+/// v0.2 readers refuse any other label. The switch to [`BAR_SCHEMA_V2`] is one line.
 pub const BAR_SCHEMA: &str = "codepet.bar.v1";
+/// The v0.3 export contract, `docs/v0.3/contracts/bar.v2.schema.json`.
+pub const BAR_SCHEMA_V2: &str = "codepet.bar.v2";
 /// The file never exceeds this.
 pub const MAX_BAR_STATE_BYTES: usize = 16 * 1024;
 pub const MAX_READINESS_REASONS: usize = 8;
@@ -117,6 +123,15 @@ pub(crate) struct BarState {
     presence: BarPresence,
     unseen_events: Vec<BarUnseen>,
     memorial: BarMemorial,
+    // ---- v0.3 (spec §8). Defaults until WP1/WP2/WP3 fill them. ----
+    /// The On/Off switch (`meta.enabled`, WP1).
+    enabled: bool,
+    /// Coding-app activity (WP2).
+    agent: AgentExport,
+    /// The treat jar (WP1).
+    treats: TreatsExport,
+    /// Client records (WP3).
+    clients: ClientsExport,
 }
 
 /// Longest prefix of `s` that is at most `max` UTF-8 bytes.
@@ -233,6 +248,10 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             count: block.memorial.count,
             latest_name: block.memorial.latest.map(|l| l.name),
         },
+        enabled: true,
+        agent: AgentExport::default(),
+        treats: TreatsExport::default(),
+        clients: ClientsExport::new(),
     })
 }
 

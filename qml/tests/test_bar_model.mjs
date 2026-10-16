@@ -63,6 +63,14 @@ function barState(over = {}) {
         presence: { wanted: true, life_id: LIFE, tick_ms: 60000, idle_timeout_s: 180 },
         unseen_events: [],
         memorial: { count: 0, latest_name: null },
+        // v0.3 blocks (docs/v0.3/contracts/bar.v2.schema.json), WP0 defaults.
+        enabled: true,
+        agent: { state: 'idle', apps: [], stale_at_ms: null, finished_seq: 0, finished_at_ms: null,
+                 finished_app: null, finished_treat: false, finished_jar_full: false, hello_seq: 0,
+                 hello_at_ms: null, hello_app: null, test: null, error_at_ms: null, error_app: null,
+                 helpers_busy: false },
+        treats: { jar: 0, full: false },
+        clients: {},
     };
     const out = { ...base, ...over };
     if (over.life) out.life = { ...base.life, ...over.life };
