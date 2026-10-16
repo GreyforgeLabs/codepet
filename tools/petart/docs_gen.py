@@ -14,8 +14,8 @@ ROUTE = ("GPT Image 2 (OpenAI image generation) via the Codex CLI image tool on 
 ASSET = "codepet-art-sources-v0.2.tar"
 ASSET_URL = "https://github.com/GreyforgeLabs/codepet/releases/download/v0.2.1/" + ASSET
 
-LICENCE = ("Distributed under the repository MIT licence (`qml/assets/pets/LICENSE`) by the "
-           "project owner. The frames are AI-generated with OpenAI image generation; no "
+LICENCE = ("Distributed under the repository MIT licence (`qml/assets/pets/LICENSE`) by "
+           "Greyforge Labs. The frames are AI-generated with OpenAI image generation; no "
            "third-party asset, asset pack, download or trace is included. Copyright and "
            "distribution suitability have not been legally reviewed.")
 
