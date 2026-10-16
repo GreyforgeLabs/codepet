@@ -161,7 +161,8 @@ SPECIES = {
 assert tuple(SPECIES) == ORDER
 
 # v0.3 (SPEC-v0.3 §4.1). careIconSet picks the care icon sheet and the copy overrides
-# (floor | aquatic | robot); every species states it explicitly. careWords are the plain
+# (floor | aquatic | robot). Both fields are optional in docs/v0.3/contracts/icons.json
+# (careIconSet absent = habitat default); the roster states them for every species. careWords are the plain
 # kid words used as {word} in the care bubbles ("Yum! {word}!"): at most two words per
 # need, no digits, no jargon (K1, K2, K8). They never fall back to careLabels.
 CARE_ICON_SETS = ("floor", "aquatic", "robot")
