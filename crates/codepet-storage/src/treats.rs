@@ -8,7 +8,11 @@
 //! - at most one treat per session per 30 s, 12 per rolling hour and 48 per rolling 24 h,
 //!   over every life (adopting a new pet never resets the caps). Windows are half-open: an
 //!   earn exactly one window ago no longer counts. Forgotten rows (`earned_at_ms = 0`) never
-//!   count.
+//!   count. "Forget coding history" keeps a marked, hour-coarsened earn time for treats
+//!   earned in the last 24 h ([`forget_earn_times`]), so Forget never resets a cap; the next
+//!   write, settling read or fold after they leave the daily window clears those times
+//!   ([`expire_forgotten`]). An ordinary earn time never carries the marker
+//!   ([`ordinary_earn_ms`]).
 //!
 //! With the existing curve (`level_xp` 0/80/200/400/700, stages at levels 2 and 4) a pet is
 //! grown after 16 treats and mature after 80. The fold (WP2) earns through [`earn`]; nothing
@@ -17,7 +21,10 @@ use crate::life::{self, EvolvedBy};
 use crate::model::Snapshot;
 use crate::store::V03Policy;
 use crate::{fault, lifecycle_store, Result, StorageError, Store};
-use codepet_core::agent::{CAP_SESSION_MS, DAY_MS, HOUR_MS, JAR_MAX, TREAT_XP};
+use codepet_core::agent::{
+    forgotten_earn_ms, ordinary_earn_ms, CAP_SESSION_MS, DAY_MS, FORGOTTEN_MARK_MS, HOUR_MS,
+    JAR_MAX, TREAT_XP,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 
 /// The pure cap rule, in order: jar full, then the session's 30 s, then 12 per rolling hour,
@@ -76,6 +83,67 @@ pub(crate) fn check(c: &Connection, life_id: &str, session_key: &str, at: i64) -
     ))
 }
 
+/// "Forget coding history" for `activity_turns.earned_at_ms` (owner decision 2026-10-16,
+/// `notes.md` §7 item 1): an earn time that can no longer count toward any cap
+/// (`<= now - 24 h`) becomes 0; a newer one becomes [`forgotten_earn_ms`] (rounded up to the
+/// end of its hour, plus the marker), so the 30 s, hourly and daily caps stay durable and can
+/// only get stricter. No identity is added; the HMAC keys are immutable (X1). Returns the
+/// number of rows changed (0 when nothing changed, so a repeated Forget is a no-op).
+pub(crate) fn forget_earn_times(c: &Connection, now: i64) -> Result<usize> {
+    let day_ago = now.saturating_sub(DAY_MS);
+    let mut n = c.execute(
+        "UPDATE activity_turns SET earned_at_ms = 0 WHERE earned_at_ms > 0 AND earned_at_ms <= ?1",
+        [day_ago],
+    )?;
+    let recent = {
+        let mut st =
+            c.prepare("SELECT id, earned_at_ms FROM activity_turns WHERE earned_at_ms > ?1")?;
+        let rows = st.query_map([day_ago], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (id, earned) in recent {
+        let kept = forgotten_earn_ms(earned, now);
+        if kept != earned {
+            n += c.execute(
+                "UPDATE activity_turns SET earned_at_ms = ?2 WHERE id = ?1",
+                params![id, kept],
+            )?;
+        }
+    }
+    Ok(n)
+}
+
+/// Whether an earn time kept by [`forget_earn_times`] has left the daily window and waits
+/// for [`expire_forgotten`] (a read; the settling snapshot and retention ask it first).
+pub(crate) fn forgotten_due(c: &Connection, now: i64) -> Result<bool> {
+    Ok(c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM activity_turns WHERE earned_at_ms > 0
+           AND earned_at_ms <= ?1 AND earned_at_ms % ?2 = ?3)",
+        params![now.saturating_sub(DAY_MS), HOUR_MS, FORGOTTEN_MARK_MS],
+        |r| r.get(0),
+    )?)
+}
+
+/// Clears (sets 0) at most `limit` earn times kept by [`forget_earn_times`] that have left
+/// the daily window and so can no longer count toward a cap. It does not wait for the
+/// hooks: every write's settlement prologue, a settling `state.get` and every fold run call
+/// it, as does retention before its hour coarsening, which must never floor a marked time.
+pub(crate) fn expire_forgotten(c: &Connection, now: i64, limit: i64) -> Result<usize> {
+    Ok(c.execute(
+        "UPDATE activity_turns SET earned_at_ms = 0 WHERE id IN
+           (SELECT id FROM activity_turns WHERE earned_at_ms > 0 AND earned_at_ms <= ?1
+            AND earned_at_ms % ?2 = ?3 LIMIT ?4)",
+        params![
+            now.saturating_sub(DAY_MS),
+            HOUR_MS,
+            FORGOTTEN_MARK_MS,
+            limit
+        ],
+    )?)
+}
+
 /// What [`earn`] did with one qualifying finished turn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Earned {
@@ -122,7 +190,7 @@ pub(crate) fn earn(
     c.execute(
         "INSERT INTO activity_turns (session_key, turn_key, client, life_id, earned_at_ms)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![session_key, turn_key, client, life_id, at.max(1)],
+        params![session_key, turn_key, client, life_id, ordinary_earn_ms(at)],
     )?;
     Ok(Earned::Treat)
 }

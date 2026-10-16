@@ -110,7 +110,8 @@ CREATE TABLE activity_turns (
   client TEXT NOT NULL CHECK (client IN ('claude-code','codex','opencode','hermes','grok-cli')),
   life_id TEXT NOT NULL REFERENCES lives(life_id),
   -- Coarsened to the hour after 24 h. "Forget coding history" sets it to 0 (WP0: a
-  -- sentinel instead of NULL, so the caps simply stop counting the row).
+  -- sentinel instead of NULL, so the caps simply stop counting the row), except that an
+  -- earn from the last 24 h keeps ceil_hour + 1 ms until it leaves the day (notes.md §7).
   earned_at_ms INTEGER NOT NULL CHECK (earned_at_ms >= 0),
   -- NULL = still in the jar. Forget sets a given row's value to 0, never back to NULL.
   given_at_ms INTEGER CHECK (given_at_ms IS NULL OR given_at_ms >= 0),

@@ -170,7 +170,7 @@ CARE_ICON_SET = {sid: ("robot" if sid == "robot" else
                        "aquatic" if SPECIES[sid]["habitat"] == "aquatic" else "floor") for sid in ORDER}
 
 CARE_WORDS = {
-    "cat":       {"food": "Kibble", "water": "Fresh water", "play": "Yarn", "wash": "Brushing"},
+    "cat":       {"food": "Kibble", "water": "Fresh water", "play": "Ball", "wash": "Brushing"},
     "dog":       {"food": "Kibble", "water": "Cool water", "play": "Fetch", "wash": "Bubble bath"},
     "capybara":  {"food": "Sweet grass", "water": "Cool water", "play": "Splash", "wash": "Warm bath"},
     "penguin":   {"food": "Fish", "water": "Icy water", "play": "Pebbles", "wash": "Splash"},

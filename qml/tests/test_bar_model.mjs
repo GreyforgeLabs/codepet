@@ -28,7 +28,7 @@ const REGISTRY = {
     species: {
         cat: {
             displayName: 'Cat', defaultName: 'Ginger',
-            careLabels: { food: 'Kibble', water: 'Fresh water', play: 'Yarn', wash: 'Brush', bathroom: 'Litter', sleep: 'Basket' },
+            careLabels: { food: 'Kibble', water: 'Fresh water', play: 'Yarn tuft', wash: 'Brush', bathroom: 'Litter', sleep: 'Basket' },
             stages: [{ stage: 1, key: 'young', name: 'Kitten', minLevel: 1 },
                      { stage: 2, key: 'grown', name: 'Desk Cat', minLevel: 2 },
                      { stage: 3, key: 'mature', name: 'Grand Inspector', minLevel: 4 }],

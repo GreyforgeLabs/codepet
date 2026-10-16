@@ -15,6 +15,7 @@ Style references (downscaled to 1024 px wide; sha256 of the reference image as s
 - `style-cat-care.png`: `1062fa955e563fafb0594f46460474c0eae774fd7ab7582672df072a3d8dc83c`, from the v0.2 `cat/stage2-care.png` sheet (release asset `codepet-art-sources-v0.2.tar`).
 - `style-goldfish-care.png`: `5d889db5d05e69562f036ba16e19d575a0bd41d5e085106c5c48486943b3d3ed`, from the v0.2 `goldfish-in-jar/stage2-care.png` sheet (release asset `codepet-art-sources-v0.2.tar`).
 - `style-robot-care.png`: `7a2c159f15319aafed189dadf19b1e5bbc5521a5210baf641fb4b135b27c65ae`, from the v0.2 `robot/stage2-care.png` sheet (release asset `codepet-art-sources-v0.2.tar`).
+- `style-apps-tiles.png`: `694987aaac211e82a0d5d39a3302860559e422debd9c6dd845e0cf8d3a58f498`, a crop of the selected `apps.a2.png` sheet holding only its four other tiles (terminal prompt, open book, perched bird, comet; 1196×390, not downscaled), used for the Claude Code tile patch.
 
 The prompts below are the request text sent for each sheet. Each request also ended with one bookkeeping line holding its job tag ("never draw it"), and the wrapper prefixed a one-line instruction; both are kept with the generation records.
 
@@ -25,7 +26,7 @@ The prompts below are the request text sent for each sheet. Each request also en
 - Chroma key `#00FF00`; style reference: `style-cat-care.png`; generated 2026-10-16
 - Patch for `play`: attempt 1, `care-floor-play.a1.png`, sha256 `d2b787045c4b294eacfc7b259634d02668822192566557b63b6be35e20f522c0`
 - Chroma key `#00FF00`; style reference: `style-cat-care.png`; generated 2026-10-16
-- Patch reason: a generic red striped ball that matches bar/badge_ball; the base sheet's yarn ball is the cat's signature toy, kept for a later cat careIcons override.
+- Patch reason: a generic red striped ball that matches bar/badge_ball, so every floor species shows one generic toy (the cat's play word is Ball, owner decision 2026-10-16); the base sheet's yarn ball is not shipped.
 - Notes: Painted like the v0.2 pet props (the cat's food bowl and water bowl). The shipped `play` icon is the patch's red striped ball, the painted twin of `bar/badge_ball`, so every floor species shows one generic toy.
 
 Prompt:
@@ -138,7 +139,10 @@ CELL CONTENTS (in exact order):
 - Selected source: attempt 2, `apps.a2.png`, sha256 `990361b6a2c9d9c3db0913fc4329b07b743c038f0f9fb385914ebad686e2a7c1`
 - Chroma key `#00FF00`; style reference: `style-cat-care.png`; generated 2026-10-16
 - Rejected attempt 1 (sha256 `a5bededd22e2199a277ad33c230b41c8a646e1146f0fd2498d16c2c6ee34a123`): the Hermes tile's white bird in flight, wings up, read too much like a well-known social-network logo; regenerated with a perched songbird so every tile stays brand-neutral
-- Notes: Brand-neutral tiles: a distinct colour and one generic white glyph each (spark, terminal prompt, open book, perched bird, comet). No vendor logo, mark or lettering; the app name is always shown next to the tile.
+- Patch for `app_claude_code`: attempt 1, `apps-claude-code.a1.png`, sha256 `e86b67fc0e2d0943d1a4f9600423851c1d18454e7c66e85f7677a711ecb3562a`
+- Chroma key `#00FF00`; style reference: `style-apps-tiles.png`; generated 2026-10-16
+- Patch reason: the base sheet's orange tile with a white four-point sparkle was too close to a vendor mark (owner review 2026-10-16); replaced by a rose-pink tile with a white light bulb, with no star, sparkle or asterisk shape and no orange.
+- Notes: Brand-neutral tiles: a distinct colour and one generic white glyph each (light bulb, terminal prompt, open book, perched bird, comet). No vendor logo, mark or lettering, and no star, sparkle or asterisk shape; the app name is always shown next to the tile. The Claude Code tile is a single-cell patch drawn against a crop of the other four selected tiles as its style reference, so it keeps their shape, bevel and highlight.
 
 Prompt:
 
@@ -154,6 +158,16 @@ CELL CONTENTS (in exact order):
 (4) [row 1] a golden-yellow tile with a white little bird in flight, wings up.
 (5) [row 1] a deep violet tile with a white comet: a round head with a long curved tail.
 CHANGE for cell (4): the bird is a chubby round little songbird PERCHED and sitting still, seen from the side, wings folded, a small tail; not flying, not a logo silhouette.
+```
+
+Patch prompt (`app_claude_code`):
+
+```text
+Create a CodePet desktop pet app tile icon.
+LAYOUT: a square 1:1 (1024x1024) image holding exactly ONE glossy rounded-square app tile, centred, seen straight from the front, about 70 percent of the image width, with generous empty space all around it so it never touches the image edge.
+BACKGROUND: one perfectly flat, uniform, solid pure chroma green #00FF00 filling the entire image. No gradients, no floor, no ground line, no cast shadows, no drop shadows, no glow halos, no vignette, no text, no letters, no words, no numbers, no labels, no grid lines, no borders, no frames, no cards or panels behind the tile. Never use any green or any teal anywhere on the tile.
+STYLE: match the four app tiles in the attached reference image exactly: the same rounded-square shape and corner radius, the same thick soft painted bevel, the same glossy highlight in the top left corner, the same thin darker outline of the tile colour, and the same soft painterly rendering of a chunky white symbol. Use the reference ONLY for style: do NOT copy any of its four tiles or symbols. This is a brand-neutral generic tile: no logo, no trademark, no letters. It must read clearly at 64 px and at 20 px: a bold, simple silhouette with strong contrast.
+TILE: a warm rose-pink tile (raspberry pink, clearly pink, not orange, not red, not purple) with ONE simple, bold, chunky white light bulb in the middle: a round glass bulb with a short ribbed screw base, upright, with one small soft highlight on the glass. No rays, no lines around the bulb, no stars, no sparkles, no asterisks, no glints and no plus signs anywhere.
 ```
 
 ## ui

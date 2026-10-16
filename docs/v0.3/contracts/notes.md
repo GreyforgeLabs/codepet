@@ -118,7 +118,7 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
 11. **"Forget coding history clears the timestamps of `activity_turns`."** Clearing
     `given_at_ms` to NULL would put given treats back in the jar. Resolved: Forget sets
     `earned_at_ms = 0` and, for given rows, `given_at_ms = 0`; caps ignore 0. A trigger
-    forbids `given_at_ms` going back to NULL.
+    forbids `given_at_ms` going back to NULL. (`earned_at_ms` superseded by §7 item 1.)
 12. **Helpers row persistence.** "Couldn't connect" + reason must survive after the job
     ends, and the spinner needs the job. Resolved: `client_hooks.last_outcome`,
     `last_reason`, `job_id`, `job_kind`; the export's client entry carries `first_seen_ms`
@@ -225,7 +225,8 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
     `format.source_key` is now per sheet: green by default, magenta `#FF00FF` when a subject
     is green, recorded as `key` per sheet (and per patch) in `tools/petart/icon_sheets.json`.
     The same change adds single-cell `patches` (the care-floor `play` icon is a red striped
-    ball, the painted twin of `badge_ball`; the cat's yarn waits for a `careIcons` override)
+    ball, the painted twin of `badge_ball`; the cat's yarn waits for a `careIcons` override,
+    superseded by §7 item 3)
     and keeps nonces, rollout ids and local paths out of the shipped `PROVENANCE.md`.
 
 ## 3. Other WP0 decisions (not contradictions)
@@ -298,12 +299,11 @@ fixture or vector.
    choice, as in v0.2; the v0.3 UI always sends `gentle`).
 6. **Off + asleep is a plain read.** A nap frozen by Off no longer makes `state.get` take
    the writer lock and commit a no-op settlement.
-7. **Open (owner decision): Forget vs the earning caps.** Note 11 makes Forget zero
-   `activity_turns.earned_at_ms`, which the caps ignore, so "Forget coding history" also
-   resets the 30 s / 12 per hour / 48 per day caps (only the jar of 10 remains), against
-   X3 "capped durably". Options: keep an hour-coarsened earn time for rows earned in the last
-   24 h (the precision retention keeps after 24 h anyway), or say in X3 and Help that Forget
-   resets the caps. Unchanged until the owner decides.
+7. **Forget vs the earning caps (decided by the owner, see §7 item 1).** Note 11 made Forget
+   zero `activity_turns.earned_at_ms`, which the caps ignore, so "Forget coding history" also
+   reset the 30 s / 12 per hour / 48 per day caps (only the jar of 10 remained), against
+   X3 "capped durably". Options were: keep an hour-coarsened earn time for rows earned in the
+   last 24 h, or say in X3 and Help that Forget resets the caps. The owner chose the first.
 
 ## 6. Amendments after the freeze (WP2 review, 2026-10-16)
 
@@ -333,8 +333,80 @@ differ, these entries win.
 3. **`finished_jar_full` describes only the last finished turn.** The reference model
    changed the flag only when a turn qualified, so after a full-jar turn a short tool-less
    turn still exported `true` ("jar is full", even after the treats were given); the Rust
-   fold cleared it. Resolved (WP2 choice, flagged for the owner): every interactive
+   fold cleared it. Resolved (WP2 choice, accepted by the owner, §7 item 2): every interactive
    `turn_done` clears it, and the treat check of that turn sets it when the verdict is
    `jar_full`, including the one late-tool re-check (which the Rust fold did not record).
    New `sessions` vectors: `jar_full_describes_only_the_last_finished_turn` and
    `late_tool_recheck_on_a_full_jar_sets_jar_full`.
+
+## 7. Owner decisions after wave 1 (2026-10-16)
+
+Binding owner-delegated decisions, made after WP0, WP1, WP2 and WP4 merged (`v0.3` @
+`d49dcc3`). They supersede the contract text they name; the contract edits listed at the end
+of each item are made (in their own commit, with `check_contracts.py` passing).
+
+1. **Forget keeps the caps durable** (resolves §5 item 7; amends note 11). "Forget coding
+   history" still deletes `agent_events` and `agent_sessions` and sets a given row's
+   `given_at_ms` to 0. For `earned_at_ms`:
+   - an earn that can no longer count toward any cap (`earned_at_ms <= now - 24 h`; the daily
+     window is half-open) becomes 0, as before;
+   - a newer earn keeps `ceil_hour(earned_at_ms) + 1` (`codepet_core::agent::forgotten_earn_ms`,
+     `FORGOTTEN_MARK_MS = 1`). Rounding **up** means the kept time is never earlier than the
+     real earn, so the 30 s per-session, 12 per rolling hour and 48 per rolling 24 h caps can
+     only get stricter (by at most one hour), never looser: Forget can no longer be used to
+     reset them. No identity is added: the row's HMAC keys are unchanged (they are immutable,
+     X1) and the time keeps only hour precision;
+   - the `+ 1` ms marks the time as kept by Forget: retention's coarsening never produces it
+     and an ordinary earn never stores it (`agent::ordinary_earn_ms` moves an earn at exactly
+     `hh:00:00.001` 1 ms later, which only makes the caps stricter). A marked time is cleared
+     (set to 0) once it leaves the 24 h window (`treats::expire_forgotten`) by whatever runs
+     first, without waiting for a hook: the settlement prologue of every write, a `state.get`
+     (which settles when one is due), and every fold's retention call, even inside the hourly
+     gate (run before the hourly coarsening, which skips marked times). So the next CodePet
+     use after that day (at most about 25 h after the earn, given the rounding hour) leaves
+     nothing of the forgotten history except the jar and XP rows. If CodePet is not used at
+     all, the times stay in the local database until it next runs.
+   - Forget is idempotent: a kept time maps to itself.
+   Tests: `codepet-core` `forget_keeps_a_marked_hour_coarsened_earn_time_for_one_day`;
+   `codepet-storage` `forget_history_keeps_every_cap_durable`,
+   `forget_history_clears_activity_but_keeps_treats_and_xp`,
+   `retention_floors_ordinary_earn_times_and_keeps_them`,
+   `forgotten_earn_times_go_after_the_day_without_a_fold`,
+   `an_ordinary_earn_never_looks_kept_by_forget`; `codepet-core`
+   `an_ordinary_earn_never_carries_the_forget_marker`.
+   **Contract edit (done):** the `schema-v5.sql` comment on `activity_turns.earned_at_ms` (a
+   comment only: the DDL is unchanged), the `agent.forget_history` semantics in
+   `protocol.json`, and the Help copy in `strings.json` (adult pages, exempt from K1/K2, K8 not
+   applied to `help.*.body`):
+   - `help.forget.body`: "Forget coding history deletes CodePet's record of coding sessions and
+     events and clears the times of earned treats. Treats from the last day keep a time rounded
+     to the hour, so the treat limits still count; CodePet clears it the first time it runs
+     after that day. Treats still in the jar and growth already earned stay."
+   - `help.privacy.body`, last sentence: "Forget coding history deletes it, except the times of
+     treats from the last day, rounded to the hour, which the treat limits need until that day
+     is over."
+2. **`finished_jar_full` describes only the last finished turn** (§6 item 3, WP2's choice) is
+   accepted by the owner. No change.
+3. **The cat's play word is "Ball"** (`careWords.play`), matching the shared painted `play`
+   icon (a red striped ball, the twin of `badge_ball`, §2 item 34), so the bubble says
+   "Wheee! Ball!". The cat's `careLabels.play` ("Yarn tuft", Help/CLI only) is unchanged.
+   Changed: `qml/assets/pets/cat/manifest.json`, `qml/assets/pets/registry.json`, its generated
+   mirror `qml/shared/PetRegistry.js` and the generator table in `tools/petart/roster.py`. This
+   supersedes §2 item 34's "the cat's yarn waits for a `careIcons` override": no cat override
+   is planned, and the care-floor `play` patch note in `PROVENANCE.md` says so.
+   **Contract edit (done):** `icons.json` `care_words.examples.cat.play` "Yarn" -> "Ball"
+   (an example; `check_contracts.py` does not read it, `qml/tests/test_pet_assets.py` pins
+   the cat's word).
+4. **A brand-neutral Claude Code tile.** The orange tile with a white four-point sparkle was
+   too close to a vendor mark. `app_claude_code` is regenerated through the WP4 pipeline as a
+   single-cell patch of the `apps` sheet (the other four tiles are unchanged): a rose-pink
+   tile with a white light bulb, no star, sparkle or asterisk shape and no orange. It was drawn
+   with a crop of the other four selected tiles as the style reference (`gen.sh` nonce and byte
+   checks passed on attempt 1) and reviewed by eye at 256, 64 and 20 px on dark and light.
+   `tools/petart/icon_sheets.json` pins the patch; provenance is in
+   `qml/assets/icons/PROVENANCE.md` (both trees byte-identical, `icons.py --check` OK).
+   **Contract edit (done):** `icons.json` `apps.glyphs.app_claude_code` "spark" -> "light
+   bulb", and the `apps.rule` glyph list now says "light bulb" and forbids star, sparkle and
+   asterisk shapes. SPEC §4.1 (outside the repository) still names "spark"; this item
+   supersedes it.
+

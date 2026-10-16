@@ -16,6 +16,7 @@ use crate::{
     Clock, Result, StatePaths, StorageError, DB_FILE, MAX_CARE_RECEIPTS, MAX_REQUEST_ID_BYTES,
     SCHEMA_VERSION,
 };
+use codepet_core::agent::RETENTION_LIMIT;
 #[cfg(feature = "legacy-tasks")]
 use codepet_core::State;
 use codepet_core::{Category, PROTOCOL_VERSION};
@@ -338,7 +339,8 @@ impl Store {
         let read = self.read()?;
         let needs_settlement = care::snapshot_needs_settlement(&read)?
             || crate::presence_io::present(&self.paths.presence_path())
-            || life::death_due(&read)?;
+            || life::death_due(&read)?
+            || crate::treats::forgotten_due(&read, self.clock.now_ms())?;
         let tx = if needs_settlement {
             read.commit()?;
             // Take the writer lock before settling so concurrent commands cannot spend
@@ -529,8 +531,11 @@ fn begin_settled<'c>(
 }
 
 /// The settlement prologue of every write (and of a settling snapshot): attended presence
-/// first, then rest. Presence reads the nap state before `settle_sleep` changes it.
+/// first, then rest. Presence reads the nap state before `settle_sleep` changes it. Earn
+/// times kept by "Forget coding history" that have left the day are cleared here too, so
+/// that promise never waits for a hook to fire (`notes.md` §7 item 1).
 pub(crate) fn settle_all(tx: &Connection, paths: &StatePaths, at: &care::TimeMark) -> Result<()> {
+    crate::treats::expire_forgotten(tx, at.wall, i64::from(RETENTION_LIMIT))?;
     lifecycle_store::settle_presence(tx, paths, at)?;
     // Off freezes the nap too: `app.set_enabled(true)` moves its cursor to the On click.
     if crate::app::enabled(tx)? {

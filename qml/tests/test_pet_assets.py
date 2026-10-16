@@ -212,8 +212,14 @@ if not docs:
 # ----------------------------------------------------------------- v0.3 care fields
 
 contract_sets = {}
+contract_words = {}
 if ICONS_CONTRACT.is_file():
-    contract_sets = json.loads(ICONS_CONTRACT.read_text())["care_icon_set"]["resolved"]
+    _icons = json.loads(ICONS_CONTRACT.read_text())
+    contract_sets = _icons["care_icon_set"]["resolved"]
+    contract_words = _icons.get("care_words", {}).get("examples", {})
+# Owner decision 2026-10-16 (notes.md §7 item 3): the cat's play bubble names the shared
+# painted floor `play` icon, a red striped ball, so its word is "Ball" (never "Yarn").
+PINNED_CARE_WORDS = {("cat", "play"): "Ball"}
 strings = json.loads(STRINGS_CONTRACT.read_text()) if STRINGS_CONTRACT.is_file() else None
 
 
@@ -267,6 +273,12 @@ def check_care_v03(pre, sid, man):
         return
     labels = man.get("careLabels", {})
     for need, word in sorted(words.items()):
+        pinned = PINNED_CARE_WORDS.get((sid, need))
+        if pinned is not None and word != pinned:
+            fail(f"{pre} careWords.{need} {word!r} must be {pinned!r} (notes.md §7 item 3)")
+        example = contract_words.get(sid, {}).get(need)
+        if example is not None and word != example:
+            fail(f"{pre} careWords.{need} {word!r} != icons.json care_words example {example!r}")
         why = care_word_problem(word)
         if why:
             fail(f"{pre} careWords.{need} {word!r} {why}")

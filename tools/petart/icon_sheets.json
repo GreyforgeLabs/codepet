@@ -6,7 +6,7 @@
    "ids": ["food", "water", "play", "wash", "treat_jar", "bed", "sun_wake", "wand_change", "gear_more", "star", "power", "heart"],
    "patches": [
     {"source": "raw/care-floor-play.a1.png", "sha256": "d2b787045c4b294eacfc7b259634d02668822192566557b63b6be35e20f522c0", "key": "#00FF00", "grid": [1, 1], "pad": 0.06,
-     "ids": ["play"], "why": "a generic red striped ball that matches bar/badge_ball; the base sheet's yarn ball is the cat's signature toy, kept for a later cat careIcons override"}
+     "ids": ["play"], "why": "a generic red striped ball that matches bar/badge_ball, so every floor species shows one generic toy (the cat's play word is Ball, owner decision 2026-10-16); the base sheet's yarn ball is not shipped"}
    ]},
   {"id": "care-aquatic", "source": "raw/care-aquatic.a1.png", "sha256": "c5c40d910143297d5d5e46a42cb5e05e7a5762bfc636ca3107655347930d0269", "key": "#FF00FF", "grid": [2, 2], "px": 256, "pad": 0.06,
    "ids": ["food", "water", "play", "wash"]},
@@ -15,7 +15,11 @@
   {"id": "status", "source": "raw/status.a1.png", "sha256": "9f6df0547c4bf3ee5f72514f4abcf05542cdfeb44c5c6384d8ab0c0fd0a74016", "key": "#FF00FF", "grid": [4, 3], "px": 256, "pad": 0.06,
    "ids": ["laptop", "bubble_wait", "bandage", "moon", "screen", "leaf_calm", "flame_hardcore", "robot_helpers", "help", "memories", "wave_goodbye", "confetti"]},
   {"id": "apps", "source": "raw/apps.a2.png", "sha256": "990361b6a2c9d9c3db0913fc4329b07b743c038f0f9fb385914ebad686e2a7c1", "key": "#00FF00", "grid": [5, 1], "px": 256, "pad": 0.04,
-   "ids": ["app_claude_code", "app_codex", "app_opencode", "app_hermes", "app_grok"]},
+   "ids": ["app_claude_code", "app_codex", "app_opencode", "app_hermes", "app_grok"],
+   "patches": [
+    {"source": "raw/apps-claude-code.a1.png", "sha256": "e86b67fc0e2d0943d1a4f9600423851c1d18454e7c66e85f7677a711ecb3562a", "key": "#00FF00", "grid": [1, 1], "pad": 0.04,
+     "ids": ["app_claude_code"], "why": "the base sheet's orange tile with a white four-point sparkle was too close to a vendor mark (owner review 2026-10-16); replaced by a rose-pink tile with a white light bulb, with no star, sparkle or asterisk shape and no orange"}
+   ]},
   {"id": "ui", "source": "raw/ui.a1.png", "sha256": "da25c97564cdbbc0291aec00956b9b0fe7682aec7a133a5cf10815d4c31987fd", "key": "#00FF00", "grid": [2, 1], "px": 256, "pad": 0.06,
    "ids": ["egg", "pencil"]},
   {"id": "bar", "source": "raw/bar.a1.png", "sha256": "1eee87f79e2f2f438caf4a0d21a5507533e6bc34230401186316c8dbb9e8a45b", "key": "#00FF00", "grid": [5, 2], "px": 64, "pad": 0.03,

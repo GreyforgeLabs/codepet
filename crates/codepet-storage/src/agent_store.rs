@@ -16,8 +16,8 @@ use codepet_core::agent::{
     apply_session_event, approval_transition, event_bucket, fold_gate, pet_state, turn_qualifies,
     CapVerdict, ClientId, DoneTurn, EventKind, FoldGate, FoldOutcome, OpenTurn, Session,
     SessionEvent, SessionRow, SessionState, TreatCheck, AGENT_EVENTS_KEEP_MS,
-    AGENT_EVENTS_MAX_ROWS, AGENT_SESSIONS_KEEP_MS, ERROR_RECENT_MS, FUTURE_CLAMP_MS, HOUR_MS,
-    RETENTION_INTERVAL_MS, RETENTION_LIMIT, TURN_TIMES_EXACT_MS,
+    AGENT_EVENTS_MAX_ROWS, AGENT_SESSIONS_KEEP_MS, ERROR_RECENT_MS, FORGOTTEN_MARK_MS,
+    FUTURE_CLAMP_MS, HOUR_MS, RETENTION_INTERVAL_MS, RETENTION_LIMIT, TURN_TIMES_EXACT_MS,
 };
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::cell::RefCell;
@@ -175,19 +175,34 @@ impl Store {
     /// [`RETENTION_LIMIT`] rows per statement; the `agent_events` deletes repeat, each round
     /// in its own short transaction, until a round removes fewer than the limit or
     /// [`RETENTION_RUN`] has passed, so heavy use cannot outgrow the 7-day and row bounds.
-    /// `activity_turns` and `activity_xp` rows are never deleted, only coarsened.
+    /// `activity_turns` and `activity_xp` rows are never deleted, only coarsened. Earn times
+    /// kept by "Forget coding history" that have left the day are cleared on every call,
+    /// whatever the hourly gate says ([`treats::expire_forgotten`]).
     pub fn agent_retention(&mut self) -> Result<bool> {
         let started = std::time::Instant::now();
         let now = self.clock.now_ms();
         let max_rows = i64::from(AGENT_EVENTS_MAX_ROWS);
         let limit = i64::from(RETENTION_LIMIT);
-        {
+        let forgotten_due = {
             let tx = self
                 .conn
                 .transaction_with_behavior(TransactionBehavior::Deferred)?;
             if user_version(&tx)? != AGENT_SCHEMA_VERSION {
                 return Ok(false);
             }
+            treats::forgotten_due(&tx, now)?
+        };
+        if forgotten_due {
+            let tx = self
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            treats::expire_forgotten(&tx, now, limit)?;
+            tx.commit()?;
+        }
+        {
+            let tx = self
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Deferred)?;
             let last: Option<i64> =
                 tx.query_row("SELECT retention_at_ms FROM meta WHERE id = 1", [], |r| {
                     r.get(0)
@@ -238,12 +253,20 @@ impl Store {
                (SELECT session_key FROM agent_sessions WHERE last_event_ms < ?1 LIMIT ?2)",
             params![now - AGENT_SESSIONS_KEEP_MS, limit],
         )?;
-        for col in ["earned_at_ms", "given_at_ms"] {
+        // Earn times kept by Forget go once they leave the daily window; the coarsening
+        // below never floors one (it would lose the marker and keep the time forever).
+        treats::expire_forgotten(&tx, now, limit)?;
+        for (col, keep_mark) in [("earned_at_ms", true), ("given_at_ms", false)] {
+            let skip = if keep_mark {
+                format!(" AND {col} % ?1 != {FORGOTTEN_MARK_MS}")
+            } else {
+                String::new()
+            };
             tx.execute(
                 &format!(
                     "UPDATE activity_turns SET {col} = {col} - ({col} % ?1) WHERE id IN
                        (SELECT id FROM activity_turns WHERE {col} > 0 AND {col} < ?2
-                        AND {col} % ?1 != 0 LIMIT ?3)"
+                        AND {col} % ?1 != 0{skip} LIMIT ?3)"
                 ),
                 params![HOUR_MS, now - TURN_TIMES_EXACT_MS, limit],
             )?;

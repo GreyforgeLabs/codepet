@@ -27,4 +27,6 @@ throwaway directory. The reference model is a test oracle, not product code.
 
 Status: **frozen** after the WP0 review round (see `notes.md` §2 items 19-33). Later changes:
 `icons.json` per-sheet source key and patches (WP4, `notes.md` §2 item 34); WP1 review
-resolutions (`notes.md` §5); amendments after the WP2 review (`notes.md` §6).
+resolutions (`notes.md` §5); amendments after the WP2 review (`notes.md` §6); owner decisions
+after wave 1 (`notes.md` §7: Forget wording in `strings.json`, `protocol.json` and the
+`schema-v5.sql` comment; the light-bulb tile and the cat's "Ball" in `icons.json`).

@@ -373,7 +373,7 @@
         "INVALID_PARAMS",
         "BUSY"
       ],
-      "semantics": "SPEC §5.10. Deletes agent_events and agent_sessions; sets activity_turns.earned_at_ms to 0 and given_at_ms of given rows to 0 (unspent rows stay unspent). Unspent treats and earned XP stay. Takes fold.lock (LOCK_NB, BUSY if held) before the DB.",
+      "semantics": "SPEC §5.10. Deletes agent_events and agent_sessions; sets activity_turns.earned_at_ms to 0, except that an earn from the last 24 h keeps ceil_hour(earned_at_ms) + 1 ms (marked, cleared to 0 once it leaves the day, so the treat caps stay durable; notes.md §7 item 1), and sets given_at_ms of given rows to 0 (unspent rows stay unspent). Unspent treats and earned XP stay. Takes fold.lock (LOCK_NB, BUSY if held) before the DB.",
       "examples": {
         "valid": [
           {}

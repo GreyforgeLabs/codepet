@@ -788,9 +788,48 @@ pub const HOUR_MS: i64 = 60 * 60 * 1000;
 /// Rolling day of the daily cap.
 pub const DAY_MS: i64 = 24 * HOUR_MS;
 
+/// The marker of an earn time kept by "Forget coding history" (owner decision 2026-10-16,
+/// `notes.md` §7 item 1): such a time is `ceil_hour(earned) + FORGOTTEN_MARK_MS`, so it is
+/// never earlier than the real earn (every cap can only get stricter) and it is never on an
+/// hour boundary, so retention can tell it from a time it coarsened itself and clears it
+/// (sets 0) once it has left the [`DAY_MS`] window.
+pub const FORGOTTEN_MARK_MS: i64 = 1;
+
+/// The earn time "Forget coding history" keeps for a treat earned at `earned_ms`, as seen at
+/// `now_ms`: rounded up to the end of its hour plus [`FORGOTTEN_MARK_MS`] while the earn
+/// can still count toward a cap (`earned_ms > now_ms - DAY_MS`, the daily window is
+/// half-open), else 0 (forgotten, never counts). 0 stays 0, and a kept time maps to itself,
+/// so Forget is idempotent.
+pub fn forgotten_earn_ms(earned_ms: i64, now_ms: i64) -> i64 {
+    if earned_ms <= 0 || earned_ms <= now_ms.saturating_sub(DAY_MS) {
+        return 0;
+    }
+    if earned_ms.rem_euclid(HOUR_MS) == FORGOTTEN_MARK_MS {
+        return earned_ms;
+    }
+    let ceil = earned_ms
+        .div_euclid(HOUR_MS)
+        .saturating_add(i64::from(earned_ms.rem_euclid(HOUR_MS) != 0))
+        .saturating_mul(HOUR_MS);
+    ceil.saturating_add(FORGOTTEN_MARK_MS)
+}
+
+/// The `earned_at_ms` an ordinary earn at `at_ms` is stored with: at least 1 (0 means
+/// forgotten), and never [`FORGOTTEN_MARK_MS`] past an hour, so only a time kept by Forget
+/// carries the marker. Moving such an earn 1 ms later only makes the caps stricter.
+pub fn ordinary_earn_ms(at_ms: i64) -> i64 {
+    let t = at_ms.max(1);
+    if t.rem_euclid(HOUR_MS) == FORGOTTEN_MARK_MS {
+        t.saturating_add(1)
+    } else {
+        t
+    }
+}
+
 /// The verdict from precomputed counts (the storage form): `session_recent` = this
 /// session earned within [`CAP_SESSION_MS`]; `hour`/`day` = earns in the rolling windows.
-/// Every window is half-open and forgotten rows (`earned_at_ms = 0`) never count.
+/// Every window is half-open and forgotten rows (`earned_at_ms = 0`) never count; a time
+/// kept by Forget ([`forgotten_earn_ms`]) counts like any other.
 pub fn caps_verdict(jar: u32, session_recent: bool, hour: u32, day: u32) -> CapVerdict {
     if jar >= JAR_MAX {
         CapVerdict::JarFull
@@ -1211,6 +1250,61 @@ mod tests {
 
     fn vectors() -> Value {
         serde_json::from_str(VECTORS).expect("agent_vectors.json parses")
+    }
+
+    #[test]
+    fn forget_keeps_a_marked_hour_coarsened_earn_time_for_one_day() {
+        let now = 1_792_123_876_111_i64;
+        let hour_end = |t: i64| (t / HOUR_MS + 1) * HOUR_MS;
+        // Within the day: rounded up to the end of its hour, plus the marker.
+        let e = now - 10 * 60_000;
+        let kept = forgotten_earn_ms(e, now);
+        assert_eq!(kept, hour_end(e) + FORGOTTEN_MARK_MS);
+        assert!(kept >= e && kept - e <= HOUR_MS);
+        assert_eq!(kept.rem_euclid(HOUR_MS), FORGOTTEN_MARK_MS);
+        // Idempotent: a kept time maps to itself; an exact hour gets only the marker.
+        assert_eq!(forgotten_earn_ms(kept, now), kept);
+        let on_hour = (now / HOUR_MS) * HOUR_MS;
+        assert_eq!(forgotten_earn_ms(on_hour, now), on_hour + FORGOTTEN_MARK_MS);
+        // Out of the (half-open) daily window, or already forgotten: 0.
+        assert_eq!(forgotten_earn_ms(now - DAY_MS, now), 0);
+        assert_eq!(
+            forgotten_earn_ms(now - DAY_MS + 1, now),
+            hour_end(now - DAY_MS + 1) + 1
+        );
+        assert_eq!(forgotten_earn_ms(0, now), 0);
+        // A kept time never loosens a cap: every earn still counts where it counted before.
+        for minutes in [0_i64, 1, 29, 59, 61, 600, 1439] {
+            let e = now - minutes * 60_000;
+            let k = forgotten_earn_ms(e, now);
+            for at in [now, now + 20_000, now + HOUR_MS, now + DAY_MS - 1] {
+                for window in [CAP_SESSION_MS, HOUR_MS, DAY_MS] {
+                    if e > at - window {
+                        assert!(k > at - window, "{minutes} min, window {window}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_ordinary_earn_never_carries_the_forget_marker() {
+        let hour = 1_792_123_876_111_i64 / HOUR_MS * HOUR_MS;
+        // hh:00:00.001 would look kept by Forget: it moves 1 ms later (only stricter caps).
+        assert_eq!(ordinary_earn_ms(hour + FORGOTTEN_MARK_MS), hour + 2);
+        assert_ne!(
+            ordinary_earn_ms(hour + FORGOTTEN_MARK_MS).rem_euclid(HOUR_MS),
+            FORGOTTEN_MARK_MS
+        );
+        for t in [hour, hour + 2, hour + 59_999, hour + HOUR_MS - 1] {
+            assert_eq!(ordinary_earn_ms(t), t);
+        }
+        assert_eq!(
+            ordinary_earn_ms(0),
+            2,
+            "0 means forgotten, and 1 is the marker"
+        );
+        assert_eq!(ordinary_earn_ms(-5), 2);
     }
 
     #[test]
