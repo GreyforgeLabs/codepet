@@ -1,42 +1,60 @@
 .pragma library
-// CodePet bar plugin model: pure functions, no QML or Quickshell imports, node-tested
-// (qml/tests/test_bar_model.mjs). Everything the bar shows is derived here from the
-// bar-safe `bar-state.json` subset that Rust writes (schema codepet.bar.v1).
+// CodePet bar plugin model (v0.3): pure functions, no QML or Quickshell imports,
+// node-tested (qml/tests/test_bar_model.mjs). Everything the bar cell and the popup show
+// is derived here from the bar-safe `bar-state.json` that Rust writes (readers accept
+// codepet.bar.v1 and codepet.bar.v2 for one release, SPEC-v0.3 §8), the asset registry,
+// and the copy table in strings.json (passed in as `strings`; see Strings.js).
 //
-// Copy rules: calm text, every duration labelled "active time", no countdown to a death
-// in any prediction. Colour is never the only cue: every non-healthy status has a glyph.
+// The face (which state wins, its line and its bubble) comes from petstate.js
+// sharedPriority(); this file turns that face into what each surface draws.
+//
+// Kid copy rules (SPEC-v0.3 §1.2 K1/K2/K8): no numbers, no jargon, short lines. Every word a
+// kid sees comes from strings.json; nothing here invents copy.
 
-var SCHEMA = "codepet.bar.v1"
+var SCHEMAS = ["codepet.bar.v1", "codepet.bar.v2"]
 var MAX_STATE_BYTES = 16384
 var MAX_SETTINGS_BYTES = 1048576
 var MAX_REGISTRY_BYTES = 262144
 
-// The only methods the bar may send. Task methods are never sent from the shell
-// process: a mock supervisor must never become a child of the Omarchy shell.
-var ALLOWED_METHODS = ["state.get", "pet.care", "pet.sleep", "pet.wake", "pet.pause", "pet.events_seen"]
-var CARE_ACTIONS = ["food", "water", "play", "wash", "bathroom", "routine"]
+// The only methods the bar may send (SPEC-v0.3 §6.2). Task methods, pet.adopt and
+// pet.configure_life are never sent from the shell process.
+var ALLOWED_METHODS = [
+    "state.get", "pet.care", "pet.sleep", "pet.wake", "pet.pause", "pet.events_seen",
+    "pet.start", "pet.rename", "pet.select", "pet.rules", "pet.retire", "pet.memorial",
+    "treats.give", "app.set_enabled", "app.set_helpers", "agent.forget_history",
+    "clients.status", "clients.connect", "clients.disconnect", "clients.test"
+]
+var CARE_NEEDS = ["food", "water", "play", "wash"]
+var METER_OF = { food: "hunger", water: "thirst", play: "mental_health", wash: "hygiene" }
+var NEED_OF_METER = { hunger: "food", thirst: "water", mental_health: "play", hygiene: "wash" }
+var NEED_LEVEL = { ok: "happy", low: "soon", empty: "now", critical: "critical" }
+var METER_FULL = 10000
 
-var NEEDS = ["hunger", "thirst", "mental_health", "hygiene"]
-var NEED_ACTION = { hunger: "food", thirst: "water", mental_health: "play", hygiene: "wash" }
-var NEED_LABEL = { hunger: "Nourishment", thirst: "Hydration", mental_health: "Mood", hygiene: "Hygiene" }
-var NEED_FEELING = { hunger: "hungry", thirst: "thirsty", mental_health: "restless", hygiene: "scruffy" }
-var NEED_NOUN = { hunger: "hunger", thirst: "thirst", mental_health: "low mood", hygiene: "grime" }
-var ACTION_WORD = { food: "Food", water: "Water", play: "Play", wash: "A wash", bathroom: "A bathroom break", routine: "A care routine" }
-var DEFAULT_CARE_LABEL = { food: "Food", water: "Water", play: "Play", wash: "Wash", bathroom: "Bathroom", routine: "Routine", sleep: "Bed" }
-var DEFAULT_STAGE_MIN_LEVEL = [1, 2, 4]
+var CLIENTS = ["claude-code", "codex", "opencode", "hermes", "grok-cli"]
+var APP_NAMES = { "claude-code": "Claude Code", "codex": "Codex", "opencode": "OpenCode",
+                  "hermes": "Hermes", "grok-cli": "Grok" }
+var APP_ICONS = { "claude-code": "apps/app_claude_code", "codex": "apps/app_codex",
+                  "opencode": "apps/app_opencode", "hermes": "apps/app_hermes", "grok-cli": "apps/app_grok" }
+var SPECIES = ["cat", "dog", "capybara", "penguin", "robot", "iguana", "spider", "snake", "goldfish",
+               "rabbit", "turtle", "frog", "owl", "red_panda", "axolotl"]
+var REASON_COPY = { too_old: "reason.too_old", not_installed: "reason.not_installed", blocked: "reason.blocked",
+                    settings_changed: "reason.blocked", ready_check: "reason.blocked" }
+var SEEN_JUST_NOW_MS = 300000
+// XP floor of each stage (codepet-core Rules: level_xp [0, 80, 200, 400, 700], stage
+// minimum levels [1, 2, 4]); five stars span the current stage's floor to the next.
+var STAGE_FLOOR_XP = [0, 80, 400]
+var NAME_MAX_CHARS = 24
+var NAME_MAX_BYTES = 96
 
-var STATUS_GLYPH = {
-    missing: "", healthy: "",
-    no_life: "+", death_pending: "✿", critical: "!!", fainted: "!!",
-    unarmed: "◦", warning: "!", review: "?", sleeping: "z",
-    paused: "‖", working: "•", evolved: "★"
+// Bar cell (icons.json bar_cell): badge icon per shared-priority `bar` value.
+var BAR_BADGE = {
+    off: "bar/badge_moon", egg: "bar/badge_sparkle", hi: "bar/badge_sparkle", sleep: "",
+    sleep_bandage: "bar/badge_bandage", hand: "bar/badge_hand", need_food: "bar/badge_bowl",
+    need_water: "bar/badge_drop", need_play: "bar/badge_ball", need_wash: "bar/badge_tub",
+    working: "", star: "bar/badge_star", none: ""
 }
-// Display precedence, most important first.
-var STATUS_ORDER = ["missing", "no_life", "death_pending", "fainted", "critical", "unarmed", "warning",
-                    "review", "sleeping", "paused", "working", "evolved", "healthy"]
-var SEVERITY_RANK = { none: 0, warning: 1, critical: 2 }
-var WORKING_STATES = ["preparing", "running", "verifying", "cancelling"]
-var REVIEW_STATES = ["waiting_for_user", "review_ready", "recovery_required"]
+
+// ---------------------------------------------------------------- basics
 
 function utf8Bytes(s) {
     var n = 0
@@ -61,13 +79,42 @@ function boundedJson(text, maxBytes) {
     try { return JSON.parse(text) } catch (e) { return null }
 }
 
-// bar-state.json: at most 16 KiB and schema codepet.bar.v1, otherwise null.
+// ---------------------------------------------------------------- bar-state.json
+
+function defaultAgent() {
+    return { state: "idle", apps: [], stale_at_ms: null, finished_seq: 0, finished_at_ms: null,
+             finished_app: null, finished_treat: false, finished_jar_full: false, hello_seq: 0,
+             hello_at_ms: null, hello_app: null, test: null, error_at_ms: null, error_app: null,
+             helpers_busy: false }
+}
+
+// bar-state.json: at most 16 KiB, schema codepet.bar.v1 or v2, otherwise null. A v1 file
+// (a v0.2 export, or v0.3 Rust before the label switch) gains the v0.3 blocks' defaults,
+// so every reader below sees one shape.
 function parse(text) {
-    var doc = boundedJson(text, MAX_STATE_BYTES)
-    if (!isObject(doc) || doc.schema !== SCHEMA) return null
+    return normalize(boundedJson(text, MAX_STATE_BYTES))
+}
+
+function normalize(doc) {
+    if (!isObject(doc) || SCHEMAS.indexOf(doc.schema) < 0) return null
     if (!isNum(doc.state_version) || doc.state_version < 0 || Math.floor(doc.state_version) !== doc.state_version) return null
     if (doc.life !== null && doc.life !== undefined && !isObject(doc.life)) return null
-    return doc
+    var out = {}
+    for (var k in doc) out[k] = doc[k]
+    if (out.life === undefined) out.life = null
+    out.enabled = doc.enabled !== false
+    var agent = defaultAgent()
+    if (isObject(doc.agent)) for (var a in doc.agent) agent[a] = doc.agent[a]
+    if (!Array.isArray(agent.apps)) agent.apps = []
+    out.agent = agent
+    out.treats = isObject(doc.treats) && isNum(doc.treats.jar)
+        ? { jar: Math.max(0, Math.floor(doc.treats.jar)), full: doc.treats.full === true } : { jar: 0, full: false }
+    out.clients = isObject(doc.clients) ? doc.clients : {}
+    out.care = isObject(doc.care) ? doc.care : { sleeping: false }
+    out.needs = Array.isArray(doc.needs) ? doc.needs : []
+    out.unseen_events = Array.isArray(doc.unseen_events) ? doc.unseen_events : []
+    out.memorial = isObject(doc.memorial) ? doc.memorial : { count: 0, latest_name: null }
+    return out
 }
 
 // The asset registry (qml/assets/pets/registry.json); null when missing or unusable.
@@ -109,14 +156,20 @@ function absolutePath(v) {
         && v.split("/").indexOf("..") < 0 ? v.replace(/\/+$/, "") : ""
 }
 
-// Normalized plugin settings; junk falls back to the manifest defaults.
+function boolSetting(v, fallback) {
+    if (v === undefined || v === null || v === "") return fallback
+    return String(v) === "true"
+}
+
+// Normalized plugin settings; junk falls back to the manifest defaults. The v0.2 label
+// mode "status" (a glyph next to the name) is gone: it reads as "name".
 function config(settings) {
     var s = isObject(settings) ? settings : {}
-    var label = ["name", "status", "none"].indexOf(s.label) >= 0 ? s.label : "name"
     return {
-        label: label,
-        presence: s.presence === undefined || s.presence === null ? true : String(s.presence) === "true",
-        overlayOnLoad: String(s.overlayOnLoad) === "true",
+        label: s.label === "none" ? "none" : "name",
+        presence: boolSetting(s.presence, true),
+        overlayOnLoad: boolSetting(s.overlayOnLoad, false),
+        calm: boolSetting(s.calm, false),
         binary: absolutePath(s.binary),
         stateHome: absolutePath(s.stateHome)
     }
@@ -144,11 +197,60 @@ function paths(cfg, env) {
         testState: testState,
         // Extra environment for every BarRpc process; empty = inherit.
         childEnv: testState ? { XDG_STATE_HOME: cfg.stateHome } : {},
-        // env(1) words for the desktop-pet launcher: the configured binary and a test
-        // state home reach the overlay too. Empty = inherit.
+        // env(1) words for the desktop-pet launcher: the configured binary, a test state
+        // home and Calm mode reach the overlay too. Empty = inherit.
         launcherEnv: (cfg.binary ? ["CODEPET_BIN=" + cfg.binary] : [])
             .concat(testState ? ["XDG_STATE_HOME=" + cfg.stateHome] : [])
+            .concat(cfg.calm ? ["CODEPET_REDUCED_MOTION=1"] : [])
     }
+}
+
+function allowedMethod(m) { return ALLOWED_METHODS.indexOf(m) >= 0 }
+function allowedCareAction(a) { return CARE_NEEDS.indexOf(a) >= 0 }
+function newRequestId(now, seq) { return "bar-rq-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)) }
+
+// ---------------------------------------------------------------- registry + art
+
+function speciesMeta(reg, id) { return reg && isObject(reg.species) && isObject(reg.species[id]) ? reg.species[id] : null }
+function speciesIds(reg) {
+    var order = reg && Array.isArray(reg.order) ? reg.order : SPECIES
+    var out = []
+    for (var i = 0; i < order.length; i++)
+        if (typeof order[i] === "string" && /^[a-z_]{2,24}$/.test(order[i]) && (!reg || speciesMeta(reg, order[i]))) out.push(order[i])
+    // The cat is always first in the picker (SPEC-v0.3 §3.3).
+    var cat = out.indexOf("cat")
+    if (cat > 0) { out.splice(cat, 1); out.unshift("cat") }
+    return out
+}
+function defaultName(reg, id) {
+    var m = speciesMeta(reg, id)
+    return m ? clampText(str(m.defaultName, ""), NAME_MAX_CHARS) : ""
+}
+function speciesWord(reg, id) {
+    var m = speciesMeta(reg, id)
+    return m ? str(m.displayName, "") : ""
+}
+
+// careIconSet: the manifest value, else aquatic for an aquatic habitat, else floor.
+function careSet(reg, id) {
+    var m = speciesMeta(reg, id)
+    if (m && ["floor", "aquatic", "robot"].indexOf(m.careIconSet) >= 0) return m.careIconSet
+    if (m && m.habitat === "aquatic") return "aquatic"
+    if (id === "goldfish" || id === "axolotl") return "aquatic"
+    if (id === "robot") return "robot"
+    return "floor"
+}
+function careWord(reg, id, need) {
+    var m = speciesMeta(reg, id)
+    var w = m && isObject(m.careWords) ? m.careWords[need] : null
+    return typeof w === "string" && w.length > 0 && w.length <= 40 ? w : ""
+}
+// Plugin-relative icon path (assets/icons/<sheet>/<id>.webp), never a pet frame.
+function iconPath(icon) {
+    return typeof icon === "string" && /^[a-z_-]+\/[a-z0-9_]+$/.test(icon) ? "assets/icons/" + icon + ".webp" : ""
+}
+function careIcon(reg, id, need) {
+    return "care-" + careSet(reg, id) + "/" + need
 }
 
 function thumbPath(petId, stage) {
@@ -157,430 +259,384 @@ function thumbPath(petId, stage) {
     return "qml/assets/pets/" + petId + "/thumb-s" + stage + ".webp"
 }
 
-function allowedMethod(m) { return ALLOWED_METHODS.indexOf(m) >= 0 }
-function allowedCareAction(a) { return CARE_ACTIONS.indexOf(a) >= 0 }
-
-// How long an unconfirmed press may be retried under its own key. A press of the same
-// button after this window is a new press: reusing the old key would make the backend
-// replay the old receipt (no new care applied) while the bar said "Care confirmed".
-var RETRY_WINDOW_MS = 120000
-
-// One retry key per button press: the same press retried soon after an unconfirmed
-// response (same signature, within RETRY_WINDOW_MS) reuses its key, so the backend
-// applies it at most once. Anything else gets a fresh key.
-function retryKey(prev, signature, now, seq) {
-    if (isObject(prev) && prev.key && prev.signature === signature
-            && isNum(prev.expiresAt) && isNum(now) && now <= prev.expiresAt)
-        return prev
-    return { key: "bar-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)),
-             signature: signature, expiresAt: (isNum(now) ? now : 0) + RETRY_WINDOW_MS }
+// Frame tables (the defaults of qml/shared/PetCatalog.js, which the plugin cannot import);
+// a manifest state overrides any field. Only the states the popup and bar draw.
+var DEFAULT_STATES = {
+    idle:        { frames: ["b00", "b00", "b01", "b00"], frameMs: 600, loop: true, reducedFrame: 0 },
+    food:        { frames: ["b03", "c00", "c01", "c00", "c01", "b04"], frameMs: 400, loop: false, reducedFrame: 1 },
+    water:       { frames: ["b03", "c02", "c03", "c02", "c03", "b04"], frameMs: 400, loop: false, reducedFrame: 1 },
+    play:        { frames: ["b03", "c04", "c05", "c04", "c05", "b04"], frameMs: 400, loop: false, reducedFrame: 1 },
+    wash:        { frames: ["b00", "c06", "c07", "c06", "c07", "b04"], frameMs: 400, loop: false, reducedFrame: 1 },
+    sleep:       { frames: ["b07"], frameMs: 1000, loop: true, reducedFrame: 0 },
+    celebrate:   { frames: ["c11", "b04", "c11", "b04"], frameMs: 400, loop: false, reducedFrame: 0 },
+    working:     { frames: ["b04", "b00"], frameMs: 800, loop: true, reducedFrame: 0 },
+    waiting:     { frames: ["b02", "b00"], frameMs: 800, loop: true, reducedFrame: 0 },
+    needs_care:  { frames: ["b05"], frameMs: 800, loop: true, reducedFrame: 0 },
+    error:       { frames: ["b06"], frameMs: 1000, loop: true, reducedFrame: 0 }
 }
 
-// The key to keep after a response: none after a confirmed one; after an unconfirmed
-// one (failure, timeout, lost response), the same key for RETRY_WINDOW_MS from now.
-function retryAfterResponse(prev, resp, now) {
-    if (!isObject(prev) || !prev.key || !isObject(resp) || resp.ok === true || !isNum(now)) return null
-    return { key: prev.key, signature: prev.signature, expiresAt: now + RETRY_WINDOW_MS }
-}
-
-function newRequestId(now, seq) { return "bar-rq-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)) }
-
-// ---------------------------------------------------------------- registry lookups
-
-function speciesMeta(reg, id) { return reg && isObject(reg.species) && isObject(reg.species[id]) ? reg.species[id] : null }
-function speciesName(reg, id) { var m = speciesMeta(reg, id); return m ? str(m.displayName, "Companion") : "Companion" }
-function stageInfo(reg, id, stage) {
+function stateMeta(reg, id, state) {
+    var name = DEFAULT_STATES[state] ? state : "idle"
+    var base = DEFAULT_STATES[name]
+    var out = { name: name, frames: base.frames.slice(), frameMs: base.frameMs, loop: base.loop, reducedFrame: base.reducedFrame }
     var m = speciesMeta(reg, id)
-    var list = m && Array.isArray(m.stages) ? m.stages : []
-    for (var i = 0; i < list.length; i++) if (isObject(list[i]) && list[i].stage === stage) return list[i]
-    return null
-}
-function stageName(reg, id, stage) { var s = stageInfo(reg, id, stage); return s ? str(s.name, "stage " + stage) : "stage " + stage }
-function stageMinLevel(reg, id, stage) {
-    var s = stageInfo(reg, id, stage)
-    return s && isNum(s.minLevel) ? s.minLevel : DEFAULT_STAGE_MIN_LEVEL[stage - 1]
-}
-function careLabel(reg, id, action) {
-    var m = speciesMeta(reg, id)
-    var labels = m && isObject(m.careLabels) ? m.careLabels : {}
-    return clampText(str(labels[action], DEFAULT_CARE_LABEL[action] || "Care"), 24)
+    var own = m && isObject(m.states) && isObject(m.states[name]) ? m.states[name] : null
+    if (!own && m && isObject(m.states) && isObject(m.states.idle) && Array.isArray(m.states.idle.frames))
+        out.frames = m.states.idle.frames.slice()
+    if (own) {
+        if (Array.isArray(own.frames) && own.frames.length > 0) out.frames = own.frames.slice()
+        if (isNum(own.frameMs) && own.frameMs >= 50) out.frameMs = own.frameMs
+        if (typeof own.loop === "boolean") out.loop = own.loop
+        if (isNum(own.reducedFrame)) out.reducedFrame = own.reducedFrame
+    }
+    out.totalMs = out.frames.length * out.frameMs
+    return out
 }
 
-// ---------------------------------------------------------------- formatting
-
-function plural(n, one, many) { return n + " " + (n === 1 ? one : many) }
-
-// "about 2 h 10 min of active time"; long form spells the units (accessible names).
-function formatActive(ms, long) {
-    if (!isNum(ms) || ms < 0) return ""
-    var mins = Math.floor(ms / 60000)
-    if (mins < 1) return "less than a minute of active time"
-    var h = Math.floor(mins / 60), m = mins % 60
-    var parts = []
-    if (h > 0) parts.push(long ? plural(h, "hour", "hours") : h + " h")
-    if (m > 0) parts.push(long ? plural(m, "minute", "minutes") : m + " min")
-    return "about " + parts.join(" ") + " of active time"
+function stageOf(life) {
+    var s = life && isNum(life.stage) ? Math.floor(life.stage) : 1
+    return s >= 1 && s <= 3 ? s : 1
 }
 
-function pad2(n) { return (n < 10 ? "0" : "") + n }
-function formatAsOf(ms) {
-    if (!isNum(ms) || ms <= 0) return ""
-    var d = new Date(ms)
-    return "as of " + pad2(d.getHours()) + ":" + pad2(d.getMinutes())
+function framePath(entry, stage) {
+    var e = String(entry)
+    if (!/^[A-Za-z0-9_{}./-]{1,64}$/.test(e) || e.indexOf("..") >= 0) return ""
+    if (e.indexOf("/") >= 0) return e.replace("{stage}", String(stage))
+    return "s" + stage + "/" + (/\.[a-z0-9]+$/i.test(e) ? e : e + ".webp")
 }
 
-// ---------------------------------------------------------------- status
+// Runtime-relative path of one frame: the frame index wraps for loops and holds the last
+// frame of a one-shot state; Calm mode shows the state's reduced frame only.
+function frameRel(reg, id, stage, state, elapsedMs, calm) {
+    if (typeof id !== "string" || !/^[a-z_]{2,24}$/.test(id) || !speciesMeta(reg, id)) return ""
+    var meta = stateMeta(reg, id, state)
+    var n = meta.frames.length
+    var f
+    if (calm) f = Math.max(0, Math.min(n - 1, Math.floor(meta.reducedFrame)))
+    else {
+        f = Math.floor(Math.max(0, Number(elapsedMs) || 0) / meta.frameMs)
+        f = meta.loop ? f % n : Math.min(f, n - 1)
+    }
+    var rel = framePath(meta.frames[f], stage === 1 || stage === 2 || stage === 3 ? stage : 1)
+    return rel ? "qml/assets/pets/" + id + "/" + rel : ""
+}
 
-function needsList(state) {
-    var out = []
-    var list = state && Array.isArray(state.needs) ? state.needs : []
-    for (var i = 0; i < list.length && out.length < 8; i++) {
+// The popup pet's semantic state for a face (SPEC-v0.3 §2.4, §3.2); `clockMs` makes a
+// "soon" need show its needs_care frame now and then.
+function petStateFor(face, clockMs) {
+    var s = face ? face.state : "idle"
+    switch (s) {
+    case "off": case "fainted": case "paused": case "asleep": return "sleep"
+    case "waiting": return "waiting"
+    case "need_now": return "needs_care"
+    case "working": case "testing": return "working"
+    case "celebrate": return "celebrate"
+    case "oops": return face.overlay === "error" ? "error" : "idle"
+    case "need_soon": return (Math.floor((Number(clockMs) || 0) / 1600) % 4) === 3 ? "needs_care" : "idle"
+    default: return "idle"
+    }
+}
+
+// ---------------------------------------------------------------- copy
+
+// One string: the habitat override (`aquatic.` / `robot.`) when it exists, else the base key.
+function template(strings, key, set) {
+    if (!isObject(strings)) return ""
+    if (set === "aquatic" || set === "robot") {
+        var over = strings[set + "." + key]
+        if (typeof over === "string") return over
+    }
+    return typeof strings[key] === "string" ? strings[key] : ""
+}
+
+function appName(id) { return APP_NAMES[id] || "" }
+
+// Fills {name}, {app}, {app2} and {word}. App vars are client ids (agent_vectors.json
+// priority.vars); they become display names here.
+function fill(text, vars) {
+    vars = vars || {}
+    return String(text).replace(/\{([a-z0-9]+)\}/g, function (m, key) {
+        var v = vars[key]
+        if (v === undefined || v === null) return ""
+        if (key === "app" || key === "app2") return appName(v) || String(v)
+        return String(v)
+    })
+}
+
+function t(strings, key, set, vars) { return fill(template(strings, key, set), vars) }
+
+// The bubble after a care tap (SPEC-v0.3 §3.2): "{name} is full!" when nothing will change;
+// otherwise the per-set react line, with the species' careWords {word} when the line takes
+// one, else the plain verb.
+function reactText(strings, reg, appearance, need, full, name) {
+    var set = careSet(reg, appearance)
+    if (full) return t(strings, "react.full." + need, set, { name: name })
+    var tpl = template(strings, "react." + need, set)
+    if (tpl.indexOf("{word}") >= 0) {
+        var word = careWord(reg, appearance, need)
+        if (word) return fill(tpl, { word: word, name: name })
+        var plain = template(strings, "react." + need + ".plain", set)
+        return fill(plain || tpl.replace(/\s*\{word\}!?/, ""), { name: name })
+    }
+    return fill(tpl, { name: name })
+}
+
+// The face's line (shared priority) as text.
+function faceLine(strings, reg, doc, face) {
+    if (!face || !face.line) return ""
+    var life = doc && isObject(doc.life) ? doc.life : null
+    return t(strings, face.line, careSet(reg, life ? life.appearance : ""), face.vars)
+}
+
+// ---------------------------------------------------------------- Home model
+
+function needLevels(doc) {
+    var out = { food: "happy", water: "happy", play: "happy", wash: "happy" }
+    var list = doc && Array.isArray(doc.needs) ? doc.needs : []
+    for (var i = 0; i < list.length; i++) {
         var n = list[i]
-        if (isObject(n) && NEEDS.indexOf(n.need) >= 0) out.push(n)
+        if (!isObject(n)) continue
+        var need = NEED_OF_METER[n.need] || (CARE_NEEDS.indexOf(n.action) >= 0 ? n.action : "")
+        if (need && NEED_LEVEL[n.state]) out[need] = NEED_LEVEL[n.state]
     }
     return out
 }
 
-// The need that matters most: critical > empty > low, then the shortest window.
-function worstNeed(state) {
-    var rank = { critical: 3, empty: 2, low: 1 }
-    var best = null
-    var list = needsList(state)
-    for (var i = 0; i < list.length; i++) {
-        var n = list[i], r = rank[n.state] || 0
-        if (r === 0) continue
-        if (!best || r > best.r || (r === best.r && isNum(n.until_critical_ms)
-                && (!isNum(best.n.until_critical_ms) || n.until_critical_ms < best.n.until_critical_ms)))
-            best = { r: r, n: n }
+// True when a care tap will change nothing (Rust: the meter is already full).
+function careIsFull(doc, need) {
+    var meter = doc && isObject(doc.meters) ? doc.meters[METER_OF[need]] : null
+    return isNum(meter) && meter >= METER_FULL
+}
+
+// Which controls Home shows for a face (agent_vectors.json priority.home_controls, K4, K6).
+// tiles: [{need, glow: "now"|"soon"|"", label key}], wake: "" | "pet.wake" | "pet.pause",
+// turnOn, round (the three round buttons), treats.
+function homeControls(doc, face) {
+    var st = face ? face.state : ""
+    var out = { tiles: [], wake: "", turnOn: false, round: false, treats: false }
+    if (st === "off") { out.turnOn = true; return out }
+    if (st === "asleep") { out.wake = "pet.wake"; return out }
+    if (st === "paused") { out.wake = "pet.pause"; return out }
+    if (st === "no_pet" || st === "welcome" || !doc || !isObject(doc.life)) return out
+    var levels = needLevels(doc)
+    var needs = st === "fainted" ? ["food", "water"] : CARE_NEEDS
+    for (var i = 0; i < needs.length; i++) {
+        var lv = levels[needs[i]]
+        out.tiles.push({ need: needs[i], glow: lv === "now" || lv === "critical" ? "now" : lv === "soon" ? "soon" : "" })
     }
-    return best ? best.n : null
+    out.round = st !== "fainted"
+    out.treats = !!(face && face.treats_visible === true)
+    return out
 }
 
-function taskState(state) { return state && isObject(state.task) && typeof state.task.state === "string" ? state.task.state : "" }
-
-// Committed status from the last bar-state.json alone.
-function statusOf(state) {
-    if (!state) return "missing"
-    var life = state.life
-    if (!isObject(life)) return "no_life"
-    if (life.death_pending === true) return "death_pending"
-    if (life.fainted === true) return "fainted"
-    if (life.status === "critical") return "critical"
-    if (life.armed !== true) return "unarmed"
-    if (life.status === "warning") return "warning"
-    var task = taskState(state)
-    if (REVIEW_STATES.indexOf(task) >= 0) return "review"
-    if (state.care && state.care.sleeping === true) return "sleeping"
-    if (life.paused === true) return "paused"
-    if (WORKING_STATES.indexOf(task) >= 0) return "working"
-    if (Array.isArray(state.unseen_events) && state.unseen_events.length > 0) return "evolved"
-    return "healthy"
-}
-
-function severityOf(status) {
-    if (status === "critical" || status === "fainted" || status === "death_pending") return "critical"
-    if (status === "warning") return "warning"
-    return "none"
-}
-
-// Leader-only prediction: attended time the recorder committed after the file was
-// generated, compared with the Rust-computed windows in bar-state.json. It can only
-// escalate to warning or critical; it never predicts a death or a memorial.
-function predict(state, attendedSinceMs) {
-    var none = { severity: "none", need: "", action: "" }
-    if (!state || !isObject(state.life) || !isNum(attendedSinceMs) || attendedSinceMs <= 0) return none
-    var life = state.life
-    if (life.armed !== true || life.paused === true || life.death_pending === true || life.fainted === true) return none
-    var presence = state.presence
-    if (!isObject(presence) || presence.wanted !== true || presence.life_id !== life.life_id) return none
-    var t = attendedSinceMs
-    // Rust discards the remaining nap first.
-    if (state.care && state.care.sleeping === true && isNum(state.care.sleep_remaining_ms))
-        t -= Math.max(0, state.care.sleep_remaining_ms)
-    if (t <= 0) return none
-    var best = none
-    var list = needsList(state)
-    for (var i = 0; i < list.length; i++) {
-        var n = list[i], sev = "none"
-        if (isNum(n.until_critical_ms) && n.until_critical_ms >= 0 && t >= n.until_critical_ms) sev = "critical"
-        else if (isNum(n.until_warning_ms) && n.until_warning_ms >= 0 && t >= n.until_warning_ms) sev = "warning"
-        if (SEVERITY_RANK[sev] > SEVERITY_RANK[best.severity])
-            best = { severity: sev, need: n.need, action: str(n.action, NEED_ACTION[n.need]) }
+// The thought bubble's pictures for a face bubble: [{icon}] (at most three), and its size.
+function bubbleIcons(reg, doc, face) {
+    var b = face ? face.bubble : null
+    if (!isObject(b)) return []
+    var life = doc && isObject(doc.life) ? doc.life : null
+    var appearance = life ? life.appearance : ""
+    if (Array.isArray(b.apps)) {
+        var out = []
+        for (var i = 0; i < b.apps.length && out.length < 3; i++) if (APP_ICONS[b.apps[i]]) out.push(APP_ICONS[b.apps[i]])
+        return out
     }
-    return best
+    if (typeof b.need === "string" && CARE_NEEDS.indexOf(b.need) >= 0) return [careIcon(reg, appearance, b.need)]
+    if (b.bandage) return ["status/bandage"]
+    if (b.star) return b.confetti ? ["care-floor/star", "status/confetti"] : ["care-floor/star"]
+    if (b.helpers) return ["status/robot_helpers"]
+    return []
 }
 
-function statusWord(status, state, predictedAction, predicted) {
-    var worst = worstNeed(state)
-    var action = predictedAction || (worst ? str(worst.action, NEED_ACTION[worst.need]) : "")
-    var prefix = predicted ? "≈ " : ""
-    switch (status) {
-    case "missing": return "set up"
-    case "no_life": return "adopt"
-    case "death_pending": return "memorial"
-    case "fainted": return "fainted"
-    case "critical": return prefix + (action ? action + "!!" : "urgent")
-    case "unarmed": return "set up"
-    case "warning": return prefix + (action ? action + "!" : "check")
-    case "review": return "review"
-    case "sleeping": return "napping"
-    case "paused": return "paused"
-    case "working": return "working"
-    case "evolved": return "grew"
-    default: return "ok"
-    }
+// Five stars from the current stage's XP floor to the next stage's floor, rounded down;
+// all five at the last stage (SPEC-v0.3 §3.3).
+function stars(life) {
+    if (!isObject(life)) return 0
+    var stage = stageOf(life)
+    if (stage >= 3) return 5
+    var xp = isNum(life.xp) ? life.xp : 0
+    var floor = STAGE_FLOOR_XP[stage - 1]
+    var next = isNum(life.next_stage_xp) && life.next_stage_xp > floor ? life.next_stage_xp : STAGE_FLOOR_XP[stage]
+    var s = Math.floor(5 * (xp - floor) / (next - floor))
+    return Math.max(0, Math.min(5, s))
 }
 
-function taskLine(state) {
-    var t = taskState(state)
-    if (!t) return ""
-    return "Task: " + t.replace(/_/g, " ") + " (simulation)."
+// The client-side name check before pet.start / pet.rename (core normalize_pet_name:
+// trimmed, 1..=24 characters, <= 96 bytes, no control characters). "" when fine, else
+// the strings.json key to show.
+function nameProblem(name) {
+    var s = String(name === undefined || name === null ? "" : name).replace(/^\s+|\s+$/g, "")
+    if (s.length === 0) return "err.name_too_long"
+    if (/[\u0000-\u001f\u007f]/.test(s)) return "err.name_too_long"
+    var chars = 0
+    for (var i = 0; i < s.length; i++) {
+        var c = s.charCodeAt(i)
+        if (c >= 0xd800 && c <= 0xdbff) i++
+        chars++
+    }
+    if (chars > NAME_MAX_CHARS || utf8Bytes(s) > NAME_MAX_BYTES) return "err.name_too_long"
+    return ""
+}
+function cleanName(name) { return String(name === undefined || name === null ? "" : name).replace(/^\s+|\s+$/g, "") }
+
+// ---------------------------------------------------------------- routing (agent_vectors.json popup_routing)
+
+function route(doc) {
+    if (!doc) return "loading"
+    var life = isObject(doc.life) ? doc.life : null
+    if (doc.enabled === false) return life ? "off_look" : "first_run_off"
+    if (!life) return doc.memorial && isNum(doc.memorial.count) && doc.memorial.count > 0 ? "memorial" : "first_run"
+    return life.armed === true ? "home" : "welcome_back"
 }
 
-// opts: {registry, attendedSinceMs (leader only, else 0/undefined)}
-function summarize(state, cfg, opts) {
-    opts = opts || {}
-    cfg = cfg || config({})
-    var reg = opts.registry || null
-    var committed = statusOf(state)
-    var status = committed
-    var predicted = false
-    var pred = predict(state, opts.attendedSinceMs)
-    if (pred.severity === "critical" && ["death_pending", "fainted", "critical", "unarmed", "missing", "no_life"].indexOf(committed) < 0) {
-        status = "critical"; predicted = true
-    } else if (pred.severity === "warning" && STATUS_ORDER.indexOf(committed) > STATUS_ORDER.indexOf("warning")) {
-        status = "warning"; predicted = true
-    }
-    var life = state && isObject(state.life) ? state.life : null
-    var name = life ? clampText(str(life.name, "Your companion"), 24) : ""
-    var label = ""
-    if (cfg.label !== "none") {
-        if (!state) label = "CodePet"
-        else if (!life) label = "adopt"
-        else label = cfg.label === "status" && status !== "healthy"
-            ? name + " · " + statusWord(status, state, predicted ? pred.action : "", predicted) : name
-    }
-    return {
-        status: status,
-        committedStatus: committed,
-        predicted: predicted,
-        glyph: STATUS_GLYPH[status] || "",
-        severity: severityOf(status),
-        label: label,
-        accessibleName: accessibleName(state, status, predicted, pred, reg)
-    }
+// ---------------------------------------------------------------- Helpers rows (agent_vectors.json helpers_rows)
+
+function localDay(ms, tzOffsetMin) { return Math.floor((ms + tzOffsetMin * 60000) / 86400000) }
+
+function seenBucket(seen, now, tzOffsetMin) {
+    if (now - seen < SEEN_JUST_NOW_MS) return "row.seen.now"
+    if (localDay(seen, tzOffsetMin) === localDay(now, tzOffsetMin)) return "row.seen.today"
+    if (localDay(seen, tzOffsetMin) === localDay(now, tzOffsetMin) - 1) return "row.seen.yesterday"
+    return "row.seen.while"
 }
 
-function needSentence(n, long) {
-    if (!n) return ""
-    var label = NEED_LABEL[n.need] || "A need"
-    var action = str(n.action, NEED_ACTION[n.need])
-    var words = label.toLowerCase() + " " + (n.state === "critical" ? "urgent" : n.state === "empty" ? "empty" : "low")
-    if (isNum(n.until_critical_ms) && n.until_critical_ms > 0)
-        return words + "; " + action + " within " + formatActive(n.until_critical_ms, long) + "."
-    return words + "; " + action + " will help."
-}
-
-function accessibleName(state, status, predicted, pred, reg) {
-    if (!state) return "CodePet: not set up yet. Open CodePet once to set up."
-    var life = state.life
-    if (!isObject(life)) {
-        var latest = state.memorial && typeof state.memorial.latest_name === "string" && state.memorial.latest_name
-            ? " " + clampText(state.memorial.latest_name, 24) + " is remembered in the memorial." : ""
-        return "CodePet: no companion right now." + latest + " You can adopt a new companion whenever you're ready."
-    }
-    var name = clampText(str(life.name, "Your companion"), 24)
-    var stage = isNum(life.stage) ? life.stage : 1
-    var out = "CodePet: " + name + ", " + stageName(reg, str(life.appearance, ""), stage) + ", level " + (isNum(life.level) ? life.level : 1) + "."
-    var worst = worstNeed(state)
-    switch (status) {
-    case "death_pending": out += " " + name + "'s grace time has run out. They will pass away when the current task is finished; your work is kept."; break
-    case "fainted": out += " Fainted. Care will revive them; work waits until then."; break
-    case "critical":
-        if (predicted) out += " Estimated: " + name + " may need you urgently. Open CodePet to check."
-        else out += " Urgent: " + (worst ? needSentence(worst, true) : "open CodePet to check.")
-        break
-    case "unarmed": out += " Not set up: time isn't counting until you choose the life rules."; break
-    case "warning":
-        if (predicted) out += " Estimated warning: " + (NEED_LABEL[pred.need] || "a need").toLowerCase() + " may be low. Open CodePet to check."
-        else out += " Warning: " + (worst ? needSentence(worst, true) : "open CodePet to check.")
-        break
-    case "review": out += " A result is waiting for your review."; break
-    case "sleeping": out += " Napping."; break
-    case "paused": out += " Paused: time isn't counting."; break
-    case "evolved": out += " " + name + " grew!"; break
-    case "healthy": out += " Doing well."; break
-    }
-    var task = taskLine(state)
-    return out + (task ? " " + task : "")
-}
-
-// Tooltip: a few short plain-text lines.
-function tooltip(state, cfg, opts) {
-    opts = opts || {}
-    var sum = summarize(state, cfg, opts)
-    if (!state) return "CodePet\nOpen CodePet once to set up."
-    var lines = []
-    var life = state.life
-    if (isObject(life)) {
-        var reg = opts.registry || null
-        lines.push(clampText(str(life.name, "Your companion"), 24) + " · " + stageName(reg, str(life.appearance, ""), isNum(life.stage) ? life.stage : 1)
-            + " · Level " + (isNum(life.level) ? life.level : 1))
+// How one Helpers row and its sheet look. Copy keys only; the UI fills {app}.
+function helperRow(cid, rec, now, tzOffsetMin) {
+    if (!isObject(rec) || (rec.installed !== true && rec.connected !== true)) return { visible: false }
+    var r = { visible: true, row: null, hint: null, sheet_hints: [], reason: null, step: null,
+              stop_watching: false, spinner: false, guide: null }
+    var job = isObject(rec.job) ? rec.job : null
+    var connected = rec.connected === true
+    if (job) {
+        r.row = { connect: "row.connecting", disconnect: "row.disconnecting", test: "row.testing" }[job.kind] || "row.connecting"
+        r.spinner = true
+    } else if (rec.failed_reason) {
+        r.row = "row.failed"; r.reason = REASON_COPY[rec.failed_reason] || "reason.blocked"; r.step = "btn.retry"
+        r.stop_watching = connected
+    } else if (rec.needs_step === "codex_hooks_off") {
+        r.row = "row.codex.off"; r.step = "btn.showme"; r.guide = "codex.off"; r.stop_watching = connected
+    } else if (rec.needs_step === "codex_trust") {
+        r.row = "row.step"; r.step = "btn.showme"; r.guide = "codex.trust"; r.stop_watching = connected
+    } else if (connected && (rec.first_seen_ms === null || rec.first_seen_ms === undefined)) {
+        r.row = "row.waiting"; r.hint = "hint.open"
+        r.sheet_hints = cid === "claude-code" ? ["hint.open", "hint.claude2"] : ["hint.open"]
+        r.stop_watching = true
+    } else if (connected) {
+        var seen = isNum(rec.last_seen_ms) ? rec.last_seen_ms : rec.first_seen_ms
+        r.row = seenBucket(seen, now, tzOffsetMin); r.stop_watching = true
+    } else if (cid === "codex") {
+        r.row = "row.codex.new"; r.step = "btn.connect"
     } else {
-        lines.push("CodePet · no companion")
+        r.row = "row.connect"; r.step = "btn.connect"
     }
-    lines.push((sum.glyph ? sum.glyph + " " : "") + lifecycleText(state, { predicted: sum.predicted ? sum.status : "", attendedSinceMs: opts.attendedSinceMs }))
-    var task = taskLine(state)
-    if (task) lines.push(task)
-    var asOf = formatAsOf(state.generated_at_ms)
-    if (asOf) lines.push(asOf + " · simulation only")
-    lines.push("Click: care · right-click: desktop pet · middle-click: tasks")
-    return lines.join("\n")
+    return r
 }
 
-// The life status line, using the lifecycle copy rules.
-// opts.predicted: "warning" | "critical" | "" (from summarize, leader only).
-// Same words as qml/shared/LifeText.js pendingText() (test_bar_model.mjs checks they match):
-// the companion has not passed away yet; it will once the current task is finished.
-function pendingText(name) {
-    return name + "'s grace time has run out. They will pass away when the current task is finished. "
-        + "The task and its result are kept safe: review, accept, discard or cancel it as usual. New work waits until then."
-}
-
-function lifecycleText(state, opts) {
-    opts = opts || {}
-    if (!state) return "Open CodePet once to set up."
-    var life = state.life
-    if (!isObject(life)) {
-        var latest = state.memorial && typeof state.memorial.latest_name === "string" && state.memorial.latest_name
-            ? clampText(state.memorial.latest_name, 24) + " is remembered in the memorial. " : ""
-        return latest + "No companion right now. You can adopt a new companion whenever you're ready."
+function helperRows(clients, now, tzOffsetMin) {
+    var out = []
+    for (var i = 0; i < CLIENTS.length; i++) {
+        var cid = CLIENTS[i]
+        var row = helperRow(cid, clients ? clients[cid] : null, now, tzOffsetMin)
+        if (row.visible) { row.id = cid; out.push(row) }
     }
-    var name = clampText(str(life.name, "Your companion"), 24)
-    var worst = worstNeed(state)
-    var crit = isObject(state.critical) ? state.critical : null
-    var critNeed = crit && NEEDS.indexOf(crit.need) >= 0 ? crit.need : (worst ? worst.need : "thirst")
-    var critAction = crit ? str(crit.action, NEED_ACTION[critNeed]) : NEED_ACTION[critNeed]
-    if (life.death_pending === true)
-        return pendingText(name)
-    if (life.fainted === true)
-        return name + " fainted from " + NEED_NOUN[critNeed] + ". " + ACTION_WORD[critAction] + " will revive them; work waits until then."
-    if (life.status === "critical") {
-        var text = name + " urgently needs " + critAction + ". Care now keeps them safe."
-        var remaining = crit && isNum(crit.remaining_ms) ? crit.remaining_ms
-            : crit && isNum(crit.grace_ms) && isNum(crit.elapsed_ms) ? crit.grace_ms - crit.elapsed_ms : NaN
-        if (life.mode === "permadeath" && isNum(remaining) && remaining > 0)
-            text += " Without " + critAction + ", " + name + " may pass away after " + formatActive(remaining) + "."
-        return text
+    return out
+}
+
+// Connect all (and the first-run Connect card's offer): installed, not connected, no
+// running job, never Codex; a failed row counts.
+function connectAll(clients) {
+    var out = []
+    for (var i = 0; i < CLIENTS.length; i++) {
+        var c = clients ? clients[CLIENTS[i]] : null
+        if (CLIENTS[i] !== "codex" && isObject(c) && c.installed === true && c.connected !== true && !c.job) out.push(CLIENTS[i])
     }
-    if (opts.predicted === "critical")
-        return "≈ " + name + " may need you urgently. Open CodePet to check."
-    if (life.armed !== true)
-        return "Paused: time isn't counting (not set up). Open Life to choose how " + name + "'s needs work."
-    if (life.status === "warning" && worst) {
-        var w = name + " is getting " + NEED_FEELING[worst.need] + ". " + ACTION_WORD[str(worst.action, NEED_ACTION[worst.need])] + " will help."
-        if (isNum(worst.until_critical_ms) && worst.until_critical_ms > 0) {
-            var t = formatActive(worst.until_critical_ms)
-            w += " " + t.charAt(0).toUpperCase() + t.slice(1) + " before it becomes serious."
-        }
-        return w
+    return out
+}
+
+// clients.status result -> the ids the Connect card offers (all pre-ticked).
+function connectOffered(status) {
+    var map = {}
+    var list = status && Array.isArray(status.clients) ? status.clients : []
+    for (var i = 0; i < list.length; i++) if (isObject(list[i]) && typeof list[i].id === "string") map[list[i].id] = list[i]
+    return connectAll(map)
+}
+
+// The Connect card's row state for one ticked app after Connect.
+function connectRowState(rec) {
+    if (!isObject(rec)) return "pending"
+    if (isObject(rec.job)) return "busy"
+    if (rec.failed_reason) return "failed"
+    if (rec.connected === true) return "done"
+    return "pending"
+}
+
+// ---------------------------------------------------------------- bar cell
+
+// What the bar cell draws for a face (icons.json bar_cell, SPEC-v0.3 §3.1).
+// thumb: runtime-relative pet art or a plugin icon (thumbIsIcon), opacity, badge icon,
+// pulse, and the label.
+function barCell(doc, face, reg, cfg, calm) {
+    var life = doc && isObject(doc.life) ? doc.life : null
+    var bar = face ? face.bar : "egg"
+    var out = { thumb: "", thumbIsIcon: false, opacity: 1, badge: BAR_BADGE[bar] || "", pulse: false, label: "" }
+    if (!doc) {
+        out.thumb = "ui/egg"; out.thumbIsIcon = true; out.badge = ""
+        out.label = cfg && cfg.label === "none" ? "" : "CodePet"
+        return out
     }
-    if (opts.predicted === "warning")
-        return "≈ " + name + " may be getting low on something. Open CodePet to check."
-    if (life.paused === true) return "Paused: time isn't counting (on a break)."
-    if (taskState(state)) return "Paused: time isn't counting (task running)."
-    if (state.care && state.care.sleeping === true) return name + " is napping. Needs wait while they rest."
-    return name + " is doing well."
-}
-
-// "grows into a Grand Inspector at level 4 (280 XP to go)", or "" at the final stage.
-function nextEvolutionText(state, reg) {
-    var life = state && isObject(state.life) ? state.life : null
-    if (!life) return ""
-    var stage = isNum(life.stage) ? life.stage : 1
-    if (stage >= 3) return "fully grown"
-    var id = str(life.appearance, "")
-    var next = stage + 1
-    var text = "grows into " + article(stageName(reg, id, next)) + " at level " + stageMinLevel(reg, id, next)
-    if (isNum(life.next_stage_xp) && isNum(life.xp) && life.next_stage_xp > life.xp)
-        text += " (" + (life.next_stage_xp - life.xp) + " XP to go)"
-    return text
-}
-
-function article(name) {
-    if (/^stage /.test(name)) return name
-    return (/^[AEIOU]/i.test(name) ? "an " : "a ") + name
-}
-
-function headerText(state, reg) {
-    var life = state && isObject(state.life) ? state.life : null
-    if (!life) return "CodePet"
-    var parts = [clampText(str(life.name, "Your companion"), 24), stageName(reg, str(life.appearance, ""), isNum(life.stage) ? life.stage : 1),
-                 "Level " + (isNum(life.level) ? life.level : 1), (isNum(life.xp) ? life.xp : 0) + " XP"]
-    var next = nextEvolutionText(state, reg)
-    if (next) parts.push(next)
-    return parts.join(" · ")
-}
-
-function badgesText(state) {
-    var life = state && isObject(state.life) ? state.life : null
-    if (!life) return ""
-    var b = []
-    b.push(life.mode === "gentle" ? "Gentle" : "Permadeath")
-    if (life.pace === "playtest") b.push("Playtest")
-    if (life.paused === true) b.push("Paused")
-    if (life.armed !== true) b.push("Not set up")
-    return b.join(" · ")
-}
-
-// Four need rows for the popup.
-function needRows(state, reg) {
-    var rows = []
-    var appearance = state && isObject(state.life) ? str(state.life.appearance, "") : ""
-    var byNeed = {}
-    var list = needsList(state)
-    for (var i = 0; i < list.length; i++) byNeed[list[i].need] = list[i]
-    for (var j = 0; j < NEEDS.length; j++) {
-        var need = NEEDS[j]
-        var n = byNeed[need] || {}
-        var meter = state && isObject(state.meters) && isNum(state.meters[need]) ? state.meters[need] : NaN
-        var stateText = n.state === "critical" ? "urgent" : n.state === "empty" ? "empty" : n.state === "low" ? "low" : "fine"
-        rows.push({
-            need: need,
-            label: NEED_LABEL[need],
-            action: NEED_ACTION[need],
-            actionLabel: careLabel(reg, appearance, NEED_ACTION[need]),
-            percent: isNum(meter) ? Math.max(0, Math.min(100, Math.round(meter / 100))) : -1,
-            stateText: stateText,
-            timeText: isNum(n.until_critical_ms) && n.until_critical_ms > 0 && n.state !== "critical"
-                ? "serious after " + formatActive(n.until_critical_ms) : ""
-        })
+    var name = life ? clampText(str(life.name, ""), NAME_MAX_CHARS) : ""
+    var stage = stageOf(life)
+    if (!life || bar === "egg") {
+        out.thumb = "ui/egg"; out.thumbIsIcon = true
+    } else if (bar === "sleep" || bar === "sleep_bandage") {
+        out.thumb = frameRel(reg, life.appearance, stage, "sleep", 0, true) || thumbPath(life.appearance, stage)
+    } else if (bar === "working") {
+        out.thumb = frameRel(reg, life.appearance, stage, "working", 0, true) || thumbPath(life.appearance, stage)
+    } else {
+        out.thumb = thumbPath(life.appearance, stage)
     }
-    return rows
+    if (bar === "off") out.opacity = 0.4
+    out.pulse = bar === "hand" && face && face.pulse === true && !calm
+    if (cfg && cfg.label === "none") out.label = ""
+    else if (bar === "egg" || bar === "hi") out.label = "" // the "Hi!" text comes from strings (bar.hi)
+    else out.label = name
+    out.hi = bar === "egg" || bar === "hi"
+    return out
 }
 
-function readinessText(state) {
-    var care = state && isObject(state.care) ? state.care : null
-    if (!care) return ""
-    if (care.ready_to_work === true) return "Ready to work."
-    var reasons = Array.isArray(care.readiness_reasons) ? care.readiness_reasons.slice(0, 8) : []
-    var clean = []
-    for (var i = 0; i < reasons.length; i++) if (typeof reasons[i] === "string") clean.push(clampText(reasons[i], 160))
-    return clean.length ? "Not ready: " + clean.join(" · ") : "Not ready yet."
+// ---------------------------------------------------------------- kid copy checks (K1, K2, K8)
+
+var JARGON = ["session", "hook", "turn", "provider", "xp", "level", "percent", "simulation", "preflight",
+              "token", "armed", "attended", "presence", "daemon", "config", "rpc", "plugin", "marketplace",
+              "client", "agent", "trust"]
+var VERB_PHRASES = [/\bturn(ed)? (on|off)\b/g, /\bturn \S+ into/g]
+var EXEMPT_LITERALS = ["/reload-plugins"]
+
+function wordCount(text) {
+    var parts = String(text).replace(/^\s+|\s+$/g, "").split(/\s+/)
+    var n = 0
+    for (var i = 0; i < parts.length; i++) if (/[A-Za-z{]/.test(parts[i])) n++
+    return n
 }
 
-// Remaining nap at `now`, estimated from the committed file (display only).
-function sleepRemainingMs(state, now) {
-    var care = state && isObject(state.care) ? state.care : null
-    if (!care || care.sleeping !== true || !isNum(care.sleep_remaining_ms)) return -1
-    var since = isNum(state.generated_at_ms) && isNum(now) ? Math.max(0, now - state.generated_at_ms) : 0
-    return Math.max(0, care.sleep_remaining_ms - since)
+// Problems of one rendered kid-facing line: [] when it passes K1, K2 and K8.
+function kidTextProblems(text) {
+    var out = []
+    var s = String(text)
+    for (var e = 0; e < EXEMPT_LITERALS.length; e++) s = s.split(EXEMPT_LITERALS[e]).join(" ")
+    if (/[0-9%]/.test(s)) out.push("K1 digit or %")
+    var low = s.toLowerCase()
+    for (var v = 0; v < VERB_PHRASES.length; v++) low = low.replace(VERB_PHRASES[v], " ")
+    for (var j = 0; j < JARGON.length; j++)
+        if (new RegExp("\\b" + JARGON[j]).test(low)) out.push("K2 " + JARGON[j])
+    if (wordCount(text) > 8) out.push("K8 more than 8 words")
+    return out
 }
 
-function formatClock(ms) {
-    if (!isNum(ms) || ms < 0) return ""
-    var s = Math.ceil(ms / 1000)
-    return Math.floor(s / 60) + ":" + pad2(s % 60)
+// When-words for Memories (strings when.*), from a past time.
+function whenKey(ms, now, tzOffsetMin) {
+    if (!isNum(ms)) return "when.while"
+    var b = seenBucket(ms, now, tzOffsetMin)
+    return { "row.seen.now": "when.now", "row.seen.today": "when.today", "row.seen.yesterday": "when.yesterday" }[b] || "when.while"
 }
 
 // Unseen evolution events: the highest seq to acknowledge with pet.events_seen.
@@ -594,14 +650,14 @@ function maxUnseenSeq(events) {
     return best
 }
 
-function grewText(name, reg, appearance, stage) {
-    return "★ " + clampText(str(name, "Your companion"), 24) + " grew into " + article(stageName(reg, str(appearance, ""), stage)) + "!"
-}
-
-// The life-panel launcher verb label: Adopt… with no life, Set up… when unarmed.
-function lifeButtonLabel(state) {
-    var life = state && isObject(state.life) ? state.life : null
-    if (!life) return "Adopt…"
-    if (life.armed !== true) return "Set up…"
-    return "Life & memorial…"
+// The `seen` record sharedPriority() takes, advanced past the celebration a face shows.
+function seenAfter(seen, doc, face) {
+    var out = { finished_seq: 0, hello_seq: 0, test_at_ms: 0 }
+    if (isObject(seen)) for (var k in out) if (isNum(seen[k])) out[k] = seen[k]
+    if (!doc || !face || face.state !== "celebrate") return out
+    var ag = doc.agent || {}
+    if (face.line === "act.ready" && ag.test && isNum(ag.test.at_ms)) out.test_at_ms = Math.max(out.test_at_ms, ag.test.at_ms)
+    else if (face.line === "act.hello" && isNum(ag.hello_seq)) out.hello_seq = Math.max(out.hello_seq, ag.hello_seq)
+    else if (/^act\.done/.test(String(face.line)) && isNum(ag.finished_seq)) out.finished_seq = Math.max(out.finished_seq, ag.finished_seq)
+    return out
 }
