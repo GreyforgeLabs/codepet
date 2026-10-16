@@ -21,7 +21,8 @@ v0.2 (raster companions and the life UI):
   sends nothing: `shared/petstate.js` picks the face in the one shared order, and
   `shared/OverlayFace.js` turns it into an animation and a picture-only thought bubble
   (app tiles, the need's care icon, bandage, star, heart). Celebrations play once. A click
-  hops (Calm mode: bubble only), shows a heart and emits `homeRequested()`. One bounded
+  hops (Calm mode: bubble only), shows a heart and emits `homeRequested()`. A new process
+  never replays a celebration that was in its first export. One bounded
   cosmetic scheduler plus one single-shot wake timer for the face's `wake_at_ms`; no menu,
   meters or text on the desktop; aquatic companions stay in their habitat
 - `shared/petstate.js` (and the identical `omarchy-plugin/petstate.js`): the shared
@@ -52,7 +53,7 @@ Retained from v0.1:
   and `assets/` are inside its config folder): one transparent, non-focusable,
   click-through layer-shell overlay whose input region is the pet. There is no window: a
   click opens the bar popup at Home. The process exits on Off and when "Pet on my
-  desktop" is off ([omarchy/README.md](omarchy/README.md))
+  desktop" is off, and follows Calm mode live ([omarchy/README.md](omarchy/README.md))
 - `standalone/OverlayPreview.qml`: fixture-only desktop-pet preview in a normal window
 - `omarchy/HostAdapter.qml`: explicit `codepet rpc` transport (one process per request);
   `omarchy/BarStateWatcher.qml` and `omarchy/BarState.js` read `bar-state.json` (v1 and v2)
@@ -159,7 +160,10 @@ is not a real state mutation.
 Current gates: the QML job in [`.github/workflows/qml.yml`](../.github/workflows/qml.yml)
 (every `tests/*Smoke.qml`, the Python and node suites, `copy_lint.py` and `qmllint`), with
 results recorded in [docs/validation.md](../docs/validation.md). The section below is the
-historical record of the care/progression revision.
+historical record of the care/progression revision (v0.2). Its task-era results (draft,
+review, preflight, readiness and timeline checks) describe QML that v0.3 retired
+(SPEC-v0.3 §6.5); those smokes no longer exist, and the commands below list only smokes
+that still do.
 
 ### Validation in a headless build environment without Quickshell (2026-10-15, care/progression revision)
 
@@ -176,7 +180,6 @@ export QT_QPA_PLATFORM=offscreen
 python qml/tests/run_qml.py qml/tests/PreviewSmoke.qml
 python qml/tests/run_qml.py qml/tests/CareSmoke.qml
 python qml/tests/run_qml.py qml/tests/CareFlowSmoke.qml
-python qml/tests/run_qml.py qml/tests/FilteredDraftSmoke.qml
 /tmp/codepet-qt/bin/pyside6-qmllint \
   -I /tmp/codepet-qt/PySide6/Qt/qml -I qml \
   qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml
@@ -192,8 +195,6 @@ Results:
 - `CareFlowSmoke.qml`: the routine is one atomic request with a cosmetic choreography
   (no request from its timer), Stop/hide end the choreography, a busy host refuses it,
   no stranded routine and no task launch; pending/failure/retry-key choreography
-- `FilteredDraftSmoke.qml`: 3 checks, 0 failures; saved filtered instructions are
-  reviewed with visible disclosure, not stale unsanitized local text
 - Qt6 `qmllint`: no output on shared/standalone components and these smoke tests
 - Standalone offscreen rendering inspected at 720 × 900; this is not a live desktop
   or accessibility certification
