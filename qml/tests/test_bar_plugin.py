@@ -495,9 +495,18 @@ try:
 except Exception:
     doc = None
 result = {{"changed": True}}
+if req["method"] == "clients.status":
+    status = os.path.join(home, "clients-status.json")
+    result = json.load(open(status)) if os.path.exists(status) else {{"clients": []}}
 if doc is not None:
     if req["method"] == "app.set_enabled":
         doc["enabled"] = bool(req["params"]["enabled"])
+    if req["method"] == "pet.start" and not doc.get("life"):
+        # As the real CLI: adopt the picked species under its default name, armed.
+        doc["life"] = {{"life_id": "life-0123456789abcdef01234567", "ordinal": 1, "name": req["params"].get("name", "Ginger"),
+                       "appearance": req["params"]["species"], "stage": 1, "level": 1, "xp": 0, "next_stage_xp": 80,
+                       "status": "healthy", "mode": req["params"]["mode"], "armed": True, "pace": "steady",
+                       "paused": False, "fainted": False, "death_pending": False}}
     doc["state_version"] += 1
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
@@ -844,6 +853,30 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["mode"] == "popup" and self.dump()["w1"]["screen"] == "home"),
                         self.dump()["w1"])
         self.harness("close")
+
+    def test_k7_fast_start_is_one_click_and_one_tap(self):
+        """K7 offscreen proxy (the nested-rig run is WP7): fresh state, click the bar cell,
+        tap Let's go! with the cat preselected -> a living cat on Home and the desktop pet
+        launched; no Connect card when no app is installed."""
+        self.start(state=fixture("fresh-no-pet", state_version=3))
+        (self.home / "clients-status.json").write_text(
+            (CONTRACTS / "fixtures/clients-status/nothing-installed.json").read_text())
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 4))
+        self.assertEqual(self.dump()["w1"]["cell"]["thumb"], "ui/egg", "the bar shows the egg")
+        t0 = time.monotonic()
+        self.harness("press", "1")                      # click 1: the bar cell
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "first_run"))
+        self.harness("tap", "cp.go")                    # tap 1: Let's go!
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home", 10), self.dump()["w1"])
+        elapsed = time.monotonic() - t0
+        start = [e for e in self.rpc_log() if e["method"] == "pet.start"]
+        self.assertEqual(len(start), 1)
+        self.assertEqual(start[0]["params"], {"species": "cat", "mode": "gentle", "acknowledge_rules": True})
+        self.assertTrue(self.wait_for(lambda: any(e["argv"] == ["show"] for e in self.launch_log())), "the desktop pet appears")
+        self.assertEqual(self.dump()["settingsWrites"][-1]["entry"]["overlayOnLoad"], True)
+        self.assertEqual(self.dump()["w1"]["face"]["state"], "idle")
+        self.assertLess(elapsed, 60, f"K7 took {elapsed:.1f} s")
+        print(f"K7 offscreen: 1 click + 1 tap, {elapsed:.1f} s to Home", file=sys.stderr)
 
     def test_off_is_really_off_and_one_click_turns_it_on(self):
         self.start(state=fixture("off", state_version=7))
