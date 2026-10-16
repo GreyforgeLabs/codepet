@@ -3,14 +3,17 @@ import Quickshell.Io
 import "CodePetBar.js" as Model
 
 // Minimal `codepet rpc` transport for the bar: one argv-only Process per request (never
-// a shell), one request in flight, a 15 s watchdog, and request frames bounded to 64 KiB.
+// a shell), one request in flight (later taps wait in a short queue of at most 8, so a
+// care tap is never dropped, SPEC-v0.3 K5), a 15 s watchdog, and request frames bounded
+// to 64 KiB.
 // A response line is checked against 64 KiB once it is complete; the watchdog bounds a
 // line that never ends. A child whose answer was refused here (oversize or not the
 // protocol) or that timed out is sent SIGTERM, then SIGKILL if it is still running when
 // the watchdog fires again, and no new request starts until it has exited.
-// Only the allowlisted read/care methods may be sent (CodePetBar.ALLOWED_METHODS);
-// every task.* method is refused here, so no mock supervisor can ever become a child
-// of the Omarchy shell. A hot reload that kills a request mid-flight only rolls the
+// Only the allowlisted v0.3 methods may be sent (CodePetBar.ALLOWED_METHODS); every
+// task.* method is refused here, so no mock supervisor can ever become a child of the
+// Omarchy shell. clients.connect/disconnect/test return a job id at once (a detached
+// `codepet clients-job` does the work), so they never hold this slot for long. A hot reload that kills a request mid-flight only rolls the
 // backend transaction back.
 //
 // Quickshell 0.3.1 Process has no error signal: a binary that cannot start is seen as
@@ -29,6 +32,18 @@ Item {
     property string lastError: ""
     property int seq: 0
     property var current: null
+    // Requests waiting for the slot, oldest first.
+    property var pending: []
+    readonly property int maxPending: 8
+
+    // Starts the oldest waiting request once the slot is free. Called only after a child
+    // has answered or exited, never from a timer.
+    function startNext() {
+        if (rpc.busy || rpc.pending.length === 0) return
+        var next = rpc.pending[0]
+        rpc.pending = rpc.pending.slice(1)
+        rpc.request(next.method, next.params, next.callback, next.requestId)
+    }
 
     signal responded(string method, var response)
 
@@ -43,8 +58,12 @@ Item {
             return false
         }
         if (rpc.busy) {
-            if (callback) callback(rpc.clientError(null, "CLIENT_BUSY", "Another request is still running."))
-            return false
+            if (rpc.pending.length >= rpc.maxPending) {
+                if (callback) callback(rpc.clientError(null, "CLIENT_BUSY", "Another request is still running."))
+                return false
+            }
+            rpc.pending = rpc.pending.concat([{ method: method, params: params, callback: callback, requestId: requestId }])
+            return true
         }
         rpc.seq += 1
         var id = requestId || Model.newRequestId(Date.now(), rpc.seq)
@@ -70,7 +89,8 @@ Item {
     // keepBusy: the child is still running after a refused answer or a timeout, so the
     // slot stays taken (and the watchdog armed) until it exits.
     function finish(job, resp, keepBusy) {
-        if (rpc.current === job && !keepBusy) {
+        var freed = rpc.current === job && !keepBusy
+        if (freed) {
             rpc.current = null
             rpc.busy = false
             rpcWatchdog.stop()
@@ -78,6 +98,7 @@ Item {
         rpc.lastError = resp.ok === true ? "" : String((resp.error || {}).code || "ERROR") + ": " + String((resp.error || {}).message || "")
         if (job.callback) job.callback(resp)
         rpc.responded(job.method, resp)
+        if (freed) Qt.callLater(rpc.startNext)
     }
 
     // Runs only while a request is in flight. Its handler only stops that process and
@@ -186,6 +207,7 @@ Item {
                     rpc.current = null
                     rpc.busy = false
                     rpcWatchdog.stop()
+                    Qt.callLater(rpc.startNext)
                 }
                 proc.destroy()
             }
