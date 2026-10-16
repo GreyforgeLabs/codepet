@@ -53,7 +53,7 @@ storage schema.
   as a crash. `ulimit -c 0` alone suppressed only the core file. Release builds are
   unchanged.
 
-## 0.2.0 - 2026-10-15 (testing prerelease, private)
+## 0.2.0 - 2026-10-15 (testing prerelease)
 
 Closes issues #5 (15 companions with evolution) and #6 (lifecycle, evolution and
 permadeath). Decisions: [docs/decisions/0001-v0.2-lifecycle.md](docs/decisions/0001-v0.2-lifecycle.md).
