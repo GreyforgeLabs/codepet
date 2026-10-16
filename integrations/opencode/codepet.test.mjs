@@ -5,6 +5,7 @@
 // Run: node --test integrations/opencode/codepet.test.mjs
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, chmodSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -171,17 +172,41 @@ test("spawn failures never reach the host", async () => {
   }
 });
 
-test("100 000 streaming events spawn nothing and keep memory flat", async () => {
+test("100 000 streaming events spawn nothing and keep memory flat", async (t) => {
+  if (process.env.CODEPET_MEMORY_TEST_CHILD !== "1") {
+    // Keep the normal test command usable without --expose-gc, and isolate retained
+    // heap from the other tests' imports, subprocesses and allocation history.
+    const env = { ...process.env, CODEPET_MEMORY_TEST_CHILD: "1" };
+    delete env.NODE_TEST_CONTEXT;
+    const child = spawnSync(process.execPath, [
+      "--expose-gc",
+      "--test-name-pattern=^100 000 streaming events spawn nothing and keep memory flat$",
+      fileURLToPath(import.meta.url),
+    ], { env, encoding: "utf8", timeout: 15000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 });
+    // Execute the file directly: --test would introduce another worker process
+    // beyond the timeout's direct child. node:test still applies the name filter.
+    assert.ifError(child.error);
+    assert.equal(child.status, 0, `memory subprocess failed (${child.signal || "exit"})\n${child.stdout}\n${child.stderr}`);
+    t.diagnostic(child.stdout.trim());
+    return;
+  }
+  assert.equal(typeof global.gc, "function", "memory subprocess requires --expose-gc");
   const r = render(LOGGING_SHIM);
   const hooks = await load(r.file);
   await hooks.event(ev("session.created", { info: { id: "ses_S" } }));
+  assert.equal((await lines(r.log, 1)).length, 1, "session_start reached the shim");
+  await new Promise(setImmediate);
+  global.gc();
   const before = process.memoryUsage().heapUsed;
   for (let i = 0; i < 100000; i++) {
     await hooks.event(ev("message.part.delta", { sessionID: "ses_S", delta: "x".repeat(32) }));
     await hooks.event(ev("message.part.updated", { part: { id: `t${i}`, type: "text", sessionID: "ses_S" } }));
   }
+  await new Promise(setImmediate);
+  global.gc();
   const grown = process.memoryUsage().heapUsed - before;
-  assert.ok(grown < 32 * 1024 * 1024, `heap grew ${grown}`);
+  t.diagnostic(`retained heap grew ${grown} bytes after 100000 streaming event pairs`);
+  assert.ok(grown < 32 * 1024 * 1024, `retained heap grew ${grown}`);
   // Only the session_start of ses_S was ever sent.
   const got = await lines(r.log, 1, 500);
   assert.deepEqual(got.map((p) => p.event), ["session_start"]);
