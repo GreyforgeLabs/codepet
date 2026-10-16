@@ -1,8 +1,11 @@
 // Renders v0.3 bar-state.json exports through bar readers (spec §6.6, §9.2): a v0.2 bar or
 // overlay still loaded during the upgrade window must degrade gracefully until the reload.
+// The v0.2.1 bar reader is checked through summarize()/tooltip(); the v0.3 bar reader (no
+// tooltips, SPEC-v0.3 §3) through its cell and its line, with petstate.js and Strings.js
+// loaded from next to it.
 // Usage: node check.mjs <CodePetBar.js> <BarState.js> <export.json>...
 // Prints one JSON line per export; exits 1 if any reader refuses or throws.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 function load(path) {
@@ -17,13 +20,17 @@ function load(path) {
 const [barPath, overlayPath, ...exports] = process.argv.slice(2);
 const bar = load(barPath);
 const overlay = load(overlayPath);
+const v03 = typeof bar.summarize !== 'function';
+const sibling = (name) => barPath.replace(/CodePetBar\.js$/, name);
+const petstate = v03 && existsSync(sibling('petstate.js')) ? load(sibling('petstate.js')) : null;
+const strings = v03 && existsSync(sibling('Strings.js')) ? load(sibling('Strings.js')).STRINGS : null;
 for (const file of exports) {
   const text = readFileSync(file, 'utf8');
   const out = { file: file.split('/').pop() };
   try {
     const doc = bar.parse(text);
     out.bar_parse = doc !== null;
-    if (doc) {
+    if (doc && !v03) {
       const cfg = bar.config({});
       const summary = bar.summarize(doc, cfg, {});
       out.label = summary.label;
@@ -31,6 +38,16 @@ for (const file of exports) {
       out.accessible = typeof summary.accessibleName === 'string' && summary.accessibleName.length > 0;
       const tip = bar.tooltip(doc, cfg, {});
       out.tooltip = typeof tip === 'string' && tip.length > 0;
+    } else if (doc) {
+      const cfg = bar.config({});
+      const face = petstate.sharedPriority(doc, Date.now(), {});
+      const cell = bar.barCell(doc, face, null, cfg, false);
+      const line = bar.faceLine(strings, null, doc, face);
+      // The cell shows the name (or "Hi!" before Let's go!, whose line names the pet).
+      out.label = [cell.label, line].filter(Boolean).join(' / ');
+      out.status = face.state;
+      out.accessible = line.length > 0 || cell.label.length > 0;
+      out.tooltip = true; // v0.3 has no tooltips
     }
     const s = overlay.parse(text);
     out.overlay_parse = s !== null;
