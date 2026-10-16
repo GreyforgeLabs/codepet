@@ -175,19 +175,34 @@ impl Store {
     /// [`RETENTION_LIMIT`] rows per statement; the `agent_events` deletes repeat, each round
     /// in its own short transaction, until a round removes fewer than the limit or
     /// [`RETENTION_RUN`] has passed, so heavy use cannot outgrow the 7-day and row bounds.
-    /// `activity_turns` and `activity_xp` rows are never deleted, only coarsened.
+    /// `activity_turns` and `activity_xp` rows are never deleted, only coarsened. Earn times
+    /// kept by "Forget coding history" that have left the day are cleared on every call,
+    /// whatever the hourly gate says ([`treats::expire_forgotten`]).
     pub fn agent_retention(&mut self) -> Result<bool> {
         let started = std::time::Instant::now();
         let now = self.clock.now_ms();
         let max_rows = i64::from(AGENT_EVENTS_MAX_ROWS);
         let limit = i64::from(RETENTION_LIMIT);
-        {
+        let forgotten_due = {
             let tx = self
                 .conn
                 .transaction_with_behavior(TransactionBehavior::Deferred)?;
             if user_version(&tx)? != AGENT_SCHEMA_VERSION {
                 return Ok(false);
             }
+            treats::forgotten_due(&tx, now)?
+        };
+        if forgotten_due {
+            let tx = self
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            treats::expire_forgotten(&tx, now, limit)?;
+            tx.commit()?;
+        }
+        {
+            let tx = self
+                .conn
+                .transaction_with_behavior(TransactionBehavior::Deferred)?;
             let last: Option<i64> =
                 tx.query_row("SELECT retention_at_ms FROM meta WHERE id = 1", [], |r| {
                     r.get(0)

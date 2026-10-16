@@ -9,8 +9,10 @@
 //!   over every life (adopting a new pet never resets the caps). Windows are half-open: an
 //!   earn exactly one window ago no longer counts. Forgotten rows (`earned_at_ms = 0`) never
 //!   count. "Forget coding history" keeps a marked, hour-coarsened earn time for treats
-//!   earned in the last 24 h ([`forget_earn_times`]), so Forget never resets a cap; retention
-//!   clears those times once they leave the daily window ([`expire_forgotten`]).
+//!   earned in the last 24 h ([`forget_earn_times`]), so Forget never resets a cap; the next
+//!   write, settling read or fold after they leave the daily window clears those times
+//!   ([`expire_forgotten`]). An ordinary earn time never carries the marker
+//!   ([`ordinary_earn_ms`]).
 //!
 //! With the existing curve (`level_xp` 0/80/200/400/700, stages at levels 2 and 4) a pet is
 //! grown after 16 treats and mature after 80. The fold (WP2) earns through [`earn`]; nothing
@@ -20,7 +22,8 @@ use crate::model::Snapshot;
 use crate::store::V03Policy;
 use crate::{fault, lifecycle_store, Result, StorageError, Store};
 use codepet_core::agent::{
-    forgotten_earn_ms, CAP_SESSION_MS, DAY_MS, FORGOTTEN_MARK_MS, HOUR_MS, JAR_MAX, TREAT_XP,
+    forgotten_earn_ms, ordinary_earn_ms, CAP_SESSION_MS, DAY_MS, FORGOTTEN_MARK_MS, HOUR_MS,
+    JAR_MAX, TREAT_XP,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -112,9 +115,21 @@ pub(crate) fn forget_earn_times(c: &Connection, now: i64) -> Result<usize> {
     Ok(n)
 }
 
-/// Retention's part of Forget: clears (sets 0) at most `limit` earn times kept by
-/// [`forget_earn_times`] that have left the daily window and so can no longer count toward
-/// a cap. Runs before retention's hour coarsening, which must never floor a marked time.
+/// Whether an earn time kept by [`forget_earn_times`] has left the daily window and waits
+/// for [`expire_forgotten`] (a read; the settling snapshot and retention ask it first).
+pub(crate) fn forgotten_due(c: &Connection, now: i64) -> Result<bool> {
+    Ok(c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM activity_turns WHERE earned_at_ms > 0
+           AND earned_at_ms <= ?1 AND earned_at_ms % ?2 = ?3)",
+        params![now.saturating_sub(DAY_MS), HOUR_MS, FORGOTTEN_MARK_MS],
+        |r| r.get(0),
+    )?)
+}
+
+/// Clears (sets 0) at most `limit` earn times kept by [`forget_earn_times`] that have left
+/// the daily window and so can no longer count toward a cap. It does not wait for the
+/// hooks: every write's settlement prologue, a settling `state.get` and every fold run call
+/// it, as does retention before its hour coarsening, which must never floor a marked time.
 pub(crate) fn expire_forgotten(c: &Connection, now: i64, limit: i64) -> Result<usize> {
     Ok(c.execute(
         "UPDATE activity_turns SET earned_at_ms = 0 WHERE id IN
@@ -175,7 +190,7 @@ pub(crate) fn earn(
     c.execute(
         "INSERT INTO activity_turns (session_key, turn_key, client, life_id, earned_at_ms)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![session_key, turn_key, client, life_id, at.max(1)],
+        params![session_key, turn_key, client, life_id, ordinary_earn_ms(at)],
     )?;
     Ok(Earned::Treat)
 }

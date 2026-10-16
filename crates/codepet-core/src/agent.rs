@@ -814,6 +814,18 @@ pub fn forgotten_earn_ms(earned_ms: i64, now_ms: i64) -> i64 {
     ceil.saturating_add(FORGOTTEN_MARK_MS)
 }
 
+/// The `earned_at_ms` an ordinary earn at `at_ms` is stored with: at least 1 (0 means
+/// forgotten), and never [`FORGOTTEN_MARK_MS`] past an hour, so only a time kept by Forget
+/// carries the marker. Moving such an earn 1 ms later only makes the caps stricter.
+pub fn ordinary_earn_ms(at_ms: i64) -> i64 {
+    let t = at_ms.max(1);
+    if t.rem_euclid(HOUR_MS) == FORGOTTEN_MARK_MS {
+        t.saturating_add(1)
+    } else {
+        t
+    }
+}
+
 /// The verdict from precomputed counts (the storage form): `session_recent` = this
 /// session earned within [`CAP_SESSION_MS`]; `hour`/`day` = earns in the rolling windows.
 /// Every window is half-open and forgotten rows (`earned_at_ms = 0`) never count; a time
@@ -1273,6 +1285,26 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn an_ordinary_earn_never_carries_the_forget_marker() {
+        let hour = 1_792_123_876_111_i64 / HOUR_MS * HOUR_MS;
+        // hh:00:00.001 would look kept by Forget: it moves 1 ms later (only stricter caps).
+        assert_eq!(ordinary_earn_ms(hour + FORGOTTEN_MARK_MS), hour + 2);
+        assert_ne!(
+            ordinary_earn_ms(hour + FORGOTTEN_MARK_MS).rem_euclid(HOUR_MS),
+            FORGOTTEN_MARK_MS
+        );
+        for t in [hour, hour + 2, hour + 59_999, hour + HOUR_MS - 1] {
+            assert_eq!(ordinary_earn_ms(t), t);
+        }
+        assert_eq!(
+            ordinary_earn_ms(0),
+            2,
+            "0 means forgotten, and 1 is the marker"
+        );
+        assert_eq!(ordinary_earn_ms(-5), 2);
     }
 
     #[test]

@@ -1204,6 +1204,103 @@ fn forget_history_keeps_every_cap_durable() {
     );
 }
 
+/// The kept times go once their day is over without any hook firing (no fold, no
+/// retention): any write's prologue or a settling `state.get` clears them, and a fold's
+/// retention call clears them even inside its hourly gate.
+#[test]
+fn forgotten_earn_times_go_after_the_day_without_a_fold() {
+    let set_up = || {
+        let env = Env::with_boot();
+        let mut store = env.open();
+        let id = life_id(&store);
+        let now = env.clock.now_ms();
+        for i in 0..3u64 {
+            given_earn(
+                &store,
+                &id,
+                i,
+                now - 60_000 - i64::try_from(i).unwrap() * HOUR_MS,
+            );
+        }
+        store.forget_history("forget").unwrap();
+        assert!(earn_times(&env)
+            .iter()
+            .all(|t| t.rem_euclid(HOUR_MS) == FORGOTTEN_MARK_MS));
+        (env, store)
+    };
+    let marked = |env: &Env| -> i64 {
+        env.raw()
+            .query_row(
+                &format!(
+                    "SELECT count(*) FROM activity_turns WHERE earned_at_ms % {HOUR_MS} = \
+                     {FORGOTTEN_MARK_MS}"
+                ),
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+
+    // Still inside the day: a command keeps them (the caps need them).
+    let (env, mut store) = set_up();
+    env.clock.advance(HOUR_MS);
+    store.set_helpers("h0", true).unwrap();
+    assert_eq!(marked(&env), 3);
+    // Past the day (plus the rounding hour), the next command clears them all.
+    env.clock.advance(DAY + HOUR_MS);
+    store.set_helpers("h1", false).unwrap();
+    assert_eq!(earn_times(&env), [0, 0, 0]);
+
+    // CodePet Off, and only a state.get: the settling read clears them too.
+    let (env, mut store) = set_up();
+    store.set_enabled("off", false).unwrap();
+    env.clock.advance(DAY + 2 * HOUR_MS);
+    store.snapshot().unwrap();
+    assert_eq!(earn_times(&env), [0, 0, 0]);
+    // With nothing left to clear, an Off state.get writes nothing again.
+    let version = |env: &Env| -> i64 {
+        env.raw()
+            .query_row("SELECT state_version FROM meta WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap()
+    };
+    let v = version(&env);
+    store.snapshot().unwrap();
+    assert_eq!(version(&env), v);
+
+    // A fold's retention call inside the hourly gate still clears them.
+    let (env, mut store) = set_up();
+    env.clock.advance(DAY + 2 * HOUR_MS);
+    env.raw()
+        .execute(
+            "UPDATE meta SET retention_at_ms = ?1 WHERE id = 1",
+            [env.clock.now_ms()],
+        )
+        .unwrap();
+    assert!(!store.agent_retention().unwrap(), "the hourly gate holds");
+    assert_eq!(earn_times(&env), [0, 0, 0]);
+}
+
+/// An ordinary earn at exactly hh:00:00.001 is stored 1 ms later, so it never looks kept by
+/// Forget: retention floors it to its hour and keeps it.
+#[test]
+fn an_ordinary_earn_never_looks_kept_by_forget() {
+    let env = Env::with_boot();
+    let store = env.open();
+    let id = life_id(&store);
+    let at = (env.clock.now_ms() / HOUR_MS) * HOUR_MS + FORGOTTEN_MARK_MS;
+    assert_eq!(
+        treats::earn(store.conn(), &id, "codex", &key("s", 1), &key("t", 1), at).unwrap(),
+        Earned::Treat
+    );
+    assert_eq!(earn_times(&env), [at + 1]);
+    let mut store = store;
+    env.clock.advance(DAY + 2 * HOUR_MS);
+    assert!(store.agent_retention().unwrap());
+    assert_eq!(earn_times(&env), [at - FORGOTTEN_MARK_MS]);
+}
+
 /// Retention still floors ordinary earn times after a day and keeps them (only times kept
 /// by Forget carry the marker and go).
 #[test]

@@ -355,15 +355,24 @@ until a contract edit (listed at the end of each item).
      only get stricter (by at most one hour), never looser: Forget can no longer be used to
      reset them. No identity is added: the row's HMAC keys are unchanged (they are immutable,
      X1) and the time keeps only hour precision;
-   - the `+ 1` ms marks the time as kept by Forget (no ordinary time is coarsened to it), so
-     retention clears it (sets 0) once it leaves the 24 h window
-     (`treats::expire_forgotten`, run before the hourly coarsening, which skips marked times).
-     After that day nothing of the forgotten history remains except the jar and XP rows.
+   - the `+ 1` ms marks the time as kept by Forget: retention's coarsening never produces it
+     and an ordinary earn never stores it (`agent::ordinary_earn_ms` moves an earn at exactly
+     `hh:00:00.001` 1 ms later, which only makes the caps stricter). A marked time is cleared
+     (set to 0) once it leaves the 24 h window (`treats::expire_forgotten`) by whatever runs
+     first, without waiting for a hook: the settlement prologue of every write, a `state.get`
+     (which settles when one is due), and every fold's retention call, even inside the hourly
+     gate (run before the hourly coarsening, which skips marked times). So the next CodePet
+     use after that day (at most about 25 h after the earn, given the rounding hour) leaves
+     nothing of the forgotten history except the jar and XP rows. If CodePet is not used at
+     all, the times stay in the local database until it next runs.
    - Forget is idempotent: a kept time maps to itself.
    Tests: `codepet-core` `forget_keeps_a_marked_hour_coarsened_earn_time_for_one_day`;
    `codepet-storage` `forget_history_keeps_every_cap_durable`,
    `forget_history_clears_activity_but_keeps_treats_and_xp`,
-   `retention_floors_ordinary_earn_times_and_keeps_them`.
+   `retention_floors_ordinary_earn_times_and_keeps_them`,
+   `forgotten_earn_times_go_after_the_day_without_a_fold`,
+   `an_ordinary_earn_never_looks_kept_by_forget`; `codepet-core`
+   `an_ordinary_earn_never_carries_the_forget_marker`.
    **Contract edit needed:** `schema-v5.sql` comment on `activity_turns.earned_at_ms` ("Forget
    coding history sets it to 0") and the Help copy in `strings.json` (adult pages, exempt from
    K1/K2, K8 not applied to `help.*.body`). Replacement text:
