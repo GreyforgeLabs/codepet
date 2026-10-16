@@ -21,7 +21,7 @@ pub(crate) struct V03Blocks {
     pub agent: AgentExport,
     /// The living life's treat jar (WP1).
     pub treats: TreatsExport,
-    /// Client records (WP3 fills it; empty until then).
+    /// Client records (WP3: one entry per `client_hooks` row).
     pub clients: ClientsExport,
 }
 impl V03Blocks {
@@ -33,7 +33,7 @@ impl V03Blocks {
             count_helpers: crate::app::count_helpers(c)?,
             agent: crate::agent_store::agent_export(c, now)?,
             treats: TreatsExport { jar, full },
-            clients: ClientsExport::new(),
+            clients: crate::clients_store::export(c)?,
         })
     }
 }
