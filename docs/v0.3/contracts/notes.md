@@ -338,3 +338,67 @@ differ, these entries win.
    `jar_full`, including the one late-tool re-check (which the Rust fold did not record).
    New `sessions` vectors: `jar_full_describes_only_the_last_finished_turn` and
    `late_tool_recheck_on_a_full_jar_sets_jar_full`.
+
+## 7. WP5 popup decisions and contract requests (2026-10-16)
+
+Nothing in a frozen contract file changed. These are the choices WP5 made where the spec
+left room, and what WP5 asks the contract owners to adopt.
+
+1. **Popup window.** The popup is an Omarchy `KeyboardPanel` (the `PopupCard` API with
+   keyboard focus on demand), not a `PopupCard`: an xdg-popup gets no keyboard focus at map
+   time, and the name field and the typed-name confirmations (Hardcore, Say goodbye) need
+   typing. Offscreen Quickshell has no layer-shell backend, so `test_bar_plugin.py` stages a
+   test-only stand-in (`qml/tests/stubs/live/KeyboardPanel.qml`). Keyboard entry in the real
+   shell is not verified offscreen (WP7 nested-rig item).
+2. **`openHome` IPC.** The bar leader registers the IPC target `greyforge.codepet` with
+   `openHome()` (also `open`, `close`, `toggle`). WP6's desktop pet calls
+   `omarchy-shell greyforge.codepet openHome` (equivalently
+   `qs ipc -p $OMARCHY_PATH/shell call greyforge.codepet openHome`).
+3. **`petstate.js`.** WP5 ships a hand port of the contract's `priority` reference as
+   `omarchy-plugin/petstate.js` with the frozen API `sharedPriority(export, now, seen)`;
+   `qml/tests/test_bar_model.mjs` replays every `priority` vector against it. WP6 owns the
+   generated module: at merge, WP6's generated file replaces WP5's unchanged (an add/add
+   conflict resolves to WP6's copy) and the same vectors must still pass.
+4. **Copy WP5 needed that the contract lacks** (in `tools/ui/strings-wp5.json`, merged into
+   `omarchy-plugin/strings.json` after every contract key; the generator refuses an
+   override): `btn.back` "Back", `btn.next` "Next" (Codex guide pager), `name.type` "Type
+   a name" (empty name field), `err.generic` "Oops! Please try again." (any failed request;
+   `NAME_INVALID` shows `err.name_too_long`), `helpers.none` "No coding friends found yet."
+   (Helpers with no installed app). Request: add them to `strings.json`; then delete them
+   from `strings-wp5.json`.
+5. **Status line vs a monospace theme font (K3 against K13).** Omarchy's `Style.font.family`
+   is the user's monospace font (about 0.6 em a character). At `Style.font.heading` the card
+   holds about 35 characters, so `act.working.two` with most app pairs ("Ginger is helping
+   Claude Code and OpenCode." is 43), `aquatic.mood.fainted` and `robot.mood.fainted` do not
+   fit. The line keeps one line by stepping its size down (`fontSizeMode: HorizontalFit`)
+   to no less than `Style.font.body`, which is a K3 deviation for those lines only;
+   `copy_lint.py` lists them and fails a line that would not fit even at body size.
+   Request: shorter copy, e.g. `act.working.two` = "{name} helps {app} and {app2}." and
+   the fainted lines without the second sentence.
+6. **Calm mode** is the plugin setting `calm` (default off). Omarchy exposes no system
+   reduced-motion signal, so "follows system" means off. It stops the popup's animation
+   clock, the tile and badge pulses, and reaches the desktop pet as
+   `CODEPET_REDUCED_MOTION=1` on the next launcher call (WP6: honour it; a running overlay
+   learns it only on its next start).
+7. **Pet on my desktop** writes `overlayOnLoad` and calls the launcher's `show` / `hide`;
+   Let's go! sets it and shows the pet; turning CodePet on shows it when set. SPEC §3.8
+   wants the overlay process to exit when the switch is off: WP6/WP3 should make `hide`
+   with the setting off (or a new launcher verb) end the process.
+8. **Celebrations seen.** The bar widget keeps `seen` (agent_vectors.json
+   `priority.celebrate.seen`) in memory and advances it when the popup closes after showing a
+   celebration; a shown growth is acknowledged then with `pet.events_seen`. A shell restart
+   may replay a celebration still inside its 30 s window.
+9. **Memories** has no journal read method in the protocol: the page shows the living pet
+   ("{name} came home.", from the snapshot's `adopted_at_ms`) and the ended pets from
+   `pet.memorial`. The other `memories.*` keys stay unused until such a method exists.
+10. **Connect card after Connect.** The title area shows the pet and the face line while the
+    ready check types, then `act.ready` and `hint.open` for the first connected app; a
+    failed row shows its reason, and Try again connects the failed apps again. Done and
+    Close go Home; nothing is sent.
+11. **Codex guide pictures** are drawn as small terminal sketches (no screenshots ship),
+    one per page, with page dots and Next / Back.
+12. **Card size.** The popup padding is `Style.space(12)` (the spec's 32 px top + bottom at
+    base 16) and the height cap `min(Style.space(480), 90% of the output)`. K13 is measured
+    against that cap in the PySide smokes (stub theme) and, under the real Omarchy Style and
+    Color, in `test_bar_plugin.py` at base sizes 12, 16 and 20.
+13. **Bar label** `status` (v0.2) reads as `name`; the manifest offers `name` and `none`.
