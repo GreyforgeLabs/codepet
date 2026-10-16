@@ -3,6 +3,7 @@
 //! coding history". Default build (no `legacy-tasks`).
 use super::*;
 use crate::treats::{self, CapCheck, Earned};
+use codepet_core::agent::FORGOTTEN_MARK_MS;
 use codepet_core::lifecycle::{Mode, HOUR_MS};
 use codepet_core::species::default_name;
 
@@ -1080,8 +1081,11 @@ fn forget_history_clears_activity_but_keeps_treats_and_xp() {
     for t in ["agent_events", "agent_sessions"] {
         assert_eq!(env.count(&format!("SELECT count(*) FROM {t}")), 0, "{t}");
     }
+    // Earned within the last day: only a marked, hour-coarsened earn time stays.
     assert_eq!(
-        env.count("SELECT count(*) FROM activity_turns WHERE earned_at_ms != 0"),
+        env.count(&format!(
+            "SELECT count(*) FROM activity_turns WHERE earned_at_ms % {HOUR_MS} != {FORGOTTEN_MARK_MS}"
+        )),
         0
     );
     assert_eq!(
@@ -1095,12 +1099,124 @@ fn forget_history_clears_activity_but_keeps_treats_and_xp() {
         2,
         "unspent treats stay in the jar"
     );
-    // Forgotten earns no longer count toward the caps.
+    // Forget never resets a cap: the session that earned at T0 still waits its 30 s.
     let c = store.conn();
     assert_eq!(
-        treats::check(c, &id, &key("s", 0), T0).unwrap(),
+        treats::check(c, &id, &key("s", 0), T0 + 10_000).unwrap(),
+        CapCheck::CappedSession
+    );
+}
+
+/// Inserts a given (out of the jar) treat earned at `earned` for session `s:<i>`.
+fn given_earn(store: &Store, life: &str, i: u64, earned: i64) {
+    store
+        .conn()
+        .execute(
+            "INSERT INTO activity_turns (session_key, turn_key, client, life_id, earned_at_ms,
+                given_at_ms) VALUES (?1, ?2, 'codex', ?3, ?4, ?4)",
+            rusqlite::params![key("s", i), key("t", i), life, earned],
+        )
+        .unwrap();
+}
+
+fn earn_times(env: &Env) -> Vec<i64> {
+    let c = env.raw();
+    let mut st = c
+        .prepare("SELECT earned_at_ms FROM activity_turns ORDER BY id")
+        .unwrap();
+    st.query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap()
+}
+
+/// Owner decision 2026-10-16 (`notes.md` §7 item 1): "Forget coding history" keeps an
+/// hour-coarsened earn time for treats earned in the last 24 h, so the 30 s, hourly and
+/// daily caps survive it (X3), and retention clears those times after the day.
+#[test]
+fn forget_history_keeps_every_cap_durable() {
+    let env = Env::with_boot();
+    let mut store = env.open();
+    let id = life_id(&store);
+    let now = env.clock.now_ms();
+    // 12 earns in the last hour (sessions 0..12), the last one 10 s ago.
+    for i in 0..12u64 {
+        given_earn(
+            &store,
+            &id,
+            i,
+            now - 10_000 - i64::try_from(i).unwrap() * 4 * 60_000,
+        );
+    }
+    // 36 more earns spread over the rest of the day (sessions 12..48), one older than a day.
+    for i in 12..48u64 {
+        given_earn(
+            &store,
+            &id,
+            i,
+            now - HOUR_MS - i64::try_from(i - 12).unwrap() * 30 * 60_000,
+        );
+    }
+    given_earn(&store, &id, 48, now - 25 * HOUR_MS);
+    let fresh = key("s", 999);
+    let caps = |store: &Store, session: &str, at: i64| {
+        treats::check(store.conn(), &id, session, at).unwrap()
+    };
+    let before = [
+        caps(&store, &key("s", 0), now + 15_000),
+        caps(&store, &fresh, now + 1_000),
+    ];
+    assert_eq!(before, [CapCheck::CappedSession, CapCheck::CappedHour]);
+
+    store.forget_history("forget").unwrap();
+    let kept = earn_times(&env);
+    assert_eq!(kept[48], 0, "an earn older than a day is cleared");
+    for (i, k) in kept[..48].iter().enumerate() {
+        assert_eq!(k.rem_euclid(HOUR_MS), FORGOTTEN_MARK_MS, "row {i}");
+    }
+    // Every cap still holds, and none got looser.
+    assert_eq!(
+        [
+            caps(&store, &key("s", 0), now + 15_000),
+            caps(&store, &fresh, now + 1_000),
+        ],
+        before
+    );
+    // The daily cap: two hours on, the hourly window is clear but 48 earns still count.
+    assert_eq!(caps(&store, &fresh, now + 2 * HOUR_MS), CapCheck::CappedDay);
+    // A day later (plus the rounding hour) every cap is open again.
+    assert_eq!(
+        caps(&store, &fresh, now + DAY + 2 * HOUR_MS),
         CapCheck::Allow
     );
+
+    // A second Forget changes nothing.
+    store.forget_history("forget-again").unwrap();
+    assert_eq!(earn_times(&env), kept);
+
+    // Retention clears the kept times once they leave the day, and never floors one.
+    env.clock.advance(DAY + HOUR_MS + 1);
+    assert!(store.agent_retention().unwrap());
+    assert!(
+        earn_times(&env).iter().all(|t| *t == 0),
+        "{:?}",
+        earn_times(&env)
+    );
+}
+
+/// Retention still floors ordinary earn times after a day and keeps them (only times kept
+/// by Forget carry the marker and go).
+#[test]
+fn retention_floors_ordinary_earn_times_and_keeps_them() {
+    let env = Env::with_boot();
+    let mut store = env.open();
+    let id = life_id(&store);
+    let now = env.clock.now_ms();
+    let earned = (now / HOUR_MS) * HOUR_MS + 7 * 60_000 + 123;
+    given_earn(&store, &id, 0, earned);
+    env.clock.advance(DAY + 2 * HOUR_MS);
+    assert!(store.agent_retention().unwrap());
+    assert_eq!(earn_times(&env), [(earned / HOUR_MS) * HOUR_MS]);
 }
 
 #[test]

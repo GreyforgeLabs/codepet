@@ -16,8 +16,8 @@ use codepet_core::agent::{
     apply_session_event, approval_transition, event_bucket, fold_gate, pet_state, turn_qualifies,
     CapVerdict, ClientId, DoneTurn, EventKind, FoldGate, FoldOutcome, OpenTurn, Session,
     SessionEvent, SessionRow, SessionState, TreatCheck, AGENT_EVENTS_KEEP_MS,
-    AGENT_EVENTS_MAX_ROWS, AGENT_SESSIONS_KEEP_MS, ERROR_RECENT_MS, FUTURE_CLAMP_MS, HOUR_MS,
-    RETENTION_INTERVAL_MS, RETENTION_LIMIT, TURN_TIMES_EXACT_MS,
+    AGENT_EVENTS_MAX_ROWS, AGENT_SESSIONS_KEEP_MS, ERROR_RECENT_MS, FORGOTTEN_MARK_MS,
+    FUTURE_CLAMP_MS, HOUR_MS, RETENTION_INTERVAL_MS, RETENTION_LIMIT, TURN_TIMES_EXACT_MS,
 };
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::cell::RefCell;
@@ -238,12 +238,20 @@ impl Store {
                (SELECT session_key FROM agent_sessions WHERE last_event_ms < ?1 LIMIT ?2)",
             params![now - AGENT_SESSIONS_KEEP_MS, limit],
         )?;
-        for col in ["earned_at_ms", "given_at_ms"] {
+        // Earn times kept by Forget go once they leave the daily window; the coarsening
+        // below never floors one (it would lose the marker and keep the time forever).
+        treats::expire_forgotten(&tx, now, limit)?;
+        for (col, keep_mark) in [("earned_at_ms", true), ("given_at_ms", false)] {
+            let skip = if keep_mark {
+                format!(" AND {col} % ?1 != {FORGOTTEN_MARK_MS}")
+            } else {
+                String::new()
+            };
             tx.execute(
                 &format!(
                     "UPDATE activity_turns SET {col} = {col} - ({col} % ?1) WHERE id IN
                        (SELECT id FROM activity_turns WHERE {col} > 0 AND {col} < ?2
-                        AND {col} % ?1 != 0 LIMIT ?3)"
+                        AND {col} % ?1 != 0{skip} LIMIT ?3)"
                 ),
                 params![HOUR_MS, now - TURN_TIMES_EXACT_MS, limit],
             )?;

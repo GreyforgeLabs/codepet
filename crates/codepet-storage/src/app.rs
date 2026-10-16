@@ -153,10 +153,12 @@ impl Store {
     }
 
     /// `agent.forget_history` (spec §5.10): deletes `agent_events` and `agent_sessions`, and
-    /// clears the timestamps of `activity_turns` (`earned_at_ms = 0`; a given row's
-    /// `given_at_ms = 0`, never back to NULL, so it stays out of the jar). Unspent treats and
-    /// earned XP stay. Takes `fold.lock` (`LOCK_NB`, `BUSY` if the fold holds it) before
-    /// the database.
+    /// clears the timestamps of `activity_turns`: a given row's `given_at_ms = 0` (never back
+    /// to NULL, so it stays out of the jar) and `earned_at_ms = 0`, except that a treat earned
+    /// in the last 24 h keeps a marked, hour-coarsened earn time so Forget never resets the
+    /// earning caps (owner decision 2026-10-16, [`crate::treats::forget_earn_times`]).
+    /// Unspent treats and earned XP stay. Takes `fold.lock` (`LOCK_NB`, `BUSY` if the fold
+    /// holds it) before the database.
     pub fn forget_history(&mut self, request_id: &str) -> Result<Snapshot> {
         let Some(_lock) = try_fold_lock(&self.paths)? else {
             return Err(StorageError::FoldRunning);
@@ -167,13 +169,10 @@ impl Store {
             "{}",
             V03Policy::AllowedWhileOff,
             None,
-            |c, _, _| {
+            |c, at, _| {
                 let mut n = c.execute("DELETE FROM agent_events", [])?;
                 n += c.execute("DELETE FROM agent_sessions", [])?;
-                n += c.execute(
-                    "UPDATE activity_turns SET earned_at_ms = 0 WHERE earned_at_ms != 0",
-                    [],
-                )?;
+                n += crate::treats::forget_earn_times(c, at.wall)?;
                 n += c.execute(
                     "UPDATE activity_turns SET given_at_ms = 0
                      WHERE given_at_ms IS NOT NULL AND given_at_ms != 0",
