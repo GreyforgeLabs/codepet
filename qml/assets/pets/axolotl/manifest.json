@@ -21,6 +21,13 @@
   "bathroom": "Cleans the filter; the axolotl stays in its plant hide.",
   "sleep": "Rests tucked inside its rock hide."
  },
+ "careIconSet": "aquatic",
+ "careWords": {
+  "food": "Pellets",
+  "water": "Fresh water",
+  "play": "Tunnels",
+  "wash": "Clean tank"
+ },
  "stages": [
   {
    "stage": 1,

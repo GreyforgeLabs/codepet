@@ -365,8 +365,9 @@ class Staging(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dest = stage_plugin(Path(tmp) / PLUGIN_ID)
             self.assertEqual([p for p in dest.rglob("*") if p.is_symlink()], [])
-            for p in PLUGIN.iterdir():
-                self.assertEqual((dest / p.name).read_bytes(), p.read_bytes(), p.name)
+            for p in (q for q in PLUGIN.rglob("*") if q.is_file()):
+                rel = p.relative_to(PLUGIN)
+                self.assertEqual((dest / rel).read_bytes(), p.read_bytes(), str(rel))
             if LIFETEXT.is_file():
                 self.assertEqual((dest / "LifeText.js").read_bytes(), LIFETEXT.read_bytes())
                 text = LIFETEXT.read_text()

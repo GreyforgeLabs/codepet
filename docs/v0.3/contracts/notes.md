@@ -220,6 +220,13 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
     shim, every stored command, the Claude and Grok files, the six Codex groups with their
     expected `trusted_hash`es, the argv forms and the ready-check payloads. Synchronous
     handlers omit `async` (Codex hashes it as `false`); Codex `SessionEnd` never carries it.
+34. **Icon source key (WP4).** §4.2 says every sheet uses a flat `#00FF00` key, but the
+    care-aquatic plant arch and the status calm leaf are green. `icons.json`
+    `format.source_key` is now per sheet: green by default, magenta `#FF00FF` when a subject
+    is green, recorded as `key` per sheet (and per patch) in `tools/petart/icon_sheets.json`.
+    The same change adds single-cell `patches` (the care-floor `play` icon is a red striped
+    ball, the painted twin of `badge_ball`; the cat's yarn waits for a `careIcons` override)
+    and keeps nonces, rollout ids and local paths out of the shipped `PROVENANCE.md`.
 
 ## 3. Other WP0 decisions (not contradictions)
 

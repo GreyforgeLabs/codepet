@@ -17,6 +17,13 @@
   "sleep": "Head-tuck nap"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Fish",
+  "water": "Icy water",
+  "play": "Pebbles",
+  "wash": "Splash"
+ },
  "stages": [
   {
    "stage": 1,

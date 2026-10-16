@@ -525,6 +525,8 @@ def base_manifest(sid, prov):
         "provenance": f"../PROVENANCE.md#{sid.replace('_', '-')}",
         "careLabels": dict(sp["careLabels"]),
         "careHints": dict(sp["careHints"]),
+        "careIconSet": roster.CARE_ICON_SET[sid],
+        "careWords": dict(roster.CARE_WORDS[sid]),
         "stages": [{"stage": i + 1, "key": roster.STAGE_KEYS[i], "name": names[i],
                     "minLevel": roster.STAGE_MIN_LEVEL[i]} for i in range(3)],
         "stageNamesSource": names_src,

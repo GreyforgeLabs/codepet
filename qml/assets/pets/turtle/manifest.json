@@ -17,6 +17,13 @@
   "sleep": "Shell tuck"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Lettuce",
+  "water": "Cool water",
+  "play": "Pebbles",
+  "wash": "Shell scrub"
+ },
  "stages": [
   {
    "stage": 1,

@@ -242,6 +242,20 @@ def check_icons(icons: dict, vectors: dict) -> None:
                                          "aquatic" if sp.get("habitat") == "aquatic" else "floor")
         if resolved.get(sid) != want:
             fail(f"icons: careIconSet {sid} = {resolved.get(sid)} expected {want}")
+    keys = icons["format"]["source_key"]
+    allowed = {keys["default"], keys["alternative"]}
+    sheets_json = REPO / "tools/petart/icon_sheets.json"
+    if sheets_json.is_file():
+        built = json.loads(sheets_json.read_text(encoding="utf-8"))["sheets"]
+        if [b["id"] for b in built] != [s["id"] for s in icons["sheets"]]:
+            fail("icons: tools/petart/icon_sheets.json sheets differ from icons.json")
+        for b in built:
+            for part in [b] + b.get("patches", []):
+                if part.get("key") not in allowed:
+                    fail(f"icons: {b['id']} source key {part.get('key')} not in {sorted(allowed)}")
+            for patch in b.get("patches", []):
+                if not set(patch.get("ids", [])) <= set(b["ids"]):
+                    fail(f"icons: {b['id']} patch {patch.get('source')} names ids not on the sheet")
     bar_ids = next(s for s in icons["sheets"] if s["id"] == "bar")["ids"]
     for what, badge in icons["bar_badges"].items():
         if badge not in bar_ids:

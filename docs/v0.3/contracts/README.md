@@ -25,4 +25,6 @@ against the schemas, applies the DDL to a stub v4 database, lints the copy (K1, 
 calm-copy list), recomputes every hash in `commands.json` and runs the shim under `sh` in a
 throwaway directory. The reference model is a test oracle, not product code.
 
-Status: **frozen** after the WP0 review round (see `notes.md` §2 items 19-33); WP1 review resolutions in `notes.md` §5; amended after the WP2 review (`notes.md` §6).
+Status: **frozen** after the WP0 review round (see `notes.md` §2 items 19-33). Later changes:
+`icons.json` per-sheet source key and patches (WP4, `notes.md` §2 item 34); WP1 review
+resolutions (`notes.md` §5); amendments after the WP2 review (`notes.md` §6).

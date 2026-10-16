@@ -24,7 +24,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 VALIDATOR = REPO / "qml/tests/test_pet_assets.py"
 COPY = ("qml/assets/pets", "qml/shared/PetRegistry.js", "docs/pets.md",
-        "crates/codepet-core/src/species.rs", "crates/codepet-core/src/lifecycle.rs")
+        "crates/codepet-core/src/species.rs", "crates/codepet-core/src/lifecycle.rs",
+        "docs/v0.3/contracts/icons.json", "docs/v0.3/contracts/strings.json")
 
 
 def webp_bytes(size, alpha):
@@ -183,6 +184,67 @@ class InvalidPacks(unittest.TestCase):
         man["placeholder"] = True
         self.write_manifest("axolotl", man)
         self.assertRejected("axolotl: placeholder:true (release gate")
+
+    def assertAccepted(self):
+        code, out = self.validate()
+        self.assertEqual(code, 0, out)
+
+    def test_care_icon_set_wrong_or_missing(self):
+        man = self.manifest("goldfish")
+        man["careIconSet"] = "floor"
+        self.write_manifest("goldfish", man)
+        self.assertRejected("goldfish: careIconSet 'floor' != icons.json care_icon_set.resolved 'aquatic'")
+        man["careIconSet"] = "space"
+        self.write_manifest("goldfish", man)
+        self.assertRejected("goldfish: careIconSet must be one of")
+        # icons.json: robot sets 'robot' explicitly; absent it falls back to the habitat default.
+        robot = self.manifest("robot")
+        del robot["careIconSet"]
+        self.write_manifest("robot", robot)
+        self.assertRejected("robot: careIconSet 'floor' != icons.json care_icon_set.resolved 'robot' (absent")
+
+    def test_care_fields_are_optional(self):
+        # icons.json: careIconSet absent -> habitat default; careWords optional, per-need fallback.
+        fish = self.manifest("goldfish")
+        del fish["careIconSet"]
+        self.write_manifest("goldfish", fish)
+        cat = self.manifest("cat")
+        cat["careWords"] = {"food": "Kibble"}
+        self.write_manifest("cat", cat)
+        dog = self.manifest("dog")
+        del dog["careWords"]
+        self.write_manifest("dog", dog)
+        self.assertAccepted()
+
+    def test_care_words_shape_and_lint(self):
+        good = self.manifest("cat")
+        man = json.loads(json.dumps(good))
+        man["careWords"]["bath"] = "Bubbles"
+        self.write_manifest("cat", man)
+        self.assertRejected("cat: careWords must map some of food, water, play and wash")
+        cases = [("Kibble 2", "one or two plain words"), ("Big yummy kibble", "one or two plain words"),
+                 ("Token", "forbidden word 'token'"), ("Hooks", "forbidden word 'hook'"),
+                 ("Hurry up", "calm-copy banned term 'hurry'"), ("kibble", "one or two plain words")]
+        for word, needle in cases:
+            man = json.loads(json.dumps(good))
+            man["careWords"]["food"] = word
+            self.write_manifest("cat", man)
+            self.assertRejected(needle)
+
+    def test_care_words_follow_strings_json(self):
+        # The K8 check reads strings.json: a longer {word} template, or a new per-habitat
+        # override with {word}, is caught for exactly the species whose careIconSet selects it.
+        sp = self.root / "docs/v0.3/contracts/strings.json"
+        base = json.loads(sp.read_text())
+        strings = dict(base, **{"react.play": "Wheee! Look at me play with my {word} now!"})
+        sp.write_text(json.dumps(strings))
+        self.assertRejected("cat: careWords.play makes react.play 9 words (K8: at most 8)")
+        strings = dict(base, **{"aquatic.react.wash": "Look how sparkly and so very clean my {word} is!"})
+        sp.write_text(json.dumps(strings))
+        code, out = self.validate()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn("goldfish: careWords.wash makes react.wash 11 words", out)
+        self.assertNotIn("cat: careWords.wash", out)
 
     def test_registry_drift(self):
         man = self.manifest("cat")
