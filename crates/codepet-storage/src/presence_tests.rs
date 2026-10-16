@@ -337,6 +337,7 @@ fn unarmed_discards() {
     assert!(s.lifecycle.needs.iter().all(|n| n.until_end_ms.is_none()));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn slot_task_discards_in_every_slot_state() {
     for state in SLOT_STATE_LIST {

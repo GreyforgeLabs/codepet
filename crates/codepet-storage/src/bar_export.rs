@@ -4,12 +4,15 @@
 //! or provider error text. The file is written only under the database writer lock and
 //! only when this state is newer than what the file already holds, so it is monotonic in
 //! `state_version`. Readers never launch Rust in response to a change of this file.
-use crate::agent_export::{AgentExport, ClientsExport, TreatsExport};
+use crate::agent_export::{AgentExport, ClientsExport, TreatsExport, V03Blocks};
 use crate::model::MetersView;
+#[cfg(feature = "legacy-tasks")]
 use crate::schema::SLOT_STATES;
 use crate::{care, life, sys, Result, StorageError, Store};
 use codepet_core::lifecycle::{IDLE_TIMEOUT_S, RULESET_V1, TICK_MS};
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
+#[cfg(feature = "legacy-tasks")]
+use rusqlite::OptionalExtension;
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use serde::Serialize;
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
@@ -123,7 +126,7 @@ pub(crate) struct BarState {
     presence: BarPresence,
     unseen_events: Vec<BarUnseen>,
     memorial: BarMemorial,
-    // ---- v0.3 (spec §8). Defaults until WP1/WP2/WP3 fill them. ----
+    // ---- v0.3 (spec §8). `agent` and `clients` keep their defaults until WP2/WP3. ----
     /// The On/Off switch (`meta.enabled`, WP1).
     enabled: bool,
     /// Coding-app activity (WP2).
@@ -135,6 +138,7 @@ pub(crate) struct BarState {
 }
 
 /// Longest prefix of `s` that is at most `max` UTF-8 bytes.
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn byte_prefix(s: &str, max: usize) -> &str {
     if s.len() <= max {
         return s;
@@ -162,6 +166,12 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
         },
     )?;
     let care = care::view(c, meters)?;
+    let v03 = V03Blocks::load(c)?;
+    // v0.3.0 keeps the v1 keys `task`, `care.ready_to_work` and `care.readiness_reasons` as
+    // inert compatibility values (null, false, []), so a still-loaded v0.2 bar or overlay
+    // degrades gracefully until the reload (spec §6.6); v0.3.1 drops them. Only the
+    // `legacy-tasks` build still reports a slot task and its readiness gate.
+    #[cfg(feature = "legacy-tasks")]
     let task: Option<(String, String)> = c
         .query_row(
             &format!("SELECT state, category FROM tasks WHERE state IN {SLOT_STATES} LIMIT 1"),
@@ -169,6 +179,19 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
+    #[cfg(not(feature = "legacy-tasks"))]
+    let task: Option<(String, String)> = None;
+    #[cfg(feature = "legacy-tasks")]
+    let (ready_to_work, readiness_reasons) = (
+        care.ready_to_work,
+        care.readiness_reasons
+            .iter()
+            .take(MAX_READINESS_REASONS)
+            .map(|r| byte_prefix(r, MAX_REASON_BYTES).to_owned())
+            .collect(),
+    );
+    #[cfg(not(feature = "legacy-tasks"))]
+    let (ready_to_work, readiness_reasons) = (false, Vec::new());
     Ok(BarState {
         schema: BAR_SCHEMA,
         state_version: life::state_version(c)?,
@@ -221,13 +244,8 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             sleep_started_at_ms: care.sleep_started_at_ms,
             sleep_due: care.sleep_due,
             bathroom_due: care.bathroom_due,
-            ready_to_work: care.ready_to_work,
-            readiness_reasons: care
-                .readiness_reasons
-                .iter()
-                .take(MAX_READINESS_REASONS)
-                .map(|r| byte_prefix(r, MAX_REASON_BYTES).to_owned())
-                .collect(),
+            ready_to_work,
+            readiness_reasons,
         },
         task: task.map(|(state, category)| BarTask { state, category }),
         presence: BarPresence {
@@ -248,10 +266,10 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             count: block.memorial.count,
             latest_name: block.memorial.latest.map(|l| l.name),
         },
-        enabled: true,
-        agent: AgentExport::default(),
-        treats: TreatsExport::default(),
-        clients: ClientsExport::new(),
+        enabled: v03.enabled,
+        agent: v03.agent,
+        treats: v03.treats,
+        clients: v03.clients,
     })
 }
 
@@ -304,6 +322,9 @@ impl Store {
     /// only ever moves forward.
     pub fn export_bar_state(&self) -> Result<bool> {
         let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        // The `off` and `helpers` flags always follow the database, even when the file
+        // itself is already current (a stray flag heals at the next command, spec §7.3).
+        crate::app::sync_flags(&tx, &self.paths)?;
         let state = build(&tx, self.clock.now_ms())?;
         let path = self.paths.bar_state_path();
         if state.state_version <= existing_version(&path, &state.db_id) {

@@ -15,6 +15,7 @@ jobs:
       # v0.3: the retired task pipeline builds and passes behind its feature until v0.3.1.
       - run: cargo +1.85.0 test --workspace --locked --features codepet/legacy-tasks
       - run: cargo +1.85.0 clippy --workspace --all-targets --locked --features codepet/legacy-tasks -- -D warnings
-      - run: cargo +1.85.0 run --locked -p codepet -- mock-demo
+      # The in-memory mock demo is part of the retired pipeline (spec §6.5).
+      - run: cargo +1.85.0 run --locked -p codepet --features legacy-tasks -- mock-demo
       # The shipped binary's third-party notices must match the lock graph.
       - run: python3 tools/release/third_party_licenses.py --check

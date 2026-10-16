@@ -506,6 +506,7 @@ pub fn apply_care(v: &Vitals, r: &Rules, filled: &[Category]) -> (Vitals, Vec<Ev
     (s, events)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// A Start debit: every satiety hold ends (the debited meters are no longer full).
 pub fn on_debit(v: &Vitals) -> Vitals {
     Vitals {
@@ -514,6 +515,7 @@ pub fn on_debit(v: &Vitals) -> Vitals {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// A refund restored some meters. `v.meters` must already hold the refunded values;
 /// each listed need that is now full gets its satiety hold back. Others are unchanged.
 pub fn on_refund(v: &Vitals, r: &Rules, restored: &[Category]) -> Vitals {

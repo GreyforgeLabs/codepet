@@ -6,10 +6,14 @@ use std::fmt;
 
 mod frame;
 mod params;
+#[cfg(feature = "legacy-tasks")]
+mod params_legacy;
 mod strict;
 
 pub use frame::{read_frame, FrameError, FrameReader};
 pub use params::*;
+#[cfg(feature = "legacy-tasks")]
+pub use params_legacy::*;
 
 pub const PROTOCOL_VERSION: u16 = 1;
 /// Maximum frame size in bytes, counting the trailing newline.
@@ -266,8 +270,9 @@ impl Method {
         Self::ClientsTest,
     ];
     /// The v0.2 methods v0.3 unroutes (spec §6.2 "Removed"; `hello` stays, only its
-    /// supervisor handshake is retired). They still parse in this skeleton; WP1 moves them
-    /// behind the `legacy-tasks` feature.
+    /// supervisor handshake is retired). The default build parses none of them (they answer
+    /// `UNKNOWN_METHOD`); they route again only with the non-default `legacy-tasks` feature,
+    /// until v0.3.1 deletes them.
     pub const V03_REMOVED: [Self; 17] = [
         Self::EventsSubscribe,
         Self::ProvidersInspect,
@@ -332,8 +337,25 @@ impl Method {
             Self::ClientsTest => "clients.test",
         }
     }
+    /// The v0.3 methods whose work package has not landed in this build: they validate their
+    /// params, then answer `NOT_IMPLEMENTED` before opening storage.
+    pub const V03_PENDING: [Self; 4] = [
+        Self::ClientsStatus,
+        Self::ClientsConnect,
+        Self::ClientsDisconnect,
+        Self::ClientsTest,
+    ];
+    /// Parses a routed method name. A method of [`Self::V03_REMOVED`] parses only with the
+    /// `legacy-tasks` feature; otherwise it is unknown, exactly like a name that never existed.
     pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|m| m.as_str() == s)
+        Self::ALL
+            .into_iter()
+            .find(|m| m.as_str() == s)
+            .filter(|m| m.is_routed())
+    }
+    /// False for the retired task-pipeline methods in the default build (spec §6.5).
+    pub fn is_routed(self) -> bool {
+        cfg!(feature = "legacy-tasks") || !Self::V03_REMOVED.contains(&self)
     }
     /// True when the method may change durable state (including preflight tokens).
     /// `state.get` counts: it may settle presence, a persisted nap, a due death or
@@ -387,11 +409,11 @@ impl Method {
         }
     }
     /// False for methods that parse but are refused: `task.logs`, `task.apply` and
-    /// `task.rollback` with `INVALID_STATE`, and the v0.3 skeleton methods with
-    /// `NOT_IMPLEMENTED` until their work package lands.
+    /// `task.rollback` with `INVALID_STATE` (`legacy-tasks` only), and the v0.3 methods of
+    /// [`Self::V03_PENDING`] with `NOT_IMPLEMENTED` until their work package lands.
     pub fn is_implemented(self) -> bool {
         !matches!(self, Self::TaskLogs | Self::TaskApply | Self::TaskRollback)
-            && !Self::V03_ADDED.contains(&self)
+            && !Self::V03_PENDING.contains(&self)
     }
 }
 impl fmt::Display for Method {

@@ -17,6 +17,9 @@ fn spent() -> MetersView {
     }
 }
 
+/// Kept from v0.2 (spec §6.1): request-id idempotency for care. The same id with the same
+/// action replays the stored outcome (never a second fill); the same id with another
+/// action or another care method is `IDEMPOTENCY_CONFLICT`. Care never awards XP.
 #[test]
 fn explicit_care_is_idempotent_and_does_not_award_xp() {
     let env = Env::new();
@@ -27,15 +30,21 @@ fn explicit_care_is_idempotent_and_does_not_award_xp() {
     }
     let snapshot = s.snapshot().unwrap();
     assert_eq!(snapshot.meters, full());
+    #[cfg(feature = "legacy-tasks")]
     assert!(snapshot.care.ready_to_work);
     assert!(!snapshot.care.welcome_care_available);
     assert_eq!(snapshot.progression.demo.lifetime_xp, 0);
     assert_eq!(snapshot.progression.real.lifetime_xp, 0);
+    assert_eq!(snapshot.life.as_ref().unwrap().xp, 0);
     assert!(!s.care("more-food", "food").unwrap().changed);
     let initial = s.care("routine-replay", "routine").unwrap();
-    let t = s.create_task(&env.input(Category::Hunger)).unwrap();
-    let token = s.preflight(&t.task_id, 1).unwrap();
-    s.start(&t.task_id, 1, &token.preflight_token, sup())
+    // The meters move on (in v0.2 a task start spent them); a replay returns the stored
+    // outcome and fills nothing.
+    env.raw()
+        .execute_batch(
+            "UPDATE pet_state SET hunger = 9000, thirst = 9000, mental_health = 9500,
+             hygiene = 9000",
+        )
         .unwrap();
     assert_eq!(s.snapshot().unwrap().meters, spent());
     assert_eq!(s.care("routine-replay", "routine").unwrap(), initial);
@@ -49,11 +58,17 @@ fn explicit_care_is_idempotent_and_does_not_award_xp() {
         Err(StorageError::IdempotencyConflict)
     ));
     assert!(matches!(
+        s.wake("routine-replay"),
+        Err(StorageError::IdempotencyConflict)
+    ));
+    assert_eq!(s.snapshot().unwrap().meters, spent());
+    assert!(matches!(
         s.care("unknown", "feed-every-hour"),
         Err(StorageError::InvalidParams(_))
     ));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn start_requires_every_full_bar_and_debits_only_once() {
     for column in ["hunger", "thirst", "mental_health", "hygiene"] {
@@ -88,6 +103,7 @@ fn start_requires_every_full_bar_and_debits_only_once() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn bathroom_due_after_two_starts_is_not_cleared_by_wash() {
     let env = Env::new();
@@ -109,6 +125,7 @@ fn bathroom_due_after_two_starts_is_not_cleared_by_wash() {
     assert_eq!(state.care.work_sessions, 2);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn third_start_requires_sleep_but_never_interrupts_execution() {
     let env = Env::new();
@@ -157,12 +174,15 @@ fn early_wake_and_closed_app_preserve_sleep_credit() {
     env.clock.advance(30_000);
     let wake = s.wake("early").unwrap();
     assert_eq!(wake.care.sleep_remaining_ms, 90_000);
-    assert!(wake.care.sleep_due && !wake.care.sleeping);
+    // The nap requirement is a retired readiness gate: only the legacy build reports it.
+    let nap_gate = cfg!(feature = "legacy-tasks");
+    assert_eq!(wake.care.sleep_due, nap_gate);
+    assert!(!wake.care.sleeping);
     drop(s);
     env.clock.advance(86_400_000);
     let mut s = env.open();
     assert_eq!(s.snapshot().unwrap().care.sleep_remaining_ms, 90_000);
-    assert!(s.snapshot().unwrap().care.sleep_due);
+    assert_eq!(s.snapshot().unwrap().care.sleep_due, nap_gate);
     s.sleep("resume").unwrap();
     drop(s);
     env.clock.advance(89_999);
@@ -192,6 +212,7 @@ fn backward_wall_clock_does_not_grant_or_double_count_rest() {
     assert_eq!(s.snapshot().unwrap().progression.demo.lifetime_xp, 0);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn elapsed_execution_counts_running_not_waiting_or_review() {
     let env = Env::new();
@@ -234,6 +255,7 @@ fn elapsed_execution_counts_running_not_waiting_or_review() {
     assert!(s.snapshot().unwrap().care.sleeping);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn pre_execution_failure_refunds_once_but_executed_failure_does_not() {
     let env = Env::new();
@@ -256,6 +278,7 @@ fn pre_execution_failure_refunds_once_but_executed_failure_does_not() {
     assert_eq!(s.snapshot().unwrap().care.work_sessions, 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn demo_level_thresholds_and_mastery_never_enable_real_providers() {
     let env = Env::new();
@@ -296,6 +319,7 @@ fn demo_level_thresholds_and_mastery_never_enable_real_providers() {
     assert_eq!(s.snapshot().unwrap().progression.demo.lifetime_xp, 200);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn new_sensitive_text_is_redacted_before_persistence_and_digest() {
     let env = Env::new();
@@ -350,6 +374,7 @@ fn new_sensitive_text_is_redacted_before_persistence_and_digest() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn v1_migration_preserves_historical_care_receipts_and_inflight_tasks() {
     let env = Env::new();
@@ -389,7 +414,8 @@ fn v1_migration_preserves_historical_care_receipts_and_inflight_tasks() {
         }
     );
     assert!(s.snapshot().unwrap().care.welcome_care_available);
-    assert_eq!(s.task("old-running").unwrap().state, State::Running);
+    // The v5 step closed the leftover running task, without a reward or a refund.
+    assert_eq!(s.task("old-running").unwrap().state, State::Interrupted);
     assert_eq!(
         s.task("old-accepted")
             .unwrap()
@@ -484,7 +510,7 @@ fn same_boot_monotonic_time_wins_over_wall_clock_jumps() {
         wall: ManualClock::new(T0),
         steady: ManualClock::new(1000),
     });
-    let mut s = Store::open(&env.paths, clock.clone()).unwrap();
+    let mut s = Store::open_with_first_run_placeholder(&env.paths, clock.clone()).unwrap();
     s.sleep("monotonic-nap").unwrap();
     clock.wall.set(i64::MAX);
     clock.steady.advance(1000);
@@ -505,6 +531,7 @@ fn same_boot_monotonic_time_wins_over_wall_clock_jumps() {
     assert!(!s.snapshot().unwrap().care.sleep_due);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn explicit_snapshot_checkpoints_live_execution_once_and_recovery_ignores_dead_time() {
     let env = Env::new();
@@ -535,6 +562,7 @@ fn explicit_snapshot_checkpoints_live_execution_once_and_recovery_ignores_dead_t
     assert_eq!(s.snapshot().unwrap().meters, spent());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn sleep_completion_invalidates_tokens_issued_during_sleep_only_once() {
     let env = Env::new();
@@ -565,6 +593,7 @@ fn sleep_completion_invalidates_tokens_issued_during_sleep_only_once() {
     assert_eq!(s.snapshot().unwrap().care.revision, revision + 1);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn older_transition_timestamp_cannot_rewind_newer_execution_checkpoint() {
     // Public snapshot path, using the conservative wall-clock fallback.
@@ -618,6 +647,7 @@ fn older_transition_timestamp_cannot_rewind_newer_execution_checkpoint() {
     assert_eq!(env.count("SELECT execution_ms FROM task_care_usage"), 200);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn snapshot_checkpoints_never_invalidate_other_approvals() {
     let env = Env::new();
@@ -655,19 +685,39 @@ fn snapshot_checkpoints_never_invalidate_other_approvals() {
     assert_eq!(env.count(pending), 1);
 }
 
+/// Kept from v0.2 (spec §6.1, §8): with nothing to settle (no nap, no presence sidecar, no
+/// due end), `state.get` is a plain WAL read that never waits for the writer lock and
+/// commits nothing. The same holds for a nap frozen by Off (spec §7.3).
 #[test]
 fn idle_snapshot_is_a_plain_read_that_never_waits_for_the_writer_lock() {
     let env = Env::new();
     let mut s = env.open();
+    #[cfg(feature = "legacy-tasks")]
     make_ready(&mut s, &env);
-    let holder = env.raw();
-    holder.execute_batch("BEGIN IMMEDIATE").unwrap();
-    let began = std::time::Instant::now();
-    let state = s.snapshot().unwrap();
-    // The store's busy timeout is 5 s; a writer-lock wait would exceed this bound.
-    assert!(began.elapsed() < std::time::Duration::from_secs(2));
-    assert!(state.care.ready_to_work);
-    holder.execute_batch("ROLLBACK").unwrap();
+    #[cfg(not(feature = "legacy-tasks"))]
+    s.care("routine", "routine").unwrap();
+    let plain_read_under_a_held_writer_lock = |s: &Store| {
+        let before = s.snapshot().unwrap().state_version;
+        let holder = env.raw();
+        holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let began = std::time::Instant::now();
+        let state = s.snapshot().unwrap();
+        // The store's busy timeout is 5 s; a writer-lock wait would exceed this bound.
+        assert!(began.elapsed() < std::time::Duration::from_secs(2));
+        assert_eq!(state.state_version, before, "nothing committed");
+        holder.execute_batch("ROLLBACK").unwrap();
+        state
+    };
+    let _state = plain_read_under_a_held_writer_lock(&s);
+    #[cfg(feature = "legacy-tasks")]
+    assert!(_state.care.ready_to_work);
+    // Asleep and Off: the frozen nap needs no settlement either.
+    s.sleep("nap").unwrap();
+    s.set_enabled("off", false).unwrap();
+    env.clock.advance(60_000);
+    let state = plain_read_under_a_held_writer_lock(&s);
+    assert!(state.care.sleeping);
+    assert_eq!(state.lifecycle.frozen_reason, "off");
 }
 
 /// Boot time advances during suspend; monotonic time does not.
@@ -708,11 +758,12 @@ impl Clock for SuspendClock {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn suspend_is_never_charged_as_execution_but_counts_as_rest() {
     let env = Env::new();
     let clock = Arc::new(SuspendClock::default());
-    let mut s = Store::open(&env.paths, clock.clone()).unwrap();
+    let mut s = Store::open_with_first_run_placeholder(&env.paths, clock.clone()).unwrap();
     let id = started(&mut s, &env, Category::Hunger, sup());
     s.supervisor_step(&id, sup(), State::Preparing, State::Running)
         .unwrap();
@@ -766,6 +817,57 @@ fn system_clock_measures_execution_without_suspended_time() {
     );
 }
 
+/// Kept from v0.2 (spec §6.1, §6.2 "receipts bounded at 256"): care, sleep and wake
+/// receipts are pruned to the newest [`MAX_CARE_RECEIPTS`]; the newest still replay, and a
+/// `pet.start` receipt (kept like adoption) is never pruned by care clicks.
+#[test]
+fn care_receipts_are_bounded_and_the_newest_still_replay() {
+    let env = Env::with_boot();
+    let mut s = env.open();
+    s.start_pet(
+        "keep-start",
+        &StartRequest {
+            life_id: None,
+            species: "cat",
+            name: None,
+            mode: codepet_core::lifecycle::Mode::Gentle,
+            acknowledge_rules: true,
+        },
+    )
+    .unwrap();
+    let care_rows = "SELECT count(*) FROM request_results
+        WHERE method IN ('pet.care','pet.sleep','pet.wake')";
+    let clicks = MAX_CARE_RECEIPTS + 20;
+    for i in 0..clicks {
+        let action = ["food", "water", "play", "wash"][usize::try_from(i % 4).unwrap()];
+        s.care(&format!("click-{i}"), action).unwrap();
+    }
+    s.sleep("nap-click").unwrap();
+    s.wake("wake-click").unwrap();
+    assert_eq!(env.count(care_rows), MAX_CARE_RECEIPTS);
+    let newest = format!("click-{}", clicks - 1);
+    assert_eq!(
+        env.count(&format!(
+            "SELECT count(*) FROM request_results WHERE request_id = '{newest}'"
+        )),
+        1
+    );
+    let replay = s.wake("wake-click").unwrap();
+    assert_eq!(replay.action, "wake");
+    assert_eq!(env.count(care_rows), MAX_CARE_RECEIPTS);
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE request_id = 'click-0'"),
+        0
+    );
+    // A pruned id is new again: it runs (a no-op on full meters) instead of replaying.
+    assert!(!s.care("click-0", "wash").unwrap().changed);
+    assert_eq!(
+        env.count("SELECT count(*) FROM request_results WHERE method = 'pet.start'"),
+        1
+    );
+}
+
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn care_receipts_are_bounded_but_acceptance_receipts_are_kept() {
     let env = Env::new();

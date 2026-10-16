@@ -4,8 +4,38 @@
 //! WP0 serialises them with defaults (CodePet on, nothing seen, empty jar, no client
 //! records). WP1 fills `enabled` and `treats`, WP2 fills `agent`, WP3 fills `clients`, each
 //! from committed rows and without settling anything.
+use crate::Result;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+/// The v0.3 blocks shared by `state.get` and `bar-state.json`, read from committed rows
+/// without settling (one loader, so the snapshot and the export can never disagree).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct V03Blocks {
+    /// `meta.enabled` (WP1).
+    pub enabled: bool,
+    /// `meta.count_helpers` (WP1).
+    pub count_helpers: bool,
+    /// Coding-app activity (WP2 fills it; defaults until then).
+    pub agent: AgentExport,
+    /// The living life's treat jar (WP1).
+    pub treats: TreatsExport,
+    /// Client records (WP3 fills it; empty until then).
+    pub clients: ClientsExport,
+}
+impl V03Blocks {
+    pub(crate) fn load(c: &Connection) -> Result<Self> {
+        let (jar, full) = crate::treats::jar_of_living(c)?;
+        Ok(Self {
+            enabled: crate::app::enabled(c)?,
+            count_helpers: crate::app::count_helpers(c)?,
+            agent: AgentExport::default(),
+            treats: TreatsExport { jar, full },
+            clients: ClientsExport::new(),
+        })
+    }
+}
 
 /// `agent`: what the connected coding apps are doing, for the bar, Home and the overlay.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

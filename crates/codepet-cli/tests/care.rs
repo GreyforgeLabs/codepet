@@ -1,4 +1,6 @@
 //! Care and progression through fresh CLI processes. Explicit actions never launch work.
+// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use codepet_storage::{Clock, ManualClock, StatePaths, Store, SystemClock};
 use common::{error_code, Env};
@@ -13,6 +15,7 @@ fn full_meters() -> Value {
 fn spent_meters() -> Value {
     json!({"hunger": 9000, "thirst": 9000, "mental_health": 9500, "hygiene": 9000})
 }
+#[cfg(feature = "legacy-tasks")]
 fn discard(env: &Env, task: &str) {
     let digest = env.task(task)["review"]["digest"].clone();
     env.ok(
@@ -20,6 +23,7 @@ fn discard(env: &Env, task: &str) {
         json!({"task_id": task, "review_digest": digest}),
     );
 }
+#[cfg(feature = "legacy-tasks")]
 fn accept(env: &Env, task: &str, digest: &str) -> Value {
     env.ok(
         "task.accept_artifact",
@@ -56,22 +60,27 @@ fn invalid_care_and_rest_requests_never_open_storage() {
     );
 }
 
+/// Kept from v0.2 (spec §6.1): request-id idempotency and no XP for care, through the
+/// binary. The readiness and task parts run only in the `legacy-tasks` build.
 #[test]
 fn explicit_care_is_idempotent_and_never_grants_xp_or_starts_work() {
-    let env = Env::new();
+    let legacy = cfg!(feature = "legacy-tasks");
+    let env = Env::with_first_run_pet();
     let initial = env.state();
     assert_eq!(
         initial["meters"],
         json!({"hunger":7000,"thirst":7000,"mental_health":7000,"hygiene":7000})
     );
-    assert_eq!(initial["care"]["ready_to_work"], false);
-    assert_eq!(
-        initial["care"]["readiness_reasons"]
-            .as_array()
-            .unwrap()
-            .len(),
-        4
-    );
+    if legacy {
+        assert_eq!(initial["care"]["ready_to_work"], false);
+        assert_eq!(
+            initial["care"]["readiness_reasons"]
+                .as_array()
+                .unwrap()
+                .len(),
+            4
+        );
+    }
     let mut meters = initial["meters"].clone();
     for (action, meter) in [
         ("food", "hunger"),
@@ -103,13 +112,20 @@ fn explicit_care_is_idempotent_and_never_grants_xp_or_starts_work() {
         env.err_with("care-food", "pet.sleep", json!({})),
         "IDEMPOTENCY_CONFLICT"
     );
+    assert_eq!(
+        env.err_with("care-food", "pet.wake", json!({})),
+        "IDEMPOTENCY_CONFLICT"
+    );
     let s = env.state();
     assert_eq!(s["meters"], full_meters());
-    assert_eq!(s["care"]["ready_to_work"], true);
-    assert_eq!(s["care"]["readiness_reasons"], json!([]));
     assert_eq!(s["care"]["work_sessions"], 0);
-    assert_eq!(s["active_task"], Value::Null);
-    assert_eq!(s["recent"], json!([]));
+    assert_eq!(s["life"]["xp"], 0);
+    if legacy {
+        assert_eq!(s["care"]["ready_to_work"], true);
+        assert_eq!(s["care"]["readiness_reasons"], json!([]));
+        assert_eq!(s["active_task"], Value::Null);
+        assert_eq!(s["recent"], json!([]));
+    }
     for lane in ["real", "demo"] {
         assert_eq!(s["progression"][lane]["lifetime_xp"], 0);
         assert_eq!(s["progression"][lane]["level"], 1);
@@ -118,9 +134,10 @@ fn explicit_care_is_idempotent_and_never_grants_xp_or_starts_work() {
     assert!(!env.folder().exists());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn readiness_is_rechecked_and_care_changes_invalidate_preflight() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let id = env.create("hunger", 0, "artifact");
     let token = env.preflight(&id, 1);
     let before = env.state();
@@ -170,9 +187,10 @@ fn readiness_is_rechecked_and_care_changes_invalidate_preflight() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn bathroom_and_mandatory_sleep_survive_restarts_and_block_only_new_work() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     for expected_sessions in 1..=2 {
         let (id, _) = env.reviewed("hunger", "artifact");
         assert_eq!(env.state()["care"]["work_sessions"], expected_sessions);
@@ -266,9 +284,10 @@ fn bathroom_and_mandatory_sleep_survive_restarts_and_block_only_new_work() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn early_wake_keeps_credit_and_repeated_sleep_does_not_restart_the_timer() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let initial_meters = env.state()["meters"].clone();
     let sleep = env.ok_with("sleep-1", "pet.sleep", json!({}));
     assert_eq!(sleep["care"]["sleep_remaining_ms"], 120_000);
@@ -315,9 +334,10 @@ fn elapsed_nap(env: &Env) {
     store.sleep(&env.id()).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn an_explicit_nap_finishes_offline_without_refilling_care_or_starting_work() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let before = env.state();
     elapsed_nap(&env);
     let after = env.state();
@@ -332,9 +352,10 @@ fn an_explicit_nap_finishes_offline_without_refilling_care_or_starting_work() {
     assert_eq!(after["active_task"], Value::Null);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn concurrent_process_starts_get_one_slot_and_one_care_debit() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let a = env.create("hunger", 0, "artifact");
     let b = env.create("thirst", 0, "artifact");
@@ -375,9 +396,10 @@ fn concurrent_process_starts_get_one_slot_and_one_care_debit() {
     assert!(!env.folder().exists());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn four_accepted_simulations_level_only_demo_and_cannot_enable_providers() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let providers = env.ok("providers.inspect", json!({}));
     for (index, (category, mastery)) in [
         ("hunger", "bugfix"),
@@ -424,9 +446,10 @@ fn four_accepted_simulations_level_only_demo_and_cannot_enable_providers() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn sleeping_keeps_completed_results_reviewable_and_acceptance_available() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, digest) = env.reviewed("mental_health", "artifact");
     let nap = env.ok("pet.sleep", json!({}));
     assert_eq!(nap["care"]["sleeping"], true);
@@ -451,9 +474,10 @@ fn sleeping_keeps_completed_results_reviewable_and_acceptance_available() {
     assert_eq!(env.state()["settings"]["timeout_seconds"], 600);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn concurrent_acceptance_returns_one_receipt_and_one_demo_reward() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, digest) = env.reviewed("hunger", "artifact");
     let barrier = Barrier::new(2);
     let request = || {

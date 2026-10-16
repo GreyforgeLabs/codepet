@@ -128,11 +128,30 @@ fn every_method_parses_and_round_trips() {
     ];
     assert_eq!(Method::ALL.len(), names.len());
     assert_eq!(Method::ALL.len(), 41);
-    for name in names {
-        let m = Method::parse(name).unwrap();
+    for (m, name) in Method::ALL.into_iter().zip(names) {
         assert_eq!(m.as_str(), name);
         assert_eq!(m.to_string(), name);
         assert_eq!(serde_json::to_value(m).unwrap(), json!(name));
+        // The retired task pipeline routes only with `legacy-tasks` (spec §6.5).
+        let routed = cfg!(feature = "legacy-tasks") || !Method::V03_REMOVED.contains(&m);
+        assert_eq!(m.is_routed(), routed, "{name}");
+        assert_eq!(Method::parse(name), routed.then_some(m), "{name}");
+        let frame = format!(r#"{{"v":1,"id":"a","method":"{name}"}}"#);
+        if routed {
+            assert_eq!(req(&frame).unwrap().method, m);
+            assert_eq!(
+                serde_json::from_value::<Method>(json!(name)).unwrap(),
+                m,
+                "{name}"
+            );
+        } else {
+            assert_eq!(
+                code_of(&frame),
+                (ErrorCode::UnknownMethod, Some("a".into())),
+                "{name}"
+            );
+            assert!(serde_json::from_value::<Method>(json!(name)).is_err());
+        }
     }
     assert_eq!(Method::parse("Hello"), None);
     assert_eq!(Method::parse("task.delete"), None);
@@ -158,13 +177,20 @@ fn mutating_and_implemented_classification() {
     }
     for m in [Method::TaskLogs, Method::TaskApply, Method::TaskRollback]
         .into_iter()
-        .chain(Method::V03_ADDED)
+        .chain(Method::V03_PENDING)
     {
         assert!(!m.is_implemented());
-        assert!(req(&format!(
-            r#"{{"v":1,"id":"a","method":"{m}","params":{{}}}}"#
-        ))
-        .is_ok());
+        assert_eq!(
+            req(&format!(
+                r#"{{"v":1,"id":"a","method":"{m}","params":{{}}}}"#
+            ))
+            .is_ok(),
+            m.is_routed()
+        );
+    }
+    // WP1 implements its six methods; the clients methods wait for WP3.
+    for m in Method::V03_ADDED {
+        assert_eq!(m.is_implemented(), !Method::V03_PENDING.contains(&m), "{m}");
     }
     assert!(Method::TaskRecover.is_implemented());
     assert!(Method::StateGet.is_mutating());
@@ -176,16 +202,16 @@ fn mutating_and_implemented_classification() {
 
 #[test]
 fn request_round_trip() {
-    let text = r#"{"v":1,"id":"req-1","method":"task.start","params":{"task_id":"t","revision":3,"preflight_token":"x"}}"#;
+    let text = r#"{"v":1,"id":"req-1","method":"pet.rename","params":{"life_id":"life-1","name":"Ginger"}}"#;
     let r = req(text).unwrap();
     assert_eq!(r.v, 1);
     assert_eq!(r.id, "req-1");
-    assert_eq!(r.method, Method::TaskStart);
+    assert_eq!(r.method, Method::PetRename);
     let frame = r.to_frame().unwrap();
     assert!(frame.ends_with('\n'));
     assert_eq!(frame.matches('\n').count(), 1);
     assert_eq!(req(&frame).unwrap(), r);
-    let built = Request::new("req-1", Method::TaskStart, r.params.clone());
+    let built = Request::new("req-1", Method::PetRename, r.params.clone());
     assert_eq!(built, r);
 }
 
@@ -582,6 +608,7 @@ fn interrupted_reads_are_retried_and_io_errors_surface() {
 
 // ---- params ----
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn draft_params_round_trip() {
     let v = json!({"category":"mental_health","provider":"mock","folder":"/p","scope":["src"],
@@ -598,6 +625,7 @@ fn draft_params_round_trip() {
     assert!(p.mock.is_none());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn update_params_carry_draft() {
     let v = json!({"task_id":"t","expected_revision":2,"category":"hunger","provider":"mock",
@@ -610,11 +638,19 @@ fn update_params_carry_draft() {
 
 #[test]
 fn unknown_params_fields_rejected() {
-    let cases = [json!({"task_id":"t","extra":1}), json!({"bogus":1})];
-    let e = params_from_value::<TaskIdParams>(cases[0].clone()).unwrap_err();
+    let cases = [json!({"life_id":"t","extra":1}), json!({"bogus":1})];
+    let e = params_from_value::<TreatsGiveParams>(cases[0].clone()).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(e.message.contains("extra"));
     assert!(params_from_value::<EmptyParams>(cases[1].clone()).is_err());
+}
+
+#[cfg(feature = "legacy-tasks")]
+#[test]
+fn unknown_legacy_params_fields_rejected() {
+    let e = params_from_value::<TaskIdParams>(json!({"task_id":"t","extra":1})).unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidParams);
+    assert!(e.message.contains("extra"));
     let nested = json!({"category":"hunger","provider":"mock","folder":"/p","scope":[],
         "instructions":"x","mock":{"outcome":"artifact","sneaky":true}});
     assert_eq!(
@@ -625,13 +661,25 @@ fn unknown_params_fields_rejected() {
 
 #[test]
 fn missing_and_mistyped_params() {
+    let e =
+        params_from_value::<PetRulesParams>(json!({"life_id":"t","mode":"gentle"})).unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidParams);
+    assert!(e.message.contains("acknowledge_rules"));
+    let e = params_from_value::<PetEventsSeenParams>(json!({"life_id":"t","through_seq":1.5}))
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidParams);
+    assert!(params_from_value::<PetPauseParams>(json!({"paused":"yes"})).is_err());
+}
+
+#[cfg(feature = "legacy-tasks")]
+#[test]
+fn missing_and_mistyped_legacy_params() {
     let e = params_from_value::<TaskStartParams>(json!({"task_id":"t","revision":1})).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(e.message.contains("preflight_token"));
     let e =
         params_from_value::<TaskPreflightParams>(json!({"task_id":"t","revision":-1})).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
-    assert!(params_from_value::<PetPauseParams>(json!({"paused":"yes"})).is_err());
     assert!(
         params_from_value::<SettingsUpdateParams>(json!({"expected_revision":1,
         "decay_enabled":false,"decay_per_hour":[1,2,3],"timeout_seconds":60}))
@@ -642,7 +690,7 @@ fn missing_and_mistyped_params() {
 #[test]
 fn params_must_be_object_not_sequence() {
     // serde would otherwise accept a positional array for a struct.
-    let e = params_from_value::<TaskPreflightParams>(json!(["t", 1])).unwrap_err();
+    let e = params_from_value::<PetEventsSeenParams>(json!(["t", 1])).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(params_from_value::<EmptyParams>(Value::Null).is_err());
 }
@@ -650,7 +698,7 @@ fn params_must_be_object_not_sequence() {
 #[test]
 fn params_errors_do_not_echo_huge_input() {
     let huge = "q".repeat(100_000);
-    let e = params_from_value::<TaskPreflightParams>(json!({"task_id":"t","revision":huge}))
+    let e = params_from_value::<PetEventsSeenParams>(json!({"life_id":"t","through_seq":huge}))
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(e.message.len() < 300, "{}", e.message.len());
@@ -658,6 +706,7 @@ fn params_errors_do_not_echo_huge_input() {
     assert!(e.message.len() < 300);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn numeric_limits() {
     let ok = |v| parse_params::<EventsSubscribeParams>(v);
@@ -699,6 +748,7 @@ fn numeric_limits() {
     assert!(parse_params::<TaskUpdateParams>(update).is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn token_and_reason_bounds() {
     let accept = |v| parse_params::<TaskAcceptArtifactParams>(v);
@@ -743,23 +793,29 @@ fn token_and_reason_bounds() {
     assert!(parse_params::<TaskIdParams>(json!({"task_id":"x".repeat(129)})).is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
-fn hello_settings_and_pause_params() {
+fn legacy_settings_and_recover_params() {
+    let s: SettingsUpdateParams = parse_params(json!({"expected_revision":1,"decay_enabled":true,
+        "decay_per_hour":[100,100,50,50],"timeout_seconds":1800}))
+    .unwrap();
+    assert_eq!(s.decay_per_hour, [100, 100, 50, 50]);
+    let _: TaskRecoverParams = parse_params(json!({})).unwrap();
+}
+
+#[test]
+fn hello_and_pause_params() {
     let h: HelloParams = parse_params(json!({})).unwrap();
     assert_eq!(h, HelloParams::default());
     let h: HelloParams = parse_params(json!({"client":"qml","versions":[1]})).unwrap();
     assert_eq!(h.versions, Some(vec![1]));
     assert!(parse_params::<HelloParams>(json!({"client":"c".repeat(129)})).is_err());
     assert!(parse_params::<HelloParams>(json!({"versions":vec![1; 17]})).is_err());
-    let s: SettingsUpdateParams = parse_params(json!({"expected_revision":1,"decay_enabled":true,
-        "decay_per_hour":[100,100,50,50],"timeout_seconds":1800}))
-    .unwrap();
-    assert_eq!(s.decay_per_hour, [100, 100, 50, 50]);
     let p: PetPauseParams = parse_params(json!({"paused":true})).unwrap();
     assert!(p.paused);
-    let _: TaskRecoverParams = parse_params(json!({})).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn end_to_end_request_to_params() {
     let line = r#"{"v":1,"id":"acc-1","method":"task.accept_artifact","params":{"task_id":"t","review_digest":"abc","acknowledged":true}}"#;

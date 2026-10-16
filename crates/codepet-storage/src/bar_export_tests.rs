@@ -1,7 +1,9 @@
 //! `bar-state.json` export (spec §10): bar-safe contents, bounds, mode 0600, and a file
 //! that only ever moves forward in `state_version`.
 use super::*;
-use codepet_core::lifecycle::{Mode, Pace, HOUR_MS};
+#[cfg(feature = "legacy-tasks")]
+use codepet_core::lifecycle::Pace;
+use codepet_core::lifecycle::{Mode, HOUR_MS};
 
 fn read_bar(env: &Env) -> Value {
     serde_json::from_slice(&fs::read(env.paths.bar_state_path()).unwrap()).unwrap()
@@ -121,6 +123,7 @@ fn export_writes_the_contract_shape_with_mode_0600() {
     assert_eq!(fs::read(&path).unwrap(), bytes);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn export_is_bar_safe_and_bounded() {
     let env = Env::new();
@@ -151,6 +154,7 @@ fn export_is_bar_safe_and_bounded() {
         .all(|r| r.as_str().unwrap().len() <= MAX_REASON_BYTES));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn readiness_reasons_are_cut_at_char_boundaries() {
     let env = Env::new();
@@ -283,11 +287,14 @@ fn presence_wanted_follows_the_rust_side_eligibility() {
     assert!(!wanted(&store));
     store.set_paused(false).unwrap();
     assert!(wanted(&store));
-    let task = task_in_state(&mut store, &env, State::ReviewReady);
-    assert!(!wanted(&store));
-    let digest = store.review(&task).unwrap().review.unwrap().digest;
-    store.discard(&task, &digest).unwrap();
-    assert!(wanted(&store));
+    #[cfg(feature = "legacy-tasks")]
+    {
+        let task = task_in_state(&mut store, &env, State::ReviewReady);
+        assert!(!wanted(&store));
+        let digest = store.review(&task).unwrap().review.unwrap().digest;
+        store.discard(&task, &digest).unwrap();
+        assert!(wanted(&store));
+    }
     let id = life_id(&store);
     store.retire("r", &id, "Ginger").unwrap();
     assert!(!wanted(&store));

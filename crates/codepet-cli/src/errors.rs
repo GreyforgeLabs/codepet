@@ -59,6 +59,7 @@ impl From<serde_json::Error> for Failure {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "legacy-tasks")]
     #[test]
     fn override_reason_limit_is_shared() {
         assert_eq!(
