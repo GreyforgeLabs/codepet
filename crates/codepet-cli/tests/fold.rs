@@ -476,3 +476,29 @@ fn a_read_only_database_backs_off() {
     fs::set_permissions(&db, fs::Permissions::from_mode(0o600)).unwrap();
     assert_eq!(hk.db().int("SELECT COUNT(*) FROM agent_events"), 0);
 }
+
+/// §5.1 ordering invariant, `agent.forget_history` side: Forget holds `fold.lock` across
+/// its transaction, so a hook writing meanwhile starts no fold. After releasing the lock
+/// Forget looks again and hands the waiting records to a fold.
+#[test]
+fn forget_history_hands_waiting_records_to_a_fold() {
+    let hk = Hk::with_db();
+    hk.block_folds();
+    let p = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.stored("claude-code", &p, &CLI), "while blocked");
+    assert_eq!(hk.inbox_names().len(), 1);
+    hk.unblock_folds();
+    let out = hk.cmd(["forget-history"]).output().unwrap();
+    assert!(out.status.success(), "forget-history: {out:?}");
+    assert!(
+        hk.wait_for(Duration::from_secs(3), || hk.inbox_names().is_empty()),
+        "stranded after Forget: {:?}",
+        hk.inbox_names()
+    );
+    assert!(hk.wait_for(Duration::from_secs(3), || {
+        hk.fold_processes() == 0
+            && hk
+                .bar_state()
+                .is_some_and(|b| b["agent"]["state"] == "working")
+    }));
+}

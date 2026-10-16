@@ -113,6 +113,16 @@ pub(crate) fn trigger(state_dir: &Path) {
     }
 }
 
+/// The re-check of a holder of `fold.lock` that folds nothing itself (`agent.forget_history`
+/// holds the lock across its transaction): records a hook wrote meanwhile found the lock
+/// busy and started no fold, so they go to a detached fold now (§5.1 ordering invariant).
+pub(crate) fn hand_off_leftovers(state_dir: &Path) {
+    let has = Inbox::open(state_dir).is_ok_and(|i| i.has_records().unwrap_or(false));
+    if has {
+        trigger(state_dir);
+    }
+}
+
 /// Where the held lock lives.
 enum Lock {
     /// Inherited from the hook as fd 0.

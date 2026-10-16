@@ -529,7 +529,11 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
         }
         Method::AgentForgetHistory => {
             let _: AgentForgetHistoryParams = parse_params(p)?;
-            encode(serde_json::to_value(ctx.store()?.forget_history(&req.id)?))
+            let store = ctx.store()?;
+            let snapshot = store.forget_history(&req.id)?;
+            // fold.lock is released: hand records written meanwhile to a fold.
+            crate::fold::hand_off_leftovers(&store.paths().state_dir);
+            encode(serde_json::to_value(snapshot))
         }
         // WP3: the clients methods. connect/disconnect refuse TEST_STATE under a test
         // state home; every job is detached and never holds the bar's RPC slot.
