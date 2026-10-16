@@ -103,7 +103,7 @@ fn version_prints_without_opening_storage() {
 #[test]
 fn state_command_publishes_the_bar_state() {
     use std::os::unix::fs::PermissionsExt;
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let output = env.run(&["state"]);
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
@@ -124,7 +124,7 @@ fn state_command_publishes_the_bar_state() {
 }
 #[test]
 fn state_command_reports_a_failed_publish_on_one_line_only() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     assert!(env.run(&["state"]).status.success());
     std::fs::remove_file(env.bar_state_path()).unwrap();
     // A directory in the file's place cannot be replaced by the rename.
@@ -266,7 +266,9 @@ fn v03_state_command_prints_the_snapshot() {
     assert_eq!(s["treats"], serde_json::json!({"jar": 0, "full": false}));
     assert_eq!(s["agent"]["state"], "idle");
     assert_eq!(s["clients"], serde_json::json!({}));
-    assert_eq!(s["lifecycle"]["frozen_reason"], "unarmed");
+    // A fresh v0.3 install has no companion until Let's go! (spec §2.1).
+    assert_eq!(s["life"], serde_json::Value::Null);
+    assert_eq!(s["lifecycle"]["frozen_reason"], "no_life");
     for dropped in ["active_task", "recent", "providers", "settings", "decay"] {
         assert_eq!(
             s.get(dropped).is_some(),
@@ -341,7 +343,9 @@ fn on_off_helpers_and_forget_history_print_plain_words_and_keep_the_flags() {
     }
     assert_eq!(env.bar_state().unwrap()["enabled"], false);
     assert_eq!(env.bar_state().unwrap()["presence"]["wanted"], false);
-    assert_eq!(env.state()["lifecycle"]["frozen_reason"], "off");
+    // No companion yet (fresh install): `no_life` outranks `off` (first_run_off).
+    assert_eq!(env.state()["lifecycle"]["frozen_reason"], "no_life");
+    assert_eq!(env.state()["enabled"], false);
     // Idempotent.
     assert_eq!(run(&["off"]), "CodePet is Off\n");
     assert_eq!(run(&["helpers", "on"]), "Background helpers are counted\n");

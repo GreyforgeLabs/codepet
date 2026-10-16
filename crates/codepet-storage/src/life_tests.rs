@@ -581,15 +581,17 @@ fn arming_needs_the_acknowledgement() {
     let mut store = env.open();
     let id = life_id(&store);
     assert!(matches!(
-        store.set_rules("a1", &id, Mode::Permadeath, false),
+        store.set_rules("a1", &id, Mode::Permadeath, false, None),
         Err(StorageError::AcknowledgementRequired)
     ));
-    let out = store.set_rules("a2", &id, Mode::Permadeath, true).unwrap();
+    let out = store
+        .set_rules("a2", &id, Mode::Permadeath, true, None)
+        .unwrap();
     assert!(out.changed && out.life.as_ref().unwrap().armed);
     assert_eq!(out.lifecycle.frozen_reason, "none");
     assert!(
         !store
-            .set_rules("a3", &id, Mode::Permadeath, true)
+            .set_rules("a3", &id, Mode::Permadeath, true, None)
             .unwrap()
             .changed
     );
@@ -612,23 +614,30 @@ fn permadeath_to_gentle_keeps_neglect_and_gentle_to_permadeath_requires_healthy(
     let neglect = s.lifecycle.needs[1].neglect_ms;
     assert_eq!(neglect, HOUR_MS);
     let out = store
-        .set_rules("to-gentle", &id, Mode::Gentle, false)
+        .set_rules("to-gentle", &id, Mode::Gentle, false, None)
         .unwrap();
     assert_eq!(out.life.as_ref().unwrap().mode, "gentle");
     assert_eq!(out.lifecycle.needs[1].neglect_ms, neglect);
     assert!(out.lifecycle.needs.iter().all(|n| n.until_end_ms.is_none()));
     // Back to permadeath while not healthy: refused.
     assert!(matches!(
-        store.set_rules("to-perma", &id, Mode::Permadeath, true),
+        store.set_rules("to-perma", &id, Mode::Permadeath, true, Some("Ginger")),
         Err(StorageError::InvalidState(_))
     ));
     store.care("routine", "routine").unwrap();
     assert!(matches!(
-        store.set_rules("to-perma-2", &id, Mode::Permadeath, false),
+        store.set_rules("to-perma-2", &id, Mode::Permadeath, false, Some("Ginger")),
         Err(StorageError::AcknowledgementRequired)
     ));
+    // Turning Hardcore on also needs the typed name (SPEC-v0.3 §11-2), checked in Rust.
+    for typed in [None, Some("Gingerr"), Some("ginger")] {
+        assert!(matches!(
+            store.set_rules("to-perma-x", &id, Mode::Permadeath, true, typed),
+            Err(StorageError::InvalidParams(_))
+        ));
+    }
     let out = store
-        .set_rules("to-perma-3", &id, Mode::Permadeath, true)
+        .set_rules("to-perma-3", &id, Mode::Permadeath, true, Some("  Ginger "))
         .unwrap();
     assert_eq!(out.life.unwrap().mode, "permadeath");
     assert_eq!(

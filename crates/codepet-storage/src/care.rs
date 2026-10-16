@@ -477,6 +477,9 @@ pub(crate) fn snapshot_needs_settlement(c: &Connection) -> Result<bool> {
         [],
         |r| r.get(0),
     )?;
+    // Off freezes the nap (`settle_all` skips it), so a nap alone never makes a read
+    // settle while Off: nothing changes, nothing is committed (spec §7.3).
+    let sleeping = sleeping && crate::app::enabled(c)?;
     #[cfg(feature = "legacy-tasks")]
     let sleeping = sleeping || live_execution(c)?.is_some();
     Ok(sleeping)

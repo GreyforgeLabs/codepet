@@ -260,3 +260,40 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
 
 No migration code, no fold, no hook body, no installer, no QML, no icons. The v5 DDL is a
 contract file only (`SCHEMA_VERSION` stays 4). Live client checks (§9.5) are WP7.
+
+## 5. WP1 review resolutions (2026-10-16)
+
+Code now matches the frozen contract where WP1 had drifted. Nothing here changes a schema,
+fixture or vector.
+
+1. **A fresh install has no pet** (§2.1, K7, `popup_routing` `fresh-no-pet -> first_run`).
+   Schema v4 still creates the unarmed first-run life #1 "Ginger" when it upgrades a v1-v3
+   database, and v0.2-shaped databases keep it. A brand-new database created by v0.3 gets no
+   life: `Store::migrate` sets a connection-private TEMP marker that v4 checks, so v4 writes
+   only the empty `life_vitals` row and the presence clock. `pet.start` then adopts the picked
+   species under its `defaultName` (or the typed name), origin `adopted`, ordinal 1. Lives
+   stay immutable history; nothing is deleted.
+2. **`db_id` without a life.** It was a digest of life #1's id. A database from v0.2 keeps
+   exactly that value (life #1 origin `migrated`/`first_run`); a database created by v0.3 uses
+   a domain-separated digest of `meta.hook_salt` (written once by v5, never rotated), which
+   the first adoption does not change.
+3. **Concurrent upgrades.** The `user_version` check, the `VACUUM INTO …bak-v<old>-<ms>`
+   backup (through a second connection) and the migration all run under one writer lock.
+   Of two processes upgrading at once (installer `codepet migrate` vs the reloaded bar's
+   `state.get`, §6.6), the first backs up and migrates; the second finds schema 5 and reports
+   "up to date". A taken backup name gets a `-<n>` suffix instead of failing.
+4. **`codepet state` never migrates** (§6.2 and AGENTS.md win over §6.3's "unchanged"): it
+   refuses an older database with `SCHEMA_UNSUPPORTED` and the `codepet migrate` hint.
+5. **Hardcore needs the typed name in Rust** (§11-2, §3.6): `pet.rules` takes an optional
+   `confirm_name`; gentle -> permadeath answers `INVALID_PARAMS` unless it matches the pet's
+   name after `normalize_pet_name` (as `pet.retire`). Absent, it stays out of the receipt
+   digest. `pet.start`/`pet.adopt` with `mode: permadeath` are not gated (adoption-time
+   choice, as in v0.2; the v0.3 UI always sends `gentle`).
+6. **Off + asleep is a plain read.** A nap frozen by Off no longer makes `state.get` take
+   the writer lock and commit a no-op settlement.
+7. **Open (owner decision): Forget vs the earning caps.** Note 11 makes Forget zero
+   `activity_turns.earned_at_ms`, which the caps ignore, so "Forget coding history" also
+   resets the 30 s / 12 per hour / 48 per day caps (only the jar of 10 remains), against
+   X3 "capped durably". Options: keep an hour-coarsened earn time for rows earned in the last
+   24 h (the precision retention keeps after 24 h anyway), or say in X3 and Help that Forget
+   resets the caps. Unchanged until the owner decides.

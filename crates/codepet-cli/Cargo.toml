@@ -16,6 +16,8 @@ codepet-storage = { path = "../codepet-storage" }
 serde_json = "1"
 
 [dev-dependencies]
+# The same crate with its test-support API (v0.2-shaped databases for the CLI tests).
+codepet-storage = { path = "../codepet-storage", features = ["test-support"] }
 tempfile = "3"
 
 [features]

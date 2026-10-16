@@ -52,10 +52,10 @@ impl Env {
         }
     }
     fn open(&self) -> Store {
-        Store::open(&self.paths, self.clock.clone()).unwrap()
+        Store::open_with_first_run_placeholder(&self.paths, self.clock.clone()).unwrap()
     }
     fn try_open(&self) -> Result<Store> {
-        Store::open(&self.paths, self.clock.clone())
+        Store::open_with_first_run_placeholder(&self.paths, self.clock.clone())
     }
     fn input(&self, category: Category) -> TaskInput {
         self.input_at(category, &self.project)
@@ -2650,7 +2650,7 @@ fn life_id(store: &Store) -> String {
 fn arm(store: &mut Store, mode: codepet_core::lifecycle::Mode) -> LifeOutcome {
     let id = life_id(store);
     store
-        .set_rules(&sys::uuid_v4().unwrap(), &id, mode, true)
+        .set_rules(&sys::uuid_v4().unwrap(), &id, mode, true, None)
         .unwrap()
 }
 

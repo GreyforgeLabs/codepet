@@ -504,8 +504,26 @@ fn a_fresh_install_is_created_at_v5_by_any_open() {
         .query_row("SELECT hook_salt FROM meta", [], |r| r.get(0))
         .unwrap();
     assert_eq!(salt.len(), 32);
+    // A v0.3 install starts without a companion (spec §2.1, K7): no life row, an empty
+    // vitals row, nothing journaled, so the popup opens on "Pick your pet!".
     let s = store.snapshot().unwrap();
-    assert_eq!(s.life.unwrap().origin, "first_run");
+    assert!(s.life.is_none());
+    assert_eq!(s.lifecycle.frozen_reason, "no_life");
+    assert_eq!(s.memorial.count, 0);
+    assert_eq!(env.count("SELECT count(*) FROM lives"), 0);
+    assert_eq!(env.count("SELECT count(*) FROM life_events"), 0);
+    assert_eq!(
+        env.count("SELECT count(*) FROM life_vitals WHERE id = 1 AND life_id IS NULL"),
+        1
+    );
+    assert_eq!(env.count("SELECT count(*) FROM presence_clock"), 1);
+    assert!(
+        !env.raw()
+            .query_row("SELECT EXISTS(SELECT 1 FROM sqlite_temp_master)", [], |r| r
+                .get::<_, bool>(0))
+            .unwrap(),
+        "the fresh-install marker is connection-private and dropped"
+    );
     // Two installs get different salts.
     let other = Env::with_boot();
     drop(other.open());
@@ -590,4 +608,116 @@ fn the_v5_ddl_is_the_contract_and_its_triggers_hold() {
         .optional()
         .unwrap();
     assert!(stored.unwrap().contains("UNIQUE (session_key, turn_key)"));
+}
+
+#[test]
+fn a_fresh_installs_db_id_is_stable_across_the_first_adoption() {
+    let env = Env::with_boot();
+    let mut store = Store::open(&env.paths, env.clock.clone()).unwrap();
+    let before = store.snapshot().unwrap().db_id;
+    store
+        .start_pet(
+            "go",
+            &StartRequest {
+                life_id: None,
+                species: "dog",
+                name: None,
+                mode: codepet_core::lifecycle::Mode::Gentle,
+                acknowledge_rules: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(store.snapshot().unwrap().db_id, before);
+    // Another fresh install has another identity; an upgraded v0.2 database keeps the one
+    // v0.2 published (a digest of its life #1).
+    let other = Env::with_boot();
+    let other_id = Store::open(&other.paths, other.clock.clone())
+        .unwrap()
+        .snapshot()
+        .unwrap()
+        .db_id;
+    assert_ne!(other_id, before);
+    let v02 = Env::with_boot();
+    v4_db(&v02);
+    let life1: String = v02
+        .raw()
+        .query_row("SELECT life_id FROM lives WHERE ordinal = 1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let digest = sys::sha256_hex(format!("codepet-db-id:{life1}").as_bytes());
+    let upgraded = Store::open(&v02.paths, v02.clock.clone()).unwrap();
+    assert_eq!(
+        upgraded.snapshot().unwrap().db_id,
+        format!("db-{}", &digest[..24])
+    );
+}
+
+/// Two processes upgrading the same v4 database at once (the installer's `codepet migrate`
+/// racing the reloaded bar's `state.get`, spec §6.6): the version is re-read under the
+/// writer lock, so exactly one of them backs up and migrates and the other finds schema 5
+/// and reports it as current. Both succeed, even with the same millisecond clock.
+#[test]
+fn concurrent_upgrades_both_succeed_with_exactly_one_v4_backup() {
+    for round in 0..8 {
+        let env = Env::with_boot();
+        owner_shaped_v4(&env);
+        let before = v4_counts(&env);
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let reports: Vec<MigrationReport> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..2)
+                .map(|_| {
+                    let (paths, clock, barrier) =
+                        (env.paths.clone(), env.clock.clone(), barrier.clone());
+                    scope.spawn(move || {
+                        barrier.wait();
+                        Store::open_migrating(&paths, clock).map(|(_, r)| r)
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| h.join().unwrap().unwrap())
+                .collect()
+        });
+        let mut froms: Vec<i64> = reports.iter().map(|r| r.from).collect();
+        froms.sort_unstable();
+        assert_eq!(froms, [4, 5], "round {round}: {reports:?}");
+        let taken: Vec<&PathBuf> = reports.iter().filter_map(|r| r.backup.as_ref()).collect();
+        assert_eq!(taken.len(), 1, "round {round}");
+        assert_eq!(backups(&env), vec![taken[0].clone()], "round {round}");
+        assert!(taken[0]
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("codepet.sqlite3.bak-v4-"));
+        // The backup holds the v4 data, never v5.
+        let b = rusqlite::Connection::open(taken[0]).unwrap();
+        let v: i64 = b
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 4, "round {round}");
+        assert_eq!(env.count("PRAGMA user_version"), 5);
+        assert_eq!(&v4_counts(&env)[..], &before[..]);
+    }
+}
+
+#[test]
+fn a_taken_backup_name_gets_a_suffix_instead_of_failing() {
+    let env = Env::with_boot();
+    v4_db(&env);
+    let taken = env
+        .paths
+        .state_dir
+        .join(format!("codepet.sqlite3.bak-v4-{}", env.clock.now_ms()));
+    fs::write(&taken, b"not ours").unwrap();
+    let (_store, report) = Store::open_migrating(&env.paths, env.clock.clone()).unwrap();
+    let backup = report.backup.unwrap();
+    assert_eq!(
+        backup.file_name().unwrap().to_string_lossy(),
+        format!("codepet.sqlite3.bak-v4-{}-1", env.clock.now_ms())
+    );
+    assert_eq!(fs::read(&taken).unwrap(), b"not ours", "never overwritten");
+    let mode = fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
 }

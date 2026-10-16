@@ -27,7 +27,7 @@ fn care(env: &Env, action: &str) -> Value {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn steady_timeline_thirst_6_6h_warning_11h_critical_17h_dead() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     care(&env, "routine");
     env.arm();
     let mut t = Timeline::new(&env, "bar-timeline-steady");
@@ -123,7 +123,7 @@ fn steady_timeline_thirst_6_6h_warning_11h_critical_17h_dead() {
 
 #[test]
 fn only_the_matching_care_recovers_from_critical() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     care(&env, "routine");
     env.arm();
     let mut t = Timeline::new(&env, "bar-timeline-care");
@@ -153,7 +153,7 @@ fn only_the_matching_care_recovers_from_critical() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn gentle_faints_and_never_dies() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.retire();
     let adopted = env.adopt("frog", "gentle", "playtest");
     assert_eq!(adopted["life"]["mode"], "gentle");
@@ -190,7 +190,7 @@ fn gentle_faints_and_never_dies() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn retire_requires_the_name_and_a_free_slot_then_adoption_starts_over() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, digest) = env.reviewed("hunger", "artifact");
     env.ok(
         "task.accept_artifact",
@@ -363,7 +363,7 @@ fn retire_requires_the_name_and_a_free_slot_then_adoption_starts_over() {
 
 #[test]
 fn parallel_adoptions_create_exactly_one_life() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.retire();
     let species = [
         "dog", "capybara", "penguin", "robot", "iguana", "spider", "snake", "rabbit",
@@ -404,7 +404,7 @@ fn parallel_adoptions_create_exactly_one_life() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn select_changes_only_the_look_even_mid_task() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (task, _digest) = env.reviewed("mental_health", "artifact");
     let before = env.state();
     let life_id = before["life"]["life_id"].clone();
@@ -470,7 +470,7 @@ fn select_changes_only_the_look_even_mid_task() {
 
 #[test]
 fn rules_and_leniency_through_the_cli() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let s = env.state();
     let life_id = s["life"]["life_id"].clone();
     assert_eq!(s["life"]["armed"], false);
@@ -500,7 +500,8 @@ fn rules_and_leniency_through_the_cli() {
         ),
         "IDEMPOTENCY_CONFLICT"
     );
-    // Permadeath → gentle at any time; back again needs the acknowledgement.
+    // Permadeath → gentle at any time; back again (Hardcore on) needs the acknowledgement
+    // and the pet's name typed (SPEC-v0.3 §11-2), checked by the backend.
     let gentle = env.ok(
         "pet.rules",
         json!({"life_id": life_id, "mode": "gentle", "acknowledge_rules": false}),
@@ -513,10 +514,19 @@ fn rules_and_leniency_through_the_cli() {
         ),
         "ACKNOWLEDGEMENT_REQUIRED"
     );
+    for typed in [None, Some("Pip"), Some("")] {
+        let mut p = json!({"life_id": life_id, "mode": "permadeath", "acknowledge_rules": true});
+        if let Some(t) = typed {
+            p["confirm_name"] = json!(t);
+        }
+        assert_eq!(env.err("pet.rules", p), "INVALID_PARAMS", "{typed:?}");
+    }
+    assert_eq!(env.state()["life"]["mode"], "gentle");
     assert_eq!(
         env.ok(
             "pet.rules",
-            json!({"life_id": life_id, "mode": "permadeath", "acknowledge_rules": true}),
+            json!({"life_id": life_id, "mode": "permadeath", "acknowledge_rules": true,
+                "confirm_name": "Ginger"}),
         )["life"]["mode"],
         "permadeath"
     );
@@ -602,7 +612,7 @@ fn lifecycle_rules_are_the_canonical_ruleset() {
 /// acceptance evolves the companion once; seeing it is durable.
 #[test]
 fn roster_flow_keeps_one_life_one_slot_and_exact_xp() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life_id = env.life_id();
     let level = |xp: u64| match xp {
         0..=79 => 1,
@@ -684,7 +694,7 @@ fn roster_flow_keeps_one_life_one_slot_and_exact_xp() {
 
 #[test]
 fn ended_lives_are_immutable_through_every_method() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let first = env.life_id();
     let retired = env.retire();
     let entry = retired["memorial"]["latest"].clone();

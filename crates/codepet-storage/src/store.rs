@@ -10,7 +10,7 @@ use crate::care;
 use crate::life;
 use crate::lifecycle_store;
 use crate::model::{CareOutcome, MetersView, PauseView, Snapshot};
-use crate::schema::{Migration, MIGRATIONS};
+use crate::schema::{self, Migration, MIGRATIONS};
 use crate::sys::sha256_hex;
 use crate::{
     Clock, Result, StatePaths, StorageError, DB_FILE, MAX_CARE_RECEIPTS, MAX_REQUEST_ID_BYTES,
@@ -52,13 +52,25 @@ impl std::fmt::Debug for Store {
 /// What [`Store::open_migrating`] found and did.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MigrationReport {
-    /// `user_version` before opening; 0 for a fresh database.
+    /// `user_version` this open found under the writer lock (0 for a fresh database). When
+    /// another process migrated first, this is already [`SCHEMA_VERSION`].
     pub from: i64,
     /// `user_version` now ([`SCHEMA_VERSION`]).
     pub to: i64,
     /// The `VACUUM INTO` copy taken before an upgrade (none for a fresh database or one
     /// that was already current).
     pub backup: Option<PathBuf>,
+}
+
+/// What a brand-new (empty) state directory gets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Fresh {
+    /// v0.3 (spec §2.1, K7): no companion until **Let's go!** (`pet.start` adopts), so the
+    /// popup opens on "Pick your pet!" and the name follows the picked species.
+    NoPet,
+    /// The v0.2 shape: the unarmed first-run life #1 "Ginger" that schema v4 creates. Only
+    /// tests use it, to model an upgraded install.
+    FirstRunPlaceholder,
 }
 
 /// Whether an open may upgrade an existing older database (spec §6.2 "Migration
@@ -71,11 +83,11 @@ enum Upgrade {
 
 impl Store {
     /// Opens (creating if needed) the database under checked paths and migrates an older
-    /// one to [`SCHEMA_VERSION`]. Only `codepet migrate`, `codepet state` and `rpc state.get`
-    /// use this (migration ownership, spec §6.2). Refuses without modifying the file when
+    /// one to [`SCHEMA_VERSION`]. Only `codepet migrate` and `rpc state.get` use this
+    /// (migration ownership, spec §6.2). Refuses without modifying the file when
     /// `quick_check` fails or `user_version` is newer than this build.
     pub fn open(paths: &StatePaths, clock: Arc<dyn Clock>) -> Result<Self> {
-        Ok(Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Allowed)?.0)
+        Ok(Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Allowed, Fresh::NoPet)?.0)
     }
 
     /// [`open`](Self::open), also reporting the version found and the backup taken.
@@ -83,23 +95,50 @@ impl Store {
         paths: &StatePaths,
         clock: Arc<dyn Clock>,
     ) -> Result<(Self, MigrationReport)> {
-        Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Allowed)
+        Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Allowed, Fresh::NoPet)
     }
 
     /// Opens a current database for every other command. A fresh (empty) state creates the
     /// current schema, which is an install, not a migration; an existing older database is
     /// refused untouched with [`StorageError::MigrationRequired`] (run `codepet migrate`).
     pub fn open_current(paths: &StatePaths, clock: Arc<dyn Clock>) -> Result<Self> {
-        Ok(Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Refused)?.0)
+        Ok(Self::open_with_mode(paths, clock, MIGRATIONS, Upgrade::Refused, Fresh::NoPet)?.0)
     }
 
-    #[cfg(test)]
+    /// Test support: opens like [`open`](Self::open), but a brand-new database gets the v0.2
+    /// first-run shape (the unarmed life #1 "Ginger"), i.e. what an upgraded v0.2 install
+    /// looks like. Never compiled into the `codepet` binary (feature `test-support`).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn open_with_first_run_placeholder(
+        paths: &StatePaths,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self> {
+        Ok(Self::open_with_mode(
+            paths,
+            clock,
+            MIGRATIONS,
+            Upgrade::Allowed,
+            Fresh::FirstRunPlaceholder,
+        )?
+        .0)
+    }
+
+    /// Test support: [`open`](Self::open) with explicit migrations; a brand-new database
+    /// gets the v0.2 first-run shape (a v4 database when `migrations` stops at v4).
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn open_with(
         paths: &StatePaths,
         clock: Arc<dyn Clock>,
         migrations: &[Migration],
     ) -> Result<Self> {
-        Ok(Self::open_with_mode(paths, clock, migrations, Upgrade::Allowed)?.0)
+        Ok(Self::open_with_mode(
+            paths,
+            clock,
+            migrations,
+            Upgrade::Allowed,
+            Fresh::FirstRunPlaceholder,
+        )?
+        .0)
     }
 
     fn open_with_mode(
@@ -107,6 +146,7 @@ impl Store {
         clock: Arc<dyn Clock>,
         migrations: &[Migration],
         upgrade: Upgrade,
+        fresh: Fresh,
     ) -> Result<(Self, MigrationReport)> {
         paths.prepare()?;
         let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
@@ -144,21 +184,18 @@ impl Store {
             return Err(StorageError::Unavailable("WAL journal mode unavailable"));
         }
         conn.execute_batch("PRAGMA synchronous = FULL")?;
-        let mut store = Self {
+        let store = Self {
             conn,
             clock,
             paths: paths.clone(),
         };
-        let backup = if version > 0 && version < target {
-            Some(store.backup(version)?)
+        let (from, backup) = if version < target {
+            store.migrate(migrations, fresh)?
         } else {
-            None
+            (version, None)
         };
-        if version < target {
-            store.migrate(migrations)?;
-        }
         let report = MigrationReport {
-            from: version,
+            from,
             to: target,
             backup,
         };
@@ -174,41 +211,88 @@ impl Store {
         &self.conn
     }
 
-    /// `VACUUM INTO` a fresh 0600 file named `codepet.sqlite3.bak-v<old>-<millis>`.
+    /// `VACUUM INTO` a fresh 0600 file named `codepet.sqlite3.bak-v<old>-<millis>` (with a
+    /// `-<n>` suffix if that name is taken), read through a second connection. The caller
+    /// holds the writer lock on `self.conn`, so the copy is exactly the `old` data that is
+    /// about to be migrated: no other process can migrate or write in between (WAL readers
+    /// never wait for the writer).
     fn backup(&self, old: i64) -> Result<PathBuf> {
-        let path = self
-            .paths
-            .state_dir
-            .join(format!("{DB_FILE}.bak-v{old}-{}", self.now()));
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&path)?;
+        let base = format!("{DB_FILE}.bak-v{old}-{}", self.now());
+        let mut n = 0u32;
+        let path = loop {
+            let name = if n == 0 {
+                base.clone()
+            } else {
+                format!("{base}-{n}")
+            };
+            let path = self.paths.state_dir.join(name);
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&path)
+            {
+                Ok(_) => break path,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && n < 99 => n += 1,
+                Err(e) => return Err(e.into()),
+            }
+        };
         let text = path
             .to_str()
             .ok_or(StorageError::Unavailable("backup path is not UTF-8"))?;
-        self.conn.execute("VACUUM INTO ?1", [text])?;
+        let reader = Connection::open_with_flags(
+            &self.paths.db_path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )?;
+        reader.busy_timeout(Duration::from_millis(5000))?;
+        if let Err(e) = reader.execute("VACUUM INTO ?1", [text]) {
+            // Never leave an empty or partial file that looks like a backup.
+            let _ = std::fs::remove_file(&path);
+            return Err(e.into());
+        }
         Ok(path)
     }
 
-    fn migrate(&mut self, migrations: &[Migration]) -> Result<()> {
-        let at = care::TimeMark::new(self.clock.as_ref());
+    /// Migrates under the writer lock, taken before anything is read or copied: the version
+    /// is re-read under it, so of two processes upgrading at once only the first backs up
+    /// and migrates, and the second finds the current schema and changes nothing. Returns
+    /// the version found under the lock and the backup taken (an upgrade only).
+    fn migrate(&self, migrations: &[Migration], fresh: Fresh) -> Result<(i64, Option<PathBuf>)> {
         let target = i64::try_from(migrations.len()).unwrap_or(i64::MAX);
-        let tx = self
-            .conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // Re-read under the write lock: another process may have migrated meanwhile.
+        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        // Sampled under the writer lock, like every write.
+        let at = care::TimeMark::new(self.clock.as_ref());
         let version: i64 = tx.query_row("PRAGMA user_version", [], get0)?;
         if !(0..=target).contains(&version) {
             return Err(StorageError::SchemaUnsupported(version));
         }
+        if version == target {
+            // Another process migrated (or created) it meanwhile: nothing to do.
+            return Ok((version, None));
+        }
+        let backup = if version > 0 {
+            Some(self.backup(version)?)
+        } else {
+            None
+        };
+        // A brand-new v0.3 database has no companion: schema v4 skips its first-run life
+        // #1 when this marker exists (see `schema::v4`). The TEMP table is private to this
+        // connection and dropped before the commit.
+        let no_pet = version == 0 && fresh == Fresh::NoPet && target >= 5;
+        if no_pet {
+            tx.execute_batch(&format!("CREATE TEMP TABLE {} (x)", schema::FRESH_NO_PET))?;
+        }
         for m in &migrations[usize::try_from(version).unwrap_or(usize::MAX)..] {
             m(&tx, &at)?;
         }
+        if no_pet {
+            tx.execute_batch(&format!("DROP TABLE temp.{}", schema::FRESH_NO_PET))?;
+        }
         tx.pragma_update(None, "user_version", target)?;
         tx.commit()?;
-        Ok(())
+        Ok((version, backup))
     }
 
     fn now(&self) -> i64 {

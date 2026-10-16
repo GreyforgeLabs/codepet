@@ -666,7 +666,7 @@ fn death_never_commits_while_a_task_holds_the_slot() {
         let mut store = env.open();
         store.care("routine", "routine").unwrap();
         store
-            .set_rules("arm", &life_id(&store), Mode::Permadeath, true)
+            .set_rules("arm", &life_id(&store), Mode::Permadeath, true, None)
             .unwrap();
         let mut life = life_id(&store);
         let mut rng = Lcg(seed);
@@ -747,7 +747,8 @@ fn an_end_that_settles_due_inside_a_refused_write_is_committed() {
         ("sleep", |s, _| s.sleep("late-sleep").map(drop)),
         ("pause", |s, _| s.set_paused(true).map(drop)),
         ("rules", |s, id| {
-            s.set_rules("late-rules", id, Mode::Gentle, true).map(drop)
+            s.set_rules("late-rules", id, Mode::Gentle, true, None)
+                .map(drop)
         }),
         ("select", |s, id| {
             s.select_appearance("late-select", id, "dog").map(drop)

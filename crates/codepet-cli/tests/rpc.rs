@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let id = env.create("hunger", 0, "artifact");
     let token = env.preflight(&id, 1);
@@ -111,7 +111,7 @@ fn full_manual_loop_rewards_exactly_once_and_survives_restart() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn replayed_tokens_and_stale_revisions_are_refused() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let a = env.create("hunger", 0, "artifact");
     let token_a = env.preflight(&a, 1);
@@ -182,7 +182,7 @@ fn replayed_tokens_and_stale_revisions_are_refused() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn cancellation_from_another_process_stops_the_supervisor() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     // Long enough that the cancel lands while the supervisor sleeps before `running`.
     let id = env.create("mental_health", 2000, "artifact");
@@ -248,7 +248,7 @@ fn cancellation_from_another_process_stops_the_supervisor() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn mock_outcomes_failure_and_simulated_check() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let failed = env.create("hygiene", 0, "provider_failure");
     let token = env.preflight(&failed, 1);
@@ -298,7 +298,7 @@ fn mock_outcomes_failure_and_simulated_check() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn unsupported_providers_fail_closed() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let providers = env.ok("providers.inspect", json!({}))["providers"].clone();
     let list = providers.as_array().unwrap();
     let ids: Vec<_> = list.iter().map(|p| p["id"].as_str().unwrap()).collect();
@@ -408,7 +408,7 @@ fn malformed_frames_get_typed_errors_without_touching_state() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn other_methods_round_trip() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let hello = env.ok("hello", json!({"client": "test", "versions": [1]}));
     assert_eq!(
         hello,
@@ -527,7 +527,7 @@ fn max_draft(env: &Env) -> Value {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn maximal_draft_can_be_reviewed_and_discarded() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let created = env.call("task.create", max_draft(&env));
     assert!(created.stdout_bytes <= 65536);
@@ -573,7 +573,7 @@ fn maximal_draft_can_be_reviewed_and_discarded() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn oversized_drafts_are_refused_before_anything_is_stored() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     // A 65,530-byte create frame passes framing and core limits but not the draft budget,
     // so it is refused without creating a draft (it used to commit and answer OUTPUT_LIMIT).
     let mut d = env.draft("hunger", 0, "artifact");
@@ -622,7 +622,7 @@ fn oversized_drafts_are_refused_before_anything_is_stored() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn many_large_drafts_keep_state_get_readable() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     // Ten drafts with 16 KiB instructions used to push state.get past 64 KiB.
     for _ in 0..10 {
         let mut draft = env.draft("hunger", 0, "artifact");
@@ -654,7 +654,7 @@ fn many_large_drafts_keep_state_get_readable() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn over_long_override_reason_is_invalid_params_not_override_required() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, digest) = env.reviewed("hunger", "artifact");
     // 200 CJK characters: 200 characters but 600 UTF-8 bytes.
     let r = env.accept("acc-cjk", &id, &digest, &"\u{4e2d}".repeat(200));
@@ -667,7 +667,7 @@ fn over_long_override_reason_is_invalid_params_not_override_required() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn home_is_refused_even_when_home_is_unset() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let uid = std::fs::read_to_string("/proc/self/status")
         .unwrap()
@@ -699,7 +699,7 @@ fn home_is_refused_even_when_home_is_unset() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn sensitive_task_text_is_redacted_before_mock_artifact_and_receipt_persistence() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let mut draft = env.draft("mental_health", 0, "artifact");
     draft["instructions"] =
@@ -819,7 +819,7 @@ fn lifecycle_requests_are_validated_before_storage_opens() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn every_successful_mutation_publishes_and_nothing_else_does() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let version = |env: &Env| env.bar_state().unwrap()["state_version"].as_i64().unwrap();
     // First contact: the store is created and state.get publishes version 1.
     let s = env.state();
@@ -913,7 +913,7 @@ fn every_successful_mutation_publishes_and_nothing_else_does() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn the_supervisor_publishes_every_step() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let id = env.create("hygiene", 600, "artifact");
     let token = env.preflight(&id, 1);
@@ -958,7 +958,7 @@ fn the_supervisor_publishes_every_step() {
 
 #[test]
 fn a_failed_publish_never_changes_the_response() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.state();
     std::fs::remove_file(env.bar_state_path()).unwrap();
     std::fs::create_dir(env.bar_state_path()).unwrap();

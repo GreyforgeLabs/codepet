@@ -18,7 +18,7 @@ fn assert_aborted_silently(r: &common::Reply) {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_before_accept_commit_grants_nothing_and_retry_succeeds_once() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, digest) = env.reviewed("hunger", "artifact");
     let params = json!({"task_id": id, "review_digest": digest, "acknowledged": true,
         "override_reason": "mock reviewed"});
@@ -50,7 +50,7 @@ fn abort_before_accept_commit_grants_nothing_and_retry_succeeds_once() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_after_accept_commit_keeps_exactly_one_reward() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, digest) = env.reviewed("thirst", "artifact");
     let params = json!({"task_id": id, "review_digest": digest, "acknowledged": true,
         "override_reason": "mock reviewed"});
@@ -137,7 +137,7 @@ fn recover_interrupts(env: &Env, id: &str, from: &str) {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_after_start_commit_is_recovered_as_interrupted() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, r) = start_with_fault(&env, "start_after_commit");
     assert!(r.lines.is_empty(), "aborted before the response: {r:?}");
     assert_eq!(env.states(&id), ["draft", "preparing"]);
@@ -147,7 +147,7 @@ fn abort_after_start_commit_is_recovered_as_interrupted() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_in_running_supervisor_is_recovered_as_interrupted() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, r) = start_with_fault(&env, "supervisor_running");
     // The start response was printed and flushed before supervision began.
     assert_eq!(r.response()["ok"], true);
@@ -159,7 +159,7 @@ fn abort_in_running_supervisor_is_recovered_as_interrupted() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_before_review_commit_rolls_back_the_review() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let (id, r) = start_with_fault(&env, "review_before_commit");
     assert_eq!(r.response()["ok"], true);
     assert_eq!(env.task(&id)["review"], Value::Null);
@@ -172,7 +172,7 @@ fn abort_before_review_commit_rolls_back_the_review() {
 
 #[test]
 fn abort_before_adoption_commit_adopts_nothing_and_retry_adopts_once() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.retire();
     let before = env.state();
     let params = json!({"species": "capybara", "mode": "permadeath", "acknowledge_rules": true});
@@ -201,7 +201,7 @@ fn abort_before_adoption_commit_adopts_nothing_and_retry_adopts_once() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn abort_before_evolution_commit_grants_no_xp_and_no_event() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     for n in 0..3 {
         let (id, digest) = env.reviewed("hunger", "artifact");
         env.ok(
@@ -245,7 +245,7 @@ fn abort_before_evolution_commit_grants_no_xp_and_no_event() {
 
 #[test]
 fn abort_before_presence_commit_charges_once_on_the_next_command() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     env.arm();
     let life = env.life_id();
@@ -269,7 +269,7 @@ fn abort_before_presence_commit_charges_once_on_the_next_command() {
 
 #[test]
 fn abort_before_death_commit_keeps_the_life_and_retry_ends_it_once() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.retire();
     env.adopt("rabbit", "permadeath", "playtest");
     env.care_routine();

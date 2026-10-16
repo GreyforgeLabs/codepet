@@ -23,7 +23,7 @@
     "hello": "the supervisor field of its result is retired with the task pipeline (WP1)",
     "pet.pause": "kept in the protocol; no UI ('Going away' removed, Off covers it)",
     "pet.configure_life": "leniency only, as in v0.2.1",
-    "pet.rules": "also backs the Help Hardcore switch: permadeath->gentle any time; gentle->permadeath only with acknowledgement and a healthy pet (INVALID_STATE -> 'Make {name} happy first.')",
+    "pet.rules": "also backs the Help Hardcore switch: permadeath->gentle any time; gentle->permadeath only with acknowledgement, the optional param confirm_name (raw input <= 256 bytes, not blank, no NUL) matching the pet's name after core normalize_pet_name, as pet.retire (INVALID_PARAMS otherwise), and a healthy pet (INVALID_STATE -> 'Make {name} happy first.'). confirm_name is ignored for every other change and kept out of the receipt digest when absent (WP1)",
     "state.get": "may migrate; first drains the inbox (fold.lock LOCK_NB, at most one batch); snapshot adds enabled, count_helpers, agent, clients, treats; drops active_task, recent, providers, settings, decay, care.ready_to_work, care.readiness_reasons (WP1); schema_version 5"
   },
   "removed": [
@@ -666,7 +666,7 @@
       "--help"
     ],
     "added": {
-      "migrate": "explicit migration (installer); WP1",
+      "migrate": "explicit migration (installer); WP1. Migration ownership (SPEC §6.2): only `codepet migrate` and `codepet rpc` state.get upgrade an older database; `codepet state` (which prints the current snapshot) and every other command refuse one untouched with SCHEMA_UNSUPPORTED ('needs `codepet migrate`'). A brand-new state directory is an install, not a migration: any opening command creates it at schema 5, without a companion",
       "hook --state-dir <abs> <client-id>": "always exit 0 silently (O2); WP2",
       "fold --state-dir <abs> [--lock-fd N]": "internal; safe by hand (takes the lock itself without --lock-fd); WP2",
       "clients-job <job_id>": "internal detached Connect/Disconnect/test job; job_id must match job_id_pattern; WP3",

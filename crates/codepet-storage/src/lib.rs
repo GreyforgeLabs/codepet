@@ -24,6 +24,8 @@ mod schema;
 mod spool;
 mod store;
 mod sys;
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 mod treats;
 
 pub use agent_export::{

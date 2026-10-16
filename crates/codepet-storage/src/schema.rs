@@ -393,6 +393,17 @@ fn v4(tx: &Transaction<'_>, at: &TimeMark) -> crate::Result<()> {
             now
         ],
     )?;
+    // A brand-new v0.3 install (spec §2.1, K7) starts without a companion: no life #1, an
+    // empty vitals row and the presence clock; `pet.start` adopts the picked species.
+    if fresh_no_pet(tx)? {
+        tx.execute("INSERT INTO life_vitals (id, life_id) VALUES (1, NULL)", [])?;
+        tx.execute(
+            "INSERT INTO presence_clock (id, last_boot, last_steady_ms, last_wall_ms)
+             VALUES (1, ?1, ?2, ?3)",
+            params![at.boot, at.steady, now],
+        )?;
+        return Ok(());
+    }
     // 2–3. Life #1.
     let life1 = life::new_life_id()?;
     let history: bool = tx.query_row(
@@ -482,6 +493,20 @@ fn v4(tx: &Transaction<'_>, at: &TimeMark) -> crate::Result<()> {
         )?;
     }
     Ok(())
+}
+
+/// The TEMP marker `Store::migrate` creates for a brand-new database opened by v0.3 (target
+/// schema 5 or later). Schema v4 then creates no first-run life: a fresh install has no
+/// companion until **Let's go!**. Without it (an upgrade of a v1-v3 database, or a test
+/// building the v0.2 shape) v4 behaves exactly as it did in v0.2.
+pub(crate) const FRESH_NO_PET: &str = "codepet_fresh_no_pet";
+
+fn fresh_no_pet(tx: &Transaction<'_>) -> crate::Result<bool> {
+    Ok(tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM temp.sqlite_master WHERE type = 'table' AND name = ?1)",
+        [FRESH_NO_PET],
+        |r| r.get(0),
+    )?)
 }
 
 /// The v5 DDL, verbatim from the frozen contract (`docs/v0.3/contracts/schema-v5.sql`):

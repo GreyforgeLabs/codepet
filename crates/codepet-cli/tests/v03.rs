@@ -30,7 +30,7 @@ fn assert_snapshot(v: &Value) {
 
 #[test]
 fn pet_start_arms_ginger_gentle_and_returns_the_snapshot() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life = env.life_id();
     let s = env.ok(
         "pet.start",
@@ -63,6 +63,39 @@ fn pet_start_arms_ginger_gentle_and_returns_the_snapshot() {
         ),
         "ALREADY_ARMED"
     );
+}
+
+/// Spec §2.1 / K7 through the binary: a fresh install has no pet, the bar shows none, and
+/// Let's go! with another portrait adopts that species under its default name.
+#[test]
+fn a_fresh_install_starts_without_a_pet_and_lets_go_adopts_the_picked_one() {
+    let env = Env::new();
+    let s = env.state();
+    assert_eq!(s["life"], Value::Null);
+    assert_eq!(s["lifecycle"]["frozen_reason"], "no_life");
+    assert_eq!(env.bar_state().unwrap()["life"], Value::Null);
+    let s = env.ok(
+        "pet.start",
+        json!({"species": "dog", "mode": "gentle", "acknowledge_rules": true}),
+    );
+    assert_snapshot(&s);
+    let dog = codepet_core::species::default_name("dog").unwrap();
+    assert_eq!(s["life"]["name"], dog);
+    assert_eq!(s["life"]["species"], "dog");
+    assert_eq!(s["life"]["appearance"], "dog");
+    assert_eq!(s["life"]["origin"], "adopted");
+    assert_eq!(s["life"]["armed"], true);
+    assert_eq!(s["life"]["mode"], "gentle");
+    assert_eq!(env.bar_state().unwrap()["life"]["name"], dog);
+
+    let env = Env::new();
+    let s = env.ok(
+        "pet.start",
+        json!({"species": "frog", "name": "Hopper", "mode": "gentle",
+            "acknowledge_rules": true}),
+    );
+    assert_eq!(s["life"]["name"], "Hopper");
+    assert_eq!(s["life"]["species"], "frog");
 }
 
 #[test]
@@ -106,7 +139,7 @@ fn pet_start_errors_are_typed() {
 
 #[test]
 fn rename_treats_helpers_and_forget_round_trip() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life = env.life_id();
     let s = env.ok("pet.rename", json!({"life_id": life, "name": " Pip "}));
     assert_snapshot(&s);
@@ -133,7 +166,7 @@ fn rename_treats_helpers_and_forget_round_trip() {
 
 #[test]
 fn off_is_total_and_on_resumes() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life = env.life_id();
     env.ok(
         "pet.start",

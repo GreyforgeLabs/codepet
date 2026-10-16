@@ -255,18 +255,26 @@ impl Validate for PetAdoptParams {
     }
 }
 
-/// `pet.rules`: arm an unarmed life and/or change its mode.
+/// `pet.rules`: arm an unarmed life and/or change its mode. Turning Hardcore on (gentle →
+/// permadeath) also needs `confirm_name`, the companion's name as typed (SPEC-v0.3 §11-2,
+/// §3.6; matched like `pet.retire`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PetRulesParams {
     pub life_id: String,
     pub mode: String,
     pub acknowledge_rules: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirm_name: Option<String>,
 }
 impl Validate for PetRulesParams {
     fn validate(&self) -> Result<(), ProtocolError> {
         check_token("life_id", &self.life_id)?;
-        check_mode(&self.mode)
+        check_mode(&self.mode)?;
+        match &self.confirm_name {
+            Some(name) => check_name_input("confirm_name", name),
+            None => Ok(()),
+        }
     }
 }
 

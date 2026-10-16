@@ -355,16 +355,35 @@ pub(crate) fn action_for(need: Category) -> &'static str {
     }
 }
 
-/// This database's identity: a digest of its first life's id. Life #1 is created with a
-/// random id by the lifecycle migration (or a fresh install) and is never changed or
-/// deleted (terminal-life triggers), so the value is stable for one database and differs
-/// for a recreated database or one re-migrated from a pre-lifecycle backup. Readers of
-/// `bar-state.json` compare `state_version` only within one `db_id`.
+/// This database's identity, stable for its whole life and different for a recreated
+/// database or one re-migrated from a pre-lifecycle backup. Readers of `bar-state.json`
+/// compare `state_version` only within one `db_id`.
+///
+/// - A database from v0.2 (life #1 created by the lifecycle migration, origin `migrated` or
+///   `first_run`): a digest of life #1's random id, exactly as v0.2 published it. Life #1 is
+///   never changed or deleted (terminal-life triggers).
+/// - A database created by v0.3, which starts without a companion: a domain-separated digest
+///   of `meta.hook_salt` (32 random bytes written once by the v5 migration and never
+///   rotated; the digest does not reveal it). Adopting the first companion later does not
+///   change it.
 pub(crate) fn db_id(c: &Connection) -> Result<String> {
-    let first: String = c.query_row("SELECT life_id FROM lives WHERE ordinal = 1", [], |r| {
-        r.get(0)
-    })?;
-    let digest = crate::sys::sha256_hex(format!("codepet-db-id:{first}").as_bytes());
+    let first: Option<String> = c
+        .query_row(
+            "SELECT life_id FROM lives WHERE ordinal = 1 AND origin IN ('migrated','first_run')",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let seed = match first {
+        Some(life_id) => format!("codepet-db-id:{life_id}"),
+        None => {
+            let salt: Option<Vec<u8>> =
+                c.query_row("SELECT hook_salt FROM meta WHERE id = 1", [], |r| r.get(0))?;
+            let salt = salt.ok_or(StorageError::Corrupt)?;
+            format!("codepet-db-id:salt:{}", crate::sys::sha256_hex(&salt))
+        }
+    };
+    let digest = crate::sys::sha256_hex(seed.as_bytes());
     Ok(format!("db-{}", &digest[..24]))
 }
 
@@ -1030,26 +1049,44 @@ impl Store {
 
     /// `pet.rules`: arms an unarmed life (needs `acknowledge_rules`) and/or changes its
     /// mode. Permadeath → gentle is allowed any time while living; gentle → permadeath
-    /// needs the acknowledgement and a healthy companion. Neglect, carries and holds are
-    /// never reset.
+    /// (turning Hardcore on, SPEC-v0.3 §11-2) needs the acknowledgement, `confirm_name`
+    /// matching the companion's name (normalized like `pet.retire`) and a healthy companion.
+    /// Neglect, carries and holds are never reset.
     pub fn set_rules(
         &mut self,
         request_id: &str,
         life_id: &str,
         mode: Mode,
         acknowledge_rules: bool,
+        confirm_name: Option<&str>,
     ) -> Result<LifeOutcome> {
-        let params = canonical(&[
-            ("acknowledge_rules", acknowledge_rules.into()),
+        let mut fields = vec![
+            ("acknowledge_rules", Value::from(acknowledge_rules)),
             ("life_id", life_id.into()),
             ("mode", mode.as_str().into()),
-        ]);
+        ];
+        // Absent stays absent, so receipts of calls without it keep their v0.2 digest.
+        if let Some(name) = confirm_name {
+            fields.insert(1, ("confirm_name", name.into()));
+        }
+        let params = canonical(&fields);
         self.life_command(request_id, "pet.rules", &params, None, |c, at| {
             let (life, _) = living_target(c, life_id)?;
             let arming = !life.armed;
             let switching = life.mode != mode;
-            if (arming || (switching && mode == Mode::Permadeath)) && !acknowledge_rules {
+            let hardcore_on = switching && mode == Mode::Permadeath;
+            if (arming || hardcore_on) && !acknowledge_rules {
                 return Err(StorageError::AcknowledgementRequired);
+            }
+            if hardcore_on
+                && confirm_name
+                    .and_then(|n| normalize_pet_name(n).ok())
+                    .as_deref()
+                    != Some(life.name.as_str())
+            {
+                return Err(StorageError::InvalidParams(
+                    "type the companion's name to turn on Hardcore",
+                ));
             }
             if switching && mode == Mode::Permadeath && life.status != LifeStatus::Healthy {
                 return Err(StorageError::InvalidState(

@@ -177,6 +177,57 @@ fn pet_start_on_an_existing_life_changes_the_look_and_keeps_or_sets_the_name() {
     assert_eq!(s.life.unwrap().name, "Mr Whiskers");
 }
 
+/// Spec §2.1 / K7: a fresh v0.3 install has no companion, so **Let's go!** adopts the picked
+/// species (the cat when nothing else was tapped) and the name follows that species'
+/// `defaultName` until the user types one.
+#[test]
+fn a_fresh_install_has_no_pet_and_lets_go_adopts_the_picked_species() {
+    for (species, name, want) in [
+        ("cat", None, default_name("cat").unwrap()),
+        ("dog", None, default_name("dog").unwrap()),
+        ("goldfish", Some("Bubbles"), "Bubbles"),
+    ] {
+        let env = Env::with_boot();
+        let mut store = Store::open(&env.paths, env.clock.clone()).unwrap();
+        let fresh = store.snapshot().unwrap();
+        assert!(fresh.life.is_none(), "{species}");
+        assert_eq!(fresh.lifecycle.frozen_reason, "no_life");
+        let s = store
+            .start_pet("lets-go", &start(None, species, name, Mode::Gentle))
+            .unwrap();
+        let l = s.life.unwrap();
+        assert_eq!(
+            (
+                l.name.as_str(),
+                l.species.as_str(),
+                l.appearance.as_str(),
+                l.origin.as_str(),
+                l.mode.as_str(),
+                l.armed,
+                l.ordinal
+            ),
+            (want, species, species, "adopted", "gentle", true, 1),
+            "{species}"
+        );
+        assert!(
+            !s.care.welcome_care_available,
+            "the welcome routine is spent"
+        );
+        assert_eq!(s.meters.hunger, 10_000);
+        assert_eq!(kinds(&env, &l.life_id), ["born", "armed"]);
+        assert_eq!(s.memorial.count, 0);
+        // Replay returns the same pet; another click is ALREADY_ARMED.
+        let again = store
+            .start_pet("lets-go", &start(None, species, name, Mode::Gentle))
+            .unwrap();
+        assert_eq!(again.life.unwrap().life_id, l.life_id);
+        assert!(matches!(
+            store.start_pet("go-2", &start(None, species, name, Mode::Gentle)),
+            Err(StorageError::AlreadyArmed)
+        ));
+    }
+}
+
 #[test]
 fn pet_start_adopts_when_no_life_is_living() {
     let env = Env::with_boot();
@@ -377,34 +428,50 @@ fn hardcore_switch_uses_pet_rules_semantics() {
     store
         .start_pet("go", &start(None, "cat", None, Mode::Gentle))
         .unwrap();
-    // gentle -> permadeath needs the acknowledgement (the UI's typed name) ...
+    // gentle -> permadeath needs the acknowledgement ...
     assert!(matches!(
-        store.set_rules("h1", &id, Mode::Permadeath, false),
+        store.set_rules("h1", &id, Mode::Permadeath, false, Some("Ginger")),
         Err(StorageError::AcknowledgementRequired)
     ));
+    // ... the pet's name typed in Help (§3.6, §11-2), enforced in Rust like pet.retire ...
+    for (rid, typed) in [
+        ("h1a", None),
+        ("h1b", Some("Gingr")),
+        ("h1c", Some("GINGER")),
+    ] {
+        assert!(matches!(
+            store.set_rules(rid, &id, Mode::Permadeath, true, typed),
+            Err(StorageError::InvalidParams(_))
+        ));
+    }
+    assert_eq!(store.snapshot().unwrap().life.unwrap().mode, "gentle");
     // ... and a healthy pet: INVALID_STATE -> "Make {name} happy first."
     env.raw()
         .execute("UPDATE lives SET status = 'warning'", [])
         .unwrap();
     assert!(matches!(
-        store.set_rules("h2", &id, Mode::Permadeath, true),
+        store.set_rules("h2", &id, Mode::Permadeath, true, Some("Ginger")),
         Err(StorageError::InvalidState(_))
     ));
     env.raw()
         .execute("UPDATE lives SET status = 'healthy'", [])
         .unwrap();
-    let on = store.set_rules("h3", &id, Mode::Permadeath, true).unwrap();
+    let on = store
+        .set_rules("h3", &id, Mode::Permadeath, true, Some(" Ginger "))
+        .unwrap();
     assert_eq!(on.life.unwrap().mode, "permadeath");
     // permadeath -> gentle is one tap, any time, no acknowledgement.
     env.raw()
         .execute("UPDATE lives SET status = 'warning'", [])
         .unwrap();
-    let off = store.set_rules("h4", &id, Mode::Gentle, false).unwrap();
+    let off = store
+        .set_rules("h4", &id, Mode::Gentle, false, None)
+        .unwrap();
     assert_eq!(off.life.unwrap().mode, "gentle");
     // Refused while Off.
     store.set_enabled("off", false).unwrap();
     assert!(matches!(
-        store.set_rules("h5", &id, Mode::Permadeath, true),
+        store.set_rules("h5", &id, Mode::Permadeath, true, Some("Ginger")),
         Err(StorageError::Off)
     ));
 }
@@ -796,6 +863,43 @@ fn a_pending_end_waits_while_off() {
     assert_eq!(s.memorial.count, 1);
 }
 
+/// Spec §7.3 "nothing changes while Off": a nap frozen by Off never makes `state.get` take
+/// the writer lock and commit a no-op settlement (no `state_version` churn, no export).
+#[test]
+fn state_get_while_off_and_asleep_writes_nothing() {
+    let env = Env::with_boot();
+    let mut store = env.open();
+    store.sleep("nap").unwrap();
+    env.pass(10);
+    let off = store.set_enabled("off", false).unwrap();
+    let wal = |env: &Env| {
+        fs::metadata(env.paths.db_path.with_extension("sqlite3-wal"))
+            .map(|m| m.len())
+            .ok()
+    };
+    let wal_before = wal(&env);
+    let mut versions = Vec::new();
+    for _ in 0..3 {
+        env.pass(30_000);
+        let s = store.snapshot().unwrap();
+        assert!(s.care.sleeping);
+        assert_eq!(s.lifecycle.frozen_reason, "off");
+        assert_eq!(s.care.sleep_remaining_ms, off.care.sleep_remaining_ms);
+        versions.push(s.state_version);
+    }
+    assert_eq!(versions, [off.state_version; 3]);
+    assert_eq!(wal(&env), wal_before, "nothing was committed");
+    // On again: the nap settles (and commits) as before.
+    let on = store.set_enabled("on", true).unwrap();
+    env.pass(1_000);
+    let s = store.snapshot().unwrap();
+    assert!(s.state_version > on.state_version);
+    assert_eq!(
+        s.care.sleep_remaining_ms,
+        off.care.sleep_remaining_ms - 1_000
+    );
+}
+
 #[test]
 fn off_freezes_a_nap_and_on_resumes_it_where_it_left_off() {
     let env = Env::with_boot();
@@ -826,7 +930,9 @@ fn off_refuses_what_would_age_arm_grow_or_end_a_life() {
     off(store.sleep("s").map(drop));
     off(store.wake("w").map(drop));
     off(store.set_paused(true).map(drop));
-    off(store.set_rules("r", &id, Mode::Gentle, true).map(drop));
+    off(store
+        .set_rules("r", &id, Mode::Gentle, true, None)
+        .map(drop));
     off(store
         .configure_life(
             "l",

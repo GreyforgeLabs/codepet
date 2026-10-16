@@ -136,8 +136,10 @@ pub fn run() -> i32 {
 
 /// `codepet state`: the `state.get` result, or a typed failure. A successful snapshot
 /// (which may have settled presence, a nap or a due end) republishes `bar-state.json`.
+/// It never migrates (spec §6.2: only `codepet migrate` and `rpc` `state.get` may); an
+/// older database is refused untouched with `SCHEMA_UNSUPPORTED` ("needs codepet migrate").
 pub fn state_get() -> Result<Value, Failure> {
-    let store = open()?;
+    let store = open_current()?;
     let value = serde_json::to_value(store.snapshot()?)?;
     publish_bar_state(&store);
     Ok(value)
@@ -190,7 +192,7 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
 const COMMITTED_TOO_LARGE: &str = "The request may have been applied, but its result is too \
     large to return. Reload with state.get before retrying.";
 
-/// Opens and, when older, migrates the database (`state.get`, `codepet state`).
+/// Opens and, when older, migrates the database (`rpc` `state.get` only).
 fn open() -> Result<Store, Failure> {
     let paths = StatePaths::from_env()?;
     Ok(Store::open(&paths, Arc::new(SystemClock))?)
@@ -439,6 +441,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 &r.life_id,
                 mode,
                 r.acknowledge_rules,
+                r.confirm_name.as_deref(),
             )?))
         }
         Method::PetConfigureLife => {
