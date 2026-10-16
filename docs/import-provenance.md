@@ -21,5 +21,5 @@ Cargo network access was disabled and build concurrency was bounded to two jobs.
 The import commit uses `[skip ci]` so initial publication does not launch the
 prepared hosted workflow or install its toolchain. No hosted CI result is claimed.
 No real coding provider, resident service, desktop preview, or live Omarchy test
-was launched. Portable Linux with Omarchy integration by default remains the target;
-the current scaffold is mock-only and QML remains disconnected from Rust.
+was launched. Portable Linux with Omarchy integration by default was the target. At
+import, the scaffold was mock-only and the QML was not yet connected to Rust.
