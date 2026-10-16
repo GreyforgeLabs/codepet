@@ -1,0 +1,4 @@
+# managed by codepet: observe-only bridge; never blocks, never injects context
+name: codepet
+version: "1"
+description: Lets your CodePet follow Hermes sessions (observe only)

@@ -1,0 +1,9 @@
+{
+  "name": "codepet",
+  "displayName": "CodePet",
+  "version": "@CODEPET_VERSION@",
+  "description": "Lets your CodePet follow Claude Code sessions: observe only, prints nothing, never blocks (managed by codepet)",
+  "author": {
+    "name": "Greyforge Labs"
+  }
+}

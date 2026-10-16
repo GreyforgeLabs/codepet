@@ -1,0 +1,155 @@
+# managed by codepet: observe-only bridge for Hermes (SPEC-v0.3 section 5.6).
+# Callbacks read whitelisted keyword arguments by name, never log or repr them, always
+# return None (pre_llm_call would inject text otherwise) and never raise.
+import json
+import subprocess
+
+_SHIM = "@CODEPET_SHIM@"
+_PLATFORMS = {"cli", "tui", "desktop", "acp"}
+_MAX = 256
+_platform = {}
+_waiting = set()
+_tools = {}
+_live = []
+
+
+def _ok(v):
+    return isinstance(v, str) and 0 < len(v) <= 128 and all(c.isalnum() or c in "._:-" for c in v) and v.isascii()
+
+
+def _send(body):
+    try:
+        for p in list(_live):
+            if p.poll() is not None:
+                _live.remove(p)
+        if len(_live) >= 16:
+            return
+        body["codepet_v"] = 1
+        line = (json.dumps(body, separators=(",", ":")) + "\n").encode()
+        if len(line) >= 512:
+            return
+        p = subprocess.Popen([_SHIM, "hermes"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        _live.append(p)
+        p.stdin.write(line)
+        p.stdin.close()
+    except Exception:
+        pass
+
+
+def _session(kw, platform=None):
+    sid = kw.get("session_id")
+    if not _ok(sid):
+        return None
+    if platform is not None:
+        if len(_platform) >= _MAX and sid not in _platform:
+            _platform.pop(next(iter(_platform)))
+        _platform[sid] = platform
+    return sid if _platform.get(sid) in _PLATFORMS else None
+
+
+def _event(kind, sid, turn=None, **extra):
+    body = {"event": kind, "session_id": sid, "interactive": True}
+    if _ok(turn):
+        body["turn_id"] = turn
+    body.update(extra)
+    _send(body)
+
+
+def _session_start(**kw):
+    try:
+        sid = _session(kw, kw.get("platform"))
+        if sid:
+            _event("session_start", sid)
+    except Exception:
+        pass
+
+
+def _pre_llm_call(**kw):
+    try:
+        sid = _session(kw, kw.get("platform"))
+        if sid:
+            _tools[sid] = 0
+            _waiting.discard(sid)
+            _event("turn_start", sid, kw.get("turn_id"))
+    except Exception:
+        pass
+    return None
+
+
+def _pre_tool_call(**kw):
+    try:
+        sid = _session(kw)
+        if sid and kw.get("tool_name") == "clarify":
+            _waiting.add(sid)
+            _event("waiting", sid, kw.get("turn_id"))
+    except Exception:
+        pass
+
+
+def _post_tool_call(**kw):
+    try:
+        sid = _session(kw)
+        if not sid:
+            return
+        if kw.get("tool_name") == "clarify" or sid in _waiting:
+            _waiting.discard(sid)
+            _event("activity", sid, kw.get("turn_id"))
+        else:
+            _tools[sid] = min(_tools.get(sid, 0) + 1, 1000)
+    except Exception:
+        pass
+
+
+def _approval(kind):
+    def cb(**kw):
+        try:
+            surface, key = kw.get("surface"), kw.get("session_key")
+            if isinstance(surface, str) and (surface == "cli" or surface.startswith("transport:")) and _ok(key):
+                _send({"event": kind, "approval_key": key, "interactive": True})
+        except Exception:
+            pass
+    return cb
+
+
+def _session_end(**kw):
+    try:
+        sid = _session(kw)
+        if not sid:
+            return
+        kind = "turn_done" if kw.get("completed") is True else "turn_failed" if kw.get("failed") is True \
+            else "turn_cancelled" if kw.get("interrupted") is True else None
+        if kind:
+            extra = {"tools": _tools.pop(sid, 0)} if kind == "turn_done" else {}
+            _event(kind, sid, kw.get("turn_id"), **extra)
+    except Exception:
+        pass
+
+
+def _loop_stopped(**kw):
+    try:
+        sid = _session(kw)
+        if sid:
+            _event("turn_cancelled", sid)
+    except Exception:
+        pass
+
+
+def _finalize(**kw):
+    try:
+        sid = _session(kw, kw.get("platform") or _platform.get(kw.get("session_id")))
+        if sid:
+            _event("session_end", sid)
+        _platform.pop(kw.get("session_id"), None)
+    except Exception:
+        pass
+
+
+def register(ctx):
+    for name, cb in (("on_session_start", _session_start), ("pre_llm_call", _pre_llm_call),
+                     ("pre_tool_call", _pre_tool_call), ("post_tool_call", _post_tool_call),
+                     ("pre_approval_request", _approval("waiting")),
+                     ("post_approval_response", _approval("activity")),
+                     ("on_session_end", _session_end), ("agent_loop_stopped", _loop_stopped),
+                     ("on_session_finalize", _finalize)):
+        ctx.register_hook(name, cb)
