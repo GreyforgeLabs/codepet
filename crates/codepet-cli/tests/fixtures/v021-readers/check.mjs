@@ -34,10 +34,16 @@ for (const file of exports) {
     }
     const s = overlay.parse(text);
     out.overlay_parse = s !== null;
-    if (s) {
+    if (s && typeof overlay.merge === 'function') {
+      // v0.2.1 overlay: merges the file into its task snapshot.
       const merged = overlay.merge({ state_version: 0, db_id: s.db_id, care: {} }, s, false);
       out.merged_version = merged.state_version === s.state_version;
       out.merged_life = merged.life ? merged.life.name : null;
+    } else if (s) {
+      // v0.3 overlay (qml/omarchy/BarState.js): no snapshot to merge into; the desktop
+      // pet draws the parsed document itself.
+      out.merged_version = s.state_version === JSON.parse(text).state_version;
+      out.merged_life = s.life ? s.life.name : null;
     }
   } catch (e) {
     out.error = String(e && e.stack ? e.stack.split('\n')[0] : e);
