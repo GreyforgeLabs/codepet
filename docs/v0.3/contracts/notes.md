@@ -339,10 +339,11 @@ differ, these entries win.
    New `sessions` vectors: `jar_full_describes_only_the_last_finished_turn` and
    `late_tool_recheck_on_a_full_jar_sets_jar_full`.
 
-## 7. WP5 popup decisions and contract requests (2026-10-16)
+## 8. WP5 popup decisions and contract requests (2026-10-16)
 
-Nothing in a frozen contract file changed. These are the choices WP5 made where the spec
-left room, and what WP5 asks the contract owners to adopt.
+Numbered 8 because the fix package's "Owner decisions after wave 1" is section 7 (branch
+`v0.3-fix`). Nothing in a frozen contract file changed. These are the choices WP5 made where
+the spec left room, and what WP5 asks the contract owners to adopt.
 
 1. **Popup window.** The popup is an Omarchy `KeyboardPanel` (the `PopupCard` API with
    keyboard focus on demand), not a `PopupCard`: an xdg-popup gets no keyboard focus at map
@@ -402,3 +403,9 @@ left room, and what WP5 asks the contract owners to adopt.
     against that cap in the PySide smokes (stub theme) and, under the real Omarchy Style and
     Color, in `test_bar_plugin.py` at base sizes 12, 16 and 20.
 13. **Bar label** `status` (v0.2) reads as `name`; the manifest offers `name` and `none`.
+14. **The owner decisions after wave 1** (section 7, branch `v0.3-fix`) need nothing more in
+    the popup: Help shows `help.forget.body` and `help.privacy.body` from the contract, so the
+    replacement text of section 7 item 1 appears once `strings.json` carries it (then run
+    `tools/ui/gen_plugin_strings.py`; `test_bar_plugin.py` and CI fail while the plugin copy
+    is stale); the cat's "Ball" and the new Claude Code tile come from the registry and the
+    icon trees as they are.

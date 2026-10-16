@@ -21,7 +21,7 @@ v0.3 kid copy (SPEC-v0.3 §1.2 K1, K2, K8), over everything that reaches a kid-f
   (at most two plain words each); careLabels and careHints must never be read by the plugin;
 - the Home status line: every face line, filled with a typical name and every app pair, fits
   one line of the 448 px card in a monospace font at Style.font.heading, or steps down no
-  further than Style.font.body (the status line's HorizontalFit floor; notes.md §7).
+  further than Style.font.body (the status line's HorizontalFit floor; notes.md §8).
 K1: no digit or %, except the literal /reload-plugins. K2: none of the jargon words, except the
 verb phrases "turn on/off", "turned on/off" and "turn {name} into". K8: at most 8 words a line,
 and at most 6 words for 90% of them.

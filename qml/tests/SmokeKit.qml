@@ -191,7 +191,7 @@ Item {
     }
 
     // The Home status line keeps to one line: at kit.styleFont.heading, or (a long app pair in a
-    // monospace theme font, notes.md §7) stepped down to no less than kit.styleFont.body.
+    // monospace theme font, notes.md §8) stepped down to no less than kit.styleFont.body.
     TextMetrics { id: metrics }
     property var shrunk: []
     function oneLine(app, label) {
