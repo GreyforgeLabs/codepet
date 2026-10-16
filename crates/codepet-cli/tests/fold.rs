@@ -5,6 +5,7 @@ mod hookkit;
 
 use hookkit::{assert_silent_ok, Hk, BIN};
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -59,23 +60,38 @@ fn a_hook_starts_one_fold_that_folds_and_exports() {
 }
 
 /// §9.2 bursts: 20 concurrent writers (500 activity events): at most one fold process at
-/// any sample (every 5 ms), the inbox empties within 1 s of the last event, nothing lost.
+/// any sample (every 5 ms), the inbox empties within 1 s of the last event, nothing lost,
+/// and (§8 rule 6) `bar-state.json` is replaced at most about 4 times a second, since
+/// tools counted in a working turn are not urgent.
 #[test]
 fn bursts_keep_one_fold_and_lose_nothing() {
+    use std::os::unix::fs::MetadataExt;
     let hk = Arc::new(Hk::with_db());
     let start = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
     assert_silent_ok(&hk.stored("claude-code", &start, &CLI), "start");
+    assert!(hk.wait_for(Duration::from_secs(3), || {
+        hk.inbox_names().is_empty() && hk.fold_processes() == 0
+    }));
     let stop = Arc::new(AtomicBool::new(false));
     let max = Arc::new(AtomicUsize::new(0));
+    let renames = Arc::new(AtomicUsize::new(0));
+    let bar = hk.state.join("bar-state.json");
     let sampler = {
-        let (hk, stop, max) = (hk.clone(), stop.clone(), max.clone());
+        let (hk, stop, max, renames) = (hk.clone(), stop.clone(), max.clone(), renames.clone());
         std::thread::spawn(move || {
+            let mut last = fs::metadata(&bar).map(|m| m.ino()).ok();
             while !stop.load(Ordering::SeqCst) {
                 max.fetch_max(hk.fold_processes(), Ordering::SeqCst);
-                std::thread::sleep(Duration::from_millis(5));
+                let ino = fs::metadata(&bar).map(|m| m.ino()).ok();
+                if ino != last {
+                    renames.fetch_add(1, Ordering::SeqCst);
+                    last = ino;
+                }
+                std::thread::sleep(Duration::from_millis(2));
             }
         })
     };
+    let t0 = std::time::Instant::now();
     let writers: Vec<_> = (0..20)
         .map(|w| {
             let hk = hk.clone();
@@ -95,8 +111,15 @@ fn bursts_keep_one_fold_and_lose_nothing() {
     }
     let emptied = hk.wait_for(Duration::from_secs(1), || hk.inbox_names().is_empty());
     let settled = hk.wait_for(Duration::from_secs(3), || hk.fold_processes() == 0);
+    let window = t0.elapsed().as_secs_f64();
     stop.store(true, Ordering::SeqCst);
     sampler.join().unwrap();
+    let renames = renames.load(Ordering::SeqCst);
+    eprintln!("burst: {renames} bar-state.json replacements in {window:.2} s");
+    assert!(
+        renames as f64 <= 1.0 + 4.0 * window.ceil(),
+        "{renames} replacements in {window:.2} s: the export rate limit is not holding"
+    );
     assert!(
         emptied,
         "inbox not empty 1 s after the last event: {}",
@@ -419,4 +442,40 @@ fn a_second_identical_permission_prompt_still_means_waiting() {
             .int("SELECT COUNT(*) FROM agent_events WHERE kind = 'waiting' AND outcome = 'folded'"),
         2
     );
+}
+
+/// §9.2 "a fold that always fails" with a read-only database: one failure writes the
+/// backoff, and hooks start no fold until it expires.
+#[test]
+fn a_read_only_database_backs_off() {
+    let hk = Hk::with_db();
+    let db = hk.state.join("codepet.sqlite3");
+    fs::set_permissions(&db, fs::Permissions::from_mode(0o400)).unwrap();
+    let p = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "first");
+    let backoff = hk.state.join("fold.backoff");
+    assert!(hk.wait_for(Duration::from_secs(5), || backoff.exists()));
+    assert!(hk.wait_for(Duration::from_secs(3), || hk.fold_processes() == 0));
+    let read =
+        || -> serde_json::Value { serde_json::from_slice(&fs::read(&backoff).unwrap()).unwrap() };
+    assert_eq!(read()["count"], 1);
+    let class = read()["class"].as_str().unwrap().to_owned();
+    eprintln!("read-only database: backoff class {class}");
+    assert_ne!(
+        class, "busy",
+        "a read-only database is not a transient failure"
+    );
+    for i in 0..20 {
+        let p = claude(
+            "PreToolUse",
+            &format!(r#","prompt_id":"p1","tool_use_id":"t{i}""#),
+        );
+        assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "during backoff");
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(hk.fold_processes(), 0);
+    assert_eq!(read()["count"], 1, "no fold ran during the backoff");
+    assert_eq!(hk.inbox_names().len(), 21, "records wait in the inbox");
+    fs::set_permissions(&db, fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(hk.db().int("SELECT COUNT(*) FROM agent_events"), 0);
 }

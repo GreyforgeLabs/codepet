@@ -493,3 +493,98 @@ fn off_with_stdin_never_closed_is_silent_in_every_stored_form() {
         open_stdin(&mut c, &format!("{client} tombstone run directly"));
     }
 }
+
+/// O2 defence in depth (§9.1): the binary checks the `off` flag and the client's
+/// `disconnected` flag itself, before reading or writing anything, even when the shim is
+/// bypassed.
+#[test]
+fn the_binary_stops_at_off_and_disconnected_itself() {
+    for flag in ["off", "clients/claude-code.disconnected"] {
+        let hk = Hk::new();
+        fs::write(hk.state.join(flag), b"").unwrap();
+        let out = hk.hook(
+            "claude-code",
+            claude_stop(),
+            &[("CLAUDE_CODE_ENTRYPOINT", "cli")],
+        );
+        assert_silent_ok(&out, flag);
+        assert!(hk.inbox_names().is_empty(), "{flag}: no record");
+        assert!(!hk.state.join("fold.lock").exists(), "{flag}: no lock");
+        assert_eq!(hk.fold_processes(), 0, "{flag}: no fold");
+    }
+    // Control: the same call without a flag records the event.
+    let hk = Hk::new();
+    hk.block_folds();
+    fs::write(hk.state.join("clients/codex.disconnected"), b"").unwrap();
+    let out = hk.hook(
+        "claude-code",
+        claude_stop(),
+        &[("CLAUDE_CODE_ENTRYPOINT", "cli")],
+    );
+    assert_silent_ok(&out, "control");
+    assert_eq!(hk.records().len(), 1, "only the named client stops");
+}
+
+type Ancestry<'a> = (&'a str, &'a str, &'a [u8], &'a [&'a str], bool);
+
+/// X2 end to end through `/proc` (§6.4 interactivity): the hook runs under an ancestor
+/// whose comm is the client's (`/bin/sh` symlinked as `codex`, `grok` or `claude`, running
+/// `codepet hook` as a child). Headless argv tokens make the record non-interactive; the
+/// same ancestor without them leaves it interactive.
+#[test]
+fn interactivity_reads_the_nearest_client_ancestor() {
+    let codex =
+        br#"{"hook_event_name":"Stop","session_id":"cx-1","turn_id":"1","stop_hook_active":false}"#;
+    let grok = br#"{"hookEventName":"stop","hook_event_name":"Stop","sessionId":"gk-1","promptId":"g1","reason":"end_turn"}"#;
+    // (client id, ancestor comm, payload, extra ancestor argv, expected interactive)
+    let cases: [Ancestry; 8] = [
+        ("codex", "codex", codex, &["x", "exec"], false),
+        ("codex", "codex", codex, &[], true),
+        ("grok-cli", "grok", grok, &["x", "-p", "hi"], false),
+        (
+            "grok-cli",
+            "grok",
+            grok,
+            &["x", "--output-format=json"],
+            false,
+        ),
+        ("grok-cli", "grok", grok, &[], true),
+        (
+            "claude-code",
+            "claude",
+            claude_stop(),
+            &["x", "--print"],
+            false,
+        ),
+        ("claude-code", "claude", claude_stop(), &["x", "-p"], false),
+        ("claude-code", "claude", claude_stop(), &[], true),
+    ];
+    for (client, comm, payload, args, want) in cases {
+        let ctx = format!("{client} under `{comm} {args:?}`");
+        let hk = Hk::new();
+        hk.block_folds();
+        let dir = hk.dir.path().join("ancestor");
+        fs::create_dir_all(&dir).unwrap();
+        let link = dir.join(comm);
+        symlink("/bin/sh", &link).unwrap();
+        // `; true` keeps the shell alive as the hook's parent (no exec of the last command).
+        let script = format!(
+            "'{BIN}' hook --state-dir '{}' {client}; true",
+            hk.state.display()
+        );
+        let mut c = Command::new(&link);
+        c.arg("-c")
+            .arg(script)
+            .args(args)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let out = feed(c.spawn().unwrap(), payload);
+        assert_silent_ok(&out, &ctx);
+        let records = hk.records();
+        assert_eq!(records.len(), 1, "{ctx}: {records:?}");
+        assert_eq!(records[0]["interactive"], want, "{ctx}");
+    }
+}

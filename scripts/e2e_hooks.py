@@ -4,6 +4,7 @@ environment: a v5 database, the inbox and the rendered shim under a fake HOME. N
 against a real state directory (it refuses a state dir under the real ~/.local/state)."""
 import argparse
 import json
+import math
 import os
 import sqlite3
 import subprocess
@@ -180,7 +181,7 @@ for client, steps in SEQUENCES.items():
     seen = db(f"SELECT last_seen_ms FROM client_hooks WHERE client = '{client}'") or 0
     check(seen >= before - 1000, f"{client}: client_hooks.last_seen_ms recorded")
 
-print("== burst: 500 activity events from one writer")
+print("== burst: 500 activity events in about 1 s (10 concurrent writers x 50)")
 stored("claude-code", cl("UserPromptSubmit", {"prompt_id": "b1"}, sid="burst-1"), {"CLAUDE_CODE_ENTRYPOINT": "cli"})
 settle()
 stop = threading.Event()
@@ -189,7 +190,10 @@ renames = []
 
 
 def sampler():
-    last = None
+    try:
+        last = os.stat(BAR).st_ino
+    except OSError:
+        last = None
     while not stop.is_set():
         peak[0] = max(peak[0], fold_processes())
         try:
@@ -199,16 +203,26 @@ def sampler():
                 last = ino
         except OSError:
             pass
-        time.sleep(0.005)
+        time.sleep(0.002)
 
 
 t = threading.Thread(target=sampler)
 t.start()
 before_events = db("SELECT COUNT(*) FROM agent_events")
 start = time.monotonic()
-for i in range(500):
-    stored("claude-code", cl("PreToolUse", {"prompt_id": "b1", "tool_use_id": f"b-{i}"}, sid="burst-1"),
-           {"CLAUDE_CODE_ENTRYPOINT": "cli"})
+
+
+def burst_writer(w):
+    for i in range(50):
+        stored("claude-code", cl("PreToolUse", {"prompt_id": "b1", "tool_use_id": f"b-{w}-{i}"}, sid="burst-1"),
+               {"CLAUDE_CODE_ENTRYPOINT": "cli"})
+
+
+bws = [threading.Thread(target=burst_writer, args=(w,)) for w in range(10)]
+for w in bws:
+    w.start()
+for w in bws:
+    w.join()
 last_event = time.monotonic()
 emptied = None
 while time.monotonic() < last_event + 1.0:
@@ -217,16 +231,19 @@ while time.monotonic() < last_event + 1.0:
         break
     time.sleep(0.005)
 settle()
+window = time.monotonic() - start
 stop.set()
 t.join()
 burst_s = last_event - start
+print(f"note: the 500 events took {burst_s:.2f} s to write" + ("" if burst_s <= 1.2 else " (host slower than the 1 s target)"))
 check(emptied is not None, f"inbox empty within 1 s of the last event ({emptied if emptied is not None else '>1'} s)")
 check(peak[0] <= 1, f"at most one fold process at any 5 ms sample (peak {peak[0]})")
 got = db("SELECT COUNT(*) FROM agent_events") - before_events
 check(got == 500, f"nothing lost: {got} of 500 recorded")
-rate = (len(renames) - 1) / max(burst_s, 0.001)
-check(rate <= 5.0 + 1.0 / max(burst_s, 0.001), f"bar-state renames {len(renames) - 1} in {burst_s:.2f} s "
-                                                 f"({rate:.1f}/s; non-urgent changes only)")
+# §8 rule 6: at most one export per 250 ms (non-urgent changes only), so over the whole window
+# (burst + settle) at most 1 + 4 per started second.
+limit = 1 + 4 * math.ceil(window)
+check(len(renames) <= limit, f"bar-state renames {len(renames)} in {window:.2f} s (limit {limit})")
 
 print("== burst: 20 concurrent writers x 25")
 before_events = db("SELECT COUNT(*) FROM agent_events")
