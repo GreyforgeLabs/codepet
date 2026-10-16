@@ -93,6 +93,15 @@ mod tests {
     }
 
     #[test]
+    fn v03_client_vocabulary_is_shared() {
+        let core: Vec<&str> = codepet_core::agent::ClientId::ALL
+            .iter()
+            .map(|c| c.as_str())
+            .collect();
+        assert_eq!(codepet_protocol::CLIENT_IDS.to_vec(), core);
+    }
+
+    #[test]
     fn every_storage_error_maps_to_a_protocol_code() {
         let cases: Vec<(StorageError, ErrorCode, bool)> = vec![
             (StorageError::Busy, ErrorCode::Busy, true),

@@ -1,7 +1,16 @@
 //! CodePet short commands. No daemon: each invocation answers one explicit request and
 //! exits; only a successful `rpc` task.start continues as that job's mock supervisor.
+//!
+//! v0.3 skeleton (spec §6.3): `migrate`, `fold`, `clients-job`, `on`, `off`, `helpers`,
+//! `connect`, `disconnect`, `forget-history` and `doctor` are routed and answer
+//! `NOT_IMPLEMENTED` (exit 1, one stderr line, no state touched) until their work package
+//! lands. `hook` already keeps invariant O2: it always exits 0 silently.
+mod clients_job;
 mod demo;
+mod doctor;
 mod errors;
+mod fold;
+mod hook;
 mod rpc;
 mod supervisor;
 
@@ -47,6 +56,18 @@ fn main() {
         }
         (Some(Some("rpc")), 1) => rpc::run(),
         (Some(Some("state")), 1) => state(),
+        // v0.3: the hook never reports a usage error (O2), whatever its arguments.
+        (Some(Some("hook")), _) => hook::run(&args[1..]),
+        (Some(Some("fold")), _) => fold::run(&args[1..]),
+        (Some(Some("clients-job")), _) => clients_job::run(&args[1..]),
+        (Some(Some("doctor")), _) => doctor::run(&args[1..]),
+        (
+            Some(Some(
+                c @ ("migrate" | "on" | "off" | "helpers" | "connect" | "disconnect"
+                | "forget-history"),
+            )),
+            _,
+        ) => not_implemented(c),
         (
             Some(Some(
                 c @ ("--help" | "help" | "--version" | "providers" | "mock-demo" | "rpc" | "state"),
@@ -73,6 +94,18 @@ fn state() -> i32 {
             1
         }
     }
+}
+
+/// The v0.3 skeleton's answer for a routed command whose work package has not landed:
+/// one stderr line naming the protocol code, exit 1, nothing read or written.
+pub(crate) fn not_implemented(command: &str) -> i32 {
+    let _ = writeln!(
+        std::io::stderr(),
+        "{}: codepet {command} is {}",
+        codepet_protocol::ErrorCode::NotImplemented,
+        codepet_protocol::V03_PENDING_MESSAGE
+    );
+    1
 }
 
 fn usage(message: &str) -> i32 {

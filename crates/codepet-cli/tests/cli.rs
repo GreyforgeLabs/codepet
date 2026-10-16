@@ -160,3 +160,51 @@ fn state_command_reports_a_failed_publish_on_one_line_only() {
         .collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
+
+// ---- v0.3 skeleton (spec §6.3) ----
+
+#[test]
+fn v03_commands_are_routed_but_not_implemented_and_touch_nothing() {
+    let env = Env::new();
+    for args in [
+        &["migrate"][..],
+        &["fold", "--state-dir", "/nonexistent"],
+        &["clients-job", "job-1"],
+        &["on"],
+        &["off"],
+        &["helpers", "on"],
+        &["connect", "--all"],
+        &["disconnect", "codex"],
+        &["forget-history"],
+        &["doctor", "--json"],
+    ] {
+        let output = env.run(args);
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        let err = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            err.starts_with("NOT_IMPLEMENTED: codepet "),
+            "{args:?}: {err}"
+        );
+        assert_eq!(err.lines().count(), 1, "{args:?}");
+    }
+    assert!(!env.xdg().exists(), "skeleton commands create no state");
+}
+
+#[test]
+fn v03_hook_is_always_silent_and_exits_zero() {
+    let env = Env::new();
+    for args in [
+        &["hook"][..],
+        &["hook", "--state-dir", "/nonexistent", "claude-code"],
+        &["hook", "--bogus", "x", "y", "z"],
+    ] {
+        let output = env.run(args);
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+        assert!(
+            output.stdout.is_empty() && output.stderr.is_empty(),
+            "{args:?}"
+        );
+    }
+    assert!(!env.xdg().exists(), "the hook never creates a directory");
+}

@@ -47,9 +47,15 @@ fn every_error_code_serializes_screaming_snake() {
         "SCHEMA_UNSUPPORTED",
         "INTERNAL",
         "NO_ACTIVE_PET",
+        "NOT_IMPLEMENTED",
+        "ALREADY_ARMED",
+        "NAME_INVALID",
+        "NO_TREATS",
+        "PET_NEEDS_CARE",
+        "TEST_STATE",
     ];
     assert_eq!(ErrorCode::ALL.len(), expected.len());
-    assert_eq!(ErrorCode::ALL.len(), 29);
+    assert_eq!(ErrorCode::ALL.len(), 35);
     for (code, name) in ErrorCode::ALL.into_iter().zip(expected) {
         assert_eq!(serde_json::to_value(code).unwrap(), json!(name));
         assert_eq!(code.as_str(), name);
@@ -109,9 +115,19 @@ fn every_method_parses_and_round_trips() {
         "pet.events_seen",
         "pet.memorial",
         "lifecycle.rules",
+        "pet.start",
+        "pet.rename",
+        "treats.give",
+        "app.set_enabled",
+        "app.set_helpers",
+        "agent.forget_history",
+        "clients.status",
+        "clients.connect",
+        "clients.disconnect",
+        "clients.test",
     ];
     assert_eq!(Method::ALL.len(), names.len());
-    assert_eq!(Method::ALL.len(), 31);
+    assert_eq!(Method::ALL.len(), 41);
     for name in names {
         let m = Method::parse(name).unwrap();
         assert_eq!(m.as_str(), name);
@@ -140,7 +156,10 @@ fn mutating_and_implemented_classification() {
     for m in Method::ALL {
         assert_eq!(m.is_mutating(), !reads.contains(&m), "{m}");
     }
-    for m in [Method::TaskLogs, Method::TaskApply, Method::TaskRollback] {
+    for m in [Method::TaskLogs, Method::TaskApply, Method::TaskRollback]
+        .into_iter()
+        .chain(Method::V03_ADDED)
+    {
         assert!(!m.is_implemented());
         assert!(req(&format!(
             r#"{{"v":1,"id":"a","method":"{m}","params":{{}}}}"#
@@ -814,6 +833,9 @@ fn protocol_version_stays_one_and_changes_are_additive() {
     assert_eq!(Method::ALL[0], Method::Hello);
     assert_eq!(ErrorCode::ALL[27], ErrorCode::Internal);
     assert_eq!(ErrorCode::ALL[28], ErrorCode::NoActivePet);
+    // v0.3 appends after the v0.2 lists.
+    assert_eq!(ErrorCode::ALL[29], ErrorCode::NotImplemented);
+    assert_eq!(Method::ALL[31..], Method::V03_ADDED);
     for (i, (name, _)) in NEW_METHODS.iter().enumerate() {
         assert_eq!(Method::ALL[23 + i].as_str(), *name);
     }
@@ -858,6 +880,16 @@ fn is_mutating_table_for_every_method() {
         ("pet.events_seen", true),
         ("pet.memorial", false),
         ("lifecycle.rules", false),
+        ("pet.start", true),
+        ("pet.rename", true),
+        ("treats.give", true),
+        ("app.set_enabled", true),
+        ("app.set_helpers", true),
+        ("agent.forget_history", true),
+        ("clients.status", true),
+        ("clients.connect", true),
+        ("clients.disconnect", true),
+        ("clients.test", true),
     ];
     assert_eq!(table.len(), Method::ALL.len());
     for (m, (name, mutating)) in Method::ALL.into_iter().zip(table) {
@@ -1247,5 +1279,248 @@ fn lifecycle_requests_end_to_end() {
             other => panic!("unexpected {other}"),
         };
         assert!(ok, "{line}");
+    }
+}
+
+// ---- v0.3 skeleton (spec §6.2) ----
+
+#[test]
+fn v03_method_lists_partition_the_spec_tables() {
+    let added: Vec<&str> = Method::V03_ADDED.iter().map(|m| m.as_str()).collect();
+    assert_eq!(
+        added,
+        [
+            "pet.start",
+            "pet.rename",
+            "treats.give",
+            "app.set_enabled",
+            "app.set_helpers",
+            "agent.forget_history",
+            "clients.status",
+            "clients.connect",
+            "clients.disconnect",
+            "clients.test"
+        ]
+    );
+    let removed: Vec<&str> = Method::V03_REMOVED.iter().map(|m| m.as_str()).collect();
+    assert_eq!(
+        removed,
+        [
+            "events.subscribe",
+            "providers.inspect",
+            "task.create",
+            "task.get",
+            "task.update",
+            "task.preflight",
+            "task.start",
+            "task.cancel",
+            "task.review",
+            "task.logs",
+            "task.apply",
+            "task.accept_artifact",
+            "task.discard",
+            "task.rollback",
+            "task.recover",
+            "history.list",
+            "settings.update"
+        ]
+    );
+    for m in Method::V03_ADDED {
+        assert!(!Method::V03_REMOVED.contains(&m));
+        assert!(m.is_mutating(), "{m}");
+    }
+    // Kept: everything else (14 methods, including hello).
+    let kept = Method::ALL
+        .iter()
+        .filter(|m| !Method::V03_ADDED.contains(m) && !Method::V03_REMOVED.contains(m))
+        .count();
+    assert_eq!(kept, 14, "hello + state.get + 12 pet/lifecycle methods");
+}
+
+#[test]
+fn v03_params_accept_the_contract_shapes() {
+    parse_params::<PetStartParams>(json!({
+        "species": "cat", "mode": "gentle", "acknowledge_rules": true
+    }))
+    .unwrap();
+    parse_params::<PetStartParams>(json!({
+        "life_id": "life-1", "species": "goldfish", "name": "Ginger", "mode": "gentle",
+        "acknowledge_rules": false
+    }))
+    .unwrap();
+    parse_params::<PetRenameParams>(json!({"life_id": "life-1", "name": "Ginger"})).unwrap();
+    parse_params::<TreatsGiveParams>(json!({"life_id": "life-1"})).unwrap();
+    parse_params::<AppSetEnabledParams>(json!({"enabled": false})).unwrap();
+    parse_params::<AppSetHelpersParams>(json!({"enabled": true})).unwrap();
+    parse_params::<AgentForgetHistoryParams>(json!({})).unwrap();
+    parse_params::<ClientsStatusParams>(json!({})).unwrap();
+    parse_params::<ClientsConnectParams>(json!({"clients": ["claude-code", "grok-cli"]})).unwrap();
+    parse_params::<ClientsConnectParams>(json!({"clients": CLIENT_IDS})).unwrap();
+    parse_params::<ClientsDisconnectParams>(json!({"client": "codex"})).unwrap();
+    parse_params::<ClientsTestParams>(json!({})).unwrap();
+    parse_params::<ClientsTestParams>(json!({"client": "hermes"})).unwrap();
+}
+
+#[test]
+fn v03_params_refuse_bad_shapes() {
+    let bad = [
+        (
+            "pet.start",
+            json!({"species": "unicorn", "mode": "gentle", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "easy", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "gentle", "acknowledge_rules": true, "pace": "steady"}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "gentle", "acknowledge_rules": true, "name": "  "}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "gentle", "acknowledge_rules": true, "life_id": ""}),
+        ),
+        ("pet.rename", json!({"life_id": "life-1"})),
+        (
+            "pet.rename",
+            json!({"life_id": "life-1", "name": "a\u{0}b"}),
+        ),
+        ("treats.give", json!({})),
+        ("treats.give", json!({"life_id": "life-1", "count": 2})),
+        ("app.set_enabled", json!({"enabled": "yes"})),
+        ("app.set_helpers", json!({})),
+        ("agent.forget_history", json!({"all": true})),
+        ("clients.status", json!({"refresh": true})),
+        ("clients.connect", json!({"clients": []})),
+        ("clients.connect", json!({"clients": ["claude"]})),
+        ("clients.connect", json!({"clients": ["codex", "codex"]})),
+        ("clients.connect", json!({"clients": ["muse-code"]})),
+        (
+            "clients.connect",
+            json!({"clients": ["claude-code","codex","opencode","hermes","grok-cli","codex"]}),
+        ),
+        ("clients.disconnect", json!({"client": "crush"})),
+        ("clients.disconnect", json!({})),
+        ("clients.test", json!({"client": "gemini"})),
+    ];
+    for (method, params) in bad {
+        let r = match method {
+            "pet.start" => parse_params::<PetStartParams>(params.clone()).map(|_| ()),
+            "pet.rename" => parse_params::<PetRenameParams>(params.clone()).map(|_| ()),
+            "treats.give" => parse_params::<TreatsGiveParams>(params.clone()).map(|_| ()),
+            "app.set_enabled" | "app.set_helpers" => {
+                parse_params::<EnabledParams>(params.clone()).map(|_| ())
+            }
+            "agent.forget_history" | "clients.status" => {
+                parse_params::<EmptyParams>(params.clone()).map(|_| ())
+            }
+            "clients.connect" => parse_params::<ClientsConnectParams>(params.clone()).map(|_| ()),
+            "clients.disconnect" => {
+                parse_params::<ClientsDisconnectParams>(params.clone()).map(|_| ())
+            }
+            "clients.test" => parse_params::<ClientsTestParams>(params.clone()).map(|_| ()),
+            other => panic!("{other}"),
+        };
+        assert_eq!(
+            r.unwrap_err().code,
+            ErrorCode::InvalidParams,
+            "{method} {params}"
+        );
+    }
+}
+
+#[test]
+fn v03_codes_are_not_retryable() {
+    for code in [
+        ErrorCode::NotImplemented,
+        ErrorCode::AlreadyArmed,
+        ErrorCode::NameInvalid,
+        ErrorCode::NoTreats,
+        ErrorCode::PetNeedsCare,
+        ErrorCode::TestState,
+    ] {
+        assert!(!code.retryable(), "{code}");
+    }
+}
+
+/// `docs/v0.3/contracts/protocol.json` is the WP0 contract: its method tables and
+/// param examples must agree with this crate.
+#[test]
+fn v03_protocol_contract_matches_the_crate() {
+    let doc: Value =
+        serde_json::from_str(include_str!("../../../docs/v0.3/contracts/protocol.json")).unwrap();
+    let names = |key: &str| -> Vec<String> {
+        doc[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map_or_else(|| v["method"].as_str().unwrap().to_owned(), str::to_owned)
+            })
+            .collect()
+    };
+    let added = names("added");
+    assert_eq!(
+        added,
+        Method::V03_ADDED.map(|m| m.as_str().to_owned()).to_vec()
+    );
+    assert_eq!(
+        names("removed"),
+        Method::V03_REMOVED.map(|m| m.as_str().to_owned()).to_vec()
+    );
+    let kept = names("kept");
+    assert_eq!(
+        kept.len() + added.len() + Method::V03_REMOVED.len(),
+        Method::ALL.len()
+    );
+    for name in &kept {
+        let m = Method::parse(name).unwrap();
+        assert!(!Method::V03_ADDED.contains(&m) && !Method::V03_REMOVED.contains(&m));
+    }
+    for code in doc["error_codes_added"].as_object().unwrap().keys() {
+        assert!(ErrorCode::parse(code).is_some(), "{code}");
+    }
+    let clients: Vec<&str> = doc["client_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(clients, CLIENT_IDS);
+    for entry in doc["added"].as_array().unwrap() {
+        let method = entry["method"].as_str().unwrap();
+        let m = Method::parse(method).unwrap();
+        assert_eq!(entry["mutating"], m.is_mutating(), "{method}");
+        let check = |params: &Value| -> Result<(), ProtocolError> {
+            let p = params.clone();
+            match m {
+                Method::PetStart => parse_params::<PetStartParams>(p).map(drop),
+                Method::PetRename => parse_params::<PetRenameParams>(p).map(drop),
+                Method::TreatsGive => parse_params::<TreatsGiveParams>(p).map(drop),
+                Method::AppSetEnabled => parse_params::<AppSetEnabledParams>(p).map(drop),
+                Method::AppSetHelpers => parse_params::<AppSetHelpersParams>(p).map(drop),
+                Method::AgentForgetHistory => parse_params::<AgentForgetHistoryParams>(p).map(drop),
+                Method::ClientsStatus => parse_params::<ClientsStatusParams>(p).map(drop),
+                Method::ClientsConnect => parse_params::<ClientsConnectParams>(p).map(drop),
+                Method::ClientsDisconnect => parse_params::<ClientsDisconnectParams>(p).map(drop),
+                Method::ClientsTest => parse_params::<ClientsTestParams>(p).map(drop),
+                other => panic!("{other} is not a v0.3 method"),
+            }
+        };
+        for valid in entry["examples"]["valid"].as_array().unwrap() {
+            check(valid).unwrap_or_else(|e| panic!("{method} {valid}: {e}"));
+        }
+        for invalid in entry["examples"]["invalid"].as_array().unwrap() {
+            assert_eq!(
+                check(invalid).unwrap_err().code,
+                ErrorCode::InvalidParams,
+                "{method} {invalid}"
+            );
+        }
     }
 }

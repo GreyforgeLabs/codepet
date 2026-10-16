@@ -11,12 +11,15 @@ use crate::supervisor::{self, Job};
 use codepet_core::lifecycle::{Mode, Pace};
 use codepet_core::{Category, Draft, Provider, Settings, PROTOCOL_VERSION};
 use codepet_protocol::{
-    parse_params, parse_request, read_frame, DraftParams, EmptyParams, ErrorCode,
-    EventsSubscribeParams, HelloParams, HistoryListParams, LifecycleRulesParams, Method,
-    PetAdoptParams, PetCareParams, PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams,
-    PetPauseParams, PetRetireParams, PetRulesParams, PetSelectParams, ProtocolError, Request,
-    Response, SettingsUpdateParams, TaskAcceptArtifactParams, TaskDiscardParams, TaskIdParams,
-    TaskPreflightParams, TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
+    parse_params, parse_request, read_frame, AgentForgetHistoryParams, AppSetEnabledParams,
+    AppSetHelpersParams, ClientsConnectParams, ClientsDisconnectParams, ClientsStatusParams,
+    ClientsTestParams, DraftParams, EmptyParams, ErrorCode, EventsSubscribeParams, HelloParams,
+    HistoryListParams, LifecycleRulesParams, Method, PetAdoptParams, PetCareParams,
+    PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams, PetPauseParams,
+    PetRenameParams, PetRetireParams, PetRulesParams, PetSelectParams, PetStartParams,
+    ProtocolError, Request, Response, SettingsUpdateParams, TaskAcceptArtifactParams,
+    TaskDiscardParams, TaskIdParams, TaskPreflightParams, TaskStartParams, TaskUpdateParams,
+    TreatsGiveParams, NOT_IMPLEMENTED_MESSAGE, V03_PENDING_MESSAGE,
 };
 use codepet_storage::{
     lifecycle_rules_json, AcceptRequest, AdoptRequest, Leniency, MockOptions, MockOutcome,
@@ -156,6 +159,12 @@ const COMMITTED_TOO_LARGE: &str = "The request may have been applied, but its re
 fn open() -> Result<Store, Failure> {
     let paths = StatePaths::from_env()?;
     Ok(Store::open(&paths, Arc::new(SystemClock))?)
+}
+
+/// The v0.3 skeleton's refusal: params were valid, the body lands in a later work package.
+/// Answered before the state directory is opened, so nothing is created or published.
+fn pending() -> Outcome {
+    Err(Failure::new(ErrorCode::NotImplemented, V03_PENDING_MESSAGE))
 }
 
 fn done(value: Value) -> Outcome {
@@ -389,6 +398,51 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
             let _: LifecycleRulesParams = parse_params(p)?;
             encode(serde_json::from_str(&lifecycle_rules_json()))
         }
+        // ---- v0.3 (spec §6.2): validated, then NOT_IMPLEMENTED until their WP lands. ----
+        // WP1: pet.start, pet.rename, treats.give, app.set_enabled, app.set_helpers,
+        // agent.forget_history.
+        Method::PetStart => {
+            let _: PetStartParams = parse_params(p)?;
+            pending()
+        }
+        Method::PetRename => {
+            let _: PetRenameParams = parse_params(p)?;
+            pending()
+        }
+        Method::TreatsGive => {
+            let _: TreatsGiveParams = parse_params(p)?;
+            pending()
+        }
+        Method::AppSetEnabled => {
+            let _: AppSetEnabledParams = parse_params(p)?;
+            pending()
+        }
+        Method::AppSetHelpers => {
+            let _: AppSetHelpersParams = parse_params(p)?;
+            pending()
+        }
+        Method::AgentForgetHistory => {
+            let _: AgentForgetHistoryParams = parse_params(p)?;
+            pending()
+        }
+        // WP3: the clients methods. connect/disconnect refuse TEST_STATE under a test
+        // state home; every job is detached and never holds the bar's RPC slot.
+        Method::ClientsStatus => {
+            let _: ClientsStatusParams = parse_params(p)?;
+            pending()
+        }
+        Method::ClientsConnect => {
+            let _: ClientsConnectParams = parse_params(p)?;
+            pending()
+        }
+        Method::ClientsDisconnect => {
+            let _: ClientsDisconnectParams = parse_params(p)?;
+            pending()
+        }
+        Method::ClientsTest => {
+            let _: ClientsTestParams = parse_params(p)?;
+            pending()
+        }
     }
 }
 
@@ -450,6 +504,43 @@ mod tests {
         assert!(line.starts_with(prefix));
         assert!(line.len() - prefix.len() <= MAX_EXPORT_ERROR_BYTES);
         assert!(line.len() - prefix.len() >= MAX_EXPORT_ERROR_BYTES - 1);
+    }
+
+    #[test]
+    fn v03_methods_are_validated_then_not_implemented_without_storage() {
+        let cases = [
+            (
+                "pet.start",
+                r#"{"species":"cat","mode":"gentle","acknowledge_rules":true}"#,
+            ),
+            ("pet.rename", r#"{"life_id":"life-1","name":"Ginger"}"#),
+            ("treats.give", r#"{"life_id":"life-1"}"#),
+            ("app.set_enabled", r#"{"enabled":false}"#),
+            ("app.set_helpers", r#"{"enabled":true}"#),
+            ("agent.forget_history", "{}"),
+            ("clients.status", "{}"),
+            ("clients.connect", r#"{"clients":["claude-code"]}"#),
+            ("clients.disconnect", r#"{"client":"codex"}"#),
+            ("clients.test", "{}"),
+        ];
+        assert_eq!(cases.len(), Method::V03_ADDED.len());
+        for (method, params) in cases {
+            let frame = format!(r#"{{"v":1,"id":"r","method":"{method}","params":{params}}}"#);
+            let (response, job) = handle(&frame);
+            assert!(job.is_none());
+            let error = response.error.expect(method);
+            assert_eq!(error.code, ErrorCode::NotImplemented, "{method}");
+            assert!(!error.retryable);
+            assert_eq!(response.id.as_deref(), Some("r"));
+            // Bad params are still INVALID_PARAMS, before the stub refusal.
+            let frame = format!(r#"{{"v":1,"id":"r","method":"{method}","params":{{"bogus":1}}}}"#);
+            let (response, _) = handle(&frame);
+            assert_eq!(
+                response.error.expect(method).code,
+                ErrorCode::InvalidParams,
+                "{method}"
+            );
+        }
     }
 
     #[test]

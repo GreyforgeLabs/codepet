@@ -593,3 +593,141 @@ impl Validate for PetMemorialParams {
 
 /// `lifecycle.rules` takes no params.
 pub type LifecycleRulesParams = EmptyParams;
+
+// ---- v0.3 (spec §6.2) ----
+
+/// Supported coding clients, in `codepet_core::agent::ClientId::ALL` order (checked by a
+/// CLI test).
+pub const CLIENT_IDS: [&str; 5] = ["claude-code", "codex", "opencode", "hermes", "grok-cli"];
+
+/// True when `id` is one of the supported client ids.
+pub fn is_client_id(id: &str) -> bool {
+    CLIENT_IDS.contains(&id)
+}
+
+fn check_client(field: &str, value: &str) -> Result<(), ProtocolError> {
+    if is_client_id(value) {
+        Ok(())
+    } else {
+        Err(invalid_params(&format!(
+            "{field} must be one of claude-code, codex, opencode, hermes, grok-cli"
+        )))
+    }
+}
+
+/// `pet.start`: adopt when no life is living, otherwise arm the living unarmed life
+/// (look, optional rename, rules), then spend the welcome routine. `life_id`, when given,
+/// must name the living life. `acknowledge_rules: false` is well-formed; storage answers it
+/// with `ACKNOWLEDGEMENT_REQUIRED`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PetStartParams {
+    #[serde(default)]
+    pub life_id: Option<String>,
+    pub species: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub mode: String,
+    pub acknowledge_rules: bool,
+}
+impl Validate for PetStartParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        if let Some(life_id) = &self.life_id {
+            check_token("life_id", life_id)?;
+        }
+        check_pet_id("species", &self.species)?;
+        if let Some(name) = &self.name {
+            check_name_input("name", name)?;
+        }
+        check_mode(&self.mode)
+    }
+}
+
+/// `pet.rename`: the content rule is core's `normalize_pet_name` (`NAME_INVALID`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PetRenameParams {
+    pub life_id: String,
+    pub name: String,
+}
+impl Validate for PetRenameParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        check_token("life_id", &self.life_id)?;
+        check_name_input("name", &self.name)
+    }
+}
+
+/// `treats.give`: gives exactly one treat to the living life.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TreatsGiveParams {
+    pub life_id: String,
+}
+impl Validate for TreatsGiveParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        check_token("life_id", &self.life_id)
+    }
+}
+
+/// `app.set_enabled` (the On/Off switch) and `app.set_helpers` (count background helpers).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnabledParams {
+    pub enabled: bool,
+}
+impl Validate for EnabledParams {}
+pub type AppSetEnabledParams = EnabledParams;
+pub type AppSetHelpersParams = EnabledParams;
+pub type AgentForgetHistoryParams = EmptyParams;
+pub type ClientsStatusParams = EmptyParams;
+
+/// `clients.connect`: 1..=5 distinct supported client ids.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClientsConnectParams {
+    pub clients: Vec<String>,
+}
+impl Validate for ClientsConnectParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        if self.clients.is_empty() || self.clients.len() > CLIENT_IDS.len() {
+            return Err(invalid_params(&format!(
+                "clients must list 1..={} client ids",
+                CLIENT_IDS.len()
+            )));
+        }
+        for (i, c) in self.clients.iter().enumerate() {
+            check_client("clients", c)?;
+            if self.clients[..i].contains(c) {
+                return Err(invalid_params("clients must not repeat an id"));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// `clients.disconnect`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClientsDisconnectParams {
+    pub client: String,
+}
+impl Validate for ClientsDisconnectParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        check_client("client", &self.client)
+    }
+}
+
+/// `clients.test`: one client, or every connected client when absent.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClientsTestParams {
+    #[serde(default)]
+    pub client: Option<String>,
+}
+impl Validate for ClientsTestParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        self.client
+            .as_deref()
+            .map_or(Ok(()), |c| check_client("client", c))
+    }
+}
