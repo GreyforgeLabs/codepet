@@ -22,7 +22,9 @@
 # --offline to cargo. The archive is reproducible for a given commit: sorted names,
 # owner 0:0, mtime = the HEAD commit time, gzip without a name or timestamp.
 #
-# Release gates (any failure stops the script): THIRD-PARTY-LICENSES.md is current;
+# Release gates (any failure stops the script): `git status --porcelain --ignored` reports
+# nothing (no change, untracked or ignored file) under the shipped paths or the sources
+# of the binary, so the archive holds exactly the commit; THIRD-PARTY-LICENSES.md is current;
 # `bin/codepet --version` is `codepet <version>`; the binary is stripped and contains
 # no /home/ path; every relative Markdown link in the archive resolves (missing
 # targets are rewritten to tag-pinned GitHub URLs); every archive entry is owned by
@@ -44,7 +46,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --out) OUT=${2:?--out needs a directory}; shift 2 ;;
         --art-tar) ART_TAR=${2:?--art-tar needs a path}; shift 2 ;;
-        -h|--help) sed -n '2,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '2,33p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
@@ -63,6 +65,17 @@ if [ -n "$ART_TAR" ]; then
 fi
 
 echo "== CodePet $VERSION release archive"
+# 0. the shipped paths hold exactly the commit: nothing modified, untracked or ignored
+# (a stray __pycache__/ or editor file would otherwise be copied into the archive)
+SHIPPED=(LICENSE README.md CHANGELOG.md THIRD-PARTY-LICENSES.md docs packaging/omarchy
+    omarchy-plugin qml/README.md qml/shell.qml qml/shared qml/omarchy qml/assets
+    tools/measure-overlay.sh Cargo.toml Cargo.lock crates)
+dirty=$(git -C "$REPO" status --porcelain --ignored --untracked-files=all -- "${SHIPPED[@]}") ||
+    die "git status failed"
+if [ -n "$dirty" ]; then
+    printf '%s\n' "$dirty" >&2
+    die "the shipped paths are not exactly the commit (listed above); commit or remove them"
+fi
 # 1. third-party notices match the lock graph
 python3 "$REPO/tools/release/third_party_licenses.py" --check "${OFFLINE[@]}"
 
