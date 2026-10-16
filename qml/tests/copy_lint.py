@@ -12,12 +12,27 @@ skipped. Terms match at a word start, so "Skills" is not "kill".
 The banned list must equal LifeText.BANNED (checked here). Exemptions are explicit, per file
 and per term, each with a reason.
 
+v0.3 kid copy (SPEC-v0.3 §1.2 K1, K2, K8), over everything that reaches a kid-facing screen:
+- omarchy-plugin/strings.json, every key and every careIconSet variant (aquatic., robot.);
+  Help (help.*) is the adult page and exempt, the Codex guide (codex.*) is exempt from K1/K2
+  but not K8;
+- string literals in the bar plugin's kid-facing QML (Help and the Codex guide exempt);
+- the species manifest fields that reach the screen: displayName, defaultName and careWords
+  (at most two plain words each); careLabels and careHints must never be read by the plugin;
+- the Home status line: every face line, filled with a typical name and every app pair, fits
+  one line of the 448 px card in a monospace font at Style.font.heading, or steps down no
+  further than Style.font.body (the status line's HorizontalFit floor; notes.md §8).
+K1: no digit or %, except the literal /reload-plugins. K2: none of the jargon words, except the
+verb phrases "turn on/off", "turned on/off" and "turn {name} into". K8: at most 8 words a line,
+and at most 6 words for 90% of them.
+
 Run: python3 qml/tests/copy_lint.py           (self-test, then scan; exit 1 on findings)
      python3 qml/tests/copy_lint.py --self-test
 No dependencies beyond the Python standard library.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -291,12 +306,183 @@ def self_test() -> None:
     assert scan_doc("docs/lifecycle.md", "# Nothing here\n") != []
 
 
+# --------------------------------------------------------------------------- v0.3 kid copy
+
+PLUGIN_STRINGS = "omarchy-plugin/strings.json"
+PETS_DIR = "qml/assets/pets"
+JARGON = ["session", "hook", "turn", "provider", "xp", "level", "percent", "simulation", "preflight",
+          "token", "armed", "attended", "presence", "daemon", "config", "rpc", "plugin", "marketplace",
+          "client", "agent", "trust"]
+K2_VERB_PHRASES = [r"\bturn(ed)? (on|off)\b", r"\bturn \{name\} into", r"\bturn \S+ into"]
+K1_EXEMPT_LITERALS = ["/reload-plugins"]
+# Plugin QML files whose literals are not kid copy: the adult pages, and the transport and
+# presence recorder, whose literals are error messages for logs (the popup shows only
+# strings.json err.generic for any failure).
+ADULT_QML = {"HelpScreen.qml", "CodexGuide.qml", "BarRpc.qml", "PresenceRecorder.qml"}
+APP_NAMES = ["Claude Code", "Codex", "OpenCode", "Hermes", "Grok"]
+# Status line fit (SPEC-v0.3 §3.2): inner card width at base 16, monospace advance 0.6 em,
+# Style.font.heading = round(16 x 1.333) and the HorizontalFit floor Style.font.body = 16.
+CARD_INNER_PX = 448
+MONO_ADVANCE = 0.6
+HEADING_PX = round(16 * 1.333)
+BODY_PX = 16
+STATUS_KEYS = re.compile(r"^(?:(?:aquatic|robot)\.)?(?:mood\.|act\.|grew$|off\.line$|picker\.welcome$|treats\.full$)")
+
+
+def words(text: str) -> int:
+    return len([w for w in re.split(r"\s+", text.strip()) if re.search(r"[A-Za-z{]", w)])
+
+
+def kid_problems(text: str, k1k2: bool = True) -> list[str]:
+    """K1/K2/K8 problems of one kid-facing line ([] when it passes)."""
+    out = []
+    scan = text
+    for lit in K1_EXEMPT_LITERALS:
+        scan = scan.replace(lit, " ")
+    if k1k2:
+        if re.search(r"[0-9%]", re.sub(r"\{[a-z0-9]+\}", "", scan)):
+            out.append("K1 digit or %")
+        low = scan.lower()
+        for phrase in K2_VERB_PHRASES:
+            low = re.sub(phrase, " ", low)
+        low = re.sub(r"\{[a-z0-9]+\}", "", low)
+        for term in JARGON:
+            if re.search(r"\b" + term, low):
+                out.append(f"K2 {term}")
+    if words(text) > 8:
+        out.append(f"K8 {words(text)} words")
+    return out
+
+
+def status_width_px(text: str, font_px: int) -> float:
+    return len(text) * font_px * MONO_ADVANCE
+
+
+def lint_strings(table: dict) -> tuple[list[str], list[str]]:
+    findings, notes = [], []
+    kid_counts = []
+    for key, text in table.items():
+        if key.startswith("help.") or key.startswith("aquatic.help.") or key.startswith("robot.help."):
+            continue
+        adult_guide = key.startswith("codex.")
+        for p in kid_problems(text, k1k2=not adult_guide):
+            findings.append(f"{PLUGIN_STRINGS}: {key}: {p}: {text!r}")
+        if not adult_guide:
+            kid_counts.append(words(text))
+        if STATUS_KEYS.search(key):
+            for fill in status_fills(text):
+                if status_width_px(fill, BODY_PX) > CARD_INNER_PX:
+                    findings.append(f"{PLUGIN_STRINGS}: {key}: status line does not fit one line even at body size: {fill!r}")
+                elif status_width_px(fill, HEADING_PX) > CARD_INNER_PX:
+                    notes.append(f"status line steps down below heading to fit: {fill!r}")
+    short = sum(1 for n in kid_counts if n <= 6)
+    if kid_counts and short / len(kid_counts) < 0.9:
+        findings.append(f"{PLUGIN_STRINGS}: K8 only {short}/{len(kid_counts)} kid lines have <= 6 words")
+    return findings, notes
+
+
+def status_fills(template: str) -> list[str]:
+    """The template filled with a typical six-letter name and every app (pair)."""
+    out = []
+    apps = APP_NAMES if "{app}" in template else [""]
+    for a in apps:
+        apps2 = [b for b in APP_NAMES if b != a] if "{app2}" in template else [""]
+        for b in apps2:
+            out.append(template.replace("{name}", "Ginger").replace("{app}", a).replace("{app2}", b)
+                       .replace("{word}", "Fresh water"))
+    return out
+
+
+def lint_plugin_qml(repo: Path) -> list[str]:
+    findings = []
+    for path in sorted((repo / "omarchy-plugin").glob("*.qml")):
+        if path.name in ADULT_QML:
+            continue
+        rel = path.relative_to(repo).as_posix()
+        src = path.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        for line, text in string_literals(src):
+            if line - 1 < len(lines) and re.match(r"\s*(\.?import)\b", lines[line - 1]):
+                continue
+            if not user_facing(text) or not re.search(r"[A-Za-z]", text):
+                continue
+            for p in kid_problems(text):
+                findings.append(f"{rel}:{line}: {p}: {text!r}")
+    for path in sorted((repo / "omarchy-plugin").glob("*.js")) + sorted((repo / "omarchy-plugin").glob("*.qml")):
+        src = path.read_text(encoding="utf-8")
+        for field in ("careLabels", "careHints"):
+            if field in src:
+                findings.append(f"{path.relative_to(repo).as_posix()}: reads {field}, which never reaches a kid-facing screen")
+    return findings
+
+
+def lint_manifests(repo: Path) -> list[str]:
+    findings = []
+    for path in sorted((repo / PETS_DIR).glob("*/manifest.json")):
+        rel = path.relative_to(repo).as_posix()
+        m = json.loads(path.read_text(encoding="utf-8"))
+        for field in ("displayName", "defaultName"):
+            value = m.get(field)
+            if not isinstance(value, str) or not value:
+                findings.append(f"{rel}: {field} missing")
+                continue
+            for p in kid_problems(value):
+                findings.append(f"{rel}: {field}: {p}: {value!r}")
+        for need, word in (m.get("careWords") or {}).items():
+            if need not in ("food", "water", "play", "wash"):
+                findings.append(f"{rel}: careWords has unknown need {need!r}")
+            if not isinstance(word, str) or not word or words(word) > 2:
+                findings.append(f"{rel}: careWords.{need} must be one or two plain words: {word!r}")
+                continue
+            for p in kid_problems(word):
+                findings.append(f"{rel}: careWords.{need}: {p}: {word!r}")
+    return findings
+
+
+def kid_scan(repo: Path) -> tuple[list[str], list[str]]:
+    findings, notes = [], []
+    strings = repo / PLUGIN_STRINGS
+    if strings.is_file():
+        f, n = lint_strings(json.loads(strings.read_text(encoding="utf-8")))
+        findings += f
+        notes += n
+    else:
+        findings.append(f"{PLUGIN_STRINGS} is missing")
+    findings += lint_plugin_qml(repo)
+    findings += lint_manifests(repo)
+    return findings, notes
+
+
+def kid_self_test() -> None:
+    assert kid_problems("Ginger is happy!") == []
+    assert kid_problems("Turn on") == [] and kid_problems("! Turned off in Codex") == []
+    assert kid_problems("Turn {name} into…") == []
+    assert kid_problems("Or type /reload-plugins.") == []
+    assert kid_problems("Level 2") == ["K1 digit or %", "K2 level"]
+    assert kid_problems("your turn") == ["K2 turn"]
+    assert kid_problems("50% done", k1k2=False) == []
+    assert kid_problems("a b c d e f g h i") == ["K8 9 words"]
+    assert words("{name} is helping {app} and {app2}.") == 6
+    fills = status_fills("{name} is helping {app} and {app2}.")
+    assert len(fills) == 20 and "Ginger is helping Claude Code and OpenCode." in fills
+    f, n = lint_strings({"mood.happy": "{name} is happy!", "help.x": "Level 50% session", "codex.step3": "Type /hooks."})
+    assert f == [] and n == [], (f, n)
+    f, _ = lint_strings({"tile.food": "Feed the xp", "codex.step1": "one two three four five six seven eight nine"})
+    assert any("K2 xp" in x for x in f) and any("K8 9" in x for x in f), f
+    f, _ = lint_strings({"act.x": "{name} " + "w" * 60})
+    assert any("even at body size" in x for x in f), f
+
+
 def main(argv: list[str]) -> int:
     self_test()
+    kid_self_test()
     if "--self-test" in argv:
         print("copy_lint self-test: ok")
         return 0
     findings, notes = scan(REPO)
+    kid_findings, kid_notes = kid_scan(REPO)
+    findings += kid_findings
+    notes += sorted(set(kid_notes))
     for n in notes:
         print("note: " + n)
     for f in findings:

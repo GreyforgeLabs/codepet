@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased (v0.3)
+
+The "a 5-year-old can use it" popup (SPEC-v0.3 §3).
+
+- One popup with a shared header on every screen: ‹ Back, the title or the pet's name
+  button, and a big power switch. Off freezes CodePet; a left click on the Off bar cell
+  turns it on again.
+- Home: a big animated pet with a picture thought bubble, one sentence, four picture care
+  tiles (per-habitat words for fish and the robot), Treats when the jar has some, and the
+  round buttons Change, Helpers and More. Every tap reacts at once.
+- First run: the cat is preselected; Let's go! starts a gentle pet and the desktop pet, then
+  offers to connect the coding apps it found (never Codex). Welcome back for an existing pet.
+- Helpers: one row per coding app in plain words, the "open a new window" hint at once,
+  Connect all, row sheets with Stop watching, and a picture guide for Codex's one more step.
+- More (desktop pet, Bedtime, Calm mode, How it works, Memories, Say goodbye) and How it
+  works (the rules, Hardcore behind the typed name, background helpers, Forget coding
+  history, apps, privacy).
+- The bar cell shows painted badges from the shared priority; only the "needs you" hand
+  pulses. No tooltips, no middle click; the right click opens a small menu. The desktop pet
+  opens Home through the IPC target `greyforge.codepet` (`openHome`).
+- Every word comes from strings.json; sizes follow the font base size.
+- A failed tap says so on whatever screen is open, and the Connect card shows a refused
+  Connect as a failed row with Try again. Quick repeated taps of one tile all count.
+- Closing the popup while a request runs is safe: the desktop pet still comes on after
+  Let's go!, and later taps are never stuck behind it. Summoning the popup while Off shows
+  the Off look; only a click on the bar cell (or Turn on) switches CodePet on.
+- Removed: the v0.2 card (meters, readiness, simulation tasks, Refresh, the sleep countdown).
+
 ## 0.2.1
 
 - Published with CodePet 0.2.1, the first public release. The manifest names the project

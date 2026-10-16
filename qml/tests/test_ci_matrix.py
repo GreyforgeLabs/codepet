@@ -52,8 +52,38 @@ class CiMatrix(unittest.TestCase):
             self.assertRegex(lines, r"python3 -I docs/art-library/" + re.escape(script) + r"\b", script)
 
     def test_lint_still_runs(self):
-        self.assertIn("pyside6-qmllint -I qml qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml",
-                      "\n".join(run_lines()))
+        lines = "\n".join(run_lines())
+        self.assertIn("pyside6-qmllint -I qml -I qml/tests/stubs qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml",
+                      lines)
+        self.assertIn("ls omarchy-plugin/*.qml", lines, "the bar plugin's popup files are linted too")
+
+    def test_every_window_test_forces_offscreen(self):
+        """A test that creates a Qt application or loads QML must force the offscreen
+        platform itself, before PySide6 is imported, and drop the display variables: a
+        desktop session exports QT_QPA_PLATFORM=wayland;xcb, so setdefault() is not enough
+        and a run on the owner's machine would open windows on the live desktop. A test that
+        starts Quickshell (`qs`) must give it a built environment with the offscreen platform,
+        never the caller's."""
+        force = 'os.environ["QT_QPA_PLATFORM"] = "offscreen"'
+        for p in sorted(TESTS.glob("*.py")):
+            if p.name == Path(__file__).name:
+                continue
+            text = p.read_text()
+            if re.search(r"\bQ(?:Gui)?Application\(|QQmlApplicationEngine|QQuickView", text):
+                self.assertIn(force, text, p.name)
+                self.assertNotIn('setdefault("QT_QPA_PLATFORM"', text, p.name)
+                first_import = re.search(r"(?m)^\s*(?:from|import) PySide6", text)
+                self.assertIsNotNone(first_import, p.name)
+                self.assertLess(text.index(force), first_import.start(), f"{p.name}: force offscreen before importing PySide6")
+                for var in ("WAYLAND_DISPLAY", "DISPLAY"):
+                    self.assertRegex(text, rf'"{var}"', f"{p.name} must drop {var}")
+            if re.search(r'Popen\(\[\s*"qs"|\["qs",', text):
+                self.assertIn('"QT_QPA_PLATFORM": "offscreen"', text, p.name)
+                self.assertNotRegex(text, r"dict\(os\.environ", f"{p.name}: qs must not inherit the caller's environment")
+                self.assertNotIn("WAYLAND_DISPLAY", text, f"{p.name}: qs must not get a Wayland display")
+
+    def test_plugin_strings_are_checked(self):
+        self.assertIn("python3 tools/ui/gen_plugin_strings.py --check", "\n".join(run_lines()))
 
 
 if __name__ == "__main__":

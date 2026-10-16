@@ -410,6 +410,150 @@ of each item are made (in their own commit, with `check_contracts.py` passing).
    asterisk shapes. SPEC §4.1 (outside the repository) still names "spark"; this item
    supersedes it.
 
+## 8. WP5 popup decisions and contract requests (2026-10-16)
+
+Numbered 8 because the fix package's "Owner decisions after wave 1" is section 7 (branch
+`v0.3-fix`). Nothing in a frozen contract file changed. These are the choices WP5 made where
+the spec left room, and what WP5 asks the contract owners to adopt.
+
+1. **Popup window.** The popup is an Omarchy `KeyboardPanel` (the `PopupCard` API with
+   keyboard focus on demand), not a `PopupCard`: an xdg-popup gets no keyboard focus at map
+   time, and the name field and the typed-name confirmations (Hardcore, Say goodbye) need
+   typing. Offscreen Quickshell has no layer-shell backend, so `test_bar_plugin.py` stages a
+   test-only stand-in (`qml/tests/stubs/live/KeyboardPanel.qml`). Keyboard entry in the real
+   shell is not verified offscreen (WP7 nested-rig item).
+2. **Opening Home from the desktop pet.** The widget implements Omarchy's bar-widget panel
+   contract, which WP6's overlay uses (`omarchy-shell -q shell summon greyforge.codepet`,
+   WP6 notes item 1): `open()` opens the popup at Home, `close()` closes it and `opened`
+   reports it. The bar leader also registers the IPC target `greyforge.codepet` with
+   `openHome()`, `close()` and `toggle()` for direct calls (`qs ipc -p $OMARCHY_PATH/shell
+   call greyforge.codepet openHome`). **A summon never switches CodePet on** (review fix):
+   while Off, `open()`, `openHome()` and `toggle()` open the popup on the Off look, where
+   Turn on is one tap. Only a real left click on the Off cell turns CodePet on and opens
+   Home in one click (the §3.1 rule, `triggerPress`). So a keybinding, another process
+   calling the IPC target, or a click on a desktop pet that is still exiting after Off
+   cannot turn CodePet on. WP6: a desktop-pet click while Off shows the Off look.
+3. **`petstate.js`.** WP5 ships a hand port of the contract's `priority` reference as
+   `omarchy-plugin/petstate.js` with the frozen API `sharedPriority(export, now, seen)`;
+   `qml/tests/test_bar_model.mjs` replays every `priority` vector against it. WP6 owns the
+   generated module: at merge, WP6's generated file replaces WP5's unchanged (an add/add
+   conflict resolves to WP6's copy) and the same vectors must still pass.
+4. **Copy WP5 needed that the contract lacks** (in `tools/ui/strings-wp5.json`, merged into
+   `omarchy-plugin/strings.json` after every contract key; the generator refuses an
+   override): `btn.back` "Back", `btn.next` "Next" (Codex guide pager), `name.type` "Type
+   a name" (empty name field), `err.generic` "Oops! Please try again." (any failed request;
+   `NAME_INVALID` shows `err.name_too_long`), `helpers.none` "No coding friends found yet."
+   (Helpers with no installed app), and the picker strip's scroll buttons' read-aloud names
+   `picker.prev` "Pets before" and `picker.more` "More pets" (review fix: they were the bare
+   glyphs ‹ ›). `name.type` is also what an empty name field says on Done (it said "That
+   name is too long."). Request: add them to `strings.json`; then delete them from
+   `strings-wp5.json`.
+5. **Status line vs a monospace theme font (K3 against K13).** Omarchy's `Style.font.family`
+   is the user's monospace font (about 0.6 em a character). At `Style.font.heading` the card
+   holds about 35 characters, so `act.working.two` with most app pairs ("Ginger is helping
+   Claude Code and OpenCode." is 43), `aquatic.mood.fainted` and `robot.mood.fainted` do not
+   fit. The line keeps one line by stepping its size down (`fontSizeMode: HorizontalFit`)
+   to no less than `Style.font.body`, which is a K3 deviation for those lines only;
+   `copy_lint.py` lists them and fails a line that would not fit even at body size.
+   Request: shorter copy, e.g. `act.working.two` = "{name} helps {app} and {app2}." and
+   the fainted lines without the second sentence.
+6. **Calm mode** is the plugin setting `calm` (default off). Omarchy exposes no system
+   reduced-motion signal, so "follows system" means off. It stops the popup's animation
+   clock, the tile and badge pulses, and reaches the desktop pet as
+   `CODEPET_REDUCED_MOTION=1` on the next launcher call (WP6: honour it; a running overlay
+   learns it only on its next start).
+7. **Pet on my desktop** follows WP6's flow (WP6 notes item 2, `DesktopPetFlow.js`): the
+   switch is `overlayOnLoad`; Let's go! sets it and launches `show`; the More and menu
+   switches launch `show` when turned on and nothing when turned off (the overlay reads the
+   setting and exits by itself); the leader's startup shows the pet only with the switch on,
+   CodePet On and an armed life; turning CodePet on shows it when the switch is on. After
+   WP6 merges, the widget can call `DesktopPetFlow.js` instead of its own copies of these
+   rules (same behaviour). With a `stateHome` test override every `codepet rpc` child gets
+   `CODEPET_TEST_STATE=1` (WP3 notes, section 10 item 1), so the clients methods answer `TEST_STATE`.
+8. **Celebrations seen.** The bar widget keeps `seen` (agent_vectors.json
+   `priority.celebrate.seen`) in memory and advances it when the popup closes after showing a
+   celebration; a shown growth is acknowledged then with `pet.events_seen`. A shell restart
+   may replay a celebration still inside its 30 s window. `test_bar_plugin.py` checks it
+   live: one `pet.events_seen {life_id, through_seq}` per growth, and `seen.finished_seq`
+   advancing so the star stops. The full treat jar wiggles when a turn finishes while Home
+   is open and when Home opens on that turn's unseen `act.done_full` celebration.
+9. **Memories** has no journal read method in the protocol: the page shows the living pet
+   ("{name} came home.", from the snapshot's `adopted_at_ms`) and the ended pets from
+   `pet.memorial`. The other `memories.*` keys stay unused until such a method exists.
+10. **Connect card after Connect.** The title area shows the pet and the face line while the
+    ready check types, then `act.ready` and `hint.open` for the first connected app. A
+    connected row reads `row.waiting` ("… Waiting for {app}") under the app name until the
+    app's first real event (`first_seen_ms`), as §2.1/§3.4 say. A failed row shows its
+    reason, and Try again connects the failed apps again. Done and Close go Home; nothing
+    is sent. Review fixes: a Connect the backend refuses (`BUSY`, `INVALID_STATE`,
+    `TEST_STATE`, a client-side `CLIENT_BUSY`/`CLIENT_TIMEOUT`/transport error) creates no
+    job, so its rows turn failed at once with `err.generic` and Try again (they used to
+    spin for ever). A row that already had a `failed_reason` before Connect reads pending,
+    not failed, until the export has shown its new job, the reason changes or 10 s pass
+    (`CodePetBar.connectRowView`, `CONNECT_GRACE_MS`): the export has no failure time, so
+    without this the old failure flashed Try again right after Connect. Limit: when the
+    whole job runs between two file reads and fails again with the same reason, the row
+    waits up to the 10 s (measured on the export's clock, `now`, which advances on each
+    file read) before it reads failed.
+11. **Codex guide pictures** are drawn as small terminal sketches (no screenshots ship),
+    one per page, with page dots and Next / Back.
+12. **Card size.** The popup padding is `Style.space(12)` (the spec's 32 px top + bottom at
+    base 16) and the height cap `min(Style.space(480), 90% of the output)`. K13 is measured
+    against that cap in the PySide smokes (stub theme) and, under the real Omarchy Style and
+    Color, in `test_bar_plugin.py` at base sizes 12, 16 and 20.
+13. **Bar label** `status` (v0.2) reads as `name`; the manifest offers `name` and `none`.
+14. **The owner decisions after wave 1** (section 7, branch `v0.3-fix`) need nothing more in
+    the popup: Help shows `help.forget.body` and `help.privacy.body` from the contract, so the
+    replacement text of section 7 item 1 appears once `strings.json` carries it (then run
+    `tools/ui/gen_plugin_strings.py`; `test_bar_plugin.py` and CI fail while the plugin copy
+    is stale); the cat's "Ball" and the new Claude Code tile come from the registry and the
+    icon trees as they are.
+15. **Helpers rows** show the app name over its state, both at `Style.font.title` across the
+    row's width (review fix). Beside a 150 px name column the state had about 224 px, about
+    19 characters of a monospace theme font, so "… Waiting for Claude Code", "… Waiting
+    for OpenCode" and "! Turned off in Codex" were cut off at base sizes 12, 16 and 20. The
+    row stays 56 px (+24 for a hint or reason line), within the §3.5 budget. The smokes now
+    fail any visible kid-facing text that reports `truncated` (`SmokeKit.notCut`, in
+    `kit.all`, so also the real-theme `kcheck`), over fixtures with every app connected and
+    not yet seen, with Codex's hooks off, and with every app connecting.
+16. **Failures are shown where the kid is.** `PopupApp.failed()` shows `err.generic` (or
+    `err.name_too_long`) in Home's word bubble, and on every other screen and the
+    right-click menu as a notice over the top of the screen (`cp.notice`, read aloud as an
+    alert; it takes no room, so every K13 budget holds). Before, only Home drew it.
+17. **Transport and popup lifetime.** `BarRpc` runs every caller callback through a guard: a
+    callback that throws is logged (`codepet bar: a response handler failed: ...`) and the
+    transport goes on. The next request is scheduled before any callback runs, a timed-out
+    or refused child is signalled and the watchdog re-armed before the caller hears of it,
+    and a finished Process is always destroyed. Requests run strictly oldest first (a new
+    one waits behind any queued one). The popup drops answers that arrive after it closed
+    (its Loader destroyed it; `PopupApp.lifetime`). What must happen after a successful
+    `pet.start` (the desktop-pet switch on and `show`) or `app.set_enabled` true (`show`
+    when the switch is on) runs in the widget, which outlives the popup
+    (`CodePetBar.responseEffects`), so it happens even when the kid clicked outside before
+    the answer. `pet.start` answered `ALREADY_ARMED` just opens Home (§6.2): no
+    `clients.status`, no Connect card.
+18. **Care and treat retry keys** are per press (`CodePetBar.retryClaim`/`retryRelease`):
+    every press gets its own request id, so two quick Food or Treats taps (queued behind
+    the popup's `state.get`) are two feeds or two treats, not one replayed receipt. A
+    press reuses a key only from its own earlier press whose answer came back unconfirmed
+    (failure, timeout, lost response; the backend stores no receipt for a failure), with
+    the same method and params, within 120 s; the record is updated by the answer of the
+    request that carries that key, never by another press's answer.
+19. **No `state.get` after each click** (a §8 rule 1 deviation for the contract owner to
+    adopt). Every mutating method re-exports `bar-state.json`, and the widget re-reads the
+    file after each answer on every screen, so the popup shows a click's result without a
+    second process per tap. `state.get` runs only at the leader's startup and when the
+    popup opens; that is when the inbox is drained (§6.3), besides `codepet fold` after
+    the hook's batches. `test_state_get_only_on_startup_and_popup_open` keeps it so.
+20. **Open items for the contract owner** (unchanged by the review fixes): item 5 (K3 status
+    line: adopt the shorter `act.working.two` and fainted copy, then `SmokeKit.oneLine` goes
+    back to heading size only), item 9 (Memories has no journal method), item 4 (the WP5
+    keys live in `tools/ui/strings-wp5.json` until `strings.json` takes them).
+21. **Merge task (WP5 lands after WP6, §10).** WP6 keeps a stub `panel` verb and the
+    `tasks`/`care`/`companion`/`life` aliases in `qml/shell.qml` so the old bar menu works
+    until the popup lands. They are not on this branch; when WP5 is rebased onto WP6, remove
+    them from `qml/shell.qml` (and their tests) in the WP5 merge, as §10 assigns.
+
 ## 9. WP6 decisions (overlay and shared state, 2026-10-16)
 
 Numbered 9 so it does not collide with section 7 (owner decisions after wave 1, branch

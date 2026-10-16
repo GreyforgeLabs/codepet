@@ -4,10 +4,16 @@ focus/masking. A click opens Home (a stand-in window for the bar popup); hiding 
 never opens anything."""
 import os
 from pathlib import Path
-from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlApplicationEngine
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+# Always offscreen, whatever the caller's session exports (a desktop session sets
+# QT_QPA_PLATFORM=wayland;xcb): this test must never map a window on the live desktop.
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+for var in ("WAYLAND_DISPLAY", "DISPLAY", "QT_QPA_PLATFORMTHEME"):
+    os.environ.pop(var, None)
+
+from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl  # noqa: E402
+from PySide6.QtGui import QGuiApplication  # noqa: E402
+from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 app = QGuiApplication([])
 engine = QQmlApplicationEngine()
 engine.load(QUrl.fromLocalFile(str(Path(__file__).resolve().parents[1] / "standalone/OverlayPreview.qml")))

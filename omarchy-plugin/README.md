@@ -1,7 +1,7 @@
 # CodePet bar widget (`greyforge.codepet`)
 
-Your CodePet companion on the Omarchy bar: needs, level and evolution at a glance, quick care,
-and the desktop pet. Tasks are simulations (mock provider only).
+Your CodePet on the Omarchy bar: a pet to feed and play with that cheers on your coding apps
+(Claude Code, Codex, OpenCode, Hermes, Grok) and grows from their finished work.
 
 Install it with the CodePet installer, which stages this folder (plus `LifeText.js` from
 `qml/shared/`), validates it and enables it on the right of the bar:
@@ -10,25 +10,25 @@ Install it with the CodePet installer, which stages this folder (plus `LifeText.
 
 ## What it shows
 
-| Glyph | Meaning (highest precedence first) |
+The bar cell is the pet's picture, a painted badge and its name:
+
+| Badge | Meaning (highest first) |
 |---|---|
-| `+` | no living companion: adopt one when you're ready (a past companion is in Life & memorial) |
-| `✿` | grace has run out: your companion will pass away when the current task is finished; your work is kept |
-| `!!` | urgent (or fainted) |
-| `◦` | not set up yet: choose the life rules in CodePet |
-| `!` | warning: a need is low |
-| `?` | a result is waiting for review |
-| `z` | napping |
-| `‖` | paused (Pause/Travel) |
-| `•` | a simulation task is working |
-| `★` | your companion grew (shown once in the popup) |
+| moon, picture dimmed | CodePet is off (a left click turns it on) |
+| egg + sparkle, "Hi!" | no pet yet, or your pet is waiting for Let's go! |
+| sleeping picture (+ bandage) | asleep (or fainted) |
+| hand (pulses) | a coding app needs you |
+| bowl / drop / ball / tub | a need is at "now" |
+| working picture | a coding app is working |
+| star | just finished, treats waiting, or just grew up |
 
-A `≈` in the label or popup marks an estimate from active time counted since CodePet last
-saved its state. Estimates can only raise a warning; they never predict an ending.
+Clicks: **left** opens the popup at Home; **right** opens a small menu (CodePet on/off,
+Pet on my desktop, Helpers, More). There are no tooltips. Only the "needs you" hand pulses,
+and never in Calm mode.
 
-Clicks: **left** opens the card, **right** shows or hides the desktop pet, **middle** opens
-the task window. When the desktop-pet launcher (`~/.local/bin/codepet-overlay`) is not
-installed, right and middle click open the card instead, which says so.
+The popup has one big power switch on every screen. Off freezes everything (no needs drop,
+no growth, the desktop pet and the coding-app hooks stop); turning it on resumes exactly
+where it was.
 
 ## Settings
 
@@ -36,14 +36,16 @@ Stored in this widget's entry in `~/.config/omarchy/shell.json`:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `label` | `name` | `name`, `status` (name plus the most urgent need) or `none` |
+| `label` | `name` | `name` (picture and name) or `none` (picture only) |
 | `presence` | `true` | count active time while this widget is on the bar |
-| `overlayOnLoad` | `false` | show the desktop pet when the bar loads |
+| `overlayOnLoad` | `false` | Pet on my desktop: show the desktop pet when the bar loads (Let's go! turns it on) |
+| `calm` | `false` | Calm mode: no pulsing, no animation loops in the popup |
 | `binary` | `""` | absolute path of `codepet` (default `~/.local/bin/codepet`); the desktop pet uses it too |
 | `stateHome` | `""` | absolute test state home; every request and launcher call then uses it |
 
 Active time counts only while the CodePet bar widget is on your Omarchy bar and you are at
 the computer. The desktop pet is always started through `~/.local/bin/codepet-overlay`.
+The desktop pet opens Home with `omarchy-shell greyforge.codepet openHome`.
 See `docs/omarchy-plugin.md` in the [CodePet repository](https://github.com/GreyforgeLabs/codepet)
 for the full contract.
 
