@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "LifeText.js" as LifeText
 
-// Life panel (SPEC-v0.2 §2, §6, §12): status, per-need rows with active-time estimates, the
+// Life panel (docs/lifecycle.md): status, per-need rows with active-time estimates, the
 // critical card, why the clock is paused, Pause/Travel, the mode switch, leniency-only
 // settings, two-step retirement by typed name, and the paged memorial. Every value comes
 // from the Rust snapshot; every change is one explicit request followed by a state.get.
@@ -479,15 +479,39 @@ ColumnLayout {
                 }
                 RowLayout {
                     Button {
+                        id: retireConfirmButton
                         objectName: "life.retireConfirm"
                         text: "Retire " + root.name
                         enabled: root.retireNameMatches && root.retireBlock === "" && !root.hostBusy
                         onClicked: root.confirmRetire()
+                        // Button labels default to AutoText and the name is user text: force plain text.
+                        contentItem: Text {
+                            text: retireConfirmButton.text
+                            textFormat: Text.PlainText
+                            font: retireConfirmButton.font
+                            color: retireConfirmButton.palette.buttonText
+                            opacity: retireConfirmButton.enabled ? 1 : 0.5
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
                     }
                     Button {
+                        id: retireCancelButton
                         objectName: "life.retireCancel"
                         text: "Keep " + root.name
                         onClicked: root.cancelRetire()
+                        // Button labels default to AutoText and the name is user text: force plain text.
+                        contentItem: Text {
+                            text: retireCancelButton.text
+                            textFormat: Text.PlainText
+                            font: retireCancelButton.font
+                            color: retireCancelButton.palette.buttonText
+                            opacity: retireCancelButton.enabled ? 1 : 0.5
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
                     }
                 }
             }

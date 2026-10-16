@@ -59,6 +59,7 @@ impl From<serde_json::Error> for Failure {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "legacy-tasks")]
     #[test]
     fn override_reason_limit_is_shared() {
         assert_eq!(
@@ -90,6 +91,15 @@ mod tests {
             codepet_protocol::MAX_MEMORIAL_LIMIT,
             codepet_storage::MAX_MEMORIAL_PAGE
         );
+    }
+
+    #[test]
+    fn v03_client_vocabulary_is_shared() {
+        let core: Vec<&str> = codepet_core::agent::ClientId::ALL
+            .iter()
+            .map(|c| c.as_str())
+            .collect();
+        assert_eq!(codepet_protocol::CLIENT_IDS.to_vec(), core);
     }
 
     #[test]

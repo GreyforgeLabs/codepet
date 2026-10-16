@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Source contract + pure JS policy tests, plus real Quickshell load smokes when `qs` is
 installed. NOT Wayland runtime proof: the load smokes run offscreen with no compositor.
-Also covers the passive bar-state.json reader (BarState.js, BarStateWatcher.qml) and the
-packaging/omarchy/codepet-overlay verb launcher (static checks, a fake `qs`, and, when
-Quickshell is installed, a real isolated instance).
+Also covers the passive bar-state.json reader (BarState.js, BarStateWatcher.qml), the
+v0.3 overlay lifecycle (exit on Off and when "Pet on my desktop" is off, click -> Home
+through a stub `omarchy-shell`) and the packaging/omarchy/codepet-overlay verb launcher
+(static checks, a fake `qs`, and, when Quickshell is installed, a real isolated instance).
+Nothing here reaches the live desktop: every Quickshell run uses a private HOME, XDG
+and runtime directory, no display, and stub `codepet` / `omarchy-shell` programs.
 Run: python qml/tests/test_quickshell_host.py (Node required for policy tests).
 """
 from pathlib import Path
@@ -25,6 +28,7 @@ POLICY = (QML / "omarchy/OverlayPolicy.js").read_text().replace(".pragma library
 BAR_STATE_JS = (QML / "omarchy/BarState.js").read_text().replace(".pragma library", "")
 WATCHER = re.sub(r"//[^\n]*", "", (QML / "omarchy/BarStateWatcher.qml").read_text())
 ADAPTER = re.sub(r"//[^\n]*", "", (QML / "omarchy/HostAdapter.qml").read_text())
+PET = re.sub(r"//[^\n]*", "", (QML / "shared/DesktopPet.qml").read_text())
 LAUNCHER_PATH = REPO / "packaging/omarchy/codepet-overlay"
 LAUNCHER = LAUNCHER_PATH.read_text()
 
@@ -39,45 +43,84 @@ class HostContract(unittest.TestCase):
         self.assertNotIn('WlrKeyboardFocus.OnDemand', CODE)
         self.assertNotIn('WlrKeyboardFocus.Exclusive', CODE)
 
-    def test_hit_mask_has_only_the_interactive_bounded_regions(self):
-        mask = CODE.split('mask: Region {', 1)[1].split('DesktopPet {', 1)[0]
-        self.assertEqual(mask.count('Region {'), 2)
-        self.assertEqual(mask.count('Intersection.Combine'), 3)
+    def test_hit_mask_is_only_the_pet(self):
+        mask = block(CODE, 'mask: Region {')
+        self.assertEqual(mask.count('Region {'), 1)
         self.assertNotIn('item:', mask)
         self.assertNotIn('mask: null', CODE)
-        for name in ('pet', 'menu'):
-            self.assertIn(f'OverlayPolicy.clipHit(pet.{name}Hit, width, height, shell.surfaceActive)', CODE)
-            self.assertIn(f'width: overlay.{name}Input.width', mask)
-        # Decorative props have no handler; a prop region would be a dead click zone.
-        self.assertNotIn('propsHit', CODE)
-        self.assertNotIn('propsInput', CODE)
+        self.assertIn('OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)', CODE)
+        for axis in ('x', 'y', 'width', 'height'):
+            self.assertIn(f'{axis}: overlay.petInput.{axis}', mask)
+        # The thought bubble is decorative: no menu or prop region would be a dead click zone.
+        for gone in ('menuHit', 'menuInput', 'propsHit', 'propsInput'):
+            self.assertNotIn(gone, CODE)
+        bubble = block(PET, 'Rectangle {')
+        self.assertIn('objectName: "desktopPet.bubble"', bubble)
+        self.assertNotIn('MouseArea', bubble)
+        self.assertEqual(PET.count('MouseArea {'), 1, 'one input area: the pet hit box')
 
-    def test_single_screen_and_shared_transport(self):
+    def test_single_screen_one_window_no_task_window(self):
         self.assertEqual(CODE.count('PanelWindow {'), 1)
-        self.assertNotIn('Variants {', CODE)
-        self.assertNotIn('Loader {', CODE)
+        for gone in ('FloatingWindow', 'TabBar', 'Panel {', 'taskWindow', 'views:', 'Variants {', 'Loader {'):
+            self.assertNotIn(gone, CODE)
         self.assertEqual(CODE.count('HostAdapter {'), 1)
-        self.assertEqual(CODE.count('host: hostAdapter'), 2)
+        self.assertNotIn('host: hostAdapter', CODE, 'the pet has no transport')
         self.assertLess(CODE.index('HostAdapter {'), CODE.index('PanelWindow {'))
-        self.assertEqual(CODE.count('screen: shell.selectedScreen'), 2)
-
-    def test_task_window_closing_does_not_terminate_work(self):
-        self.assertIn('property bool taskWindowOpen: false', CODE)
-        self.assertIn('onClosed: shell.taskWindowOpen = false', CODE)
-        self.assertIn('showPetCare: true', CODE)
-        for forbidden in ('Qt.quit(', 'Qt.exit(', 'destroy(', 'task.cancel', 'task.start', 'Timer {'):
+        self.assertEqual(CODE.count('screen: shell.selectedScreen'), 1)
+        # One timer only: the single-shot settle of a "Pet on my desktop" off (no polling).
+        self.assertEqual(CODE.count('Timer {'), 1)
+        settle = block(CODE, 'Timer {')
+        self.assertIn('repeat: false', settle)
+        self.assertIn('interval: OverlayFlow.SETTLE_MS', settle)
+        self.assertNotIn('running:', settle)
+        for forbidden in ('task.', 'pet.care', 'pet.events_seen', 'destroy(', 'Qt.exit('):
             self.assertNotIn(forbidden, CODE)
         self.assertNotIn('parentWindow:', CODE)
+
+    def test_exits_only_on_off_or_desktop_pet_off(self):
+        self.assertEqual(CODE.count('Qt.quit()'), 1)
+        self.assertIn('Qt.quit()', block(CODE, 'function leave() {'))
+        self.assertIn('readonly property string exitReason: OverlayFlow.exitReason(shell.barState, shell.desktopPet)',
+                      CODE)
+        self.assertIn('onExitReasonChanged: shell.checkExit()', CODE)
+        check = block(CODE, 'function checkExit() {')
+        self.assertIn('OverlayFlow.exitsAtOnce(shell.exitReason, shell.sawDesktopPetOn)', check)
+        self.assertIn('settleTimer.restart()', check)
+        self.assertIn('settleTimer.stop()', check)
+        self.assertIn('onDesktopPetChanged: if (shell.desktopPet === true) shell.sawDesktopPetOn = true', CODE)
+        # "Pet on my desktop" and Calm mode are the bar plugin's settings: watched, never written,
+        # in the file the Omarchy shell itself uses ($HOME/.config, not XDG_CONFIG_HOME).
+        settings = block(CODE, 'FileView {')
+        self.assertIn('OverlayFlow.settingsPath(Quickshell.env("HOME"))', settings)
+        self.assertNotIn('XDG_CONFIG_HOME', CODE)
+        self.assertIn('watchChanges: true', settings)
+        self.assertIn('shell.readSettings(text())', settings)
+        read = block(CODE, 'function readSettings(text) {')
+        self.assertIn('OverlayFlow.desktopPetSetting(text)', read)
+        self.assertIn('OverlayFlow.calmSetting(text)', read)
+        for write in ('setText', 'writeAdapter', 'updateEntryInline'):
+            self.assertNotIn(write, CODE)
+
+    def test_click_opens_home_through_the_omarchy_shell(self):
+        self.assertIn('onHomeRequested: shell.openHome()', CODE)
+        home = block(CODE, 'function openHome() {')
+        self.assertIn('Quickshell.execDetached(OverlayFlow.openHomeArgv(Quickshell.env("OMARCHY_PATH")))', home)
+        self.assertIn('if (!OverlayFlow.homeDue(shell.lastHomeMs, now))', home)
+        self.assertLess(home.index('homeDue'), home.index('execDetached'))
+        self.assertNotIn('Process', CODE)
 
     def test_suppression_and_explicit_restore(self):
         for name in ('sessionLocked', 'sessionSuspended', 'selectedScreenFullscreen'):
             self.assertIn(f'property bool {name}: false', CODE)
         self.assertIn('!explicitlyHidden && !sessionBlocked', CODE)
         self.assertIn('!selectedScreenFullscreen', CODE)
+        self.assertIn('&& exitReason === ""', CODE)
         self.assertIn('surfaceActive: shell.surfaceActive && overlay.visible', CODE)
         self.assertIn('function show(): void { shell.explicitlyHidden = false }', CODE)
         self.assertNotIn('WlSessionLock', CODE)
-        self.assertIn('onReducedMotionRequested: enabled => shell.reducedMotion = enabled', CODE)
+        self.assertIn('reducedMotion: shell.reducedMotion', block(CODE, 'DesktopPet {'))
+        self.assertIn('OverlayFlow.reducedMotion(shell.reducedMotionOverride, shell.calmSetting,', CODE)
+        self.assertIn('onCalmSettingChanged: shell.reducedMotionOverride = null', CODE)
 
     @unittest.skipUnless(shutil.which('node'), 'Node unavailable; pure-JS policy untested')
     def test_monitor_and_hit_region_policy(self):
@@ -113,6 +156,14 @@ req = json.loads(sys.stdin.readline())
 print(json.dumps({{"v": 1, "id": req["id"], "ok": False, "error": {{
     "code": "STORAGE_UNAVAILABLE", "message": "load smoke stub", "retryable": False}}}}))
 """
+FAKE_OMARCHY_SHELL = """#!{python} -I
+# Test-only stand-in for omarchy-shell: logs its argv to $HOME/omarchy-shell.log.
+import json, os, sys
+with open(os.path.join(os.environ["HOME"], "omarchy-shell.log"), "a") as f:
+    f.write(json.dumps(sys.argv[1:]) + "\\n")
+with open(os.path.join(os.environ["HOME"], "omarchy-shell.env.log"), "a") as f:
+    f.write(json.dumps(os.environ.get("OMARCHY_PATH")) + "\\n")
+"""
 LOAD_ERRORS = re.compile(r"outside of the config folder|is not a type|is not installed"
                          r"|module \S+ not found|Failed to load configuration")
 
@@ -127,12 +178,18 @@ def isolated_env(root):
     fake = bin_dir / "codepet"
     fake.write_text(FAKE_CODEPET.format(python=sys.executable))
     fake.chmod(0o700)
+    # The overlay opens Home with `omarchy-shell -q shell summon …`: this stub only logs.
+    shell = bin_dir / "omarchy-shell"
+    shell.write_text(FAKE_OMARCHY_SHELL.format(python=sys.executable))
+    shell.chmod(0o700)
     home = root / "home"
     return {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(home),
         "XDG_RUNTIME_DIR": str(run),
-        "XDG_CONFIG_HOME": str(home / ".config"),
+        # Elsewhere on purpose: the Omarchy shell (and so the overlay) reads
+        # $HOME/.config/omarchy/shell.json whatever XDG_CONFIG_HOME says.
+        "XDG_CONFIG_HOME": str(root / "xdg-config"),
         "XDG_CACHE_HOME": str(home / ".cache"),
         "XDG_DATA_HOME": str(home / ".local/share"),
         "XDG_STATE_HOME": str(home / ".local/state"),
@@ -199,13 +256,18 @@ class QuickshellLoad(unittest.TestCase):
                     return subprocess.run(["qs", "ipc", "-p", str(entry), "call", "--", "codepet",
                                            *call], env=env, capture_output=True, text=True,
                                           timeout=10)
-                for call in (["show"], ["hide"], ["tasks"], ["closeTasks"],
+                for call in (["show"], ["hide"], ["openHome"], ["openHome"], ["openHome"],
                              ["setReducedMotion", "true"], ["setFullscreen", "false"]):
                     r = ipc(*call)
                     self.assertEqual(r.returncode, 0, (call, r.stdout, r.stderr))
                     self.assertNotIn("target codepet", r.stdout, call)
                     self.assertNotIn("Function not found", r.stdout, call)
-                self.assertEqual(json.loads(ipc("status").stdout)["window"], False)
+                for retired in ("panel", "tasks", "care", "companion", "life"):
+                    self.assertIn("Function not found", ipc(retired).stdout, retired)
+                st = json.loads(ipc("status").stdout)
+                # Three openHome calls within a second: one Omarchy call (coalesced).
+                self.assertEqual((st["supervisor"], st["home_requests"], st["calm"]), (False, 1, True), st)
+                self.assertNotIn("window", st)
                 ipc("hide")
                 self.assertEqual(json.loads(ipc("status").stdout)["pet"], "hidden")
                 ipc("show")
@@ -240,8 +302,23 @@ def block(text, opener):
     raise AssertionError(f"unbalanced block after {opener!r}")
 
 
-class HostContractV02(unittest.TestCase):
-    """SPEC-v0.2 §13 host entry and §12 host-contract additions (source contracts)."""
+class HostContractV03(unittest.TestCase):
+    """v0.3 host entry (source contracts; SPEC-v0.3 §3.8, §8)."""
+
+    def test_buttons_that_show_a_name_render_plain_text(self):
+        # Button labels default to AutoText: a pet named "<b>Rex</b>" or "<img src=...>" would
+        # render as rich text (and fetch the image). Any button whose label includes a
+        # name must replace its contentItem with a PlainText Text.
+        found = 0
+        for path in sorted((QML / "shared").glob("*.qml")):
+            text = path.read_text()
+            for m in re.finditer(r'\b(?:Button|RadioButton|CheckBox) \{', text):
+                blk = block(text[m.start():], m.group(0))
+                label = re.search(r'(?m)^\s*text: (.*)$', blk)
+                if label and re.search(r'\b(?:root|life|snap)\.name\b', label.group(1)):
+                    found += 1
+                    self.assertIn('textFormat: Text.PlainText', blk, f'{path.name}: {label.group(1)}')
+        self.assertGreaterEqual(found, 3)
 
     def test_ipc_functions_are_typed_and_complete(self):
         ipc = block(CODE, 'IpcHandler {')
@@ -252,56 +329,43 @@ class HostContractV02(unittest.TestCase):
         names = {name: ret for name, _args, ret in declared}
         self.assertEqual(names.get('ping'), 'string')
         self.assertEqual(names.get('status'), 'string')
-        for verb in ('show', 'hide', 'toggle', 'tasks', 'care', 'companion', 'life', 'refresh',
-                     'closeTasks', 'setReducedMotion', 'selectScreen', 'setSessionState',
-                     'setFullscreen'):
+        for verb in ('show', 'hide', 'toggle', 'openHome',
+                     'refresh', 'setReducedMotion', 'selectScreen', 'setSessionState', 'setFullscreen'):
             self.assertEqual(names.get(verb), 'void', verb)
+        # The stub `panel` verb and the v0.2 window verbs went with the v0.2 bar menu
+        # (SPEC-v0.3 §10 step 7).
+        for verb in ('panel', 'tasks', 'care', 'companion', 'life'):
+            self.assertNotIn(verb, names, verb)
+        # Every verb the launcher can send exists.
+        verbs = re.search(r'case "\$VERB" in\n\s+([a-z|]+)\) ;;', LAUNCHER).group(1).split('|')
+        for verb in verbs:
+            if verb != 'quit':
+                self.assertIn(verb, names, verb)
+        self.assertIn('shell.openHome()', block(ipc, 'function openHome(): void {'))
         # ping's fixed prefix is what the launcher's liveness check matches.
         self.assertIn('"codepet-overlay " +', ipc)
         self.assertIn('TOKEN="codepet-overlay"', LAUNCHER)
+        # The launcher's quit refuses unless status says no task runs; v0.3 has none.
+        self.assertIn('"supervisor": false', block(ipc, 'function status(): string {'))
         # IPC properties would make IpcHandler expose change signals; status is a function.
         self.assertNotIn('property', ipc)
 
     def test_codepet_bin_and_open_are_honoured(self):
         self.assertIn('command: [Quickshell.env("CODEPET_BIN") || "codepet", "rpc"]', CODE)
-        self.assertIn('readonly property var views: ["care", "tasks", "companion", "life"]', CODE)
-        onc = block(CODE, 'Component.onCompleted: {')
-        self.assertEqual(onc.count('request('), 1, 'exactly one startup read')
-        self.assertIn('Quickshell.env("CODEPET_OPEN")', onc)
-        self.assertIn('shell.views.indexOf(open) >= 0', onc)
-        # The read starts first, so opening the window cannot add a second state.get.
-        self.assertLess(onc.index('request("state.get"'), onc.index('shell.openView(open)'))
-        view = block(CODE, 'function openView(name) {')
-        self.assertIn('shell.views.indexOf(name) < 0', view)
-        self.assertIn('if (!hostAdapter.busy)', view)
-
-    def test_reduced_motion_reaches_the_task_window(self):
-        # CODEPET_REDUCED_MOTION, the setReducedMotion IPC verb and the pet menu's
-        # "Less motion" all set shell.reducedMotion; the Care tab must honour it too.
-        panel = block(CODE, 'Panel {')
-        self.assertIn('reducedMotion: shell.reducedMotion', panel)
-        self.assertIn('reducedMotion: shell.reducedMotion', block(CODE, 'DesktopPet {'))
-        panel_qml = (QML / "shared/Panel.qml").read_text()
-        self.assertIn('reducedMotion: root.reducedMotion', block(panel_qml, 'PetCare {'))
-        preview = (QML / "standalone/OverlayPreview.qml").read_text()
-        self.assertIn('reducedMotion: root.reducedMotion', block(preview, 'Panel {'))
-
-    def test_window_has_the_four_tabs(self):
-        tabs = block(CODE, 'TabBar {')
-        self.assertIn('model: ["Care", "Tasks", "Companion", "Life"]', tabs)
-        self.assertIn('shell.panelView = shell.views[index]', tabs)
-        self.assertIn('title: "CodePet"', CODE)
-        # Shared components can ask for views; DesktopPet's chooser opens Companion.
-        self.assertIn('onCompanionRequested: shell.openView("companion")', CODE)
-        self.assertIn('onLifeRequested: shell.openView("life")', CODE)
-        self.assertIn('function onChooserRequested() { shell.openView("companion") }', CODE)
-        self.assertIn('ignoreUnknownSignals: true', CODE)
+        self.assertIn('Component.onCompleted: barWatcher.reload()', CODE, 'no RPC at startup when the file is there')
+        # The launcher sends its verb after a start; reading CODEPET_OPEN too would open Home twice.
+        self.assertNotIn('CODEPET_OPEN', CODE)
+        start = block(CODE, 'function startupRead() {')
+        self.assertEqual(start.count('request('), 1, 'at most one startup read')
+        self.assertIn('if (shell.startupReadDone || shell.barState !== null)', start)
+        self.assertIn('onUnavailable: shell.startupRead()', CODE)
 
     def test_refresh_is_one_explicit_read(self):
         fn = block(CODE, 'function refresh() {')
         self.assertIn('if (!hostAdapter.busy)', fn)
         self.assertEqual(fn.count('request('), 1)
         self.assertIn('function refresh(): void { shell.refresh() }', CODE)
+        self.assertEqual(CODE.count('request('), 2, 'only startupRead and refresh talk to codepet')
 
     def test_bar_state_watcher_is_passive(self):
         self.assertIn('watchChanges: true', WATCHER)
@@ -311,36 +375,26 @@ class HostContractV02(unittest.TestCase):
                           'setText', 'Quickshell.execDetached', 'callLater'):
             self.assertNotIn(forbidden, WATCHER)
         self.assertIn('BarStateWatcher {', CODE)
-        self.assertIn('onUpdated: state => hostAdapter.applyBarState(state)', CODE)
+        self.assertIn('onUpdated: state => shell.barState = state', CODE)
         self.assertIn('BarState.statePath(Quickshell.env("XDG_STATE_HOME"), Quickshell.env("HOME"))',
                       CODE)
-        # File events lead only to parsing and merging; never to a request.
-        self.assertNotIn('request(', block(ADAPTER, 'function applyBarState(bar) {'))
-        self.assertIn('onSnapshotReplaced: barWatcher.reload()', CODE)
+        self.assertIn('barState: shell.barState', block(CODE, 'DesktopPet {'))
+        # An answer may have (re)created the file: re-read it (a read, not RPC).
+        self.assertIn('onAnswered: barWatcher.reload()', CODE)
 
-    def test_host_contract_additions(self):
-        for token in ('property string clientTag: "qs"', 'property int presentationLocks: 0',
-                      'signal companionRequested()', 'signal lifeRequested()',
-                      'signal snapshotReplaced()', 'signal taskAccepted(var outcome)',
-                      'function openCompanion() {',
-                      'function openLife() {', 'return root.clientTag + "-" +'):
+    def test_host_adapter_is_a_plain_transport(self):
+        for token in ('property string clientTag: "qs"', 'signal answered(string method, var response)',
+                      'return root.clientTag + "-" +', 'property int responseTimeoutMs: 15000'):
             self.assertIn(token, ADAPTER)
         self.assertIn('clientTag: "overlay"', CODE)
-        for fn in ('function openCompanion() {', 'function openLife() {'):
-            self.assertNotIn('request(', block(ADAPTER, fn))
-        # The accepting UI announces its own acceptance through the host (spec D11), after
-        # the follow-up state.get, with the real task.accept_artifact result.
-        review = (QML / "shared/TaskReview.qml").read_text()
-        accept = block(review, 'function acceptClicked() {')
-        self.assertIn('root.host.taskAccepted(outcome)', accept)
-        self.assertLess(accept.index('"state.get"'), accept.index('root.host.taskAccepted(outcome)'))
-        pet = (QML / "shared/DesktopPet.qml").read_text()
-        self.assertIn('function onTaskAccepted(outcome) { root.celebrateFromAcceptance(outcome) }', pet)
-        self.assertIn('receipt.evolved_to', block(pet, 'function celebrateFromAcceptance(outcome) {'))
+        for gone in ('snapshot', 'applyBarState', 'BarState', 'supervisor', 'Supervisor', 'task.',
+                     'taskAccepted', 'presentationLocks', 'openCompanion', 'openLife'):
+            self.assertNotIn(gone, ADAPTER)
 
 
 BAR_STATE_NODE = r"""
 const assert = require('assert');
+// A v0.2-era v1 file (no v0.3 blocks), as an older writer exported it.
 function bar(over) {
   const b = {schema: 'codepet.bar.v1', state_version: 812, generated_at_ms: 0, app_version: '0.2.0',
     ruleset: 'lifecycle-v1',
@@ -359,27 +413,9 @@ function bar(over) {
     memorial: {count: 1, latest_name: 'Biscuit'}};
   return Object.assign(b, over || {});
 }
-function snap() {
-  return {schema_version: 4, state_version: 800,
-    meters: {hunger: 7000, thirst: 7000, mental_health: 7000, hygiene: 7000},
-    care: {revision: 3, sleeping: false, sleep_due: false, bathroom_due: true, sleep_remaining_ms: 0,
-           sleep_started_at_ms: null, ready_to_work: true, readiness_reasons: [], work_sessions: 2,
-           welcome_care_available: false},
-    decay: {enabled: true, paused: true},
-    life: {life_id: 'life-aaaaaaaaaaaaaaaaaaaaaaaa', ordinal: 1, name: 'Ginger', species: 'cat',
-           appearance: 'cat', stage: 1, level: 1, xp: 60, status: 'healthy', revision: 4,
-           origin: 'migrated', next_stage: {stage: 2, min_level: 2, xp: 80}},
-    lifecycle: {ruleset: 'lifecycle-v1', frozen_reason: 'none',
-      needs: [{need: 'hunger', action: 'food', lethal: true, meter: 7000, state: 'ok'},
-              {need: 'thirst', action: 'water', lethal: true, meter: 7000, state: 'ok',
-               until_warning_ms: 5, until_critical_ms: 1, until_end_ms: 2}],
-      critical: null},
-    active_task: {task_id: 't-1', revision: 2, state: 'preparing', category: 'hunger',
-                  instructions_excerpt: 'kept'},
-    recent: [{task_id: 't-0'}], unseen_events: [],
-    memorial: {count: 1, latest: {name: 'Biscuit', ordinal: 0}}};
-}
 const text = (o) => JSON.stringify(o);
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const v2 = (over) => Object.assign(clone(V2_FIXTURES['waiting']), over || {});
 
 // statePath: XDG rules.
 assert.equal(statePath('/x/state', '/home/u'), '/x/state/codepet/bar-state.json');
@@ -390,12 +426,20 @@ assert.equal(statePath('relative/state', '/home/u'), '/home/u/.local/state/codep
 assert.equal(statePath('', ''), '');
 assert.equal(statePath(null, 'relative'), '');
 
+// Every frozen v2 fixture parses; a v1-labelled copy of it too (the v0.3.0 writer keeps
+// the v1 label until both readers accept v2).
+for (const [name, doc] of Object.entries(V2_FIXTURES)) {
+  assert.ok(parse(text(doc)), 'v2 fixture ' + name);
+  assert.ok(parse(text(Object.assign(clone(doc), {schema: 'codepet.bar.v1'}))), 'v1-labelled ' + name);
+}
+
 // parse: bounds, schema and shape; anything off is ignored as a whole.
-assert.equal(parse(text(bar())).state_version, 812);
+assert.equal(parse(text(bar())).state_version, 812, 'a v0.2 v1 file still parses');
 assert.equal(parse(''), null);
 assert.equal(parse(null), null);
 assert.equal(parse('{not json'), null);
-assert.equal(parse(text(bar({schema: 'codepet.bar.v2'}))), null);
+assert.equal(parse(text(bar({schema: 'codepet.bar.v3'}))), null);
+assert.equal(parse(text(bar({schema: 'codepet.bar.v2'}))), null, 'a v2 label needs the v0.3 blocks');
 assert.equal(parse(text(bar({state_version: -1}))), null);
 assert.equal(parse(text(bar({state_version: 1.5}))), null);
 assert.equal(parse(text(bar({state_version: '812'}))), null);
@@ -406,122 +450,78 @@ const wide = bar(); wide.pad = 'é'.repeat(8000);  // < 16384 UTF-16 units, > 16
 assert.ok(text(wide).length <= 16384);
 assert.equal(parse(text(wide)), null, 'byte bound is UTF-8');
 assert.equal(parse(text(bar({meters: {hunger: 10001, thirst: 0, mental_health: 0, hygiene: 0}}))), null);
-assert.equal(parse(text(bar({meters: {hunger: 1, thirst: 0, mental_health: 0}}))), null);
 assert.equal(parse(text(bar({life: Object.assign(bar().life, {appearance: '../x'})}))), null);
-assert.equal(parse(text(bar({life: Object.assign(bar().life, {appearance: 'Cat'})}))), null);
 assert.equal(parse(text(bar({life: Object.assign(bar().life, {stage: 4})}))), null);
-assert.equal(parse(text(bar({life: Object.assign(bar().life, {stage: 0})}))), null);
 assert.equal(parse(text(bar({life: Object.assign(bar().life, {paused: 'no'})}))), null);
-assert.equal(parse(text(bar({life: Object.assign(bar().life, {status: 'Not A Token'})}))), null);
 assert.equal(parse(text(bar({life: Object.assign(bar().life, {name: 'n'.repeat(97)})}))), null);
 assert.equal(parse(text(bar({life: null}))).life, null);
 assert.equal(parse(text(bar({care: Object.assign(bar().care, {readiness_reasons: Array(9).fill('a')})}))), null);
-assert.equal(parse(text(bar({care: Object.assign(bar().care, {readiness_reasons: ['r'.repeat(161)]})}))), null);
 assert.equal(parse(text(bar({care: Object.assign(bar().care, {sleeping: 1})}))), null);
+const noCompat = bar(); delete noCompat.care.ready_to_work; delete noCompat.care.readiness_reasons;
+assert.ok(parse(text(noCompat)), 'the v0.3.0 compatibility care keys are optional (dropped in v0.3.1)');
 assert.equal(parse(text(bar({task: {state: 'Running!'}}))), null);
-assert.equal(parse(text(bar({task: null}))).task, null);
 assert.equal(parse(text(bar({needs: [{need: 'mood', action: 'play', state: 'low'}]}))), null);
 assert.equal(parse(text(bar({unseen_events: [{seq: 1, stage: 7}]}))), null);
 assert.equal(parse(text(bar({memorial: {count: -1}}))), null);
-assert.equal(parse(text(bar({critical: 'yes'}))), null);
-// New enum values from Rust only need the token shape.
 assert.equal(parse(text(bar({life: Object.assign(bar().life, {status: 'dead'})}))).life.status, 'dead');
 
-// isNewer: strictly greater; a versionless (older backend) snapshot is older.
-assert.ok(isNewer(snap(), bar()));
-assert.ok(!isNewer(snap(), bar({state_version: 800})));
-assert.ok(!isNewer(snap(), bar({state_version: 799})));
-assert.ok(!isNewer({}, bar()), 'versionless snapshot: order unknown, snapshot wins');
-assert.strictEqual(merge({meters: {}}, parse(text(bar()))).meters.hunger, undefined);
-assert.ok(!isNewer(snap(), null));
+// The v0.3 blocks: all four or none, each typed and bounded.
+assert.equal(v2().enabled, true);
+assert.ok(parse(text(v2())));
+for (const k of ['enabled', 'agent', 'treats', 'clients']) {
+  const d = v2(); delete d[k];
+  assert.equal(parse(text(d)), null, 'v2 without ' + k);
+  d.schema = 'codepet.bar.v1';
+  assert.equal(parse(text(d)), null, 'a partial set of v0.3 blocks under v1 too: ' + k);
+}
+assert.equal(parse(text(v2({enabled: 'yes'}))), null);
+assert.equal(parse(text(v2({enabled: false}))).enabled, false);
+const agent = (o) => v2({agent: Object.assign(clone(v2().agent), o)});
+assert.equal(parse(text(agent({state: 'busy'}))), null);
+assert.equal(parse(text(agent({apps: Array(6).fill(v2().agent.apps[0])}))), null, 'at most five apps');
+assert.equal(parse(text(agent({apps: [{id: 'gemini', state: 'working', since_ms: 1, stale_at_ms: 2}]}))), null,
+             'unsupported client id');
+assert.equal(parse(text(agent({apps: [{id: 'codex', state: 'idle', since_ms: 1, stale_at_ms: 2}]}))), null);
+assert.equal(parse(text(agent({apps: [{id: 'codex', state: 'waiting', since_ms: -1, stale_at_ms: 2}]}))), null);
+assert.equal(parse(text(agent({finished_seq: 1.5}))), null);
+assert.equal(parse(text(agent({finished_app: 'nope'}))), null);
+assert.equal(parse(text(agent({finished_treat: 1}))), null);
+assert.equal(parse(text(agent({hello_at_ms: 'now'}))), null);
+assert.equal(parse(text(agent({test: {state: 'sleeping', at_ms: 1, client: null}}))), null);
+assert.ok(parse(text(agent({test: {state: 'running', at_ms: 1, client: 'grok-cli'}}))));
+assert.equal(parse(text(agent({helpers_busy: null}))), null);
+assert.equal(parse(text(v2({treats: {jar: 11, full: true}}))), null, 'the jar holds ten');
+assert.equal(parse(text(v2({treats: {jar: 3}}))), null);
+assert.equal(parse(text(v2({clients: {gemini: {}}}))), null);
+assert.equal(parse(text(v2({clients: []}))), null);
 
-// merge: copies, never mutates; keeps details the bar subset does not carry.
-const s0 = snap(); const before = JSON.stringify(s0);
-const m = merge(s0, parse(text(bar())));
-assert.equal(JSON.stringify(s0), before, 'input snapshot untouched');
-assert.notStrictEqual(m, s0);
-assert.equal(m.state_version, 812);
-assert.deepEqual(m.meters, {hunger: 6100, thirst: 2800, mental_health: 8000, hygiene: 9000});
-assert.equal(m.life.appearance, 'cat'); assert.equal(m.life.stage, 2); assert.equal(m.life.xp, 120);
-assert.equal(m.life.status, 'warning'); assert.equal(m.life.armed, true);
-assert.equal(m.life.revision, 4, 'same life keeps fields the bar does not carry');
-assert.equal(m.life.origin, 'migrated');
-assert.equal(m.decay.paused, false, 'Pause/Travel mirrors life.paused');
-assert.equal(m.decay.enabled, true);
-assert.equal(m.care.bathroom_due, false); assert.equal(m.care.ready_to_work, false);
-assert.deepEqual(m.care.readiness_reasons, ['Needs water']);
-assert.equal(m.care.revision, 3); assert.equal(m.care.work_sessions, 2);
-assert.equal(m.active_task.task_id, 't-1'); assert.equal(m.active_task.state, 'running');
-assert.equal(m.active_task.instructions_excerpt, 'kept');
-assert.deepEqual(m.unseen_events, [{seq: 88, kind: 'evolved', stage: 2}]);
-assert.equal(m.lifecycle.needs[1].state, 'low');
-assert.equal(m.lifecycle.needs[1].meter, 2800);
-assert.equal(m.lifecycle.needs[1].until_critical_ms, 15840000);
-assert.equal(m.lifecycle.needs[1].until_warning_ms, 0, 'the warning window is refreshed from the file too');
-assert.equal(parse(text(bar({needs: [{need: 'thirst', action: 'water', state: 'low', until_warning_ms: 'soon'}]}))), null);
-assert.equal(m.lifecycle.needs[0].meter, 6100);
-assert.equal(m.lifecycle.needs[0].state, 'ok');
-assert.equal(m.lifecycle.frozen_reason, 'none');
-assert.equal(m.memorial.count, 1); assert.equal(m.memorial.latest.ordinal, 0, 'same memorial kept');
-assert.deepEqual(m.recent, [{task_id: 't-0'}]);
-// Not newer: unchanged object.
-assert.strictEqual(merge(s0, parse(text(bar({state_version: 800})))), s0);
-assert.equal(merge(null, bar()), null);
-// Slot freed elsewhere: active task cleared. A task the snapshot does not know is not invented.
-assert.equal(merge(s0, parse(text(bar({task: null})))).active_task, null);
-const idle = snap(); idle.active_task = null;
-assert.equal(merge(idle, parse(text(bar()))).active_task, null);
-// A different life replaces the life record; no living companion means life null.
-const other = merge(s0, parse(text(bar({life: Object.assign(bar().life,
-  {life_id: 'life-bbbbbbbbbbbbbbbbbbbbbbbb', name: 'Pip', appearance: 'goldfish', stage: 1})}))));
-assert.equal(other.life.name, 'Pip'); assert.equal(other.life.revision, undefined);
-assert.equal(other.life.appearance, 'goldfish');
-const none = merge(s0, parse(text(bar({life: null, memorial: {count: 2, latest_name: 'Ginger'}}))));
-assert.equal(none.life, null);
-assert.equal(none.decay.paused, true, 'no life: decay block unchanged');
-assert.deepEqual(none.memorial.latest, {name: 'Ginger'}); assert.equal(none.memorial.count, 2);
-assert.equal(merge(s0, parse(text(bar({memorial: {count: 0, latest_name: null}})))).memorial.latest, null);
-// Critical passes through as a copy.
-const crit = {need: 'thirst', action: 'water', grace_ms: 21600000, elapsed_ms: 1, remaining_ms: 2, since_ms: 0};
-const mc = merge(s0, parse(text(bar({critical: crit}))));
-assert.deepEqual(mc.lifecycle.critical, crit);
-// Database identity: versions are ordered only within one db_id.
+// Database identity.
 const A = 'db-' + 'a'.repeat(24), B = 'db-' + 'b'.repeat(24);
 assert.equal(parse(text(bar({db_id: A}))).db_id, A);
 assert.equal(parse(text(bar({db_id: 'db-XYZ'}))), null, 'malformed db_id');
 assert.equal(parse(text(bar({db_id: 7}))), null);
-assert.ok(parse(text(bar())), 'a file without db_id (older writer) still parses');
-const sA = Object.assign(snap(), {db_id: A});
-assert.ok(isNewer(sA, parse(text(bar({db_id: A})))));
-assert.ok(!isNewer(sA, parse(text(bar({db_id: B})))), 'another database is never "newer"');
-assert.ok(!isNewer(sA, parse(text(bar({db_id: B, state_version: 10 ** 9})))));
-assert.ok(replacesDatabase(sA, parse(text(bar({db_id: B, state_version: 2})))));
-assert.ok(!replacesDatabase(sA, parse(text(bar({db_id: A, state_version: 2})))));
-assert.ok(!replacesDatabase(snap(), parse(text(bar({db_id: B})))), 'unknown snapshot identity: no replacement');
 assert.ok(sameFileDatabase(parse(text(bar({db_id: A}))), parse(text(bar({db_id: A})))));
 assert.ok(!sameFileDatabase(parse(text(bar({db_id: A}))), parse(text(bar({db_id: B})))));
 assert.ok(!sameFileDatabase(parse(text(bar())), parse(text(bar({db_id: B})))));
-// A plain merge never crosses databases (finish(): a fresh state.get beats an old file).
-const stale = parse(text(bar({db_id: B, state_version: 10 ** 9})));
-assert.strictEqual(merge(sA, stale), sA);
-// An explicit cross-database merge takes the file's subset and drops old task details.
-const sTask = Object.assign(snap(), {db_id: A});
-const crossed = merge(sTask, parse(text(bar({db_id: B, state_version: 2, task: null}))), true);
-assert.equal(crossed.db_id, B); assert.equal(crossed.state_version, 2);
-assert.equal(crossed.active_task, null); assert.deepEqual(crossed.recent, []);
-assert.equal(crossed.meters.thirst, 2800);
-const crossedBusy = merge(sTask, parse(text(bar({db_id: B, state_version: 2}))), true);
-assert.equal(crossedBusy.active_task, null, 'the old database task is never shown against the new one');
-assert.strictEqual(merge(sTask, parse(text(bar({db_id: A, state_version: 2}))), true), sTask,
-  'same database, older version: still ignored');
-console.log('bar-state parse, newer-only merge, XDG path and no-invention rules passed');
+assert.ok(sameFileDatabase(parse(text(bar())), parse(text(bar()))));
+// The v0.2 merge into a task snapshot is gone with the window.
+for (const gone of ['merge', 'isNewer', 'replacesDatabase'])
+  assert.equal(typeof globalThis[gone], 'undefined', gone);
+console.log('bar-state v1/v2 parse, v0.3 blocks, XDG path and database identity passed');
 """
+
+
+def v2_fixtures_js():
+    """The frozen bar-v2 fixtures as a JS object literal (for the Node checks)."""
+    fixtures = {p.stem: json.loads(p.read_text())
+                for p in sorted((REPO / "docs/v0.3/contracts/fixtures/bar-v2").glob("*.json"))}
+    return "const V2_FIXTURES = " + json.dumps(fixtures) + ";\n"
 
 
 class BarStateJs(unittest.TestCase):
     @unittest.skipUnless(shutil.which('node'), 'Node unavailable; BarState.js untested')
-    def test_parse_merge_and_paths(self):
-        result = subprocess.run(['node', '-e', BAR_STATE_JS + BAR_STATE_NODE],
+    def test_parse_and_paths(self):
+        result = subprocess.run(['node', '-e', BAR_STATE_JS + v2_fixtures_js() + BAR_STATE_NODE],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -615,20 +615,30 @@ class LauncherStatic(unittest.TestCase):
         self.assertIn('while [ "$n" -lt 30 ]; do', LAUNCHER)
         self.assertIn('sleep 0.1', LAUNCHER)
         self.assertEqual(LAUNCHER.count('" -n -d -p "$QML"'), 1)
-        self.assertIn('CODEPET_BIN="$BIN" CODEPET_OPEN="$open" "$QS" -n -d -p "$QML"', LAUNCHER)
+        self.assertIn('CODEPET_BIN="$BIN" "$QS" -n -d -p "$QML"', LAUNCHER)
+        self.assertNotIn('CODEPET_OPEN', LAUNCHER, 'the v0.3 overlay ignores CODEPET_OPEN')
         self.assertIn('"$QS" list --all --json', LAUNCHER)
         # `call --` keeps qs 0.3.1 from parsing the `show` verb as `qs ipc show`.
-        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 3)
+        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 5)
         self.assertNotRegex(re.sub(r'#[^\n]*', '', LAUNCHER), r'call codepet')
         self.assertIn('/current/qml/shell.qml', LAUNCHER)
         self.assertIn('${XDG_DATA_HOME:-}', LAUNCHER)
         # hide/refresh/status branches never reach start_overlay.
         dispatch = LAUNCHER[LAUNCHER.index('case "$VERB" in\n    status)'):]
-        for verb in ('status)', 'hide|refresh)'):
+        for verb in ('status)', 'hide|refresh)', 'quit)'):
             branch = dispatch[dispatch.index(verb):]
-            branch = branch[:branch.index(';;')]
+            branch = branch[:branch.index('    hide|refresh)' if verb == 'quit)' else ';;')]
             self.assertNotIn('start_overlay', branch, verb)
-        self.assertNotIn('kill', re.sub(r'#[^\n]*', '', LAUNCHER))
+        # `qs kill` appears only in the quit branch, after the running-task check.
+        code = re.sub(r'#[^\n]*', '', LAUNCHER)
+        self.assertEqual(code.count('kill'), 2, "one `$QS kill` call and its error message")
+        quit_branch = dispatch[dispatch.index('quit)'):dispatch.index('    hide|refresh)')]
+        self.assertIn('"$QS" kill "$TARGET_FLAG" "$TARGET_VALUE"', quit_branch)
+        self.assertLess(quit_branch.index('"supervisor":true'), quit_branch.index('"$QS" kill'))
+        # Fail closed: an unknown status needs an explicit --force before the kill.
+        self.assertLess(quit_branch.index('"supervisor":false'), quit_branch.index('"$QS" kill'))
+        self.assertLess(quit_branch.index('"$FORCE" -ne 1'), quit_branch.index('"$QS" kill'))
+        self.assertIn('if [ "$1" = quit ] && [ "$2" = --force ]; then FORCE=1', LAUNCHER)
 
     @unittest.skipUnless(shutil.which('shellcheck'), 'shellcheck unavailable')
     def test_shellcheck(self):
@@ -657,6 +667,12 @@ if args[:1] == ["list"]:
     else:
         print("No running instances.")
     sys.exit(0)
+if args[:1] == ["kill"]:
+    st["kills"] = st.get("kills", 0) + 1
+    st["running"] = False
+    st["listed"] = []
+    save()
+    sys.exit(0)
 if args[:1] == ["ipc"]:
     if args[3:5] != ["call", "--"]:
         print("target codepet")  # what real qs 0.3.1 does for `call codepet show`
@@ -675,7 +691,10 @@ if args[:1] == ["ipc"]:
     if fn == "ping":
         print("codepet-overlay shown")
     elif fn == "status":
-        print('{{"pet":"shown"}}')
+        if "status_reply" in st:  # an older overlay's reply, or none at all
+            print(st["status_reply"])
+        else:
+            print('{{"pet":"shown","supervisor":%s}}' % ("true" if st.get("supervisor") else "false"))
     sys.exit(0)
 if args[:3] == ["-n", "-d", "-p"]:
     st["launches"] += 1
@@ -687,8 +706,7 @@ print("unexpected qs call", args, file=sys.stderr)
 sys.exit(99)
 """
 
-ALL_FUNCTIONS = ["ping", "status", "show", "hide", "toggle", "tasks", "care", "companion",
-                 "life", "refresh"]
+ALL_FUNCTIONS = ["ping", "status", "show", "hide", "toggle", "openHome", "refresh"]
 
 
 class LauncherBehaviour(unittest.TestCase):
@@ -707,8 +725,11 @@ class LauncherBehaviour(unittest.TestCase):
         fake = root / "qs"
         fake.write_text(FAKE_QS.format(python=sys.executable))
         fake.chmod(0o700)
+        self.off_flag = root / "state/codepet/off"
+        self.off_flag.parent.mkdir(parents=True)
         self.env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home),
-                    "XDG_DATA_HOME": str(self.data), "CODEPET_QS": str(fake),
+                    "XDG_DATA_HOME": str(self.data), "XDG_STATE_HOME": str(root / "state"),
+                    "CODEPET_QS": str(fake),
                     "FAKEQS_STATE": str(self.state), "FAKEQS_LOG": str(self.log)}
         self.set_state()
 
@@ -733,17 +754,23 @@ class LauncherBehaviour(unittest.TestCase):
         return [c for c in calls if c["argv"][:3] == ["-n", "-d", "-p"]]
 
     def ipc_calls(self, calls):
+        """IPC verbs sent, without the liveness pings and the status reads."""
         return [c["argv"][1:3] + [c["argv"][6]] for c in calls
-                if c["argv"][:1] == ["ipc"] and c["argv"][6] != "ping"]
+                if c["argv"][:1] == ["ipc"] and c["argv"][6] not in ("ping", "status")]
+
+    def status_reads(self, calls):
+        return [c for c in calls if c["argv"][:1] == ["ipc"] and c["argv"][6] == "status"]
 
     def test_usage_errors(self):
-        for argv in ([], ["quit"], ["show", "extra"], ["--pid"]):
+        for argv in ([], ["stop"], ["show", "extra"], ["--pid"], ["show", "--force"],
+                     ["--force", "quit"], ["quit", "--now"], ["quit", "--force", "x"],
+                     ["panel"], ["tasks"], ["care"], ["companion"], ["life"], ["openHome"]):
             r, calls = self.run_launcher(*argv)
             self.assertEqual(r.returncode, 2, argv)
             self.assertEqual(calls, [], argv)
 
     def test_not_running_status_hide_refresh_never_start(self):
-        for verb, code in (("status", 1), ("hide", 0), ("refresh", 0)):
+        for verb, code in (("status", 1), ("hide", 0), ("refresh", 0), ("quit", 0)):
             r, calls = self.run_launcher(verb)
             self.assertEqual(r.returncode, code, (verb, r.stdout, r.stderr))
             self.assertEqual(self.launches(calls), [], verb)
@@ -757,22 +784,43 @@ class LauncherBehaviour(unittest.TestCase):
         starts = self.launches(calls)
         self.assertEqual(len(starts), 1)
         self.assertEqual(starts[0]["argv"], ["-n", "-d", "-p", str(self.qml)])
-        self.assertEqual(starts[0]["open"], "")
+        self.assertIsNone(starts[0]["open"], "no CODEPET_OPEN: the v0.3 overlay ignores it")
         self.assertEqual(starts[0]["bin"], str(self.home / ".local/bin/codepet"))
         self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "show"]])
+        self.assertEqual(len(self.status_reads(calls)), 1, "it asks whether the pet stays")
+        self.assertEqual(r.stdout, "")
         # Now running: no further launch.
         r, calls = self.run_launcher("show")
         self.assertEqual(self.launches(calls), [])
         self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "show"]])
 
-    def test_view_verbs_open_through_codepet_open(self):
-        for verb in ("tasks", "care", "companion", "life"):
-            self.set_state()
+    def test_off_starts_nothing_and_says_so(self):
+        # notes.md section 9 item 5: Off is no failure; an overlay would only exit again.
+        self.off_flag.write_text("")
+        for verb in ("show", "toggle"):
             r, calls = self.run_launcher(verb)
-            self.assertEqual(r.returncode, 0, (verb, r.stderr))
-            starts = self.launches(calls)
-            self.assertEqual([s["open"] for s in starts], [verb])
-            self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), verb]])
+            self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "codepet-overlay: CodePet is off\n", ""), verb)
+            self.assertEqual(self.launches(calls), [], verb)
+            self.assertEqual(self.ipc_calls(calls), [], verb)
+        # hide, refresh, status and quit are unaffected.
+        r, calls = self.run_launcher("hide")
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("CodePet is off", r.stdout + r.stderr)
+
+    def test_an_overlay_that_is_leaving_is_reported_not_failed(self):
+        for reason, said in (("desktop_pet_off", "the desktop pet is off"), ("off", "CodePet is off")):
+            reply = '{"pet":"shown","supervisor":false,"exit_reason":"%s"}' % reason
+            for running in (False, True):
+                self.set_state(running=running, status_reply=reply)
+                r, calls = self.run_launcher("show")
+                self.assertEqual((r.returncode, r.stdout, r.stderr), (0, f"codepet-overlay: {said}\n", ""),
+                                 (reason, running))
+                self.assertEqual(len(self.launches(calls)), 0 if running else 1)
+                self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "show"]])
+        # A pet that stays says nothing more.
+        self.set_state(running=True, status_reply='{"pet":"shown","supervisor":false,"exit_reason":""}')
+        r, _ = self.run_launcher("toggle")
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
 
     def test_toggle_from_stopped_means_show(self):
         r, calls = self.run_launcher("toggle")
@@ -785,7 +833,7 @@ class LauncherBehaviour(unittest.TestCase):
 
     def test_running_instance_gets_every_verb_without_a_launch(self):
         self.set_state(running=True)
-        for verb in ("show", "hide", "toggle", "tasks", "care", "companion", "life", "refresh"):
+        for verb in ("show", "hide", "toggle", "refresh"):
             r, calls = self.run_launcher(verb)
             self.assertEqual(r.returncode, 0, (verb, r.stderr))
             self.assertEqual(self.launches(calls), [], verb)
@@ -793,7 +841,58 @@ class LauncherBehaviour(unittest.TestCase):
         r, calls = self.run_launcher("status")
         self.assertEqual(r.returncode, 0)
         self.assertIn("running", r.stdout)
-        self.assertIn('{"pet":"shown"}', r.stdout)
+        self.assertIn('{"pet":"shown","supervisor":false}', r.stdout)
+
+    def test_quit_ends_a_running_overlay_but_not_a_running_task(self):
+        self.set_state(running=True, supervisor=True)
+        r, calls = self.run_launcher("quit")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("simulation task is executing", r.stderr)
+        self.assertFalse([c for c in calls if c["argv"][:1] == ["kill"]])
+        self.set_state(running=True)
+        r, calls = self.run_launcher("quit")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([c["argv"] for c in calls if c["argv"][:1] == ["kill"]],
+                         [["kill", "-p", str(self.qml)]])
+        self.assertEqual(self.launches(calls), [])
+        r, _ = self.run_launcher("status")
+        self.assertEqual(r.returncode, 1, "stopped")
+
+    def kills(self, calls):
+        return [c["argv"] for c in calls if c["argv"][:1] == ["kill"]]
+
+    def test_quit_refuses_an_overlay_that_does_not_report_its_task(self):
+        # 0.2.0's status has no "supervisor" field; an empty reply says nothing either.
+        for reply, functions in (('{"pet":"shown","busy":false}', ALL_FUNCTIONS),
+                                 ("", ALL_FUNCTIONS),
+                                 (None, [f for f in ALL_FUNCTIONS if f != "status"])):
+            over = {"running": True, "functions": functions}
+            if reply is not None:
+                over["status_reply"] = reply
+            self.set_state(**over)
+            r, calls = self.run_launcher("quit")
+            self.assertEqual(r.returncode, 1, (reply, r.stderr))
+            self.assertIn("did not report whether a simulation task is executing", r.stderr)
+            self.assertIn("quit --force", r.stderr)
+            self.assertEqual(self.kills(calls), [], reply)
+            # --force: the user has checked that no task runs.
+            r, calls = self.run_launcher("quit", "--force")
+            self.assertEqual(r.returncode, 0, (reply, r.stderr))
+            self.assertEqual(self.kills(calls), [["kill", "-p", str(self.qml)]], reply)
+            self.assertEqual(self.launches(calls), [])
+
+    def test_quit_force_never_ends_a_running_task(self):
+        self.set_state(running=True, supervisor=True)
+        r, calls = self.run_launcher("quit", "--force")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("simulation task is executing", r.stderr)
+        self.assertEqual(self.kills(calls), [])
+        # Not running: nothing to quit, forced or not.
+        self.set_state()
+        r, calls = self.run_launcher("quit", "--force")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.kills(calls), [])
+        self.assertEqual(self.launches(calls), [])
 
     def test_older_release_instance_is_found_by_pid(self):
         older = str(self.data / "codepet/releases/0.1.9/qml/shell.qml")
@@ -802,7 +901,7 @@ class LauncherBehaviour(unittest.TestCase):
                                {"config_path": older, "id": "b", "pid": 4242,
                                 "launch_time": "t", "shell_id": "s"}])
         for verb, sent in (("show", "show"), ("toggle", "toggle"), ("hide", "hide"),
-                           ("tasks", "tasks")):
+                           ("refresh", "refresh")):
             r, calls = self.run_launcher(verb)
             self.assertEqual(r.returncode, 0, (verb, r.stderr))
             self.assertEqual(self.launches(calls), [], verb)
@@ -820,7 +919,7 @@ class LauncherBehaviour(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.launches(calls), [])
         self.assertEqual(self.ipc_calls(calls), [["--pid", "77", "show"]])
-        r, calls = self.run_launcher("companion")
+        r, calls = self.run_launcher("refresh")
         self.assertEqual(r.returncode, 1)
         self.assertIn("older CodePet release", r.stderr)
         self.assertEqual(self.launches(calls), [])
@@ -877,69 +976,55 @@ class LauncherBehaviour(unittest.TestCase):
         self.assertEqual(self.launches(calls)[0]["argv"][-1], str(self.qml))
 
 
-FAKE_SNAPSHOT_CODEPET = """#!{python} -I
-# Test-only `codepet rpc`: logs each method to $HOME/rpc.log and answers state.get
-# with a fixed v0.2-shaped snapshot (state_version 5, cat, stage 1).
+FAKE_EXPORT_CODEPET = """#!{python} -I
+# Test-only `codepet rpc`: logs each method to $HOME/rpc.log; state.get "exports" the
+# bar-state.json in $HOME/export.json (as Rust would: temp + rename) and answers ok.
 import json, os, sys
 req = json.loads(sys.stdin.readline())
-with open(os.path.join(os.environ["HOME"], "rpc.log"), "a") as f:
+home = os.environ["HOME"]
+with open(os.path.join(home, "rpc.log"), "a") as f:
     f.write(req["method"] + "\\n")
-snap = {snapshot}
 if req["method"] == "state.get":
-    print(json.dumps({{"v": 1, "id": req["id"], "ok": True, "result": snap}}))
+    src = os.path.join(home, "export.json")
+    if os.path.exists(src):
+        d = os.path.join(os.environ["XDG_STATE_HOME"], "codepet")
+        os.makedirs(d, exist_ok=True)
+        tmp = os.path.join(d, ".bar-state.json.tmp")
+        with open(src) as f, open(tmp, "w") as g:
+            g.write(f.read())
+        os.rename(tmp, os.path.join(d, "bar-state.json"))
+    print(json.dumps({{"v": 1, "id": req["id"], "ok": True, "result": {{}}}}))
 else:
     print(json.dumps({{"v": 1, "id": req["id"], "ok": False, "error": {{
         "code": "STORAGE_UNAVAILABLE", "message": "stub", "retryable": False}}}}))
 """
 
-SNAPSHOT = {
-    "schema_version": 4, "protocol_version": 1, "state_version": 5, "last_seq": 1,
-    "meters": {"hunger": 7000, "thirst": 7000, "mental_health": 7000, "hygiene": 7000},
-    "care": {"revision": 1, "bathroom_due": False, "starts_since_bathroom": 0, "sleeping": False,
-             "sleep_due": False, "sleep_remaining_ms": 120000, "sleep_started_at_ms": None,
-             "work_sessions": 0, "execution_ms": 0, "ready_to_work": False,
-             "readiness_reasons": ["Needs care"], "welcome_care_available": True},
-    "progression": {track: {"lifetime_xp": 0, "level": 1, "next_level_xp": 80,
-                            "mastery": {"bugfix": 0, "quality_performance": 0,
-                                        "learning_specification": 0, "cleanup": 0}}
-                    for track in ("demo", "real")},
-    "decay": {"enabled": False, "paused": False},
-    "settings": {"revision": 1, "decay_enabled": False, "decay_per_hour": [1000, 1250, 600, 500],
-                 "timeout_seconds": 600},
-    "active_task": None, "recent": [], "providers": [],
-    "life": {"life_id": "life-000000000000000000000001", "ordinal": 1, "name": "Ginger",
-             "species": "cat", "appearance": "cat", "stage": 1, "level": 1, "xp": 0,
-             "status": "healthy", "mode": "permadeath", "armed": False, "pace": "steady",
-             "paused": False, "fainted": False, "death_pending": False, "revision": 1},
-    "unseen_events": [], "memorial": {"count": 0, "latest": None},
-}
-
-
 DB_A = "db-" + "a" * 24
+FIXTURES = REPO / "docs/v0.3/contracts/fixtures/bar-v2"
 
 
-def bar_state_text(version, appearance, db_id=DB_A):
-    return json.dumps({
-        "schema": "codepet.bar.v1", "state_version": version, "db_id": db_id, "generated_at_ms": 0,
-        "app_version": "0.2.0", "ruleset": "lifecycle-v1",
-        "life": dict(SNAPSHOT["life"], appearance=appearance, stage=2, level=2, xp=120,
-                     status="warning", armed=True, next_stage_xp=400),
-        "meters": {"hunger": 6100, "thirst": 2800, "mental_health": 8000, "hygiene": 9000},
-        "needs": [{"need": "thirst", "action": "water", "state": "low",
-                   "until_critical_ms": 1, "until_end_ms": 2}],
-        "critical": None,
-        "care": {"sleeping": False, "sleep_remaining_ms": 120000, "sleep_started_at_ms": None,
-                 "sleep_due": False, "bathroom_due": False, "ready_to_work": False,
-                 "readiness_reasons": ["Needs water"]},
-        "task": None,
-        "presence": {"wanted": True, "life_id": SNAPSHOT["life"]["life_id"], "tick_ms": 60000,
-                     "idle_timeout_s": 180},
-        "unseen_events": [{"seq": 88, "stage": 2}],
-        "memorial": {"count": 0, "latest_name": None}})
+def bar_state_text(version, appearance, db_id=DB_A, fixture="idle-happy", schema="codepet.bar.v2", **over):
+    """A frozen v0.3 export (bar-v2 fixture) with this version, look and database."""
+    doc = json.loads((FIXTURES / f"{fixture}.json").read_text())
+    doc.update(schema=schema, state_version=version, db_id=db_id, **over)
+    if doc["life"] is not None:
+        doc["life"]["appearance"] = appearance
+    return json.dumps(doc)
+
+
+def shell_json(overlay_on_load, calm=None):
+    """~/.config/omarchy/shell.json with the CodePet cell; None = key absent."""
+    entry = {"id": "greyforge.codepet", "label": "name"}
+    if overlay_on_load is not None:
+        entry["overlayOnLoad"] = overlay_on_load
+    if calm is not None:
+        entry["calm"] = calm
+    return json.dumps({"version": 1, "bar": {"layout": {"left": [], "center": [],
+                                                        "right": [{"id": "omarchy.clock"}, entry]}}})
 
 
 def write_atomically(path, text):
-    """The writer's pattern (§10): a temp file in the same directory, then rename."""
+    """The writer's pattern (SPEC-v0.3 §8 rule 2): a temp file in the same directory, then rename."""
     tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}-0badc0de")
     tmp.write_text(text)
     os.rename(tmp, path)
@@ -959,6 +1044,8 @@ class QsSession:
                               env=self.env, capture_output=True, text=True, timeout=10)
 
     def status(self):
+        if self.proc.poll() is not None:
+            return {}
         r = self.call("status")
         try:
             return json.loads(r.stdout)
@@ -974,13 +1061,20 @@ class QsSession:
             time.sleep(0.1)
         return self.status()
 
-    def close(self):
-        self.proc.terminate()
+    def wait_exit(self, seconds=10):
         try:
-            self.proc.wait(timeout=10)
+            return self.proc.wait(timeout=seconds)
         except subprocess.TimeoutExpired:
-            self.proc.kill()
-            self.proc.wait()
+            return None
+
+    def close(self):
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait()
         self.log.seek(0)
         out = self.log.read()
         self.log.close()
@@ -991,129 +1085,283 @@ class QsSession:
 class QuickshellOverlayRuntime(unittest.TestCase):
     """Real Quickshell 0.3.1, offscreen and isolated (see isolated_env). Not Wayland proof."""
 
-    def snapshot_env(self, root):
+    def export_env(self, root, export=None):
         env = isolated_env(root)
         fake = root / "bin/codepet"
-        fake.write_text(FAKE_SNAPSHOT_CODEPET.format(python=sys.executable,
-                                                     snapshot=repr(SNAPSHOT)))
+        fake.write_text(FAKE_EXPORT_CODEPET.format(python=sys.executable))
+        if export is not None:
+            (Path(env["HOME"]) / "export.json").write_text(export)
         return env
+
+    def state_file(self, env):
+        d = Path(env["XDG_STATE_HOME"]) / "codepet"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / "bar-state.json"
+
+    def settings_file(self, env):
+        d = Path(env["HOME"]) / ".config/omarchy"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / "shell.json"
 
     def rpc_log(self, env):
         path = Path(env["HOME"]) / "rpc.log"
         return path.read_text().split() if path.exists() else []
 
-    def test_startup_open_view_refresh_and_tabs(self):
+    def shell_calls(self, env):
+        path = Path(env["HOME"]) / "omarchy-shell.log"
+        return [json.loads(l) for l in path.read_text().splitlines()] if path.exists() else []
+
+    def test_startup_with_a_file_reads_it_and_sends_no_rpc(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            env = self.snapshot_env(root)
-            env["CODEPET_OPEN"] = "life"
+            env = self.export_env(root)
+            write_atomically(self.state_file(env), bar_state_text(9, "axolotl"))
+            env["CODEPET_OPEN"] = "tasks"
             session = QsSession(root, env, stage_without_layer_shell(root))
             try:
-                st = session.wait_for(lambda s: s.get("state_version") == 5)
-                self.assertEqual(st.get("view"), "life", st)
-                self.assertTrue(st.get("window"), st)
-                self.assertEqual(st.get("appearance"), "cat")
+                st = session.wait_for(lambda s: s.get("state_version") == 9)
+                self.assertEqual((st.get("appearance"), st.get("enabled"), st.get("drawn")), ("axolotl", True, True), st)
+                self.assertEqual(st.get("home_requests"), 0, "CODEPET_OPEN alone opens nothing")
                 time.sleep(0.5)
-                self.assertEqual(self.rpc_log(env), ["state.get"], "one startup read only")
+                self.assertEqual(self.rpc_log(env), [], "a readable file needs no state.get")
                 self.assertTrue(session.call("ping").stdout.startswith("codepet-overlay shown"))
-                for verb, view in (("care", "care"), ("companion", "companion"), ("tasks", "tasks")):
-                    self.assertEqual(session.call(verb).returncode, 0)
-                    st = session.wait_for(lambda s: s.get("view") == view and not s.get("busy"))
-                    self.assertEqual(st.get("view"), view)
+                # A burst (a child mashing the pet) is one Omarchy call; a later one is another.
+                for verb in ("openHome", "openHome", "openHome", "openHome", "openHome"):
+                    self.assertEqual(session.call(verb).returncode, 0, verb)
+                st = session.wait_for(lambda s: s.get("home_requests") == 1)
+                self.assertEqual(st.get("home_requests"), 1, st)
+                time.sleep(1.1)
+                self.assertEqual(session.call("openHome").returncode, 0)
+                st = session.wait_for(lambda s: s.get("home_requests") == 2)
+                self.assertEqual(st.get("home_requests"), 2, st)
+                time.sleep(0.3)
+                self.assertEqual(self.shell_calls(env), [["-q", "shell", "summon", "greyforge.codepet"]] * 2,
+                                 "each opens Home through the Omarchy shell")
+                env_log = (Path(env["HOME"]) / "omarchy-shell.env.log").read_text().split()
+                self.assertEqual(env_log, ['"/usr/share/omarchy"'] * 2,
+                                 "without OMARCHY_PATH the packaged one is passed (omarchy-shell needs it)")
                 session.call("toggle")
                 self.assertEqual(session.wait_for(lambda s: s.get("pet") == "hidden").get("pet"), "hidden")
                 self.assertTrue(session.call("ping").stdout.startswith("codepet-overlay hidden"))
                 session.call("toggle")
                 self.assertEqual(session.wait_for(lambda s: s.get("pet") == "shown").get("pet"), "shown")
-                before = len(self.rpc_log(env))
                 session.call("refresh")
                 session.wait_for(lambda s: not s.get("busy"))
                 time.sleep(0.3)
-                self.assertEqual(len(self.rpc_log(env)), before + 1, "refresh is one state.get")
-                self.assertTrue(all(m == "state.get" for m in self.rpc_log(env)))
+                self.assertEqual(self.rpc_log(env), ["state.get"], "refresh is one explicit state.get")
             finally:
                 out = session.close()
         self.assertIn("Configuration Loaded", out, out)
         self.assertIsNone(LOAD_ERRORS.search(out), out)
-        self.assertNotRegex(out, r"TypeError|ReferenceError|Cannot assign", out)
+        self.assertNotRegex(out, r"TypeError|ReferenceError|Cannot assign|Binding loop", out)
+
+    def test_startup_without_a_file_reads_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self.export_env(root, export=bar_state_text(5, "cat"))
+            session = QsSession(root, env, stage_without_layer_shell(root))
+            try:
+                st = session.wait_for(lambda s: s.get("state_version") == 5)
+                self.assertEqual((st.get("state_version"), st.get("appearance")), (5, "cat"), st)
+                time.sleep(0.5)
+                self.assertEqual(self.rpc_log(env), ["state.get"], "exactly one startup read")
+            finally:
+                out = session.close()
+        self.assertIsNone(LOAD_ERRORS.search(out), out)
 
     def test_bar_state_reaches_the_pet_without_rpc(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            env = self.snapshot_env(root)
-            state_dir = Path(env["XDG_STATE_HOME"]) / "codepet"
-            bar = state_dir / "bar-state.json"
-            entry = stage_without_layer_shell(root)
-            # The state dir does not exist yet: the overlay starts before the first export.
-            session = QsSession(root, env, entry)
+            env = self.export_env(root)
+            bar = self.state_file(env)
+            write_atomically(bar, bar_state_text(6, "robot"))
+            session = QsSession(root, env, stage_without_layer_shell(root))
             try:
-                st = session.wait_for(lambda s: s.get("state_version") == 5)
-                self.assertEqual(st.get("appearance"), "cat")
-                state_dir.mkdir(parents=True)
-                write_atomically(bar, bar_state_text(6, "robot"))
-                st = session.wait_for(lambda s: s.get("state_version") == 6, seconds=3)
-                if st.get("state_version") != 6:
-                    # Directory created after startup: the watch is re-armed by the next
-                    # explicit refresh (documented limit), which re-reads the file.
-                    session.call("refresh")
-                    st = session.wait_for(lambda s: s.get("state_version") == 6)
-                self.assertEqual((st.get("state_version"), st.get("appearance"), st.get("stage")),
-                                 (6, "robot", 2), st)
-                reads = len(self.rpc_log(env))
+                st = session.wait_for(lambda s: s.get("state_version") == 6)
+                self.assertEqual((st.get("state_version"), st.get("appearance")), (6, "robot"), st)
                 for version, look in ((7, "owl"), (8, "frog")):
                     write_atomically(bar, bar_state_text(version, look))
                     st = session.wait_for(lambda s, v=version: s.get("state_version") == v)
                     self.assertEqual((st.get("state_version"), st.get("appearance")), (version, look))
+                # A v1-labelled export (the v0.3.0 writer) and a v0.3 face from the file.
+                write_atomically(bar, bar_state_text(9, "cat", schema="codepet.bar.v1", fixture="waiting"))
+                st = session.wait_for(lambda s: s.get("state_version") == 9)
+                self.assertEqual(st.get("appearance"), "cat", st)
                 # Older, malformed and oversized files are ignored.
                 write_atomically(bar, bar_state_text(3, "dog"))
                 write_atomically(bar, "{broken")
-                write_atomically(bar, bar_state_text(9, "dog").replace('"codepet.bar.v1"', '"x"'))
-                write_atomically(bar, bar_state_text(9, "dog")[:-1] + ', "pad": "' + "x" * 17000 + '"}')
+                write_atomically(bar, bar_state_text(10, "dog").replace('"codepet.bar.v2"', '"x"'))
+                write_atomically(bar, bar_state_text(10, "dog")[:-1] + ', "pad": "' + "x" * 17000 + '"}')
                 time.sleep(1.0)
                 st = session.status()
-                self.assertEqual((st.get("state_version"), st.get("appearance")), (8, "frog"), st)
-                # A restored or recreated database restarts its counter: its lower-versioned
-                # file is applied, not ignored until the count catches up.
+                self.assertEqual((st.get("state_version"), st.get("appearance")), (9, "cat"), st)
+                # A restored or recreated database restarts its counter.
                 write_atomically(bar, bar_state_text(2, "penguin", db_id="db-" + "b" * 24))
                 st = session.wait_for(lambda s: s.get("appearance") == "penguin")
                 self.assertEqual((st.get("state_version"), st.get("appearance")), (2, "penguin"), st)
-                write_atomically(bar, bar_state_text(3, "turtle", db_id="db-" + "b" * 24))
-                st = session.wait_for(lambda s: s.get("state_version") == 3)
-                self.assertEqual(st.get("appearance"), "turtle", st)
-                # ...and within that database the order holds again.
                 write_atomically(bar, bar_state_text(1, "dog", db_id="db-" + "b" * 24))
                 time.sleep(1.0)
-                self.assertEqual(session.status().get("appearance"), "turtle")
-                self.assertEqual(len(self.rpc_log(env)), reads, "file events never launch codepet")
+                self.assertEqual(session.status().get("appearance"), "penguin")
+                # No pet: nothing drawn, the process stays (Let's go! comes from the popup).
+                write_atomically(bar, bar_state_text(3, "cat", db_id="db-" + "b" * 24, fixture="fresh-no-pet"))
+                st = session.wait_for(lambda s: s.get("state_version") == 3)
+                self.assertEqual((st.get("face"), st.get("drawn")), ("no_pet", False), st)
+                self.assertEqual(self.rpc_log(env), [], "file events never launch codepet")
             finally:
                 out = session.close()
         self.assertIsNone(LOAD_ERRORS.search(out), out)
-        self.assertNotRegex(out, r"TypeError|ReferenceError", out)
+        self.assertNotRegex(out, r"TypeError|ReferenceError|Binding loop", out)
 
-    def test_bar_state_present_at_startup_is_applied(self):
+    def test_off_ends_the_process(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            env = self.snapshot_env(root)
-            state_dir = Path(env["XDG_STATE_HOME"]) / "codepet"
-            state_dir.mkdir(parents=True)
-            write_atomically(state_dir / "bar-state.json", bar_state_text(9, "axolotl"))
-            session = QsSession(root, env, stage_without_layer_shell(root))
+            env = self.export_env(root)
+            bar = self.state_file(env)
+            write_atomically(bar, bar_state_text(4, "cat"))
+            entry = stage_without_layer_shell(root)
+            session = QsSession(root, env, entry)
             try:
-                st = session.wait_for(lambda s: s.get("state_version") == 9)
-                self.assertEqual((st.get("state_version"), st.get("appearance")), (9, "axolotl"), st)
-                self.assertEqual(self.rpc_log(env), ["state.get"])
+                self.assertEqual(session.wait_for(lambda s: s.get("state_version") == 4).get("drawn"), True)
+                write_atomically(bar, bar_state_text(5, "cat", fixture="off"))
+                self.assertEqual(session.wait_exit(), 0, "Off: the overlay process exits")
+            finally:
+                out = session.close()
+            self.assertIn("exiting (off)", out)
+            self.assertEqual(self.rpc_log(env), [])
+            # Started while Off: it reads the file and exits at once.
+            session = QsSession(root, env, entry)
+            try:
+                self.assertEqual(session.wait_exit(), 0)
+            finally:
+                session.close()
+            self.assertEqual(self.rpc_log(env), [], "and never runs codepet")
+
+    def test_pet_on_my_desktop_off_ends_the_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self.export_env(root)
+            write_atomically(self.state_file(env), bar_state_text(4, "cat"))
+            settings = self.settings_file(env)
+            write_atomically(settings, shell_json(True))
+            entry = stage_without_layer_shell(root)
+            session = QsSession(root, env, entry)
+            try:
+                st = session.wait_for(lambda s: s.get("desktop_pet") is True)
+                self.assertEqual((st.get("desktop_pet"), st.get("drawn")), (True, True), st)
+                write_atomically(settings, shell_json(False))
+                self.assertEqual(session.wait_exit(), 0, '"Pet on my desktop" off: the process exits')
+            finally:
+                out = session.close()
+            self.assertIn("exiting (desktop_pet_off)", out)
+            # The v0.2 default (no key) is off too, and so is a bar without the CodePet cell
+            # (removed in Omarchy's bar settings without the uninstall): both exit after the
+            # settle time.
+            for text in (shell_json(None), json.dumps({"version": 1, "bar": {"layout": {"right": []}}})):
+                write_atomically(settings, text)
+                session = QsSession(root, env, entry)
+                try:
+                    st = session.wait_for(lambda s: s.get("exit_reason") == "desktop_pet_off")
+                    self.assertEqual((st.get("desktop_pet"), st.get("drawn")), (False, False), st)
+                    self.assertEqual(session.wait_exit(), 0, text)
+                finally:
+                    session.close()
+            # No usable shell.json (a standalone overlay): unknown, it keeps running.
+            for text in ("{broken", json.dumps({"bar": {"layout": {"right": []}}})):
+                write_atomically(settings, text)
+                session = QsSession(root, env, entry)
+                try:
+                    st = session.wait_for(lambda s: s.get("state_version") == 4)
+                    time.sleep(2.0)
+                    st = session.status()
+                    self.assertEqual((st.get("desktop_pet"), st.get("drawn"), st.get("exit_reason")),
+                                     (None, True, ""), (text, st))
+                finally:
+                    session.close()
+            # A shell.json under XDG_CONFIG_HOME is not the one Omarchy uses: ignored.
+            settings.unlink()
+            other = Path(env["XDG_CONFIG_HOME"]) / "omarchy/shell.json"
+            other.parent.mkdir(parents=True, exist_ok=True)
+            write_atomically(other, shell_json(False))
+            session = QsSession(root, env, entry)
+            try:
+                session.wait_for(lambda s: s.get("state_version") == 4)
+                time.sleep(2.0)
+                st = session.status()
+                self.assertEqual((st.get("desktop_pet"), st.get("drawn")), (None, True), st)
+            finally:
+                session.close()
+
+    def test_a_launch_racing_the_switch_write_keeps_the_pet(self):
+        """Let's go! writes overlayOnLoad=true and launches `show`; Omarchy's write does not
+        block, so the new process can read the old false first. It must not exit on it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self.export_env(root)
+            write_atomically(self.state_file(env), bar_state_text(4, "cat"))
+            settings = self.settings_file(env)
+            write_atomically(settings, shell_json(False))
+            entry = stage_without_layer_shell(root)
+            session = QsSession(root, env, entry)
+            try:
+                st = session.wait_for(lambda s: s.get("exit_reason") == "desktop_pet_off")
+                self.assertEqual(st.get("desktop_pet"), False, st)
+                time.sleep(0.2)
+                write_atomically(settings, shell_json(True))
+                st = session.wait_for(lambda s: s.get("desktop_pet") is True)
+                self.assertEqual((st.get("exit_reason"), st.get("drawn")), ("", True), st)
+                time.sleep(2.0)
+                self.assertIsNone(session.proc.poll(), "the settled switch is on: still running")
+                # Now seen on: switching it off exits at once (no settle wait).
+                write_atomically(settings, shell_json(False))
+                self.assertEqual(session.wait_exit(1.2), 0)
+            finally:
+                out = session.close()
+            self.assertEqual(out.count("exiting (desktop_pet_off)"), 1, out)
+
+    def test_calm_mode_follows_the_bar_setting_live(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self.export_env(root)
+            write_atomically(self.state_file(env), bar_state_text(4, "cat"))
+            settings = self.settings_file(env)
+            write_atomically(settings, shell_json(True))
+            entry = stage_without_layer_shell(root)
+            env["CODEPET_REDUCED_MOTION"] = "1"
+            session = QsSession(root, env, entry)
+            try:
+                st = session.wait_for(lambda s: s.get("desktop_pet") is True)
+                self.assertEqual(st.get("calm"), False, "the live setting (missing = off) beats the launch env")
+                write_atomically(settings, shell_json(True, calm=True))
+                self.assertEqual(session.wait_for(lambda s: s.get("calm") is True).get("calm"), True)
+                session.call("setReducedMotion", "false")
+                self.assertEqual(session.wait_for(lambda s: s.get("calm") is False).get("calm"), False,
+                                 "an explicit call holds")
+                write_atomically(settings, shell_json(True, calm=False))
+                time.sleep(0.5)
+                write_atomically(settings, shell_json(True, calm=True))
+                self.assertEqual(session.wait_for(lambda s: s.get("calm") is True).get("calm"), True,
+                                 "until the setting changes")
+                self.assertEqual(session.status().get("drawn"), True)
+            finally:
+                out = session.close()
+            self.assertNotRegex(out, r"TypeError|ReferenceError|Binding loop", out)
+            # No usable shell.json: CODEPET_REDUCED_MOTION=1 from the launch.
+            settings.unlink()
+            session = QsSession(root, env, entry)
+            try:
+                st = session.wait_for(lambda s: s.get("state_version") == 4)
+                self.assertEqual((st.get("desktop_pet"), st.get("calm")), (None, True), st)
             finally:
                 session.close()
 
     def test_host_adapter_harness(self):
-        """qml/tests/quickshell/shell.qml: transport, failures and v0.2 adapter additions."""
+        """qml/tests/quickshell/shell.qml: the explicit transport and its failures."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             env = isolated_env(root)
             stage = root / "harness"
             stage.mkdir()
-            for name in ("shared", "omarchy", "assets"):
-                shutil.copytree(QML / name, stage / name)
+            shutil.copytree(QML / "omarchy", stage / "omarchy")
             shutil.copy(QML / "tests/quickshell/shell.qml", stage / "shell.qml")
             shutil.copy(QML / "tests/quickshell/fake_rpc.py", stage / "fake_rpc.py")
             try:
@@ -1130,26 +1378,29 @@ class QuickshellOverlayRuntime(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("CODEPET_TEST_BIN"),
                          "set CODEPET_TEST_BIN to a built codepet to run real_rpc.qml")
     def test_real_rpc_harness(self):
+        """qml/tests/quickshell/real_rpc.qml: the real `codepet rpc` in a scratch state home."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             env = isolated_env(root)
             stage = root / "real"
             stage.mkdir()
             shutil.copytree(QML / "omarchy", stage / "omarchy")
+            shutil.copytree(QML / "shared", stage / "shared")
             shutil.copy(QML / "tests/quickshell/real_rpc.qml", stage / "shell.qml")
             test_root = root / "rpcroot"
-            (test_root / "project/src").mkdir(parents=True)
-            (test_root / "home").mkdir()
+            (test_root / "home").mkdir(parents=True)
             env.update(CODEPET_BIN=os.environ["CODEPET_TEST_BIN"], CODEPET_TEST_ROOT=str(test_root))
             r = subprocess.run(["qs", "-p", str(stage / "shell.qml")], env=env,
                                capture_output=True, text=True, timeout=120)
         out = r.stdout + r.stderr
         self.assertIn("DONE failures=0", out, out[-4000:])
+        self.assertNotIn("FAIL ", out, out[-4000:])
 
     def test_launcher_drives_one_real_instance(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            env = self.snapshot_env(root)
+            env = self.export_env(root)
+            write_atomically(self.state_file(env), bar_state_text(5, "cat"))
             entry = stage_without_layer_shell(root)
             data = Path(env["XDG_DATA_HOME"]) / "codepet"
             for version in ("0.2.0", "0.3.0"):
@@ -1179,18 +1430,20 @@ class QuickshellOverlayRuntime(unittest.TestCase):
                 self.assertEqual(launcher("status").returncode, 1)
                 self.assertEqual(launcher("hide").returncode, 0)
                 self.assertEqual(instances(), [], "hide never starts the overlay")
-                r = launcher("tasks")
+                r = launcher("show")
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(len(instances()), 1)
                 code, st = overlay_status()
                 self.assertEqual(code, 0)
-                self.assertEqual((st.get("window"), st.get("view")), (True, "tasks"), st)
-                for verb in ("show", "toggle", "care", "show"):
+                # The launcher never opens the bar popup (the retired window verbs are gone).
+                self.assertEqual(st.get("home_requests"), 0, st)
+                self.assertEqual(launcher("tasks").returncode, 2)
+                for verb in ("show", "toggle", "toggle", "show"):
                     r = launcher(verb)
                     self.assertEqual(r.returncode, 0, (verb, r.stderr))
                 self.assertEqual(len(instances()), 1, "verbs never start a second copy")
                 code, st = overlay_status()
-                self.assertEqual((st.get("pet"), st.get("view")), ("shown", "care"), st)
+                self.assertEqual((st.get("pet"), st.get("home_requests")), ("shown", 0), st)
                 # An install re-points `current`; the running overlay is still the one.
                 current.unlink()
                 current.symlink_to(data / "releases/0.3.0")

@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
 
 [dependencies]
 codepet-core = { path = "../codepet-core" }
@@ -22,6 +26,15 @@ sha2 = "0.10"
 # Workspace crate only: recovery tests drive task.discard's real parameter validation.
 codepet-protocol = { path = "../codepet-protocol" }
 tempfile = "3"
+
+[features]
+# v0.3 (spec §6.5): the task pipeline, preflight tokens, review/acceptance and the care
+# readiness gates move behind this non-default feature in WP1 (their tests run with it
+# until v0.3.1 deletes them). `close_task_for_migration` stays outside it.
+legacy-tasks = ["codepet-core/legacy-tasks", "codepet-protocol/legacy-tasks"]
+# Test support for the workspace's integration tests only (`codepet_storage::testing`):
+# databases shaped like an upgraded v0.2 install. Never enabled by the `codepet` binary.
+test-support = []
 
 [lints]
 workspace = true

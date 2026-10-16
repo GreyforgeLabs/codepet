@@ -17,6 +17,13 @@
   "sleep": "Head-tuck nap"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Fish",
+  "water": "Icy water",
+  "play": "Pebbles",
+  "wash": "Splash"
+ },
  "stages": [
   {
    "stage": 1,
@@ -522,7 +529,7 @@
    "sha256": "893a53fdce9a31a545d1f485ad6eca85d2fe704f0039d8056ad41e55f333220d",
    "source": "origin/art/generated-source-library:docs/art-library/source/penguin/v1/poses.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "8395e57db577f37c02ee8b10b13e6876b6928dcccfba03ba989cbe117655f3d8",

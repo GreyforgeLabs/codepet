@@ -36,9 +36,15 @@ jobs:
           python3 qml/tests/test_pet_assets.py
           python3 qml/tests/test_pet_assets_invalid.py
           python3 qml/tests/test_pet_distinctness.py
-      # tools/petart/extract.py --check needs the GPT Image 2 source sheets, which are a
-      # release asset (codepet-art-sources-v0.2.tar), not part of the repository; it runs
-      # locally only. The manifests' sha256 checks above cover the committed frames.
+      # v0.3 icon set (SPEC-v0.3 §4): both install trees, sizes, alpha, key residue, provenance.
+      # tools/petart/icons.py --check needs the source sheets (not in the repository).
+      - name: Icon assets (v0.3 icon set, invalid-set fixtures)
+        run: |
+          python3 qml/tests/test_icon_assets.py
+          python3 qml/tests/test_icon_assets_invalid.py
+      # tools/petart/extract.py --check needs the GPT Image 2 source sheets, the v0.2.1
+      # release asset codepet-art-sources-v0.2.tar (about 200 MB, not in the repository), so
+      # it is not run in CI. The manifests' sha256 checks above cover the committed frames.
       # Source-art catalog (PR #7): stdlib-only checks that also fail under -O. Isolated
       # mode (-I) ignores user site-packages, so test_verify.py's optional Pillow --alpha
       # recheck skips when Pillow is installed only for the user.
@@ -48,15 +54,34 @@ jobs:
           python3 -I docs/art-library/test_verify.py
       - name: Install, uninstall and measurement tooling (temporary HOME, stub tools)
         run: python3 qml/tests/test_install_scripts.py
+      # Calm copy, and the v0.3 kid copy rules K1/K2/K8 over the plugin's strings, its
+      # kid-facing QML and the species fields that reach the screen; the plugin's copy table
+      # must be the contract plus the WP5 additions.
       - name: Copy rules
-        run: python3 qml/tests/copy_lint.py
+        run: |
+          python3 qml/tests/copy_lint.py
+          python3 tools/ui/gen_plugin_strings.py --check
+      # v0.3 WP0 contracts: vectors replayed by a reference model, fixtures vs schema, v5 DDL,
+      # K1/K2/K8 over strings.json (standard library only).
+      - name: v0.3 contracts
+        run: python3 docs/v0.3/contracts/check_contracts.py
       - name: Node model tests (bar model, presence model, state machine, life text)
         run: |
           node --version
           node --test qml/tests/*.mjs
+      # v0.3 WP3: the OpenCode and Hermes plugins, offline (stand-in shim, no client runs).
+      - name: Client integration plugins
+        run: |
+          node --test integrations/opencode/codepet.test.mjs
+          python3 integrations/hermes/test_plugin.py
       - name: CI matrix covers every test; release docs present
         run: |
           python3 qml/tests/test_ci_matrix.py
           python3 qml/tests/test_release_docs.py
+      # qml/tests/stubs stands in for the Omarchy shell's qs.Commons; the bar plugin's popup
+      # files are linted too (the four Quickshell-only files need the shell and are covered by
+      # test_bar_plugin.py's live load instead).
       - name: Portable QML lint
-        run: pyside6-qmllint -I qml qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml
+        run: |
+          pyside6-qmllint -I qml -I qml/tests/stubs qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml \
+            $(ls omarchy-plugin/*.qml | grep -vE '/(BarWidget|BarRpc|BarPopup|PresenceRecorder)\.qml$')

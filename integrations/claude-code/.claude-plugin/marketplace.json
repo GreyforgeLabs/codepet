@@ -1,0 +1,14 @@
+{
+  "name": "codepet-local",
+  "description": "CodePet local integration for Claude Code (managed by codepet)",
+  "owner": {
+    "name": "Greyforge Labs"
+  },
+  "plugins": [
+    {
+      "name": "codepet",
+      "source": "./plugin",
+      "description": "Lets your CodePet follow Claude Code sessions (observe only)"
+    }
+  ]
+}

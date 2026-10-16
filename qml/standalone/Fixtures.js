@@ -1,7 +1,7 @@
 .pragma library
 .import "../shared/LifeText.js" as LifeText
 
-// Fixed preview snapshots for PreviewHost.qml (SPEC-v0.2 §12). They are presentation data
+// Fixed preview snapshots for PreviewHost.qml (qml/README.md). They are presentation data
 // only: nothing here is saved, rewarded or sent anywhere. The lifecycle blocks are computed
 // with LifeText.js (the vectors-tested transcription of the Rust engine) so the copy and the
 // numbers agree with what a real `state.get` would show.

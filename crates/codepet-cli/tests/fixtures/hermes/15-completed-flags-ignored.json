@@ -1,0 +1,27 @@
+{
+ "name": "completed-flags-ignored",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_start\",\"session_id\":\"20261016_120000_ab12cd\",\"turn_id\":\"h-4\",\"completed\":true,\"failed\":true,\"user_message\":\"CANARY-prompt-7f3a\"}\n",
+ "expect": {
+  "event_id": "41e38da2ba040d2d8d59ad1eb3a2bcbf",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "turn_start",
+   "session": "20261016_120000_ab12cd",
+   "turn": "h-4",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "c9a4a2abf0344fc6",
+   "at_ms": 1792123876111
+  }
+ }
+}

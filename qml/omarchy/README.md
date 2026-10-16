@@ -1,97 +1,63 @@
-# Quickshell desktop overlay host
+# Quickshell desktop pet host (v0.3)
 
-[`../shell.qml`](../shell.qml) (`qml/shell.qml`) is the real host entry, targeting **Quickshell 0.3.1** on a Wayland compositor that supports `wlr-layer-shell` (including Hyprland/Omarchy). It uses the existing `HostAdapter` and real `codepet rpc`, whose sole provider remains the non-executing mock. It is not an Omarchy plugin installation. No autostart, packages, compositor rules or lock hooks are installed.
+[`../shell.qml`](../shell.qml) (`qml/shell.qml`) is the desktop pet, targeting **Quickshell 0.3.1** on a Wayland compositor with `wlr-layer-shell` (Hyprland/Omarchy). It is one transparent, non-focusable layer-shell surface on one screen whose input region is the pet's hit box; everything else, the picture-only thought bubble included, clicks through. There is no window: everything you do with CodePet happens in the bar popup (`omarchy-plugin/`), and a click on the pet opens it at Home (SPEC-v0.3 §3.8). No autostart, packages, compositor rules or lock hooks are installed by this file.
 
-## Explicit launch
+## What it reads, what it runs
 
-With Quickshell already installed and a built `codepet` on PATH, from the repository root:
+- **`bar-state.json`** (`$XDG_STATE_HOME/codepet/`, default `~/.local/state/codepet/`), watched by `BarStateWatcher.qml` with a Quickshell `FileView { watchChanges: true }`; no polling timer. `BarState.js` parses it with bounds (≤ 16 KiB UTF-8, schema `codepet.bar.v1` or `codepet.bar.v2`, typed fields; the v0.3 `enabled`, `agent`, `treats` and `clients` blocks all or none, required for v2). Anything malformed is ignored as a whole. Only a strictly newer `state_version` of the same database (`db_id`) replaces the drawn document; another database's file starts a new order.
+- **The face** comes from `../shared/petstate.js` (generated from `docs/v0.3/contracts/agent_vectors.json`), the same shared priority the bar cell and Home use: asleep/fainted, an app needs you, a need at now, an app working, a celebration, oops, a need at soon, idle. `../shared/OverlayFace.js` maps it to an animation and bubble icons. Celebrations play once per finish, first event and ready check (the scene records them in its own `seen`); growth plays once here and stays unseen in Rust until Home shows it. A new overlay process counts everything in the first export it draws as already celebrated (`OverlayFace.seenAtStart`), so a restart (Off to On, the switch off and on, a bar or session restart) never replays one; a celebration from before the process started is left to the bar and Home.
+- **"Pet on my desktop"** is the bar plugin's `overlayOnLoad` setting in `$HOME/.config/omarchy/shell.json`, the file the Omarchy shell itself reads and writes (it ignores `XDG_CONFIG_HOME`, and so does the overlay), read-only through a watched `FileView`. A missing key reads as off (the manifest default), and so does a `version: 1` file whose bar has no CodePet cell (the cell was removed). Only no usable file (none, unparsable, not `version: 1`) reads as unknown: a standalone overlay keeps running. The bar side of the switch is `omarchy-plugin/DesktopPetFlow.js`.
+- **Calm mode** is the same entry's `calm` setting, followed live (no walking, bob or hop; SPEC-v0.3 §3.6, §3.8). A missing key is off: Omarchy has no system reduced-motion signal, so the "follows system" default is the plugin default. Without a usable file, `CODEPET_REDUCED_MOTION=1` from the launch applies; a `setReducedMotion` call holds until the setting next changes.
+- **RPC.** `HostAdapter.qml` is a plain explicit transport (one `codepet rpc` process per request, argv only, 64 KiB frames, a one-shot response timeout). The overlay sends at most two kinds of request: one startup `state.get` when the file is missing or unreadable (it creates the export), and one `state.get` per explicit `refresh` verb. A file event never launches codepet.
+- **Home.** A click (or the `openHome` verb) runs `omarchy-shell -q shell summon greyforge.codepet` (`$OMARCHY_PATH/bin/omarchy-shell` when `OMARCHY_PATH` is set, else `omarchy-shell` from `PATH` run as `/usr/bin/env OMARCHY_PATH=/usr/share/omarchy omarchy-shell …`, because it refuses to run without `OMARCHY_PATH`), detached. Omarchy's `summon` calls the bar widget's `open()` (the bar-widget panel contract: `open()`, `close()`, `opened`), which the v0.3 bar plugin makes open Home. `-q` keeps it silent when the shell or widget is not there. Requests are coalesced: at most one Omarchy call per second however fast the pet is clicked (the hop and heart still answer every click); `status.home_requests` counts the calls sent.
 
-```sh
-PATH="$PWD/target/debug:$PATH" qs -p "$PWD/qml/shell.qml"
-```
+## When the process exits
 
-The entry lives at `qml/`, not in this directory: Quickshell 0.3.1 only loads QML inside the entry's folder (its qmlscanner refuses `../shared`), so `shared/`, `omarchy/` and `assets/` must all be below it. `HostAdapter.qml`, `OverlayPolicy.js`, `BarState.js` and `BarStateWatcher.qml` stay here and are imported as `omarchy`.
+`OverlayFlow.exitReason(barState, desktopPet)`: when the file says `enabled: false` (CodePet is Off) or "Pet on my desktop" is off, `shell.qml` logs one line and calls `Qt.quit()` (SPEC-v0.3 §3.8, §7.3, K9: no overlay process while Off). Started while Off, it reads the file and exits at once without running codepet. Off always exits at once, and so does the switch turning off after this process saw it on. A switch read as off before that (a launch racing the bar's write after Let's go!, which Omarchy does not wait for) must hold for `OverlayFlow.SETTLE_MS` (1.5 s, one single-shot timer) before the process exits; the pet is not drawn meanwhile, and `status.exit_reason` names the pending reason so a launcher can report "the desktop pet is off" instead of a failure. Turning CodePet or the switch back on is the bar's job (`codepet-overlay show`).
 
-For isolated testing, set `XDG_STATE_HOME` to a temporary directory before launching. Startup performs one `state.get`; no idle RPC polling or autonomous Start is added. `CODEPET_SCREEN=DP-1` selects an exact output name; if absent/disconnected, the first currently connected screen is used. No screens means a hidden overlay. `CODEPET_REDUCED_MOTION=1` disables scene motion.
+## Environment
 
-Further environment inputs (v0.2):
+- `CODEPET_BIN`: the `codepet` binary for the explicit reads (argv `[CODEPET_BIN, "rpc"]`; default `codepet` from `PATH`). The launcher passes `~/.local/bin/codepet`.
+- `CODEPET_SCREEN=DP-1` selects an exact output name; if absent or disconnected, the first connected screen is used. No screens means a hidden overlay.
+- `CODEPET_REDUCED_MOTION=1`: Calm mode (no walking, hop or bob; transients show one frame) when there is no usable `shell.json`; the bar entry's live `calm` setting wins otherwise.
+- `CODEPET_OPEN` (set by older launchers) is ignored: the launcher sends its verb after starting the overlay.
 
-- `CODEPET_BIN`: the `codepet` binary used for every request (argv `[CODEPET_BIN, "rpc"]`; default `codepet` from `PATH`). The launcher passes `~/.local/bin/codepet`.
-- `CODEPET_OPEN`: one of `tasks`, `care`, `companion`, `life` opens that tab of the window at startup; anything else (including empty) opens nothing. The startup `state.get` is issued first, so opening the window does not add a second read.
+## Launcher and IPC
 
-## Installed launcher: `codepet-overlay`
+`packaging/omarchy/codepet-overlay` is the verb launcher; see its header for discovery, single-instance start and `quit`. The IPC target is `codepet`; always put `--` after `call` (`qs ipc -p <entry> call -- codepet <fn>`), or Quickshell 0.3.1 parses a function named like a subcommand (`show`) as that subcommand.
 
-[`packaging/omarchy/codepet-overlay`](../../packaging/omarchy/codepet-overlay) (POSIX sh, installed to `~/.local/bin`) is the only supported way for the bar plugin and the user to drive the overlay:
+| Function | Effect |
+|---|---|
+| `ping` | `codepet-overlay shown` or `… hidden` (the launcher's liveness check) |
+| `status` | one-line JSON: `pet`, `busy`, `supervisor` (always false: v0.3 has no task; the launcher's `quit` needs it), `enabled`, `desktop_pet`, `face`, `overlay`, `drawn`, `home_requests`, `state_version`, `appearance`, `stage` |
+| `show`, `hide`, `toggle` | explicit visibility (does not override session/fullscreen suppression) |
+| `openHome` | open the bar popup at Home (the stub `panel` verb and the v0.2 window verbs `tasks`, `care`, `companion`, `life` went with the v0.2 bar menu) |
+| `refresh` | re-read the file and send one `state.get` (skipped while busy) |
+| `setReducedMotion`, `selectScreen`, `setSessionState`, `setFullscreen` | integration inputs |
 
-```sh
-codepet-overlay show|hide|toggle|tasks|care|companion|life|refresh|status
-```
+Automatic **screen-lock, suspend and fullscreen detection is not implemented**. `sessionLocked`, `sessionSuspended` and `selectedScreenFullscreen` are integration inputs (false initially), set only by `setSessionState` / `setFullscreen`; they are not evidence of a lock, sleep or fullscreen state. `WlSessionLock` is a lock-creation API, not an observer.
 
-- The entry is `${XDG_DATA_HOME:-$HOME/.local/share}/codepet/current/qml/shell.qml` (a relative `XDG_DATA_HOME` is ignored). `CODEPET_OVERLAY_QML`, `CODEPET_BIN` and `CODEPET_QS` override the entry, the binary and the Quickshell CLI (used by tests).
-- **Finding a running overlay.** First `qs ipc -p <entry> call -- codepet ping`, which must answer `codepet-overlay shown|hidden`. If that fails, `qs list --all --json` is scanned for an instance whose config path is under `…/codepet/current/` or `…/codepet/releases/` (an overlay started from an older release path, or one too old to have `ping`); that instance counts as running and every verb addresses it with `qs ipc --pid <pid>`. A second overlay is therefore never started. Quickshell keys instances by the path string it was given and does not resolve the `current` symlink, so re-pointing `current` during an install keeps addressing the running overlay.
-- `hide`, `refresh` and `status` never start the overlay. Every other verb starts it if nothing is running: `CODEPET_BIN=… CODEPET_OPEN=<verb or empty> qs -n -d -p <entry>` (`-n` also refuses a duplicate if two launchers race), then a bounded readiness wait of 30 × 0.1 s for `ping`, then the verb (`toggle` from a stopped overlay means `show`).
-- Exit status: 0 success / `status` running, 1 failure / `status` not running, 2 usage. `status` prints `running` (plus `pid N, older release path` when found by `qs list`) and the overlay's one-line JSON `status()`.
-- An overlay from a release without a verb answers `Function not found.`; the launcher reports it and suggests restarting the overlay once no task is executing. There is no quit verb.
-- Every expansion is quoted and nothing is evaluated (checked by `test_quickshell_host.py`).
+## Timers
 
-## Window tabs and host contract (v0.2)
+The pet has one cosmetic scheduler (≤ 5 updates per second on a 200 ms grid, one long wake per idle pause, stopped while hidden, asleep or in Calm mode except to finish a short transient) and one single-shot timer armed for the face's `wake_at_ms` (the next moment the face can change without a new export: an app going stale, a celebration's grace or window, the error frame). Neither runs while nothing is drawn, so there is none while Off, before a pet exists, or while the surface is suppressed. `shell.qml` itself has one single-shot timer, the exit settle above.
 
-The focusable task window has the tabs **Care · Tasks · Companion · Life**; adoption and retirement text input lives there, never on the click-through overlay. The tab selects `Panel.view` when the shared v0.2 `Panel` (which exposes `openLife()`) is present; with an older `Panel` every tab shows its home view. `HostAdapter` adds the shared host contract: `clientTag` (request-id prefix; the overlay uses `overlay`), `presentationLocks`, and `openCompanion()` / `openLife()`, which only signal the host to open that tab. `DesktopPet`'s `chooserRequested()` (v0.2) also opens Companion; older components without it are ignored.
-
-## Passive state: `bar-state.json`
-
-`BarStateWatcher.qml` watches `$XDG_STATE_HOME/codepet/bar-state.json` (default `~/.local/state/codepet/`, the bar-safe subset the Rust store exports atomically under its database lock after every committed change) with a Quickshell `FileView { watchChanges: true }`; there is no polling timer. `BarState.js` parses it with bounds (≤ 16 KiB UTF-8, schema `codepet.bar.v1`, typed fields, short reasons); anything malformed is ignored as a whole. Only a strictly newer `state_version` is merged by `HostAdapter.applyBarState()` into a copy of the presentation snapshot: meters, life (appearance, stage, level, XP, status, mode, pace, pause), care flags and readiness, the active task's state, unseen evolution events, lethal-need rows, the critical card and the memorial count. Care done from the Omarchy bar therefore shows on the pet. The subset carries no task id, so a task the overlay does not already know is not invented; it appears on the next explicit refresh.
-
-**Neither the watcher nor the merge ever issues RPC.** Full task details refresh only on explicit actions (opening the window, Refresh, user clicks). Shared components must not request in response to a snapshot change. After every explicit `state.get` the watcher re-reads the file (a read, not RPC): an inotify watch cannot be placed on a state directory that does not exist yet, so if the overlay starts before the first export, the first explicit refresh (normally the startup read, whose `codepet` run creates the file) arms it. A merged subset that arrives while a `state.get` is in flight is re-applied over that older full snapshot.
-
-
-The overlay is transparent, uses the Top layer deliberately, reserves zero workspace area and requests no keyboard focus. It has one screen owner, not a pet per monitor. Its input region is the union of the scene's pet and open-menu rectangles; decorative care props (food, water, tree, bed) have no handler and stay click-through, so a bed shown for a whole nap never becomes a dead click zone; inactive/invalid rectangles are empty and all rectangles are clipped to current logical screen dimensions. The rest of the desktop is click-through. Scene geometry responds to size changes; switching/removing the owning screen preserves the persistent QML scene and its care controller, including in-flight callbacks. Only the native surface may be recreated by Quickshell; the transport and supervisor remain alive. Null screen assignment is supported by [Quickshell’s screen setter](https://github.com/quickshell-mirror/quickshell/blob/v0.3.1/src/window/proxywindow.cpp); visibility is explicitly false when there is no selected screen.
-
-Tasks/review open in an independent, ordinary focusable `FloatingWindow` only after a pet action or explicit IPC call. Its care controls remain available for keyboard users. Closing it hides that window and leaves the root-owned transport and job processes intact. Quickshell 0.3.1 itself disables quit-on-last-window-close ([launch source](https://github.com/quickshell-mirror/quickshell/blob/v0.3.1/src/launch/launch.cpp)). Exiting/reloading the whole shell is different and is not a supported way to leave a live supervisor running.
-
-## Explicit visibility controls and integration boundary
-
-The IPC target is `codepet`. Prefer `codepet-overlay`; for direct calls select this config with the installed Quickshell CLI's instance/path selector (`qs ipc -p <entry>` or `--pid`) and inspect `qs ipc --help` first. **Always put `--` after `call`**: Quickshell 0.3.1 otherwise parses a function named like an ipc subcommand (`show`) as `qs ipc show`, prints the target list and exits 0 without calling anything. With this instance selected, calls include:
-
-```sh
-qs ipc call -- codepet ping          # "codepet-overlay shown" or "... hidden"
-qs ipc call -- codepet status        # one-line JSON: pet, window, view, busy, state_version, appearance, stage
-qs ipc call -- codepet hide
-qs ipc call -- codepet show
-qs ipc call -- codepet toggle
-qs ipc call -- codepet tasks         # also: care, companion, life (window tabs)
-qs ipc call -- codepet refresh       # one explicit state.get, skipped while busy
-qs ipc call -- codepet closeTasks
-qs ipc call -- codepet setReducedMotion true
-qs ipc call -- codepet selectScreen DP-1
-```
-
-Hide only hides the pet, without closing an already-open task window. Restore does not override session/fullscreen suppression. The hidden root remains available over IPC, so restoring does not require killing/relaunching the process.
-
-Automatic **screen-lock, suspend and fullscreen detection is not implemented**. The host provides `sessionLocked`, `sessionSuspended` and `selectedScreenFullscreen` integration inputs (false initially). `setSessionState(locked, suspended)` and `setFullscreen(value)` expose those inputs for explicit testing or a future trusted, event-driven session/compositor adapter. These are not evidence of a lock, sleep or fullscreen state. No polling, process-name heuristics, screen surveillance or `WlSessionLock` detector is used. `WlSessionLock` is a lock-creation API, not an observer of the user's existing locker.
-
-A production integration must supply trustworthy events and a fresh initial state, handle disconnects/restarts, and recompute fullscreen for the current selected output. Do not claim automatic suppression until that integration is implemented and tested. Session suppression hides both windows and deactivates scene timers; fullscreen suppresses only the pet. Optional decay remains unimplemented in this host; these booleans do not implement or settle decay.
-
-## Verification and remaining live gate
+## Verification
 
 ```sh
 python qml/tests/test_quickshell_host.py
+QT_QPA_PLATFORM=offscreen python qml/tests/run_qml.py qml/tests/OverlaySmoke.qml
+QT_QPA_PLATFORM=offscreen python qml/tests/run_qml.py qml/tests/OverlayAgentSmoke.qml
+node --test qml/tests/test_petstate.mjs qml/tests/test_overlay_flow.mjs qml/tests/test_desktop_pet_flow.mjs
 ```
 
-This checks source contracts plus executable JavaScript monitor-selection, hit-region and bar-state parse/merge policy (Node required for that portion), and the launcher: static checks (POSIX sh, no `eval`, every expansion quoted, bounded wait) and its behaviour against a scripted fake `qs` (never a second copy; `hide`/`refresh`/`status` never start; older-release instances addressed by pid; bounded readiness). When `qs` is installed it also runs two isolated load smokes (offscreen Qt, no Wayland/X11 display, temporary HOME/XDG/runtime directories, a stub `codepet` on PATH): the real `qml/shell.qml` must get past Quickshell's config scanner and fail only with `No PanelWindow backend loaded`, and a staged copy with the layer-shell `PanelWindow` replaced by a `FloatingWindow` must load and answer `qs ipc call codepet show/hide/tasks/closeTasks/...`. With `qs` installed it also runs the real overlay offscreen: `CODEPET_OPEN`, the tab verbs, `toggle`, `refresh` (exactly one `state.get`, logged by a stub), the bar-state watcher (atomic renames, older/malformed/oversized files ignored, no RPC from file events), the `tests/quickshell/shell.qml` HostAdapter harness, and the launcher against one real instance including a re-pointed `current` symlink and an instance started from a `releases/` path. `tests/quickshell/real_rpc.qml` runs only with `CODEPET_TEST_BIN=<built codepet>`. The smokes are skipped where Quickshell is absent (as in CI). They are **not** proof of layer-shell behavior, native focus or Wayland input passthrough; those still need the live checklist below. Qt6 qmllint can parse the file but cannot resolve Quickshell imports.
+`test_quickshell_host.py` checks source contracts, the pure policy JS (Node) and the launcher against a fake `qs`. With `qs` installed it runs the real entry offscreen in an isolated environment (private HOME/XDG/runtime directories, no display, stub `codepet` and `omarchy-shell` on `PATH`), with the layer-shell `PanelWindow` swapped for a `FloatingWindow`: reads with and without a file (no RPC when the file is there), file events (atomic renames, older/malformed/oversized ignored, database swaps), exit on Off and on "Pet on my desktop" off (switched off, the cell removed, a launch racing the write that turns it on, a `shell.json` under `XDG_CONFIG_HOME` ignored), Calm mode followed live, `openHome` through the stub (one call per burst, the packaged `OMARCHY_PATH` without one), the `tests/quickshell/shell.qml` transport harness and the launcher against one real instance. `tests/quickshell/real_rpc.qml` runs only with `CODEPET_TEST_BIN=<built codepet>`: it drives the real `codepet rpc` in a scratch state home (fresh install, `pet.start`, Off and On) and checks each export through `BarState.js`, `petstate.js` and `OverlayFlow.js`. Keep `TMPDIR` short (the default `/tmp`): Quickshell's IPC socket path must fit in 108 bytes.
 
-Before release, run the actual entry on the target Quickshell/Omarchy version and verify:
+These are **not** proof of layer-shell behaviour, native focus, Wayland input passthrough or the live Omarchy bar. Before release, on the target Quickshell/Omarchy (nested rig first, SPEC-v0.3 §9.4):
 
-1. Empty desktop pixels and care props click through; pet and opened menu receive input, with no invisible hit boxes after closing them
-2. Overlay never takes keyboard focus; task window can type into the form, closes/reopens, and closing it during an explicit mock task preserves the supervisor
-3. Top-layer stacking is intentional; zero reserved work area; screen-scale/geometry changes clamp all controls; unplug/replug owning output yields exactly one pet, including during an in-flight care request
-4. Explicit hide/show, reduced motion and integration inputs stop/restart animation safely, including when no monitor exists
-5. Once a trusted integration exists, test real locker/suspend/fullscreen events and session-adapter failures, not merely toggled booleans
+1. Empty desktop pixels and the thought bubble click through; the pet receives the click, hops and opens the bar popup at Home
+2. The overlay never takes keyboard focus; zero reserved work area; unplug/replug of the owning output yields exactly one pet
+3. Off from the popup or the bar menu ends the overlay process; "Pet on my desktop" off ends it; turning either back on brings it back
+4. Explicit hide/show, Calm mode and the integration inputs stop and restart animation safely, including with no monitor
+5. Once a trusted integration exists, test real locker/suspend/fullscreen events
 
-API references checked against the official 0.3.1 documentation:
-[PanelWindow](https://quickshell.org/docs/v0.3.1/types/Quickshell/PanelWindow/),
-[Region](https://quickshell.org/docs/v0.3.1/types/Quickshell/Region/),
-[QsWindow](https://quickshell.org/docs/v0.3.1/types/Quickshell/QsWindow/),
-[WlrLayershell](https://quickshell.org/docs/v0.3.1/types/Quickshell.Wayland/WlrLayershell/),
-[FloatingWindow](https://quickshell.org/docs/v0.3.1/types/Quickshell/FloatingWindow/),
-[IpcHandler](https://quickshell.org/docs/v0.3.1/types/Quickshell.Io/IpcHandler/).
+API references: [PanelWindow](https://quickshell.org/docs/v0.3.1/types/Quickshell/PanelWindow/), [Region](https://quickshell.org/docs/v0.3.1/types/Quickshell/Region/), [WlrLayershell](https://quickshell.org/docs/v0.3.1/types/Quickshell.Wayland/WlrLayershell/), [FileView](https://quickshell.org/docs/v0.3.1/types/Quickshell.Io/FileView/), [IpcHandler](https://quickshell.org/docs/v0.3.1/types/Quickshell.Io/IpcHandler/).

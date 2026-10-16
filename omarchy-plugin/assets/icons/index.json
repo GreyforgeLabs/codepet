@@ -1,0 +1,254 @@
+{
+ "schema": "codepet.icons.index.v1",
+ "spec": "SPEC-v0.3 \u00a74.1; ids and sheets from docs/v0.3/contracts/icons.json",
+ "path_pattern": "<sheet id>/<icon id>.webp",
+ "care_path_pattern": "care-<careIconSet>/<need>.webp",
+ "generated_by": "tools/petart/icons.py",
+ "icons": {
+  "care-floor/food": {
+   "file": "care-floor/food.webp",
+   "px": 256,
+   "sha256": "f17d9f32804b6c542301f73bc202c9d987c5c86fd80e6db1a76813b13241cde5"
+  },
+  "care-floor/water": {
+   "file": "care-floor/water.webp",
+   "px": 256,
+   "sha256": "04fe71a551c045ef35d7928ed23d358abbd1a9a2d8da7d816b564df5412a4248"
+  },
+  "care-floor/play": {
+   "file": "care-floor/play.webp",
+   "px": 256,
+   "sha256": "377c8326055fa91848b21697964bf641358c9dc15b7df9eef7b7aa01d72229ac"
+  },
+  "care-floor/wash": {
+   "file": "care-floor/wash.webp",
+   "px": 256,
+   "sha256": "dd22787c9e54b1ec32cf64aebd3c1a583ea33a1b09dd441e955d2c69ba12c841"
+  },
+  "care-floor/treat_jar": {
+   "file": "care-floor/treat_jar.webp",
+   "px": 256,
+   "sha256": "f674e791aee885a04622037985a41b6035f6fbc43fab3d9ab0d2b73515e0c5d1"
+  },
+  "care-floor/bed": {
+   "file": "care-floor/bed.webp",
+   "px": 256,
+   "sha256": "6c939ca47b5d5d1db9b3859f83a789efa595ca414798c0f0cc84aff930457696"
+  },
+  "care-floor/sun_wake": {
+   "file": "care-floor/sun_wake.webp",
+   "px": 256,
+   "sha256": "9bea693b0ff9d7ba7c84c06b547333b2a47bcb847efffd6991e7438107b1d261"
+  },
+  "care-floor/wand_change": {
+   "file": "care-floor/wand_change.webp",
+   "px": 256,
+   "sha256": "31cb7c7dce175b5beaa8e71fcb118cb9747ab0194908f6b41f063169895e9df6"
+  },
+  "care-floor/gear_more": {
+   "file": "care-floor/gear_more.webp",
+   "px": 256,
+   "sha256": "a6bf62779f08430293fe03103ea02471c841e4f8af037342d0b795d679041b04"
+  },
+  "care-floor/star": {
+   "file": "care-floor/star.webp",
+   "px": 256,
+   "sha256": "252a649faaad09c982708b8ecc0a1a4255e8087a67d11a07c913c0b62d7c1702"
+  },
+  "care-floor/power": {
+   "file": "care-floor/power.webp",
+   "px": 256,
+   "sha256": "7d9579cec5cf4f921f94b15a6d57b4798246b5e1ab95daa09b2d915464e666a4"
+  },
+  "care-floor/heart": {
+   "file": "care-floor/heart.webp",
+   "px": 256,
+   "sha256": "7bf771d35d5429140bdcde3f6d6ca4064d33ce11a2f184c28c8af463a30f220c"
+  },
+  "care-aquatic/food": {
+   "file": "care-aquatic/food.webp",
+   "px": 256,
+   "sha256": "cd85a9618bd29e99ac8676271944ad52254b381750470487eebad8f570c1973b"
+  },
+  "care-aquatic/water": {
+   "file": "care-aquatic/water.webp",
+   "px": 256,
+   "sha256": "9d3f42b6bab753970d63084a3c5a7a474c6ca8a057f9ea2ebb9d74500240e7a7"
+  },
+  "care-aquatic/play": {
+   "file": "care-aquatic/play.webp",
+   "px": 256,
+   "sha256": "9f2104a44497e25cc7e7f855d6899e22f7f0a012da82eb5c9ab710a58cd9b6f4"
+  },
+  "care-aquatic/wash": {
+   "file": "care-aquatic/wash.webp",
+   "px": 256,
+   "sha256": "afda436e80401912252a9972e9f3f05240f093768a5ee2df8e5733915cf03a9d"
+  },
+  "care-robot/food": {
+   "file": "care-robot/food.webp",
+   "px": 256,
+   "sha256": "b7a97064c2de868c727f2c858a7245d0dfdf24d877bfc66e8c1a6cdc883bcd8d"
+  },
+  "care-robot/water": {
+   "file": "care-robot/water.webp",
+   "px": 256,
+   "sha256": "f35fb8f22de09bdec978a83cb58528c1943ee19de471a6eeb77e3fefdfe1e34d"
+  },
+  "care-robot/play": {
+   "file": "care-robot/play.webp",
+   "px": 256,
+   "sha256": "c14debef08d3c1d01872347a29bf6cb59637ea02980a4093986d5f08d869a63e"
+  },
+  "care-robot/wash": {
+   "file": "care-robot/wash.webp",
+   "px": 256,
+   "sha256": "b507aa4de81eff4364f6a3ae4a2d755316cfafd3d81646832bba3f20a1571ada"
+  },
+  "status/laptop": {
+   "file": "status/laptop.webp",
+   "px": 256,
+   "sha256": "9d2e1c466dd0f3a9726484a085b78b6be68ddddabf9d93032adfe284ecb6bd8d"
+  },
+  "status/bubble_wait": {
+   "file": "status/bubble_wait.webp",
+   "px": 256,
+   "sha256": "9bd33f2b675d194d2a9b5bc91c1d61c9a0f8ae39727af6d987854efbf73e95a8"
+  },
+  "status/bandage": {
+   "file": "status/bandage.webp",
+   "px": 256,
+   "sha256": "a349a06936fafb11d9dd8f3fe2712deffa801b9d6eaba39550502124757aa897"
+  },
+  "status/moon": {
+   "file": "status/moon.webp",
+   "px": 256,
+   "sha256": "922ec4f560368edc25ec9d800c57890fd61009c0db4bee828cdb0b036955edec"
+  },
+  "status/screen": {
+   "file": "status/screen.webp",
+   "px": 256,
+   "sha256": "1bb58ed8d8dca35cf514433645a66e64e7afde8ff6a1c9a58b7c27588e61ab06"
+  },
+  "status/leaf_calm": {
+   "file": "status/leaf_calm.webp",
+   "px": 256,
+   "sha256": "18d90357aa213719ab5b7f48037a44608d1214cf68a7abacf027a77a12f159a0"
+  },
+  "status/flame_hardcore": {
+   "file": "status/flame_hardcore.webp",
+   "px": 256,
+   "sha256": "b9fab960f9761e2d61d23effce7e023ccb79fcc31f4ed75788b6d2a295f28255"
+  },
+  "status/robot_helpers": {
+   "file": "status/robot_helpers.webp",
+   "px": 256,
+   "sha256": "cda025c8db71070775956e395d2e2d1278ecaf7e9ac61676607b4f3dcaaa8be2"
+  },
+  "status/help": {
+   "file": "status/help.webp",
+   "px": 256,
+   "sha256": "921d2b7d7a6ebf3f668ca7ce51b2b4c4e120050d13e5398df898d6d2922eafc7"
+  },
+  "status/memories": {
+   "file": "status/memories.webp",
+   "px": 256,
+   "sha256": "45ec7576ac156614613dd7379677f287fcaf274833c57ef27ba88ddad5da05af"
+  },
+  "status/wave_goodbye": {
+   "file": "status/wave_goodbye.webp",
+   "px": 256,
+   "sha256": "cd975835d312920d1875abb4c1cf5a50af351016e07343197f864a32e1755f84"
+  },
+  "status/confetti": {
+   "file": "status/confetti.webp",
+   "px": 256,
+   "sha256": "d2868395059a8df262bc2cb7feaae886237ab225817819900585acfc69dcfef1"
+  },
+  "apps/app_claude_code": {
+   "file": "apps/app_claude_code.webp",
+   "px": 256,
+   "sha256": "621d6c81b11a8272bc6588c7b988056ca9d537f41acab5ad6c84e5f57f4a5aa0"
+  },
+  "apps/app_codex": {
+   "file": "apps/app_codex.webp",
+   "px": 256,
+   "sha256": "f30c17408b301f46ed4c14222fa0efe9a5e1b8831250b3d794f171bfa9302f1a"
+  },
+  "apps/app_opencode": {
+   "file": "apps/app_opencode.webp",
+   "px": 256,
+   "sha256": "5054f53f69ea932a3e18cb74943df1f0c33d5af83185ecefab96da22db95e518"
+  },
+  "apps/app_hermes": {
+   "file": "apps/app_hermes.webp",
+   "px": 256,
+   "sha256": "1388d48eca7a9bd151be06957ff9ec27b229ad7321554d6d08c95c4dbd473c8b"
+  },
+  "apps/app_grok": {
+   "file": "apps/app_grok.webp",
+   "px": 256,
+   "sha256": "6824a197fa034562f1b2d7bab855d17880bdd23e229194f40895f675d9f2b3b2"
+  },
+  "ui/egg": {
+   "file": "ui/egg.webp",
+   "px": 256,
+   "sha256": "6a66a794aae232d6d45d2b4ddeb7b38cf318702f2bc4cd9fc5b767c0ebe0e820"
+  },
+  "ui/pencil": {
+   "file": "ui/pencil.webp",
+   "px": 256,
+   "sha256": "26af601c7f7f60a9512f2eb99ca8e81ca295a3a0fc5ff78562f9a6463d0b4d02"
+  },
+  "bar/badge_hand": {
+   "file": "bar/badge_hand.webp",
+   "px": 64,
+   "sha256": "fede30bde620f635b4d842b10b664b683fada8c2ac655b9decc55f8841719b15"
+  },
+  "bar/badge_drop": {
+   "file": "bar/badge_drop.webp",
+   "px": 64,
+   "sha256": "433479cb91dfdf3b13510395d18974e83891e05cbb0823866097237f12f77fac"
+  },
+  "bar/badge_bowl": {
+   "file": "bar/badge_bowl.webp",
+   "px": 64,
+   "sha256": "75c247e426f5cb468d05057f51152db61c8d23fd9eb3be06758ab39118874649"
+  },
+  "bar/badge_ball": {
+   "file": "bar/badge_ball.webp",
+   "px": 64,
+   "sha256": "f6d644d4e8d85b51e6c758c357c98e3d5ea797cc304f0fa9ac272da4b2b4b6d1"
+  },
+  "bar/badge_tub": {
+   "file": "bar/badge_tub.webp",
+   "px": 64,
+   "sha256": "5863c26adbef9e009f0806a0bd0d27471fed00b5ed5b0eb081250dfc7184a437"
+  },
+  "bar/badge_star": {
+   "file": "bar/badge_star.webp",
+   "px": 64,
+   "sha256": "ea69db066217e08033f802f0abc6a1f06847633d16cd040fc8aefe3872ff7392"
+  },
+  "bar/badge_bandage": {
+   "file": "bar/badge_bandage.webp",
+   "px": 64,
+   "sha256": "4330bc1a8aebbec8d970029d7a14383d69d93e653bd7d50389115be4d4097d71"
+  },
+  "bar/badge_moon": {
+   "file": "bar/badge_moon.webp",
+   "px": 64,
+   "sha256": "35718018d2222b9e7e5df4d095611860bc395ab192b8f537c2f5d9bfd7b86b16"
+  },
+  "bar/badge_egg": {
+   "file": "bar/badge_egg.webp",
+   "px": 64,
+   "sha256": "5bc39481245c1738f58c08fee6e669f6a6a90cfab3fc978417f24b2f0d200772"
+  },
+  "bar/badge_sparkle": {
+   "file": "bar/badge_sparkle.webp",
+   "px": 64,
+   "sha256": "f557b4b8472d656a897f0ec4d592ad14a262bd9d7c4522ce3368a6e3ef286f26"
+  }
+ }
+}

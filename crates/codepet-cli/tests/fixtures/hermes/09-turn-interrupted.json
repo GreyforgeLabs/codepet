@@ -1,0 +1,27 @@
+{
+ "name": "turn-interrupted",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_cancelled\",\"session_id\":\"20261016_120000_ab12cd\",\"turn_id\":\"h-3\"}\n",
+ "expect": {
+  "event_id": "ea9dd99bb7c276c12e60386045d8b8d8",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "turn_cancelled",
+   "session": "20261016_120000_ab12cd",
+   "turn": "h-3",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "c0d5628a0eb715ec",
+   "at_ms": 1792123876111
+  }
+ }
+}

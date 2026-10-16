@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the WP-6 renderer test pack (two species, WebP with alpha).
+"""Generate the renderer test pack (two species, WebP with alpha).
 
 This is TEST data for PetCatalog/PetSprite/DesktopPet, not shipped art. It follows
 the v0.2 asset contract (SPEC Amendment A): 192x192 transparent WebP frames named

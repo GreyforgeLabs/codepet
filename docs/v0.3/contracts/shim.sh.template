@@ -1,0 +1,15 @@
+#!/bin/sh
+# managed by codepet: observe-only bridge; prints nothing; always exits 0
+exec >/dev/null 2>&1
+S='@CODEPET_STATE_DIR@'
+B='@CODEPET_BIN@'
+d() { timeout -s KILL 0.3 cat >/dev/null 2>&1; exit 0; }
+[ -e "$S/off" ] && d
+[ -e "$S/clients/$1.disconnected" ] && d
+if [ "$1" = claude-code ]; then
+  [ -n "$GROK_HOOK_EVENT" ] && d
+  case "$CLAUDE_CODE_ENTRYPOINT" in sdk*) [ -e "$S/helpers" ] || d ;; esac
+fi
+[ -d "$S/inbox" ] && [ -x "$B" ] || d
+"$B" hook --state-dir "$S" "$1" >/dev/null 2>&1
+exit 0

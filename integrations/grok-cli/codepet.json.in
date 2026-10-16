@@ -1,0 +1,103 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "StopCancelled": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "@CODEPET_SHIM@ grok-cli >/dev/null 2>&1 || true",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

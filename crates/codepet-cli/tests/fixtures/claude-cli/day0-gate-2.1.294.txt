@@ -1,0 +1,137 @@
+== settings.json before
+{
+  "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "slopbrake-hook stop", "timeout": 600}]}]},
+  "permissions": {"allow": ["Bash(ls)"]},
+  "enabledPlugins": {"x@y": true},
+  "theme": "dark"
+}
+
+$ claude plugin validate /home/u/.local/share/codepet/integrations/claude-code
+Validating marketplace manifest: /home/u/.local/share/codepet/integrations/claude-code/.claude-plugin/marketplace.json
+
+✔ Validation passed
+[exit 0]
+$ claude plugin validate /home/u/.local/share/codepet/integrations/claude-code/plugin
+Validating plugin manifest: /home/u/.local/share/codepet/integrations/claude-code/plugin/.claude-plugin/plugin.json
+
+✔ Validation passed
+[exit 0]
+$ claude plugin install codepet --marketplace /home/u/.local/share/codepet/integrations/claude-code --json
+{"command":"install","outcome":"ok","plugin":"codepet@codepet-local","pluginId":"codepet@codepet-local","scope":"user","message":"Successfully installed plugin: codepet@codepet-local (scope: user)"}
+[exit 0]
+$ claude plugin install codepet --marketplace /home/u/.local/share/codepet/integrations/claude-code --json
+{"command":"install","outcome":"ok","plugin":"codepet@codepet-local","pluginId":"codepet@codepet-local","scope":"user","message":"Plugin \"codepet@codepet-local\" is already installed (scope: user) — it loads in place from /home/u/.local/share/codepet/integrations/claude-code/plugin, so edits there take effect at the next session start or /reload-plugins","installedVersion":"0.3.0","availableVersion":"0.3.0"}
+[exit 0]
+$ claude plugin list --json
+[
+  {
+    "id": "codepet@codepet-local",
+    "version": "0.3.0",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/u/.claude/plugins/cache/codepet-local/codepet/0.3.0",
+    "readFromFolder": "/home/u/.local/share/codepet/integrations/claude-code/plugin",
+    "folderVersion": "0.3.0",
+    "installedAt": "2026-10-16T09:07:30.349Z",
+    "lastUpdated": "2026-10-16T09:07:30.349Z",
+    "projectEnabled": false
+  }
+]
+[exit 0]
+== settings.json after install
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "slopbrake-hook stop",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "x@y": true,
+    "codepet@codepet-local": true
+  },
+  "extraKnownMarketplaces": {
+    "codepet-local": {
+      "source": {
+        "source": "directory",
+        "path": "/home/u/.local/share/codepet/integrations/claude-code"
+      }
+    }
+  },
+  "theme": "dark"
+}
+
+== installed_plugins.json
+{
+  "version": 2,
+  "plugins": {
+    "codepet@codepet-local": [
+      {
+        "scope": "user",
+        "installPath": "/home/u/.claude/plugins/cache/codepet-local/codepet/0.3.0",
+        "version": "0.3.0",
+        "installedAt": "2026-10-16T09:07:30.349Z",
+        "lastUpdated": "2026-10-16T09:07:30.349Z"
+      }
+    ]
+  }
+}
+$ claude plugin uninstall codepet@codepet-local --json
+{"command":"uninstall","outcome":"ok","plugin":"codepet@codepet-local","pluginId":"codepet@codepet-local","scope":"user","keptData":false,"message":"Successfully uninstalled plugin: codepet (scope: user)"}
+[exit 0]
+$ claude plugin uninstall codepet@codepet-local --json
+{"command":"uninstall","outcome":"failed","plugin":"codepet@codepet-local","scope":"user","message":"Plugin \"codepet@codepet-local\" not found in installed plugins","failureCode":"not_installed"}
+✘ Failed to uninstall plugin "codepet@codepet-local": Plugin "codepet@codepet-local" not found in installed plugins
+[exit 1]
+$ claude plugin marketplace remove codepet-local --json
+{"command":"marketplace-remove","outcome":"ok","marketplace":"codepet-local","message":"Successfully removed marketplace: codepet-local"}
+[exit 0]
+$ claude plugin marketplace remove codepet-local --json
+{"command":"marketplace-remove","marketplace":"codepet-local","outcome":"failed","message":"Marketplace 'codepet-local' not found","failureCode":"not_configured"}
+✘ Failed to remove marketplace: Marketplace 'codepet-local' not found
+[exit 1]
+== settings.json after uninstall
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "slopbrake-hook stop",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "x@y": true
+  },
+  "extraKnownMarketplaces": {},
+  "theme": "dark"
+}
+
+== installed_plugins.json after uninstall
+{
+  "version": 2,
+  "plugins": {}
+}
+gate: passed (CLAUDE_CONFIG_DIR honoured; install, already-installed, list, uninstall, marketplace remove captured)

@@ -1,5 +1,5 @@
 //! Shared helpers: every test gets its own temporary XDG_STATE_HOME and HOME and runs the
-//! built `codepet` binary. Nothing touches the operator's real state directory.
+//! built `codepet` binary. Nothing touches the user's real state directory.
 #![allow(dead_code)]
 use codepet_storage::{Clock, ManualClock, StatePaths, Store, SystemClock};
 use serde_json::{json, Value};
@@ -51,6 +51,13 @@ impl Env {
             dir,
             next_id: AtomicU64::new(1),
         }
+    }
+    /// A state directory shaped like an upgraded v0.2 install: schema 5 with the unarmed
+    /// first-run life #1 "Ginger" (a fresh v0.3 install has no companion until `pet.start`).
+    pub fn with_first_run_pet() -> Self {
+        let env = Self::new();
+        drop(Store::open_with_first_run_placeholder(&env.paths(), Arc::new(SystemClock)).unwrap());
+        env
     }
     pub fn xdg(&self) -> PathBuf {
         self.dir.path().join("state")

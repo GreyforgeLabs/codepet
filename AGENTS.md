@@ -1,15 +1,33 @@
 # CodePet development invariants
 
-Read README.md and docs/implementation-spec.md before modifying behavior. The spec is a target, not evidence that security or runtime features exist.
+Read README.md and docs/implementation-spec.md before modifying behavior. The spec is a target, not evidence that security or runtime features exist. For v0.3 work, the frozen contracts are in docs/v0.3/contracts/ (start with its README.md and notes.md).
 
-- Every real provider launch must follow an explicit user Start for the exact reviewed draft revision. No startup launches, timers, meter-triggered work, retries, queues, crash resume or autonomous task discovery.
-- One task owns the active slot through preparation, execution, waiting, verification, review, cancellation and recovery. Cancellation releases it only after containment confirms all children stopped.
-- Real providers remain disabled until versioned adapters, filesystem staging, confinement, bounded output, durable state and review/apply gates pass. Never add a shell-command fallback.
-- No host-project writes from provider execution. No shell interpolation, implicit network/secrets, privileged actions or unreviewed cleanup.
-- Reward only after explicit result acceptance, exactly once. Never reward process exit, progress, failure, cancellation or discard. Production acceptance requires an atomic durable transaction; in-memory receipts do not satisfy that gate.
-- Failed execution/containment is terminal; failed or missing checks on a safely completed result may be reviewed only with visible status and explicit override acknowledgement/reason.
-- Preserve original files and historical data. Fail closed on uncertainty, conflicts, unsupported isolation, or stale review/preflight state.
-- No resident Rust daemon in the target architecture. Explicit short commands and a per-job supervisor only. No idle IPC polling. Keep Omarchy host APIs outside the portable core and standalone QML UI.
+## v0.3 invariants (SPEC-v0.3 §6.1)
+
+CodePet observes local coding clients (Claude Code, Codex, OpenCode, Hermes, Grok CLI) and never runs them. These replace the v0.2 provider-launch rules.
+
+- **O1 Observe only.** CodePet never launches, signals, blocks or answers a coding client, and never reads transcripts or project folders. Client config files are read only by `clients.status`, `doctor` and the Connect/Disconnect jobs, triggered by the user, and only for the named keys (Codex `[features]`/`[hooks.state]`, CodePet's entry in Claude's installed-plugins list and its own `enabledPlugins` entry, the settings key check). Hooks, the fold and exports never read them. They are written only by Connect/Disconnect, directly (CodePet-owned files, Codex `hooks.json`) or through the client's own CLI.
+- **O2 Hooks never hurt the client.** Every path exits 0 with empty stdout and stderr. The hook never opens SQLite, never creates directories, takes only a non-blocking lock, makes no network call, and is bounded by the shim's 0.3 s drain and its own `alarm(1)`.
+- **O3 No content is stored.** Only enums, counts, flags, HMAC'd keys and timestamps (SPEC §5.10). Never prompts, assistant text, tool names, inputs or outputs, paths, cwd, project names, transcript paths, error text, model names or approval commands.
+- **X1** A turn earns at most one treat, enforced by `UNIQUE(session_key, turn_key)`.
+- **X2** No treat for errors, cancels, session start, tool calls alone, test events, non-interactive sessions, or while Off.
+- **X3** Earning is capped durably (1 per session per 30 s, 12 per rolling hour, 48 per rolling 24 h, jar of 10).
+- **X4** XP is never time-based. Duration only qualifies a turn.
+- **R (kept)** Reward only after explicit acceptance, exactly once. Tapping **Treats** is the acceptance.
+- **E1** Agent events are display hints and treat sources only. The fold writes only agent tables, `client_hooks`, the agent fields of `meta` and the export. It runs no settlement, decay, revival or death, and never changes care, arming or life state.
+- **E2 Off is total**, apart from the login shell Codex itself starts before the shim.
+- **Kept from v0.2:** no resident daemon and no idle polling (the fold and the clients job are bounded, short-lived processes); one `BEGIN IMMEDIATE` per mutation; state-dir safety (0700/0600, no symlinks); request-id idempotency; lifecycle integrity triggers; presence can only under-charge; transaction order (settle → body → finalize → `state_version++` → commit) for UI and presence mutations; bar export rules.
+- **Lock order:** `fold.lock` before the DB, everywhere.
+- Only `codepet migrate` and `codepet rpc` `state.get` may migrate. The hook, the fold and the clients job never migrate.
+
+## General
+
+- Preserve original files and historical data. Fail closed on uncertainty or conflicts. Never delete a shim a client may still reference; tombstone it.
+- Keep Omarchy host APIs outside the portable core and standalone QML UI.
 - Keep untrusted text plain text, bound inputs/events/logs/artifacts, and avoid new dependencies without a reason.
-- Run cargo fmt --all --check, cargo test --workspace --locked and cargo clippy --workspace --all-targets --locked -- -D warnings. Update tests for every state/policy change.
-- State verification limits honestly. QML source review does not mean Qt/Omarchy tested; unmeasured resource goals are not benchmarks.
+- Run cargo fmt --all --check, cargo test --workspace --locked and cargo clippy --workspace --all-targets --locked -- -D warnings, each also with `--features legacy-tasks`, plus `python3 docs/v0.3/contracts/check_contracts.py`. Update tests for every state/policy change.
+- State verification limits honestly. QML source review does not mean Qt/Omarchy tested; unmeasured resource goals (such as the hook latency budget) are not benchmarks.
+
+## Retired task pipeline (`legacy-tasks`, deleted in v0.3.1)
+
+The v0.2 mock task pipeline is unrouted in v0.3.0 and kept only behind the non-default `legacy-tasks` cargo feature until its deletion. While it exists it keeps its v0.2 rules: one task owns the active slot until containment confirms all children stopped; no host-project writes, shell interpolation, implicit network/secrets or privileged actions; reward only after explicit result acceptance in one atomic durable transaction; failed execution/containment is terminal. No new feature work may depend on it. Its historic data tables stay read-only and are never dropped.

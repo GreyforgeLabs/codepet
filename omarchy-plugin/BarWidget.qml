@@ -4,17 +4,30 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 import "CodePetBar.js" as Model
+import "DesktopPetFlow.js" as DesktopFlow
+import "petstate.js" as PetState
+import "Strings.js" as Strings
 
-// CodePet on the Omarchy bar (plugin greyforge.codepet).
+// CodePet on the Omarchy bar (plugin greyforge.codepet), v0.3 (SPEC-v0.3 §3.1, §8).
 //
-// Read-mostly: the cell renders the bar-safe <stateDir>/bar-state.json that the
-// `codepet` CLI writes after every settling command, watched with a FileView. A file
-// event never launches Rust. RPC happens only on: the leader's one startup read, the
-// popup opening, the Refresh button and explicit care/sleep/pause clicks.
+// The cell renders the bar-safe <stateDir>/bar-state.json that `codepet` writes after every
+// change, watched with a FileView: a file event never launches Rust. RPC happens only on the
+// leader's one startup read, when the popup opens, and on explicit taps.
 //
-// Nothing is ever written inside this plugin folder (the shell hot-reloads on any
-// change there). The leader writes <stateDir>/presence.json; settings are written only
-// through bar.shell.updateEntryInline().
+// The cell shows the pet's thumbnail (or its static sleep/working frame) and one bar badge
+// chosen by the shared priority (petstate.js). It runs no timer except one one-shot that
+// re-evaluates the face when the export says something will change (agent.stale_at_ms, a
+// celebration window, the error frame); none runs while CodePet is Off (K9). Only the
+// "needs you" hand pulses, never in Calm mode.
+//
+// Clicks: left opens Home (when Off it turns CodePet on and opens Home, one click); right
+// opens the small menu (CodePet on/off, Pet on my desktop, Helpers, More). There are no
+// tooltips. The leader exposes the IPC target `greyforge.codepet` with openHome(), which
+// the desktop pet calls when it is clicked.
+//
+// Nothing is ever written inside this plugin folder (the shell hot-reloads on any change
+// there). The leader writes <stateDir>/presence.json; settings are written only through
+// bar.shell.updateEntryInline().
 BarWidget {
     id: root
     moduleName: "greyforge.codepet"
@@ -32,6 +45,9 @@ BarWidget {
         XDG_CONFIG_HOME: Quickshell.env("XDG_CONFIG_HOME") || ""
     })
     readonly property var paths: Model.paths(cfg, env)
+    readonly property string runtimeBase: "file://" + paths.runtime
+    readonly property bool testState: paths.testState
+    readonly property string stateHome: paths.stateHome
 
     FileView {
         id: shellConfigFile
@@ -43,13 +59,14 @@ BarWidget {
         onFileChanged: reload()
     }
 
-    function setLabelMode(mode) {
-        if (["name", "status", "none"].indexOf(mode) < 0 || !bar || !bar.shell
+    // One plugin setting (label, presence, overlayOnLoad, calm), written through the shell.
+    function setSetting(key, value) {
+        if (["label", "presence", "overlayOnLoad", "calm"].indexOf(key) < 0 || !bar || !bar.shell
                 || typeof bar.shell.updateEntryInline !== "function") return false
         var next = {}
         var current = root.effectiveSettings || {}
         for (var k in current) if (k !== "id") next[k] = current[k]
-        next.label = mode
+        next[key] = value
         if (bar.shell.updateEntryInline(root.moduleName, next)) root.fileSettings = next
         return true
     }
@@ -59,6 +76,16 @@ BarWidget {
     property bool stateMissing: false
     property bool stateDirReady: false
     property var registry: null
+    // The last state.get (or snapshot-shaped) result: Help's helpers switch, Memories.
+    property var snapshot: null
+    // The time the face is evaluated at: set when the file is read, by the one-shot below
+    // and when the popup opens.
+    property real now: Date.now()
+    // Celebrations already shown in the popup (agent_vectors.json priority.celebrate.seen).
+    property var seen: ({ finished_seq: 0, hello_seq: 0, test_at_ms: 0 })
+    readonly property var face: root.barState ? PetState.sharedPriority(root.barState, root.now, root.seen) : null
+    readonly property bool isOn: !root.barState || root.barState.enabled !== false
+    readonly property var cell: Model.barCell(root.barState, root.face, root.registry, root.cfg, root.cfg.calm)
 
     FileView {
         id: barStateFile
@@ -67,6 +94,7 @@ BarWidget {
         printErrors: false
         onLoaded: {
             root.barState = Model.parse(text())
+            root.now = Date.now()
             root.stateMissing = false
             root.stateDirReady = true
         }
@@ -78,14 +106,33 @@ BarWidget {
         onFileChanged: reload()
     }
 
-    // Species names, stage names and care labels, read once. Missing or unparsable
-    // gives generic text ("Companion", "stage N", "Food"), never an error.
+    // Species, frames and kid words, read once. Missing or unparsable gives the painted
+    // egg and plain verbs, never an error.
     FileView {
         id: registryFile
         path: root.paths.registry
         printErrors: false
         onLoaded: root.registry = Model.parseRegistry(text())
         onLoadFailed: root.registry = null
+    }
+
+    // The face's next change, as one one-shot (SPEC-v0.3 §8 rule 4). Its handler only
+    // re-reads the clock; it never sends a request. Never armed while Off (wake_at_ms null).
+    readonly property real wakeAt: root.face && root.face.wake_at_ms !== null && root.face.wake_at_ms !== undefined ? root.face.wake_at_ms : 0
+    onWakeAtChanged: root.armWake()
+    function armWake() {
+        if (root.wakeAt > 0 && root.isOn) {
+            faceWake.interval = Math.max(50, Math.min(2147483000, root.wakeAt - Date.now() + 20))
+            faceWake.restart()
+        } else {
+            faceWake.stop()
+        }
+    }
+    Timer {
+        id: faceWake
+        objectName: "codepetBar.faceWake"
+        repeat: false
+        onTriggered: root.now = Date.now()
     }
 
     // ------------------------------------------------------------- leader + presence
@@ -107,13 +154,15 @@ BarWidget {
         }
     }
 
-    readonly property int attendedSinceMs: {
-        var r = recorderLoader.item
-        if (!root.leader || !r || !root.barState) return 0
-        return r.attendedSince(root.barState.generated_at_ms)
+    // A direct IPC target for Home (SPEC-v0.3 §3.8), only on the leader; Omarchy's
+    // `shell summon greyforge.codepet` reaches open() below as well.
+    IpcHandler {
+        target: "greyforge.codepet"
+        enabled: root.leader
+        function openHome(): void { root.open() }
+        function close(): void { root.close() }
+        function toggle(): void { if (root.menu) root.close(); else root.open() }
     }
-    readonly property var summary: Model.summarize(root.barState, root.cfg,
-        { registry: root.registry, attendedSinceMs: root.attendedSinceMs })
 
     // ------------------------------------------------------------- transport
     BarRpc {
@@ -134,27 +183,68 @@ BarWidget {
     readonly property bool rpcNotInstalled: rpc.notInstalled
     property bool startupDone: false
 
-    // The leader's one startup read: settles presence, exports bar-state.json and
-    // creates the boot cursor.
+    // Every popup request goes through here: the allow-list, the queue, and a snapshot
+    // kept when the answer is one. Each care or treat press gets its own request id; a press
+    // repeated soon after an unconfirmed answer reuses that press's id, so the backend
+    // applies it at most once (CodePetBar.retryClaim). The widget's own follow-ups
+    // (responseEffects: the desktop pet after Let's go! or Turn on) run here, so they happen
+    // even when the popup closed while the request was in flight.
+    property var careRetry: ({})
+    property int careSeq: 0
+    function request(method, params, callback) {
+        var key = undefined
+        if (Model.RETRY_METHODS.indexOf(method) >= 0) {
+            root.careSeq += 1
+            var claim = Model.retryClaim(root.careRetry, method + JSON.stringify(params || {}), Date.now(), root.careSeq)
+            root.careRetry = claim.book
+            key = claim.key
+        }
+        return rpc.request(method, params, function (resp) {
+            if (key !== undefined) root.careRetry = Model.retryRelease(root.careRetry, key, resp, Date.now())
+            if (resp && resp.ok && resp.result && typeof resp.result === "object" && resp.result.count_helpers !== undefined)
+                root.snapshot = resp.result
+            root.applyEffects(DesktopFlow.responseEffects(method, params, resp, root.cfg))
+            if (callback) callback(resp)
+        }, key)
+    }
+    function applyEffects(effects) {
+        for (var i = 0; i < effects.length; i++) {
+            if (effects[i].setting !== undefined) root.setSetting(effects[i].setting, effects[i].value)
+            if (effects[i].launch !== undefined) root.launch(effects[i].launch)
+        }
+    }
+
+    // The leader's one startup read: settles presence, exports bar-state.json and creates
+    // the boot cursor; then the desktop pet comes back if it was on.
     function startup() {
         if (root.startupDone || !root.leader) return
         root.startupDone = true
-        rpc.request("state.get", {}, null)
-        if (root.cfg.overlayOnLoad) root.launch("show")
+        rpc.request("state.get", {}, function (resp) {
+            if (resp.ok) root.snapshot = resp.result
+            // The desktop pet comes back only when its switch is on, CodePet is On and a pet
+            // was started (an unarmed or missing life has nothing to show yet).
+            var verb = resp.ok ? DesktopFlow.launchOnLoad(root.cfg, resp.result) : null
+            if (verb) root.launch(verb)
+        })
     }
-    Component.onCompleted: Qt.callLater(root.startup)
+    Component.onCompleted: {
+        Qt.callLater(root.startup)
+        if (bar && typeof bar.registerClickTarget === "function") bar.registerClickTarget(root)
+    }
+    Component.onDestruction: if (bar && typeof bar.unregisterClickTarget === "function") bar.unregisterClickTarget(root)
 
-    readonly property var launcherVerbs: ["show", "hide", "toggle", "tasks", "care", "companion", "life", "refresh"]
+    readonly property var launcherVerbs: ["show", "hide", "toggle"]
     // Desktop overlay verbs go through the codepet-overlay launcher as a detached argv,
-    // never through a shell string and never as a child of this shell. A test state home
-    // is passed with env(1) as more argv words: in Quickshell 0.3.1 an execDetached
-    // context object written as a JS literal launches nothing (verified offscreen).
+    // never through a shell string and never as a child of this shell. The configured
+    // binary (CODEPET_BIN), a test state home and Calm mode are passed with env(1) as more
+    // argv words: in Quickshell 0.3.1 an execDetached context object written as a JS
+    // literal launches nothing (verified offscreen).
     function launch(verb) {
         if (root.launcherVerbs.indexOf(verb) < 0) return false
         var argv = [root.paths.launcher, verb]
-        if (root.paths.testState) {
+        if (root.paths.launcherEnv.length > 0) {
             if (root.paths.launcher.indexOf("=") >= 0) return false
-            argv = ["/usr/bin/env", "XDG_STATE_HOME=" + root.paths.childEnv.XDG_STATE_HOME].concat(argv)
+            argv = ["/usr/bin/env"].concat(root.paths.launcherEnv, argv)
         }
         Quickshell.execDetached(argv)
         return true
@@ -162,90 +252,74 @@ BarWidget {
 
     // ------------------------------------------------------------- popup
     property bool menu: false
-    property string grewText: ""
-    property bool eventsAcked: false
-    property string feedback: ""
+    // "popup" (Home and its pages) or "menu" (the right-click menu).
+    property string popupMode: "popup"
+    property string startPage: ""
+    // The popup is up (PopupApp runs its animation clock only then).
+    readonly property bool popupVisible: root.menu
+    // Omarchy's bar-widget panel contract: `omarchy-shell shell summon|hide|toggle
+    // greyforge.codepet` calls open() / close() and reads `opened` on the focused bar's
+    // widget. The desktop pet opens Home this way (notes.md §9 item 1). A summon never
+    // switches CodePet on: while Off it opens the Off look, where Turn on is one tap (only a
+    // real click on the cell turns it on and opens Home, triggerPress; notes.md §8 item 2).
+    readonly property bool opened: root.menu
+    function open() {
+        if (root.menu && root.popupMode === "popup") return
+        root.openHome()
+    }
 
     function close() {
+        if (!root.menu) return
+        root.noteShown()
         if (popupLoader.item) popupLoader.item.open = false
         root.menu = false
     }
+    function closePopup() { root.close() }
 
-    // Opening the popup is an explicit interaction: one state.get (it settles presence
-    // and may record an ending), then an unseen growth is shown once and acknowledged.
-    function openPopup() {
+    // Opening the popup is an explicit interaction: one state.get (it drains the inbox and
+    // settles presence, SPEC-v0.3 §6.3). A popup that is open switches to the asked page.
+    function openPopup(mode, page) {
+        root.now = Date.now()
+        if (root.menu && root.popupMode === mode && popupLoader.item) {
+            popupLoader.item.show(page || "")
+            return
+        }
+        if (root.menu) root.close()
+        root.popupMode = mode
+        root.startPage = page || ""
         root.menu = true
-        root.grewText = ""
-        root.eventsAcked = false
-        root.feedback = ""
-        root.hideTip()
-        rpc.request("state.get", {}, function (resp) {
-            if (resp.ok) root.noteUnseen(resp.result)
-            else root.feedback = "Could not refresh: " + String((resp.error || {}).message || "unknown error")
-        })
+        if (mode === "popup") rpc.request("state.get", {}, function (resp) { if (resp.ok) root.snapshot = resp.result })
+    }
+    function openHome() { root.openPopup("popup", "") }
+    function openPage(page) { root.openPopup("popup", page) }
+
+    // A left click on the Off cell turns CodePet on and opens Home: one click (SPEC-v0.3 §3.1).
+    function turnOnAndOpen() {
+        root.openPopup("popup", "")
+        root.request("app.set_enabled", { enabled: true }, null)
     }
 
-    function refresh() {
-        rpc.request("state.get", {}, function (resp) {
-            root.feedback = resp.ok ? "Refreshed." : "Could not refresh: " + String((resp.error || {}).message || "unknown error")
-            if (resp.ok) root.noteUnseen(resp.result)
-        })
+    // When the popup closes, what it showed counts as seen: a celebration ends, and a
+    // growth is acknowledged once (pet.events_seen) so it is not shown again.
+    function noteShown() {
+        if (root.popupMode !== "popup" || !root.barState || !root.face) return
+        root.seen = Model.seenAfter(root.seen, root.barState, root.face)
+        var life = root.barState.life
+        var seq = Model.maxUnseenSeq(root.barState.unseen_events)
+        if (life && seq >= 0 && root.face.line === "grew")
+            rpc.request("pet.events_seen", { life_id: life.life_id, through_seq: seq }, null)
     }
 
-    function noteUnseen(snapshot) {
-        var life = snapshot && snapshot.life ? snapshot.life : (root.barState ? root.barState.life : null)
-        var events = snapshot && Array.isArray(snapshot.unseen_events) ? snapshot.unseen_events
-            : (root.barState ? root.barState.unseen_events : [])
-        var seq = Model.maxUnseenSeq(events)
-        if (!life || seq < 0 || root.eventsAcked) return
-        var stage = 0
-        for (var i = 0; i < events.length; i++) if (events[i] && events[i].seq === seq) stage = events[i].stage
-        root.grewText = Model.grewText(life.name, root.registry, life.appearance, stage || life.stage)
-        var lifeId = life.life_id
-        // Acknowledge after the line has been shown.
-        Qt.callLater(function () { root.ackSeen(lifeId, seq) })
-    }
-
-    function ackSeen(lifeId, seq) {
-        if (!root.menu || root.eventsAcked || typeof lifeId !== "string") return
-        root.eventsAcked = true
-        rpc.request("pet.events_seen", { life_id: lifeId, through_seq: seq }, function (resp) {
-            if (!resp.ok) root.eventsAcked = false
-        })
-    }
-
-    property var careRetry: null
-    property int careSeq: 0
-    // Care, sleep, wake and pause: one key per press, reused only when that same press is
-    // retried within Model.RETRY_WINDOW_MS of an unconfirmed response; any later press is
-    // new. Success is shown only after the response.
-    function perform(method, params, doneText) {
-        if (rpc.busy) return
-        var signature = method + JSON.stringify(params)
-        root.careSeq += 1
-        root.careRetry = Model.retryKey(root.careRetry, signature, Date.now(), root.careSeq)
-        root.feedback = "Waiting for CodePet…"
-        rpc.request(method, params, function (resp) {
-            root.careRetry = Model.retryAfterResponse(root.careRetry, resp, Date.now())
-            if (resp.ok) {
-                root.feedback = resp.result && resp.result.changed === false ? "Already done; nothing changed." : doneText
-            } else {
-                root.feedback = "Not confirmed: " + String((resp.error || {}).message || "refresh to check saved state.")
-            }
-        }, root.careRetry.key)
-    }
-    function care(action) {
-        if (!Model.allowedCareAction(action)) return
-        root.perform("pet.care", { action: action }, "Care confirmed.")
-    }
-    function sleepOrWake() {
-        var sleeping = root.barState && root.barState.care && root.barState.care.sleeping === true
-        if (sleeping) root.perform("pet.wake", {}, "Awake.")
-        else root.perform("pet.sleep", {}, "Tucked into bed.")
-    }
-    function togglePause() {
-        var paused = root.barState && root.barState.life && root.barState.life.paused === true
-        root.perform("pet.pause", { paused: !paused }, paused ? "Time counts again." : "Paused: time isn't counting.")
+    // Omarchy forwards a click on the bar strip to registered targets while a panel is open.
+    function triggerPress(button) {
+        if (button === Qt.RightButton) {
+            if (root.menu && root.popupMode === "menu") root.close()
+            else root.openPopup("menu", "")
+        } else if (button === Qt.LeftButton) {
+            if (root.menu) root.close()
+            else if (!root.isOn) root.turnOnAndOpen()
+            else root.openHome()
+        }
     }
 
     Loader {
@@ -257,45 +331,27 @@ BarWidget {
             anchorItem: root
             bar: root.bar
             owner: root
-        }
-    }
-
-    // ------------------------------------------------------------- tooltip
-    property bool hovered: false
-    // Bar.showTooltip() drops the request unless the target reports tooltipHovered
-    // (Bar.qml targetTooltipHovered), as WidgetButton and Tray do.
-    readonly property bool tooltipHovered: visible && opacity > 0 && root.hovered && !root.menu
-    function hideTip() {
-        hoverGrace.stop()
-        if (bar && typeof bar.hideTooltip === "function") bar.hideTooltip(root)
-    }
-    // Mapping the popup window sends spurious exit/enter pairs; act on the settled
-    // hover state 250 ms later. The handler never sends a request.
-    Timer {
-        id: hoverGrace
-        objectName: "codepetBar.hoverGrace"
-        interval: 250
-        repeat: false
-        onTriggered: {
-            if (!root.bar) return
-            if (root.hovered && !root.menu) root.bar.showTooltip(root, Model.tooltip(root.barState, root.cfg,
-                { registry: root.registry, attendedSinceMs: root.attendedSinceMs }))
-            else if (typeof root.bar.hideTooltip === "function") root.bar.hideTooltip(root)
+            mode: root.popupMode
+            startPage: root.startPage
         }
     }
 
     // ------------------------------------------------------------- cell
     readonly property color fg: bar ? bar.barForeground : Color.foreground
     readonly property string fam: bar ? bar.fontFamily : Style.font.family
-    readonly property string thumb: root.barState && root.barState.life
-        ? Model.thumbPath(root.barState.life.appearance, root.barState.life.stage) : ""
-    readonly property bool showThumb: thumb !== "" && thumbImage.status !== Image.Error
+    readonly property real thumbSize: Math.round(root.barSize * 0.76)
+    readonly property real badgeSize: Math.max(16, Math.min(20, Math.round(root.barSize * 0.66)))
+    readonly property string labelText: root.cell.hi ? Model.t(Strings.STRINGS, "bar.hi", "floor", {}) : root.cell.label
 
-    implicitWidth: vertical ? barSize : cell.implicitWidth + Style.spaceReal(12)
-    implicitHeight: vertical ? cell.implicitHeight + Style.spaceReal(8) : barSize
+    implicitWidth: vertical ? barSize : cellRow.implicitWidth + Style.spaceReal(12)
+    implicitHeight: vertical ? cellRow.implicitHeight + Style.spaceReal(8) : barSize
 
     Accessible.role: Accessible.Button
-    Accessible.name: root.summary.accessibleName
+    Accessible.name: {
+        var line = Model.faceLine(Strings.STRINGS, root.registry, root.barState, root.face)
+        var name = root.barState && root.barState.life ? root.barState.life.name : "CodePet"
+        return line !== "" ? line : name
+    }
 
     // The label can be the user-chosen pet name: always plain text, never rich text.
     component Label: Text {
@@ -307,7 +363,7 @@ BarWidget {
     }
 
     Grid {
-        id: cell
+        id: cellRow
         anchors.centerIn: parent
         columns: root.vertical ? 1 : 3
         columnSpacing: Style.space(4)
@@ -316,13 +372,16 @@ BarWidget {
         verticalItemAlignment: Grid.AlignVCenter
 
         Item {
-            implicitWidth: Math.round(root.barSize * 0.72)
-            implicitHeight: Math.round(root.barSize * 0.72)
+            id: thumbBox
+            implicitWidth: root.thumbSize
+            implicitHeight: root.thumbSize
+            opacity: root.cell.opacity
             Image {
                 id: thumbImage
+                objectName: "codepetBar.thumb"
                 anchors.fill: parent
-                visible: root.showThumb
-                source: root.thumb !== "" ? "file://" + root.paths.runtime + root.thumb : ""
+                visible: !root.cell.thumbIsIcon && root.cell.thumb !== "" && status !== Image.Error
+                source: !root.cell.thumbIsIcon && root.cell.thumb !== "" ? root.runtimeBase + root.cell.thumb : ""
                 sourceSize.width: root.barSize * 2
                 sourceSize.height: root.barSize * 2
                 fillMode: Image.PreserveAspectFit
@@ -330,39 +389,37 @@ BarWidget {
                 cache: true
                 smooth: true
             }
-            Label {
+            Icon {
                 anchors.centerIn: parent
-                visible: !root.showThumb
-                text: "CP"
-                font.bold: true
+                icon: root.cell.thumbIsIcon || thumbImage.status === Image.Error || root.cell.thumb === "" ? "ui/egg" : ""
+                size: root.thumbSize
+            }
+        }
+        Icon {
+            id: badge
+            objectName: "codepetBar.badge"
+            visible: root.cell.badge !== ""
+            icon: root.cell.badge
+            size: root.badgeSize
+            SequentialAnimation on scale {
+                running: root.cell.pulse && root.isOn
+                loops: Animation.Infinite
+                alwaysRunToEnd: true
+                NumberAnimation { to: 1.25; duration: 520; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1; duration: 520; easing.type: Easing.InOutSine }
             }
         }
         Label {
-            id: badge
-            visible: text !== ""
-            text: root.summary.glyph
-            font.bold: true
-        }
-        Label {
             visible: !root.vertical && text !== ""
-            text: root.summary.label
+            text: root.labelText
+            opacity: root.isOn ? 1 : 0.55
         }
     }
 
     MouseArea {
         anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
-        onContainsMouseChanged: {
-            root.hovered = containsMouse
-            hoverGrace.restart()
-        }
-        onClicked: mouse => {
-            if (mouse.button === Qt.RightButton) root.launch("toggle")
-            else if (mouse.button === Qt.MiddleButton) root.launch("tasks")
-            else if (root.menu) root.close()
-            else root.openPopup()
-        }
+        onClicked: mouse => root.triggerPress(mouse.button)
     }
 }

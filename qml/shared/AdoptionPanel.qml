@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "LifeText.js" as LifeText
 
-// Explicit adoption (SPEC-v0.2 §2 D8, §12). Shown only when there is no living companion.
+// Explicit adoption (docs/decisions/0001-v0.2-lifecycle.md D8). Shown only when there is no living companion.
 // Species pick, a name (max 24, defaulting to the species' default name), Mode with
 // Permadeath preselected, Pace (Steady default / Playtest) and a required acknowledgement.
 // "Adopt <Name> (starts at level 1)" sends pet.adopt and reuses one retry key while the
@@ -251,12 +251,24 @@ GroupBox {
             wrapMode: Text.WordWrap
         }
         Button {
+            id: adoptButton
             objectName: "adoption.adopt"
             text: "Adopt " + (root.name !== "" ? root.name : "a companion") + " (starts at level 1)"
             enabled: root.canAdopt
             Accessible.description: root.blockReason !== "" ? root.blockReason
                 : LifeText.modeLabel(root.mode) + ", " + LifeText.paceLabel(root.pace) + " pace"
             onClicked: root.adopt()
+            // Button labels default to AutoText and the name is user text: force plain text.
+            contentItem: Text {
+                text: adoptButton.text
+                textFormat: Text.PlainText
+                font: adoptButton.font
+                color: adoptButton.palette.buttonText
+                opacity: adoptButton.enabled ? 1 : 0.5
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
         }
         Label {
             objectName: "adoption.notice"

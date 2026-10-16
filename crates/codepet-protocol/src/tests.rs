@@ -47,9 +47,15 @@ fn every_error_code_serializes_screaming_snake() {
         "SCHEMA_UNSUPPORTED",
         "INTERNAL",
         "NO_ACTIVE_PET",
+        "NOT_IMPLEMENTED",
+        "ALREADY_ARMED",
+        "NAME_INVALID",
+        "NO_TREATS",
+        "PET_NEEDS_CARE",
+        "TEST_STATE",
     ];
     assert_eq!(ErrorCode::ALL.len(), expected.len());
-    assert_eq!(ErrorCode::ALL.len(), 29);
+    assert_eq!(ErrorCode::ALL.len(), 35);
     for (code, name) in ErrorCode::ALL.into_iter().zip(expected) {
         assert_eq!(serde_json::to_value(code).unwrap(), json!(name));
         assert_eq!(code.as_str(), name);
@@ -109,14 +115,44 @@ fn every_method_parses_and_round_trips() {
         "pet.events_seen",
         "pet.memorial",
         "lifecycle.rules",
+        "pet.start",
+        "pet.rename",
+        "treats.give",
+        "app.set_enabled",
+        "app.set_helpers",
+        "agent.forget_history",
+        "clients.status",
+        "clients.connect",
+        "clients.disconnect",
+        "clients.test",
+        "pet.memories",
     ];
     assert_eq!(Method::ALL.len(), names.len());
-    assert_eq!(Method::ALL.len(), 31);
-    for name in names {
-        let m = Method::parse(name).unwrap();
+    assert_eq!(Method::ALL.len(), 42);
+    for (m, name) in Method::ALL.into_iter().zip(names) {
         assert_eq!(m.as_str(), name);
         assert_eq!(m.to_string(), name);
         assert_eq!(serde_json::to_value(m).unwrap(), json!(name));
+        // The retired task pipeline routes only with `legacy-tasks` (spec §6.5).
+        let routed = cfg!(feature = "legacy-tasks") || !Method::V03_REMOVED.contains(&m);
+        assert_eq!(m.is_routed(), routed, "{name}");
+        assert_eq!(Method::parse(name), routed.then_some(m), "{name}");
+        let frame = format!(r#"{{"v":1,"id":"a","method":"{name}"}}"#);
+        if routed {
+            assert_eq!(req(&frame).unwrap().method, m);
+            assert_eq!(
+                serde_json::from_value::<Method>(json!(name)).unwrap(),
+                m,
+                "{name}"
+            );
+        } else {
+            assert_eq!(
+                code_of(&frame),
+                (ErrorCode::UnknownMethod, Some("a".into())),
+                "{name}"
+            );
+            assert!(serde_json::from_value::<Method>(json!(name)).is_err());
+        }
     }
     assert_eq!(Method::parse("Hello"), None);
     assert_eq!(Method::parse("task.delete"), None);
@@ -135,17 +171,28 @@ fn mutating_and_implemented_classification() {
         Method::TaskLogs,
         Method::HistoryList,
         Method::PetMemorial,
+        Method::PetMemories,
         Method::LifecycleRules,
     ];
     for m in Method::ALL {
         assert_eq!(m.is_mutating(), !reads.contains(&m), "{m}");
     }
-    for m in [Method::TaskLogs, Method::TaskApply, Method::TaskRollback] {
+    for m in [Method::TaskLogs, Method::TaskApply, Method::TaskRollback]
+        .into_iter()
+        .chain(Method::V03_PENDING)
+    {
         assert!(!m.is_implemented());
-        assert!(req(&format!(
-            r#"{{"v":1,"id":"a","method":"{m}","params":{{}}}}"#
-        ))
-        .is_ok());
+        assert_eq!(
+            req(&format!(
+                r#"{{"v":1,"id":"a","method":"{m}","params":{{}}}}"#
+            ))
+            .is_ok(),
+            m.is_routed()
+        );
+    }
+    // WP1 implements its six methods; the clients methods wait for WP3.
+    for m in Method::V03_ADDED {
+        assert_eq!(m.is_implemented(), !Method::V03_PENDING.contains(&m), "{m}");
     }
     assert!(Method::TaskRecover.is_implemented());
     assert!(Method::StateGet.is_mutating());
@@ -157,16 +204,16 @@ fn mutating_and_implemented_classification() {
 
 #[test]
 fn request_round_trip() {
-    let text = r#"{"v":1,"id":"req-1","method":"task.start","params":{"task_id":"t","revision":3,"preflight_token":"x"}}"#;
+    let text = r#"{"v":1,"id":"req-1","method":"pet.rename","params":{"life_id":"life-1","name":"Ginger"}}"#;
     let r = req(text).unwrap();
     assert_eq!(r.v, 1);
     assert_eq!(r.id, "req-1");
-    assert_eq!(r.method, Method::TaskStart);
+    assert_eq!(r.method, Method::PetRename);
     let frame = r.to_frame().unwrap();
     assert!(frame.ends_with('\n'));
     assert_eq!(frame.matches('\n').count(), 1);
     assert_eq!(req(&frame).unwrap(), r);
-    let built = Request::new("req-1", Method::TaskStart, r.params.clone());
+    let built = Request::new("req-1", Method::PetRename, r.params.clone());
     assert_eq!(built, r);
 }
 
@@ -563,6 +610,7 @@ fn interrupted_reads_are_retried_and_io_errors_surface() {
 
 // ---- params ----
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn draft_params_round_trip() {
     let v = json!({"category":"mental_health","provider":"mock","folder":"/p","scope":["src"],
@@ -579,6 +627,7 @@ fn draft_params_round_trip() {
     assert!(p.mock.is_none());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn update_params_carry_draft() {
     let v = json!({"task_id":"t","expected_revision":2,"category":"hunger","provider":"mock",
@@ -591,11 +640,19 @@ fn update_params_carry_draft() {
 
 #[test]
 fn unknown_params_fields_rejected() {
-    let cases = [json!({"task_id":"t","extra":1}), json!({"bogus":1})];
-    let e = params_from_value::<TaskIdParams>(cases[0].clone()).unwrap_err();
+    let cases = [json!({"life_id":"t","extra":1}), json!({"bogus":1})];
+    let e = params_from_value::<TreatsGiveParams>(cases[0].clone()).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(e.message.contains("extra"));
     assert!(params_from_value::<EmptyParams>(cases[1].clone()).is_err());
+}
+
+#[cfg(feature = "legacy-tasks")]
+#[test]
+fn unknown_legacy_params_fields_rejected() {
+    let e = params_from_value::<TaskIdParams>(json!({"task_id":"t","extra":1})).unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidParams);
+    assert!(e.message.contains("extra"));
     let nested = json!({"category":"hunger","provider":"mock","folder":"/p","scope":[],
         "instructions":"x","mock":{"outcome":"artifact","sneaky":true}});
     assert_eq!(
@@ -606,13 +663,25 @@ fn unknown_params_fields_rejected() {
 
 #[test]
 fn missing_and_mistyped_params() {
+    let e =
+        params_from_value::<PetRulesParams>(json!({"life_id":"t","mode":"gentle"})).unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidParams);
+    assert!(e.message.contains("acknowledge_rules"));
+    let e = params_from_value::<PetEventsSeenParams>(json!({"life_id":"t","through_seq":1.5}))
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidParams);
+    assert!(params_from_value::<PetPauseParams>(json!({"paused":"yes"})).is_err());
+}
+
+#[cfg(feature = "legacy-tasks")]
+#[test]
+fn missing_and_mistyped_legacy_params() {
     let e = params_from_value::<TaskStartParams>(json!({"task_id":"t","revision":1})).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(e.message.contains("preflight_token"));
     let e =
         params_from_value::<TaskPreflightParams>(json!({"task_id":"t","revision":-1})).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
-    assert!(params_from_value::<PetPauseParams>(json!({"paused":"yes"})).is_err());
     assert!(
         params_from_value::<SettingsUpdateParams>(json!({"expected_revision":1,
         "decay_enabled":false,"decay_per_hour":[1,2,3],"timeout_seconds":60}))
@@ -623,7 +692,7 @@ fn missing_and_mistyped_params() {
 #[test]
 fn params_must_be_object_not_sequence() {
     // serde would otherwise accept a positional array for a struct.
-    let e = params_from_value::<TaskPreflightParams>(json!(["t", 1])).unwrap_err();
+    let e = params_from_value::<PetEventsSeenParams>(json!(["t", 1])).unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(params_from_value::<EmptyParams>(Value::Null).is_err());
 }
@@ -631,7 +700,7 @@ fn params_must_be_object_not_sequence() {
 #[test]
 fn params_errors_do_not_echo_huge_input() {
     let huge = "q".repeat(100_000);
-    let e = params_from_value::<TaskPreflightParams>(json!({"task_id":"t","revision":huge}))
+    let e = params_from_value::<PetEventsSeenParams>(json!({"life_id":"t","through_seq":huge}))
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidParams);
     assert!(e.message.len() < 300, "{}", e.message.len());
@@ -639,6 +708,7 @@ fn params_errors_do_not_echo_huge_input() {
     assert!(e.message.len() < 300);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn numeric_limits() {
     let ok = |v| parse_params::<EventsSubscribeParams>(v);
@@ -680,6 +750,7 @@ fn numeric_limits() {
     assert!(parse_params::<TaskUpdateParams>(update).is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn token_and_reason_bounds() {
     let accept = |v| parse_params::<TaskAcceptArtifactParams>(v);
@@ -724,23 +795,29 @@ fn token_and_reason_bounds() {
     assert!(parse_params::<TaskIdParams>(json!({"task_id":"x".repeat(129)})).is_err());
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
-fn hello_settings_and_pause_params() {
+fn legacy_settings_and_recover_params() {
+    let s: SettingsUpdateParams = parse_params(json!({"expected_revision":1,"decay_enabled":true,
+        "decay_per_hour":[100,100,50,50],"timeout_seconds":1800}))
+    .unwrap();
+    assert_eq!(s.decay_per_hour, [100, 100, 50, 50]);
+    let _: TaskRecoverParams = parse_params(json!({})).unwrap();
+}
+
+#[test]
+fn hello_and_pause_params() {
     let h: HelloParams = parse_params(json!({})).unwrap();
     assert_eq!(h, HelloParams::default());
     let h: HelloParams = parse_params(json!({"client":"qml","versions":[1]})).unwrap();
     assert_eq!(h.versions, Some(vec![1]));
     assert!(parse_params::<HelloParams>(json!({"client":"c".repeat(129)})).is_err());
     assert!(parse_params::<HelloParams>(json!({"versions":vec![1; 17]})).is_err());
-    let s: SettingsUpdateParams = parse_params(json!({"expected_revision":1,"decay_enabled":true,
-        "decay_per_hour":[100,100,50,50],"timeout_seconds":1800}))
-    .unwrap();
-    assert_eq!(s.decay_per_hour, [100, 100, 50, 50]);
     let p: PetPauseParams = parse_params(json!({"paused":true})).unwrap();
     assert!(p.paused);
-    let _: TaskRecoverParams = parse_params(json!({})).unwrap();
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn end_to_end_request_to_params() {
     let line = r#"{"v":1,"id":"acc-1","method":"task.accept_artifact","params":{"task_id":"t","review_digest":"abc","acknowledged":true}}"#;
@@ -814,6 +891,9 @@ fn protocol_version_stays_one_and_changes_are_additive() {
     assert_eq!(Method::ALL[0], Method::Hello);
     assert_eq!(ErrorCode::ALL[27], ErrorCode::Internal);
     assert_eq!(ErrorCode::ALL[28], ErrorCode::NoActivePet);
+    // v0.3 appends after the v0.2 lists.
+    assert_eq!(ErrorCode::ALL[29], ErrorCode::NotImplemented);
+    assert_eq!(Method::ALL[31..], Method::V03_ADDED);
     for (i, (name, _)) in NEW_METHODS.iter().enumerate() {
         assert_eq!(Method::ALL[23 + i].as_str(), *name);
     }
@@ -858,6 +938,17 @@ fn is_mutating_table_for_every_method() {
         ("pet.events_seen", true),
         ("pet.memorial", false),
         ("lifecycle.rules", false),
+        ("pet.start", true),
+        ("pet.rename", true),
+        ("treats.give", true),
+        ("app.set_enabled", true),
+        ("app.set_helpers", true),
+        ("agent.forget_history", true),
+        ("clients.status", true),
+        ("clients.connect", true),
+        ("clients.disconnect", true),
+        ("clients.test", true),
+        ("pet.memories", false),
     ];
     assert_eq!(table.len(), Method::ALL.len());
     for (m, (name, mutating)) in Method::ALL.into_iter().zip(table) {
@@ -1247,5 +1338,250 @@ fn lifecycle_requests_end_to_end() {
             other => panic!("unexpected {other}"),
         };
         assert!(ok, "{line}");
+    }
+}
+
+// ---- v0.3 skeleton (spec §6.2) ----
+
+#[test]
+fn v03_method_lists_partition_the_spec_tables() {
+    let added: Vec<&str> = Method::V03_ADDED.iter().map(|m| m.as_str()).collect();
+    assert_eq!(
+        added,
+        [
+            "pet.start",
+            "pet.rename",
+            "treats.give",
+            "app.set_enabled",
+            "app.set_helpers",
+            "agent.forget_history",
+            "clients.status",
+            "clients.connect",
+            "clients.disconnect",
+            "clients.test",
+            "pet.memories"
+        ]
+    );
+    let removed: Vec<&str> = Method::V03_REMOVED.iter().map(|m| m.as_str()).collect();
+    assert_eq!(
+        removed,
+        [
+            "events.subscribe",
+            "providers.inspect",
+            "task.create",
+            "task.get",
+            "task.update",
+            "task.preflight",
+            "task.start",
+            "task.cancel",
+            "task.review",
+            "task.logs",
+            "task.apply",
+            "task.accept_artifact",
+            "task.discard",
+            "task.rollback",
+            "task.recover",
+            "history.list",
+            "settings.update"
+        ]
+    );
+    for m in Method::V03_ADDED {
+        assert!(!Method::V03_REMOVED.contains(&m));
+        assert_eq!(m.is_mutating(), m != Method::PetMemories, "{m}");
+    }
+    // Kept: everything else (14 methods, including hello).
+    let kept = Method::ALL
+        .iter()
+        .filter(|m| !Method::V03_ADDED.contains(m) && !Method::V03_REMOVED.contains(m))
+        .count();
+    assert_eq!(kept, 14, "hello + state.get + 12 pet/lifecycle methods");
+}
+
+#[test]
+fn v03_params_accept_the_contract_shapes() {
+    parse_params::<PetStartParams>(json!({
+        "species": "cat", "mode": "gentle", "acknowledge_rules": true
+    }))
+    .unwrap();
+    parse_params::<PetStartParams>(json!({
+        "life_id": "life-1", "species": "goldfish", "name": "Ginger", "mode": "gentle",
+        "acknowledge_rules": false
+    }))
+    .unwrap();
+    parse_params::<PetRenameParams>(json!({"life_id": "life-1", "name": "Ginger"})).unwrap();
+    parse_params::<TreatsGiveParams>(json!({"life_id": "life-1"})).unwrap();
+    parse_params::<AppSetEnabledParams>(json!({"enabled": false})).unwrap();
+    parse_params::<AppSetHelpersParams>(json!({"enabled": true})).unwrap();
+    parse_params::<AgentForgetHistoryParams>(json!({})).unwrap();
+    parse_params::<ClientsStatusParams>(json!({})).unwrap();
+    parse_params::<ClientsConnectParams>(json!({"clients": ["claude-code", "grok-cli"]})).unwrap();
+    parse_params::<ClientsConnectParams>(json!({"clients": CLIENT_IDS})).unwrap();
+    parse_params::<ClientsDisconnectParams>(json!({"client": "codex"})).unwrap();
+    parse_params::<ClientsTestParams>(json!({})).unwrap();
+    parse_params::<ClientsTestParams>(json!({"client": "hermes"})).unwrap();
+}
+
+#[test]
+fn v03_params_refuse_bad_shapes() {
+    let bad = [
+        (
+            "pet.start",
+            json!({"species": "unicorn", "mode": "gentle", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "easy", "acknowledge_rules": true}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "gentle", "acknowledge_rules": true, "pace": "steady"}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "gentle", "acknowledge_rules": true, "name": "  "}),
+        ),
+        (
+            "pet.start",
+            json!({"species": "cat", "mode": "gentle", "acknowledge_rules": true, "life_id": ""}),
+        ),
+        ("pet.rename", json!({"life_id": "life-1"})),
+        (
+            "pet.rename",
+            json!({"life_id": "life-1", "name": "a\u{0}b"}),
+        ),
+        ("treats.give", json!({})),
+        ("treats.give", json!({"life_id": "life-1", "count": 2})),
+        ("app.set_enabled", json!({"enabled": "yes"})),
+        ("app.set_helpers", json!({})),
+        ("agent.forget_history", json!({"all": true})),
+        ("clients.status", json!({"refresh": true})),
+        ("clients.connect", json!({"clients": []})),
+        ("clients.connect", json!({"clients": ["claude"]})),
+        ("clients.connect", json!({"clients": ["codex", "codex"]})),
+        ("clients.connect", json!({"clients": ["muse-code"]})),
+        (
+            "clients.connect",
+            json!({"clients": ["claude-code","codex","opencode","hermes","grok-cli","codex"]}),
+        ),
+        ("clients.disconnect", json!({"client": "crush"})),
+        ("clients.disconnect", json!({})),
+        ("clients.test", json!({"client": "gemini"})),
+    ];
+    for (method, params) in bad {
+        let r = match method {
+            "pet.start" => parse_params::<PetStartParams>(params.clone()).map(|_| ()),
+            "pet.rename" => parse_params::<PetRenameParams>(params.clone()).map(|_| ()),
+            "treats.give" => parse_params::<TreatsGiveParams>(params.clone()).map(|_| ()),
+            "app.set_enabled" | "app.set_helpers" => {
+                parse_params::<EnabledParams>(params.clone()).map(|_| ())
+            }
+            "agent.forget_history" | "clients.status" => {
+                parse_params::<EmptyParams>(params.clone()).map(|_| ())
+            }
+            "clients.connect" => parse_params::<ClientsConnectParams>(params.clone()).map(|_| ()),
+            "clients.disconnect" => {
+                parse_params::<ClientsDisconnectParams>(params.clone()).map(|_| ())
+            }
+            "clients.test" => parse_params::<ClientsTestParams>(params.clone()).map(|_| ()),
+            other => panic!("{other}"),
+        };
+        assert_eq!(
+            r.unwrap_err().code,
+            ErrorCode::InvalidParams,
+            "{method} {params}"
+        );
+    }
+}
+
+#[test]
+fn v03_codes_are_not_retryable() {
+    for code in [
+        ErrorCode::NotImplemented,
+        ErrorCode::AlreadyArmed,
+        ErrorCode::NameInvalid,
+        ErrorCode::NoTreats,
+        ErrorCode::PetNeedsCare,
+        ErrorCode::TestState,
+    ] {
+        assert!(!code.retryable(), "{code}");
+    }
+}
+
+/// `docs/v0.3/contracts/protocol.json` is the WP0 contract: its method tables and
+/// param examples must agree with this crate.
+#[test]
+fn v03_protocol_contract_matches_the_crate() {
+    let doc: Value =
+        serde_json::from_str(include_str!("../../../docs/v0.3/contracts/protocol.json")).unwrap();
+    let names = |key: &str| -> Vec<String> {
+        doc[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map_or_else(|| v["method"].as_str().unwrap().to_owned(), str::to_owned)
+            })
+            .collect()
+    };
+    let added = names("added");
+    assert_eq!(
+        added,
+        Method::V03_ADDED.map(|m| m.as_str().to_owned()).to_vec()
+    );
+    assert_eq!(
+        names("removed"),
+        Method::V03_REMOVED.map(|m| m.as_str().to_owned()).to_vec()
+    );
+    let kept = names("kept");
+    assert_eq!(
+        kept.len() + added.len() + Method::V03_REMOVED.len(),
+        Method::ALL.len()
+    );
+    for name in &kept {
+        let m = Method::parse(name).unwrap();
+        assert!(!Method::V03_ADDED.contains(&m) && !Method::V03_REMOVED.contains(&m));
+    }
+    for code in doc["error_codes_added"].as_object().unwrap().keys() {
+        assert!(ErrorCode::parse(code).is_some(), "{code}");
+    }
+    let clients: Vec<&str> = doc["client_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(clients, CLIENT_IDS);
+    for entry in doc["added"].as_array().unwrap() {
+        let method = entry["method"].as_str().unwrap();
+        let m = Method::parse(method).unwrap();
+        assert_eq!(entry["mutating"], m.is_mutating(), "{method}");
+        let check = |params: &Value| -> Result<(), ProtocolError> {
+            let p = params.clone();
+            match m {
+                Method::PetStart => parse_params::<PetStartParams>(p).map(drop),
+                Method::PetRename => parse_params::<PetRenameParams>(p).map(drop),
+                Method::TreatsGive => parse_params::<TreatsGiveParams>(p).map(drop),
+                Method::AppSetEnabled => parse_params::<AppSetEnabledParams>(p).map(drop),
+                Method::AppSetHelpers => parse_params::<AppSetHelpersParams>(p).map(drop),
+                Method::AgentForgetHistory => parse_params::<AgentForgetHistoryParams>(p).map(drop),
+                Method::ClientsStatus => parse_params::<ClientsStatusParams>(p).map(drop),
+                Method::ClientsConnect => parse_params::<ClientsConnectParams>(p).map(drop),
+                Method::ClientsDisconnect => parse_params::<ClientsDisconnectParams>(p).map(drop),
+                Method::ClientsTest => parse_params::<ClientsTestParams>(p).map(drop),
+                Method::PetMemories => parse_params::<PetMemoriesParams>(p).map(drop),
+                other => panic!("{other} is not a v0.3 method"),
+            }
+        };
+        for valid in entry["examples"]["valid"].as_array().unwrap() {
+            check(valid).unwrap_or_else(|e| panic!("{method} {valid}: {e}"));
+        }
+        for invalid in entry["examples"]["invalid"].as_array().unwrap() {
+            assert_eq!(
+                check(invalid).unwrap_err().code,
+                ErrorCode::InvalidParams,
+                "{method} {invalid}"
+            );
+        }
     }
 }

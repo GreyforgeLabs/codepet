@@ -1,0 +1,27 @@
+{
+ "name": "turn-failed",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_failed\",\"session_id\":\"ses_7a1b\",\"turn_id\":\"1792123800000-3\"}\n",
+ "expect": {
+  "event_id": "df447e4f0c17fa7b87edbc0e79505088",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "turn_failed",
+   "session": "ses_7a1b",
+   "turn": "1792123800000-3",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "1a6f96b49e3b3002",
+   "at_ms": 1792123876111
+  }
+ }
+}

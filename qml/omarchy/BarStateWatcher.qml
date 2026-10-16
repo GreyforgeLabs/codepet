@@ -3,15 +3,15 @@ import QtQuick
 import Quickshell.Io
 import "BarState.js" as BarState
 
-// Passive reader of `$XDG_STATE_HOME/codepet/bar-state.json` (SPEC-v0.2 §10, §13).
-// The Rust store rewrites that file atomically, under its database lock, after every
-// committed change, so care done from the Omarchy bar reaches the desktop pet here.
+// Passive reader of `$XDG_STATE_HOME/codepet/bar-state.json` (SPEC-v0.3 §8). Rust rewrites
+// that file atomically (temp + rename, under its database lock) after every committed
+// change: a click in the bar popup, a fold of coding-app events, a clients job. This is
+// the overlay's only input.
 //
-// This component NEVER issues RPC and holds no reference to the host transport. A
-// file event only parses the file and emits `updated(state)` for a strictly newer
-// `state_version` (or another database's file); the host merges the subset into its presentation snapshot. Full
-// task details refresh only on explicit actions (opening the window, Refresh, clicks).
-// A missing or malformed file is ignored. Changes are watched by inotify; there is no
+// This component NEVER issues RPC and holds no reference to a transport. A file event
+// only parses the file and emits `updated(state)` for a strictly newer `state_version`
+// (or another database's file). A missing, unreadable or malformed file emits
+// `unavailable()` and is otherwise ignored. Changes are watched by inotify; there is no
 // polling timer.
 QtObject {
     id: root
@@ -25,9 +25,11 @@ QtObject {
     property int rejected: 0
 
     signal updated(var state)
+    // The file could not be read or did not parse (nothing was emitted).
+    signal unavailable()
 
-    // Re-read the file. Used after explicit host actions so a file created after
-    // startup (first `codepet` run) is picked up and watched. Reads the file only.
+    // Re-read the file (for example after an explicit `state.get` created it, since an
+    // inotify watch cannot be placed in a state directory that did not exist yet).
     function reload() {
         if (root.path !== "")
             view.reload()
@@ -37,6 +39,7 @@ QtObject {
         var state = BarState.parse(text)
         if (state === null) {
             root.rejected += 1
+            root.unavailable()
             return false
         }
         var dbId = typeof state.db_id === "string" ? state.db_id : ""
@@ -55,5 +58,6 @@ QtObject {
         printErrors: false
         onFileChanged: reload()
         onLoaded: root.ingest(text())
+        onLoadFailed: root.unavailable()
     }
 }

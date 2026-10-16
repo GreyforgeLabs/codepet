@@ -1,0 +1,373 @@
+{
+  "format": "codepet-live-projection-v1",
+  "captured_date": "2026-10-16",
+  "client": "opencode",
+  "installed_version_observed": "1.19.0",
+  "version_observation": "readiness --version; not retained in hook payload",
+  "outcome": {
+    "submitted": true,
+    "model_turn_completed": true,
+    "outcome": "turn_completed"
+  },
+  "identity_transform": "All capture id hashes replaced by deterministic synthetic qa identifiers in first-seen order; equality retained within this file only.",
+  "projection_limits": [
+    "Metadata projections, not complete raw client payloads.",
+    "Unallowlisted enum strings became other; the original value cannot be recovered.",
+    "codepet_v, tools/counts, prompt_id, session mode fields outside the allowlist, content and paths were not retained.",
+    "capture_and_shim_us measures observer plus shim only, not native total hook latency."
+  ],
+  "hook_captures": [
+    {
+      "client": "opencode",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "session_start",
+        "session_id": "qa-opencode-001",
+        "interactive": true
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 4382
+    },
+    {
+      "client": "opencode",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "turn_start",
+        "session_id": "qa-opencode-001",
+        "interactive": true,
+        "turn_id": "qa-opencode-002"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 88547
+    },
+    {
+      "client": "opencode",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "turn_done",
+        "session_id": "qa-opencode-001",
+        "interactive": true,
+        "turn_id": "qa-opencode-002"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7744
+    },
+    {
+      "client": "opencode",
+      "input_over_limit": false,
+      "metadata": {
+        "event": "session_end",
+        "session_id": "qa-opencode-001",
+        "interactive": true
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7621
+    }
+  ],
+  "upstream_projection_kind": "flattened event facts; native object layout not retained",
+  "upstream_captures": [
+    {
+      "type": "session.created",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-003",
+      "part_type": "text",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.status",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": "busy"
+    },
+    {
+      "type": "session.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.status",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": "busy"
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-004",
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-005",
+      "part_type": "reasoning",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-005",
+      "part_type": "reasoning",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-006",
+      "part_type": "text",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-006",
+      "part_type": "text",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-007",
+      "part_type": "tool",
+      "part_status": "pending",
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-007",
+      "part_type": "tool",
+      "part_status": "running",
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-007",
+      "part_type": "tool",
+      "part_status": "completed",
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-008",
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.status",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": "busy"
+    },
+    {
+      "type": "session.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.status",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": "busy"
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-009",
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-010",
+      "part_type": "reasoning",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-010",
+      "part_type": "reasoning",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-011",
+      "part_type": "text",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-011",
+      "part_type": "text",
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "message.part.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": "qa-opencode-012",
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.status",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": "busy"
+    },
+    {
+      "type": "session.status",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": "idle"
+    },
+    {
+      "type": "session.idle",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    },
+    {
+      "type": "session.updated",
+      "session": "qa-opencode-001",
+      "parent": null,
+      "part": null,
+      "part_type": null,
+      "part_status": null,
+      "session_status": null
+    }
+  ],
+  "source_captures": [
+    {
+      "file": "opencode.jsonl",
+      "sha256": "c84884f867d9f9c16c0069adb0e27385ce4f2c7e5b01d25dde5697b998c44751"
+    },
+    {
+      "file": "opencode-upstream.jsonl",
+      "sha256": "d6095c78a2fba9f3b2ee0a2a6b7db25deda326883045ab627c962f21c5d7210e"
+    }
+  ],
+  "unverified": [
+    "native_total_hook_latency"
+  ]
+}

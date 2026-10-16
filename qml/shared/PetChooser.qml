@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "LifeText.js" as LifeText
 
-// Companion look chooser (SPEC-v0.2 §12). Two modes:
+// Companion look chooser (docs/pets.md). Two modes:
 //   pick: species pick inside adoption; emits picked(id); sends nothing itself.
 //   look: cosmetic appearance switch for the living companion; "Use this look" sends
 //         pet.select {life_id, pet_id}, reusing one retry key per choice.

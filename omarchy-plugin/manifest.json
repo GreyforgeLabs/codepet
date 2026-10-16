@@ -2,21 +2,23 @@
   "schemaVersion": 1,
   "id": "greyforge.codepet",
   "name": "CodePet",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Greyforge Labs",
   "license": "MIT",
-  "description": "Your CodePet companion on the bar: needs, level and evolution at a glance, quick care, and the desktop pet. Mock tasks only.",
+  "homepage": "https://github.com/GreyforgeLabs/codepet",
+  "description": "Your CodePet on the bar: a pet to feed and play with that cheers on your coding apps (Claude Code, Codex, OpenCode, Hermes, Grok) and grows from their finished work. One On/Off switch.",
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "BarWidget.qml" },
   "barWidget": {
     "displayName": "CodePet",
     "allowMultiple": false,
     "defaultSection": "right",
-    "defaults": { "label": "name", "presence": true, "overlayOnLoad": false, "binary": "", "stateHome": "" },
+    "defaults": { "label": "name", "presence": true, "overlayOnLoad": false, "calm": false, "binary": "", "stateHome": "" },
     "schema": [
-      { "key": "label", "type": "enum", "label": "Bar label", "options": ["name", "status", "none"], "defaultValue": "name", "description": "name shows the companion's name; status adds the most urgent need." },
+      { "key": "label", "type": "enum", "label": "Bar label", "options": ["name", "none"], "defaultValue": "name", "description": "name shows the pet's name next to its picture; none shows only the picture." },
       { "key": "presence", "type": "boolean", "label": "Count active time", "defaultValue": true, "description": "Needs change only during active time while this widget is on your bar and you are at the computer." },
-      { "key": "overlayOnLoad", "type": "boolean", "label": "Show the desktop pet when the bar loads", "defaultValue": false }
+      { "key": "overlayOnLoad", "type": "boolean", "label": "Pet on my desktop", "defaultValue": false, "description": "Show the desktop pet when the bar loads. Let's go! turns it on; More switches it." },
+      { "key": "calm", "type": "boolean", "label": "Calm mode", "defaultValue": false, "description": "Less motion: no pulsing badge or tiles and no animation loops in the popup." }
     ]
   }
 }

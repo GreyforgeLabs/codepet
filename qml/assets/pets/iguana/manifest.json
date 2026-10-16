@@ -17,6 +17,13 @@
   "sleep": "Lengthwise rest"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Leaves",
+  "water": "Dew drops",
+  "play": "Sunshine",
+  "wash": "Mist"
+ },
  "stages": [
   {
    "stage": 1,
@@ -563,7 +570,7 @@
    "sha256": "9a7bf50fb7ec4dc83d26822d7ee3a94469436b1978adccc474e8116989b879fc",
    "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/iguana/v1/iguana-source.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "67124837f1aaa333d91c01cd433a84d1324e366caad44e890343be652f10c998",

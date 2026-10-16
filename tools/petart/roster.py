@@ -160,6 +160,35 @@ SPECIES = {
 
 assert tuple(SPECIES) == ORDER
 
+# v0.3 (SPEC-v0.3 §4.1). careIconSet picks the care icon sheet and the copy overrides
+# (floor | aquatic | robot). Both fields are optional in docs/v0.3/contracts/icons.json
+# (careIconSet absent = habitat default); the roster states them for every species. careWords are the plain
+# kid words used as {word} in the care bubbles ("Yum! {word}!"): at most two words per
+# need, no digits, no jargon (K1, K2, K8). They never fall back to careLabels.
+CARE_ICON_SETS = ("floor", "aquatic", "robot")
+CARE_ICON_SET = {sid: ("robot" if sid == "robot" else
+                       "aquatic" if SPECIES[sid]["habitat"] == "aquatic" else "floor") for sid in ORDER}
+
+CARE_WORDS = {
+    "cat":       {"food": "Kibble", "water": "Fresh water", "play": "Ball", "wash": "Brushing"},
+    "dog":       {"food": "Kibble", "water": "Cool water", "play": "Fetch", "wash": "Bubble bath"},
+    "capybara":  {"food": "Sweet grass", "water": "Cool water", "play": "Splash", "wash": "Warm bath"},
+    "penguin":   {"food": "Fish", "water": "Icy water", "play": "Pebbles", "wash": "Splash"},
+    "robot":     {"food": "Battery", "water": "Cool breeze", "play": "Magnets", "wash": "Polish"},
+    "iguana":    {"food": "Leaves", "water": "Dew drops", "play": "Sunshine", "wash": "Mist"},
+    "spider":    {"food": "Bug snack", "water": "Dew drop", "play": "Silk swing", "wash": "Brushing"},
+    "snake":     {"food": "Dinner", "water": "Cool water", "play": "Hoops", "wash": "Mist"},
+    "goldfish":  {"food": "Fish flakes", "water": "Fresh water", "play": "Bubbles", "wash": "Clean tank"},
+    "rabbit":    {"food": "Hay", "water": "Cool water", "play": "Ball", "wash": "Brushing"},
+    "turtle":    {"food": "Lettuce", "water": "Cool water", "play": "Pebbles", "wash": "Shell scrub"},
+    "frog":      {"food": "Bugs", "water": "Puddle", "play": "Lily pads", "wash": "Rain"},
+    "owl":       {"food": "Dinner", "water": "Cool water", "play": "Beads", "wash": "Fluffy feathers"},
+    "red_panda": {"food": "Bamboo", "water": "Cool water", "play": "Leaf swing", "wash": "Clean paws"},
+    "axolotl":   {"food": "Pellets", "water": "Fresh water", "play": "Tunnels", "wash": "Clean tank"},
+}
+
+assert tuple(CARE_WORDS) == ORDER and set(CARE_ICON_SET.values()) <= set(CARE_ICON_SETS)
+
 
 def source_dir(species_id):
     return SOURCE_DIRS.get(species_id, species_id)

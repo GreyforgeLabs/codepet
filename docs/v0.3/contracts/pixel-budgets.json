@@ -1,0 +1,519 @@
+{
+  "schema": "codepet.pixel_budgets.v1",
+  "spec": "SPEC-v0.3 §1.2 K3/K13 and §3",
+  "units": "px at Omarchy font base-size 16; every value scales with Style.space(); K13 checks base sizes 12, 16, 20",
+  "card": {
+    "width_px": 480,
+    "width_style_space": 360,
+    "inner_width_px": 448,
+    "max_height_px": 640,
+    "max_height_style_space": 480,
+    "max_output_height_fraction": 0.9,
+    "corner_radius": "max(Style.cornerRadius, Style.space(14)), popup only"
+  },
+  "minimums": {
+    "control_hit_px": [
+      48,
+      48
+    ],
+    "primary_button_height_px": 64,
+    "primary_button_width": "card width minus padding",
+    "primary_actions": [
+      "Let's go!",
+      "Connect",
+      "Connect all",
+      "This one!",
+      "Turn on",
+      "Wake up",
+      "Try again",
+      "Show me",
+      "Meet a new pet",
+      "Say goodbye",
+      "Done",
+      "Turn on Hardcore"
+    ],
+    "secondary_button_height_px": 48,
+    "secondary_actions": [
+      "Not now",
+      "Keep",
+      "Cancel",
+      "Close",
+      "Stop watching",
+      "Stop"
+    ],
+    "care_tile_height_px": 104,
+    "care_tile_icon_px": [
+      64,
+      80
+    ],
+    "care_tile_size_px": [
+      220,
+      104
+    ],
+    "round_button_px": 72,
+    "round_button_caption_px": 18,
+    "treats_button_px": 72,
+    "power_switch_px": [
+      96,
+      48
+    ],
+    "header_height_px": 64,
+    "back_button_px": 48,
+    "home_pet_px": 160,
+    "bar_badge_px": [
+      16,
+      20
+    ],
+    "status_line_font": "Style.font.heading or larger",
+    "label_font": "Style.font.title or larger",
+    "glyph_only_inline_controls": "none allowed"
+  },
+  "screens": {
+    "home": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "pet stage",
+          "px": 160
+        },
+        {
+          "part": "status line",
+          "px": 36
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "tiles 2x104+8",
+          "px": 216
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "round buttons 72+18",
+          "px": 90
+        }
+      ],
+      "total_px": 622
+    },
+    "picker_first_run": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "strip",
+          "px": 96
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "preview",
+          "px": 160
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "name button",
+          "px": 56
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "rule lines 2x40",
+          "px": 80
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "sticky footer",
+          "px": 72
+        }
+      ],
+      "total_px": 600
+    },
+    "change": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "strip",
+          "px": 96
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "preview",
+          "px": 160
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "stage row",
+          "px": 68
+        },
+        {
+          "part": "stars",
+          "px": 28
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "sticky footer",
+          "px": 72
+        }
+      ],
+      "total_px": 552
+    },
+    "connect_card_4_apps": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "title 2 lines",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "rows 4x56",
+          "px": 224
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "privacy",
+          "px": 72
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "primary footer",
+          "px": 72
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "secondary",
+          "px": 48
+        }
+      ],
+      "total_px": 608
+    },
+    "helpers_5_apps_2_extra_lines": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "rows 5x56",
+          "px": 280
+        },
+        {
+          "part": "two extra lines 2x24",
+          "px": 48
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "privacy",
+          "px": 48
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "sticky footer",
+          "px": 72
+        }
+      ],
+      "total_px": 568
+    },
+    "off_look": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "dimmed pet",
+          "px": 160
+        },
+        {
+          "part": "status line",
+          "px": 36
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "Turn on",
+          "px": 72
+        }
+      ],
+      "total_px": 380
+    },
+    "more_6_rows": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "rows 6x64",
+          "px": 384
+        }
+      ],
+      "total_px": 488
+    },
+    "helpers_row_sheet": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "app row (tile 64 + name)",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "status + 2 hint lines 3x24",
+          "px": 72
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "primary next step",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "secondary row (Stop watching, Close)",
+          "px": 48
+        }
+      ],
+      "total_px": 376
+    },
+    "memorial_card": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "greyscale stage art",
+          "px": 160
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "memorial line 2x32",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "primary Meet a new pet",
+          "px": 72
+        }
+      ],
+      "total_px": 416
+    },
+    "goodbye_confirm": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "pet",
+          "px": 160
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "ask line",
+          "px": 36
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "typed-name field",
+          "px": 56
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "primary Say goodbye (Color.urgent)",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "secondary Keep",
+          "px": 48
+        }
+      ],
+      "total_px": 500
+    }
+  },
+  "home_stage_overlays": {
+    "thought_bubble_max_px": 72,
+    "treats_button_px": 72,
+    "placement": "inside the 160 px pet stage, right side"
+  },
+  "rows": {
+    "connect_row_px": 56,
+    "helpers_row_px": 56,
+    "helpers_hint_px": 24,
+    "more_row_px": 64,
+    "more_max_rows": 6,
+    "sheet_text_line_px": 24
+  },
+  "strip": {
+    "portrait_px": 80,
+    "arrow_button_px": 48,
+    "species": 15,
+    "first": "cat"
+  },
+  "notes": [
+    "Connect card privacy block is 72 px (3 lines) when the 'apps will remember' line shows; 48 px otherwise.",
+    "The off look reuses Home's frame with fewer controls; first run with no pet shows the same Turn on footer when Off.",
+    "Help and the Codex picture guide are adult pages; they may scroll and have no K13 budget. The Hardcore confirmation inside Help reuses the goodbye_confirm layout."
+  ]
+}

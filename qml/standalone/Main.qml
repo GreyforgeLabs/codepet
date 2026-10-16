@@ -14,7 +14,7 @@ ApplicationWindow {
     minimumHeight: 480
     visible: true
     title: "CodePet (preview, not connected)"
-    readonly property var views: ["home", "care", "tasks", "companion", "life"]
+    readonly property var views: ["home", "care", "companion", "life"]
 
     PreviewHost {
         id: previewHost
@@ -51,14 +51,14 @@ ApplicationWindow {
                     }
                 }
             }
-            // Home · Care · Tasks · Companion · Life, as in the overlay's task window.
+            // Home · Care · Companion · Life (the v0.2 window views; the v0.3 UI is the bar popup).
             TabBar {
                 id: viewTabs
                 objectName: "viewTabs"
                 Layout.fillWidth: true
                 currentIndex: Math.max(0, window.views.indexOf(panel.view))
                 Repeater {
-                    model: ["Home", "Care", "Tasks", "Companion", "Life"]
+                    model: ["Home", "Care", "Companion", "Life"]
                     TabButton {
                         required property string modelData
                         required property int index

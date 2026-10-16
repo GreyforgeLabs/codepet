@@ -21,6 +21,13 @@
   "bathroom": "Cleans the filter; the fish stays behind its plants.",
   "sleep": "Fish rest with their eyes open."
  },
+ "careIconSet": "aquatic",
+ "careWords": {
+  "food": "Fish flakes",
+  "water": "Fresh water",
+  "play": "Bubbles",
+  "wash": "Clean tank"
+ },
  "stages": [
   {
    "stage": 1,
@@ -594,7 +601,7 @@
    "sha256": "c25b30a5cb9a7ed6bfad55855b8229e22c01a55f68843e6e1938112563d7689e",
    "source": "GreyforgeLabs/codepet PR #7 origin/art/generated-source-library:docs/art-library/source/goldfish-in-jar/v1/goldfish-in-jar-source.png"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "195112524cba53f96e1c1908537828aff8333efb5cbe25a022233577967f917f",

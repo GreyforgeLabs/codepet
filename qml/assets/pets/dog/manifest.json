@@ -17,6 +17,13 @@
   "sleep": "Cushion nap"
  },
  "careHints": {},
+ "careIconSet": "floor",
+ "careWords": {
+  "food": "Kibble",
+  "water": "Cool water",
+  "play": "Fetch",
+  "wash": "Bubble bath"
+ },
  "stages": [
   {
    "stage": 1,
@@ -571,7 +578,7 @@
    "sha256": "232759484fc19752294caf5e641a1c25e9ecd0f6d12802c0a395d8bd4782654c",
    "source": "origin/art/generated-source-library:docs/art-library/source/dog/v1/poses.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "260a6b624fcb7817d230d3f3b75a9f5fb12cffe9d79c2581620a468fa2546ee0",

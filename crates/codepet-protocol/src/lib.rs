@@ -6,10 +6,14 @@ use std::fmt;
 
 mod frame;
 mod params;
+#[cfg(feature = "legacy-tasks")]
+mod params_legacy;
 mod strict;
 
 pub use frame::{read_frame, FrameError, FrameReader};
 pub use params::*;
+#[cfg(feature = "legacy-tasks")]
+pub use params_legacy::*;
 
 pub const PROTOCOL_VERSION: u16 = 1;
 /// Maximum frame size in bytes, counting the trailing newline.
@@ -20,6 +24,9 @@ pub const MAX_ID_LEN: usize = 128;
 /// Error messages are truncated to this many bytes so error frames always fit.
 pub const MAX_MESSAGE_BYTES: usize = 1024;
 pub const NOT_IMPLEMENTED_MESSAGE: &str = "not implemented in mock milestone";
+/// Message of the v0.3 skeleton's `NOT_IMPLEMENTED` refusals (removed when each method's
+/// work package lands).
+pub const V03_PENDING_MESSAGE: &str = "not implemented yet in this v0.3 build";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -54,9 +61,23 @@ pub enum ErrorCode {
     Internal,
     /// No living companion: care, sleep, wake, pause and life methods need one.
     NoActivePet,
+    // ---- v0.3 (appended; earlier positions are stable) ----
+    /// The method is declared by the protocol but this build does not implement it yet.
+    NotImplemented,
+    /// `pet.start` on a life that is already armed; the UI just opens Home.
+    AlreadyArmed,
+    /// `pet.start` / `pet.rename`: the name fails the pet-name rule.
+    NameInvalid,
+    /// `treats.give` with an empty jar.
+    NoTreats,
+    /// `treats.give` while the pet is asleep, paused or fainted.
+    PetNeedsCare,
+    /// `clients.connect` / `clients.disconnect` / `clients.test` while the bar runs with a test
+    /// state home.
+    TestState,
 }
 impl ErrorCode {
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 35] = [
         Self::Busy,
         Self::InvalidState,
         Self::StaleRevision,
@@ -86,6 +107,12 @@ impl ErrorCode {
         Self::SchemaUnsupported,
         Self::Internal,
         Self::NoActivePet,
+        Self::NotImplemented,
+        Self::AlreadyArmed,
+        Self::NameInvalid,
+        Self::NoTreats,
+        Self::PetNeedsCare,
+        Self::TestState,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -118,6 +145,12 @@ impl ErrorCode {
             Self::SchemaUnsupported => "SCHEMA_UNSUPPORTED",
             Self::Internal => "INTERNAL",
             Self::NoActivePet => "NO_ACTIVE_PET",
+            Self::NotImplemented => "NOT_IMPLEMENTED",
+            Self::AlreadyArmed => "ALREADY_ARMED",
+            Self::NameInvalid => "NAME_INVALID",
+            Self::NoTreats => "NO_TREATS",
+            Self::PetNeedsCare => "PET_NEEDS_CARE",
+            Self::TestState => "TEST_STATE",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -167,9 +200,21 @@ pub enum Method {
     PetEventsSeen,
     PetMemorial,
     LifecycleRules,
+    // ---- v0.3 (appended; spec §6.2) ----
+    PetStart,
+    PetRename,
+    TreatsGive,
+    AppSetEnabled,
+    AppSetHelpers,
+    AgentForgetHistory,
+    ClientsStatus,
+    ClientsConnect,
+    ClientsDisconnect,
+    ClientsTest,
+    PetMemories,
 }
 impl Method {
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 42] = [
         Self::Hello,
         Self::StateGet,
         Self::EventsSubscribe,
@@ -201,6 +246,54 @@ impl Method {
         Self::PetEventsSeen,
         Self::PetMemorial,
         Self::LifecycleRules,
+        Self::PetStart,
+        Self::PetRename,
+        Self::TreatsGive,
+        Self::AppSetEnabled,
+        Self::AppSetHelpers,
+        Self::AgentForgetHistory,
+        Self::ClientsStatus,
+        Self::ClientsConnect,
+        Self::ClientsDisconnect,
+        Self::ClientsTest,
+        Self::PetMemories,
+    ];
+    /// The v0.3 methods (spec §6.2 "Added"), in `ALL` order.
+    pub const V03_ADDED: [Self; 11] = [
+        Self::PetStart,
+        Self::PetRename,
+        Self::TreatsGive,
+        Self::AppSetEnabled,
+        Self::AppSetHelpers,
+        Self::AgentForgetHistory,
+        Self::ClientsStatus,
+        Self::ClientsConnect,
+        Self::ClientsDisconnect,
+        Self::ClientsTest,
+        Self::PetMemories,
+    ];
+    /// The v0.2 methods v0.3 unroutes (spec §6.2 "Removed"; `hello` stays, only its
+    /// supervisor handshake is retired). The default build parses none of them (they answer
+    /// `UNKNOWN_METHOD`); they route again only with the non-default `legacy-tasks` feature,
+    /// until v0.3.1 deletes them.
+    pub const V03_REMOVED: [Self; 17] = [
+        Self::EventsSubscribe,
+        Self::ProvidersInspect,
+        Self::TaskCreate,
+        Self::TaskGet,
+        Self::TaskUpdate,
+        Self::TaskPreflight,
+        Self::TaskStart,
+        Self::TaskCancel,
+        Self::TaskReview,
+        Self::TaskLogs,
+        Self::TaskApply,
+        Self::TaskAcceptArtifact,
+        Self::TaskDiscard,
+        Self::TaskRollback,
+        Self::TaskRecover,
+        Self::HistoryList,
+        Self::SettingsUpdate,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
@@ -234,11 +327,35 @@ impl Method {
             Self::PetRetire => "pet.retire",
             Self::PetEventsSeen => "pet.events_seen",
             Self::PetMemorial => "pet.memorial",
+            Self::PetMemories => "pet.memories",
             Self::LifecycleRules => "lifecycle.rules",
+            Self::PetStart => "pet.start",
+            Self::PetRename => "pet.rename",
+            Self::TreatsGive => "treats.give",
+            Self::AppSetEnabled => "app.set_enabled",
+            Self::AppSetHelpers => "app.set_helpers",
+            Self::AgentForgetHistory => "agent.forget_history",
+            Self::ClientsStatus => "clients.status",
+            Self::ClientsConnect => "clients.connect",
+            Self::ClientsDisconnect => "clients.disconnect",
+            Self::ClientsTest => "clients.test",
         }
     }
+    /// The v0.3 methods whose work package has not landed in this build: they validate their
+    /// params, then answer `NOT_IMPLEMENTED` before opening storage. Empty since WP3 (the
+    /// clients methods).
+    pub const V03_PENDING: [Self; 0] = [];
+    /// Parses a routed method name. A method of [`Self::V03_REMOVED`] parses only with the
+    /// `legacy-tasks` feature; otherwise it is unknown, exactly like a name that never existed.
     pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|m| m.as_str() == s)
+        Self::ALL
+            .into_iter()
+            .find(|m| m.as_str() == s)
+            .filter(|m| m.is_routed())
+    }
+    /// False for the retired task-pipeline methods in the default build (spec §6.5).
+    pub fn is_routed(self) -> bool {
+        cfg!(feature = "legacy-tasks") || !Self::V03_REMOVED.contains(&self)
     }
     /// True when the method may change durable state (including preflight tokens).
     /// `state.get` counts: it may settle presence, a persisted nap, a due death or
@@ -254,6 +371,7 @@ impl Method {
             | Self::TaskLogs
             | Self::HistoryList
             | Self::PetMemorial
+            | Self::PetMemories
             | Self::LifecycleRules => false,
             Self::StateGet
             | Self::TaskCreate
@@ -276,12 +394,27 @@ impl Method {
             | Self::PetRules
             | Self::PetConfigureLife
             | Self::PetRetire
-            | Self::PetEventsSeen => true,
+            | Self::PetEventsSeen
+            // `clients.status` writes `client_hooks` and re-exports; the clients methods
+            // start a journaled job.
+            | Self::PetStart
+            | Self::PetRename
+            | Self::TreatsGive
+            | Self::AppSetEnabled
+            | Self::AppSetHelpers
+            | Self::AgentForgetHistory
+            | Self::ClientsStatus
+            | Self::ClientsConnect
+            | Self::ClientsDisconnect
+            | Self::ClientsTest => true,
         }
     }
-    /// False for methods that parse but are refused with `INVALID_STATE` in this milestone.
+    /// False for methods that parse but are refused: `task.logs`, `task.apply` and
+    /// `task.rollback` with `INVALID_STATE` (`legacy-tasks` only), and the v0.3 methods of
+    /// [`Self::V03_PENDING`] with `NOT_IMPLEMENTED` until their work package lands.
     pub fn is_implemented(self) -> bool {
         !matches!(self, Self::TaskLogs | Self::TaskApply | Self::TaskRollback)
+            && !Self::V03_PENDING.contains(&self)
     }
 }
 impl fmt::Display for Method {

@@ -102,8 +102,11 @@ fn steady_timeline_thirst_6_6h_warning_11h_critical_17h_dead() {
         ),
         ("thirst", 6 * HOUR_MS, 0, 6 * HOUR_MS)
     );
-    assert!(!s.care.ready_to_work);
-    assert!(s.care.readiness_reasons[0].contains("urgently needs water"));
+    #[cfg(feature = "legacy-tasks")]
+    {
+        assert!(!s.care.ready_to_work);
+        assert!(s.care.readiness_reasons[0].contains("urgently needs water"));
+    }
     // 17 h minus 1 ms: alive.
     let s = f.feed(&env, &store, &id, 6 * HOUR_MS - 1);
     assert_eq!(s.lifecycle.critical.as_ref().unwrap().remaining_ms, 1);
@@ -245,11 +248,14 @@ fn gentle_faints_never_dies() {
     assert!(events(&env, &id).contains(&"fainted".to_owned()));
     assert!(!events(&env, &id).contains(&"died".to_owned()));
     // Start stays blocked; care revives.
-    let t = store.create_task(&env.input(Category::Hunger)).unwrap();
-    assert!(matches!(
-        store.preflight(&t.task_id, 1),
-        Err(StorageError::InvalidState(_))
-    ));
+    #[cfg(feature = "legacy-tasks")]
+    {
+        let t = store.create_task(&env.input(Category::Hunger)).unwrap();
+        assert!(matches!(
+            store.preflight(&t.task_id, 1),
+            Err(StorageError::InvalidState(_))
+        ));
+    }
     store.care("revive", "routine").unwrap();
     let life = store.snapshot().unwrap().life.unwrap();
     assert!(!life.fainted);
@@ -274,6 +280,7 @@ fn unarmed_life_never_decays_even_with_presence() {
     assert_eq!(s.meters.thirst, 8750);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn death_pending_in_every_slot_state_preserves_the_job_and_blocks_start() {
     for state in SLOT_STATE_LIST {
@@ -308,6 +315,7 @@ fn death_pending_in_every_slot_state_preserves_the_job_and_blocks_start() {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn pending_death_copy_never_promises_that_care_can_still_help() {
     // Care is refused while the end is pending and the life ends when the slot frees, so the
@@ -333,6 +341,7 @@ fn pending_death_copy_never_promises_that_care_can_still_help() {
     assert!(!text.contains("needs care"), "{text}");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn accept_then_finalize_in_the_same_transaction() {
     let env = Env::with_boot();
@@ -359,6 +368,7 @@ fn accept_then_finalize_in_the_same_transaction() {
     assert_eq!(kinds.last().unwrap(), "died");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn discard_cancel_confirm_and_recover_finalize_a_pending_death() {
     // Discard.
@@ -388,6 +398,7 @@ fn discard_cancel_confirm_and_recover_finalize_a_pending_death() {
     assert_eq!(status(&env, &id), "dead");
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn death_touches_only_life_tables() {
     let env = Env::with_boot();
@@ -559,6 +570,7 @@ fn death_fault_before_commit_leaves_the_exact_pre_state() {
     );
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn accept_versus_settlement_on_two_handles_gives_one_terminal_event() {
     let env = Env::with_boot();
@@ -642,6 +654,7 @@ impl Lcg {
     }
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn death_never_commits_while_a_task_holds_the_slot() {
     let slot = format!(
@@ -653,7 +666,7 @@ fn death_never_commits_while_a_task_holds_the_slot() {
         let mut store = env.open();
         store.care("routine", "routine").unwrap();
         store
-            .set_rules("arm", &life_id(&store), Mode::Permadeath, true)
+            .set_rules("arm", &life_id(&store), Mode::Permadeath, true, None)
             .unwrap();
         let mut life = life_id(&store);
         let mut rng = Lcg(seed);
@@ -734,7 +747,8 @@ fn an_end_that_settles_due_inside_a_refused_write_is_committed() {
         ("sleep", |s, _| s.sleep("late-sleep").map(drop)),
         ("pause", |s, _| s.set_paused(true).map(drop)),
         ("rules", |s, id| {
-            s.set_rules("late-rules", id, Mode::Gentle, true).map(drop)
+            s.set_rules("late-rules", id, Mode::Gentle, true, None)
+                .map(drop)
         }),
         ("select", |s, id| {
             s.select_appearance("late-select", id, "dog").map(drop)

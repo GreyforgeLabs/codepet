@@ -1,23 +1,44 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls
 import "PetCatalog.js" as PetCatalog
 import "PetStateMachine.js" as PetStateMachine
+import "petstate.js" as PetState
+import "OverlayFace.js" as OverlayFace
 
-// Portable presentation only. The host/Rust snapshot owns all care, task and life
-// state. This component never starts tasks and never refreshes from a timer. Its one
-// Timer is the scene's cosmetic scheduler: ≤ 5 updates per second, a long single
-// wake during idle pauses, and stopped while hidden, under reduced motion or asleep
-// (except to finish a short transient such as falling asleep or a care reaction).
+// The desktop pet (SPEC-v0.3 §3.8). Presentation only: it draws the parsed
+// bar-state.json it is given (`barState`) and never sends a request. petstate.js picks the
+// face in the one shared order (the bar cell and Home use the same order); this scene
+// turns it into an animation, a picture-only thought bubble and a roaming pet.
+//
+// A click always reacts (K5): a short happy hop (in Calm mode only the bubble) with a
+// heart bubble, then `homeRequested()`, which the host turns into "open the bar popup at
+// Home". There is no menu, no meter and no text on the desktop.
+//
+// Timers: one cosmetic scheduler (<= 5 updates per second, a single long wake during idle
+// pauses, stopped while hidden, asleep or in Calm mode except to finish a short
+// transient) and one single-shot `wake` timer armed for the face's `wake_at_ms` (the next
+// moment the face can change without a new export, SPEC-v0.3 §8 rule 4). Neither runs
+// while the pet is not drawn.
 Item {
     id: root
-    required property var host
     clip: true
-    Keys.onEscapePressed: selected = false
+    // The last valid bar-state.json (qml/omarchy/BarState.js parse), or null.
+    property var barState: null
     property bool surfaceActive: true
     property bool reducedMotion: false
-    property bool selected: false
+    // Test hook: a fixed clock (ms since the epoch); 0 = the real clock.
+    property real fixedNowMs: 0
+    property real nowMs: 0
+    // What this scene already celebrated (petstate.js `seen`), and the growth it played.
+    // Seeded from the first export drawn (OverlayFace.seenAtStart): a new overlay process
+    // never replays a celebration it was started after.
+    property var seen: ({ finished_seq: 0, hello_seq: 0, test_at_ms: 0 })
+    property real grewSeq: -1
+    property bool seeded: false
+    property string playedCelebration: ""
+    property var celebrationBubble: null
     property bool initialized: false
+    property bool updatingFace: false
     property real petX: 40
     property bool facingLeft: false
     property real destination: 40
@@ -28,113 +49,126 @@ Item {
     // Idle beats: a loop plays once, then the timer sleeps for the pause.
     property bool resting: false
     property int baseElapsedMs: 0
-    // A one-shot overlay state (sleep_enter/exit, confirmed care, celebrate, error).
+    // A one-shot state (sleep_enter/exit, celebrate) over the face's animation.
     property string transientState: ""
     property int transientElapsedMs: 0
     property int transientDurationMs: 0
     property var queuedTransient: null
     property int timerInterval: 200
-    // Growth celebrations already shown / acknowledged by this scene (by event seq).
-    property real celebratedThroughSeq: -1
-    property real seenSentThroughSeq: -1
-    property real seenRequestedSeq: -1
-    property string seenRetryKey: ""
-    property string selectRetryKey: ""
-    property string selectRetryPet: ""
-    property int requestSequence: 0
     property bool sleepObserved: false
     property bool lastSleeping: false
+    // Click feedback: the heart bubble's remaining time and the hop offset (px, <= 0).
+    property int heartMsLeft: 0
+    property real hopOffset: 0
+    readonly property bool hopping: hop.running
+    property int clickCount: 0
 
-    readonly property var snap: host && host.snapshot ? host.snapshot : null
-    readonly property var life: snap && snap.life ? snap.life : null
-    // v0.1 snapshots have no `life` key: that is the one migrated cat.
-    readonly property bool legacySnapshot: snap !== null && !Object.prototype.hasOwnProperty.call(snap, "life")
-    readonly property bool hasLife: legacySnapshot || life !== null
-    readonly property string petId: life ? String(life.appearance || life.species || "") : legacySnapshot ? "cat" : ""
-    readonly property int stage: life && typeof life.stage === "number" ? life.stage : 1
-    readonly property string petName: life && life.name ? String(life.name) : "CodePet"
-    readonly property bool aquatic: PetCatalog.isAquatic(petId)
-    readonly property bool roams: PetCatalog.roams(petId)
+    signal homeRequested()
+
+    // Set from `barState` by updateFace() (not bindings: a handler of barState must not
+    // read values whose bindings have not caught up yet).
+    property var life: null
+    property string petId: ""
+    property int stage: 1
+    property string petName: ""
+    readonly property bool roamsSpecies: PetCatalog.roams(petId)
     readonly property var gait: PetCatalog.locomotion(petId)
+    readonly property string careSet: OverlayFace.careIconSet(PetCatalog.species(petId))
 
-    readonly property bool active: visible && surfaceActive && width > 0 && height > 0
+    // The face (petstate.js), recomputed by updateFace() whenever its inputs change.
+    property var face: PetState.emptyFace()
+    readonly property var anim: OverlayFace.animation(face.overlay)
+    // Nothing is drawn while Off, before a pet exists, or for an unknown species.
+    readonly property bool shown: face.overlay !== "none" && PetCatalog.isSpecies(petId)
+    readonly property bool active: visible && surfaceActive && width > 0 && height > 0 && shown
     readonly property real petSize: Math.min(112, width, height)
     readonly property real floorY: Math.max(0, height - petSize - 12)
-    readonly property bool hovered: petMouse.containsMouse
-    readonly property bool sleeping: controller.sleeping
-    readonly property string pendingCare: PetStateMachine.isCareAction(controller.pendingAction) ? controller.pendingAction : ""
-    readonly property var facts: PetStateMachine.facts(snap, walking)
-    readonly property string baseState: snap === null ? "idle" : PetStateMachine.baseState(facts)
+    readonly property bool sleeping: anim.state === "sleep"
+    readonly property bool canRoam: anim.roam
+    readonly property string baseState: walking && canRoam ? "locomotion" : (anim.state === "" ? "idle" : anim.state)
     readonly property var baseMeta: PetCatalog.stateMeta(petId, baseState)
     readonly property var transientMeta: transientState !== "" ? PetCatalog.stateMeta(petId, transientState) : null
-    readonly property var pendingMeta: pendingCare !== "" ? PetCatalog.stateMeta(petId, pendingCare) : null
-    // Shown state: a pending care holds its approach frame; a transient shows unless
-    // the base state may interrupt it (SPEC §11.2 priority/interrupt rules).
-    readonly property string displayState: baseState === "memorial" ? "memorial"
-        : pendingMeta && PetStateMachine.display(baseMeta, pendingMeta) === "transient" ? pendingCare
-        : transientMeta && PetStateMachine.display(baseMeta, transientMeta) === "transient" ? transientState
-        : baseState
+    readonly property string displayState: transientMeta && PetStateMachine.display(baseMeta, transientMeta) === "transient"
+        ? transientState : baseState
     readonly property var displayMeta: PetCatalog.stateMeta(petId, displayState)
-    readonly property int frame: displayState === pendingCare && pendingCare !== "" ? 0
-        : displayState === transientState && transientState !== ""
-            ? PetStateMachine.frameAt(displayMeta, Math.floor(transientElapsedMs / 200), reducedMotion)
-            : PetStateMachine.frameAt(displayMeta, Math.floor(baseElapsedMs / 200), reducedMotion)
+    readonly property int frame: displayState === transientState && transientState !== ""
+        ? PetStateMachine.frameAt(displayMeta, Math.floor(transientElapsedMs / 200), reducedMotion)
+        : PetStateMachine.frameAt(displayMeta, Math.floor(baseElapsedMs / 200), reducedMotion)
     readonly property bool displayMirrored: facingLeft && displayMeta.mirror === true
-    // Legacy name kept for hosts/tests written against v0.1.
-    readonly property string pose: displayState
-    // A memorial or a not-yet-loaded snapshot has nothing to animate.
-    readonly property bool motionRunning: active && !reducedMotion && !sleeping && pendingCare === ""
-        && snap !== null && baseState !== "memorial"
-    readonly property bool schedulerRunning: active && (transientState !== "" || motionRunning)
-    readonly property var unseenEvents: snap && Array.isArray(snap.unseen_events)
-        ? snap.unseen_events.filter(function (e) { return e && typeof e.seq === "number" && (e.kind === undefined || e.kind === "evolved") })
-        : []
-    readonly property bool growthBadge: life !== null && unseenEvents.length > 0 && transientState !== "celebrate"
-    readonly property bool canSelectLook: life !== null && !life.death_pending && !hostBusy
-        && !(host && host.presentationLocks > 0)
-    readonly property bool hostBusy: !!(host && host.busy)
-    readonly property string statusText: {
-        var line = PetStateMachine.statusLine(snap)
-        if (line !== "") return line
-        return sleeping ? "RESTING · no work starts automatically" : controller.readinessText
-    }
+    // A gentle bob while an app needs you (none in Calm mode).
+    readonly property real bobOffset: anim.bob && !reducedMotion && displayState === "waiting" && frame % 2 === 1 ? -3 : 0
+    readonly property bool motionRunning: active && !reducedMotion && !sleeping
+    readonly property bool schedulerRunning: active && (transientState !== "" || motionRunning || heartMsLeft > 0)
 
-    readonly property var hitBox: PetCatalog.hitRect(baseState === "memorial" ? "" : petId, petSize, displayMirrored, stage)
+    // The picture bubble: the heart after a click, the celebration while it plays, else the face's.
+    readonly property var bubbleIcons: !active ? []
+        : heartMsLeft > 0 ? ["care-floor/heart.webp"]
+        : transientState === "celebrate" && celebrationBubble !== null
+            ? OverlayFace.bubbleIcons(celebrationBubble, careSet, false)
+            : OverlayFace.bubbleIcons(face.bubble, careSet, face.state === "waiting")
+
+    readonly property var hitBox: PetCatalog.hitRect(petId, petSize, displayMirrored, stage)
     readonly property rect petHit: active ? Qt.rect(pet.x + hitBox.x, pet.y + hitBox.y, hitBox.width, hitBox.height) : Qt.rect(0, 0, 0, 0)
-    readonly property rect menuHit: active && selected ? Qt.rect(menu.x, menu.y, menu.width, menu.height) : Qt.rect(0, 0, 0, 0)
-    // Props are drawn inside the frames now; kept so the host mask contract is unchanged.
-    readonly property rect propsHit: Qt.rect(0, 0, 0, 0)
-    signal reducedMotionRequested(bool enabled)
-    signal taskPanelRequested()
-    signal hideRequested()
-    signal chooserRequested()
-    signal adoptRequested()
 
-    Component.onCompleted: { initialized = true; clampPosition(); observeSnapshot() }
-    component SceneButton: Button {
-        id: control
-        background: Rectangle { radius: 8; color: control.down ? "#425271" : control.hovered ? "#34425c" : "#29364b"; opacity: control.enabled ? 1 : 0.4 }
-        contentItem: Text { text: control.text; color: control.enabled ? "#edf2fa" : "#8090a4"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+    Component.onCompleted: {
+        initialized = true
+        clampPosition()
+        refreshClock()
     }
     onWidthChanged: if (initialized) clampPosition()
     onHeightChanged: if (initialized) clampPosition()
+    onBarStateChanged: refreshClock()
+    onFixedNowMsChanged: refreshClock()
     onActiveChanged: {
         if (!active) {
-            selected = false
             stopMoving()
             clearTransients()
+            heartMsLeft = 0
+            hopOffset = 0
+            hop.stop()
+            updateInterval()
+            armWake()
+        } else {
+            // Recomputes the face, plays what became due while hidden, arms the wake.
+            // Deferred: `active` can flip while a new document is being bound.
+            Qt.callLater(root.refreshClock)
+        }
+    }
+    onReducedMotionChanged: {
+        if (reducedMotion) {
+            stopMoving()
+            hop.stop()
+            hopOffset = 0
         }
         updateInterval()
     }
-    onReducedMotionChanged: { if (reducedMotion) stopMoving(); updateInterval() }
-    onSelectedChanged: if (selected) stopMoving()
-    onSnapChanged: observeSnapshot()
-    onPetIdChanged: { if (!roams) stopMoving(); updateInterval() }
-    onPendingCareChanged: { if (pendingCare !== "") stopMoving(); updateInterval() }
+    onPetIdChanged: { if (!roamsSpecies) stopMoving(); updateInterval() }
+    onCanRoamChanged: if (!canRoam) stopMoving()
 
-    function nextKey(prefix) {
-        root.requestSequence += 1
-        return prefix + "-" + Date.now().toString(36) + "-" + root.requestSequence
+    // Reads the clock and recomputes the face (also on the wake timer).
+    function refreshClock() {
+        root.nowMs = root.fixedNowMs > 0 ? root.fixedNowMs : Date.now()
+        updateFace()
+    }
+    function updateFace() {
+        // Re-entry (a new face can flip `active`, whose handler refreshes) is folded
+        // into the outer call, which observes the final face.
+        if (!initialized || updatingFace) return
+        updatingFace = true
+        if (!root.seeded && root.barState) {
+            var start = OverlayFace.seenAtStart(root.barState)
+            root.seen = start.seen
+            root.grewSeq = start.grewSeq
+            root.seeded = true
+        }
+        var l = root.barState && root.barState.life ? root.barState.life : null
+        root.life = l
+        root.petId = l ? String(l.appearance || "") : ""
+        root.stage = l && typeof l.stage === "number" ? l.stage : 1
+        root.petName = l && l.name ? String(l.name) : ""
+        root.face = PetState.sharedPriority(OverlayFace.withoutGrowth(root.barState, root.grewSeq), root.nowMs, root.seen)
+        updatingFace = false
+        observeFace()
     }
     function clampPosition() {
         if (width <= 0 || height <= 0) return
@@ -152,17 +186,40 @@ Item {
         var range = root.gait.pauseTicks
         return range[0] + Math.floor(Math.random() * (range[1] - range[0] + 1))
     }
-    // Sleep transitions are compared against the previous snapshot, so the first
-    // snapshot after startup never plays a transition.
-    function observeSnapshot() {
-        if (!snap) return
-        var now = !!(snap.care && snap.care.sleeping)
-        if (now) stopMoving()
-        if (sleepObserved && now !== lastSleeping && active)
-            startTransient(now ? "sleep_enter" : "sleep_exit", 0)
-        lastSleeping = now
-        sleepObserved = true
+    // Plays sleep transitions and new celebrations once, and arms the wake timer. Called on
+    // every face change; the first face after startup plays no sleep transition.
+    function observeFace() {
+        if (!initialized) return
+        if (sleepObserved && sleeping !== lastSleeping && active)
+            startTransient(sleeping ? "sleep_enter" : "sleep_exit", 0)
+        if (sleeping) stopMoving()
+        lastSleeping = sleeping
+        sleepObserved = shown
+        var key = OverlayFace.celebrationKey(face.celebrate)
+        if (face.state === "celebrate" && key !== "" && key !== playedCelebration && active) {
+            playedCelebration = key
+            celebrationBubble = face.bubble
+            var c = face.celebrate
+            startTransient("celebrate", 0)
+            // Recorded once shown: the face moves on to the next row (growth stays
+            // unseen in Rust until Home shows it; only this scene skips it now).
+            if (c.kind === "grew") grewSeq = c.seq
+            else seen = OverlayFace.markSeen(seen, c)
+            updateFace()
+            return
+        }
         updateInterval()
+        armWake()
+    }
+    function armWake() {
+        var w = face.wake_at_ms
+        if (!active || w === null || fixedNowMs > 0) {
+            wakeTimer.stop()
+            return
+        }
+        // A few ms past the edge: the face changes at wake_at_ms (half-open windows).
+        wakeTimer.interval = Math.max(1, Math.min(2147483647, Math.ceil(w - Date.now()) + 5))
+        wakeTimer.restart()
     }
     function clearTransients() {
         transientState = ""
@@ -170,9 +227,9 @@ Item {
         transientDurationMs = 0
         queuedTransient = null
     }
-    // Starts (or queues behind a non-interruptible one) a one-shot overlay state.
+    // Starts (or queues behind a non-interruptible one) a one-shot state.
     function startTransient(state, durationOverrideMs) {
-        if (!active || baseState === "memorial") return false
+        if (!active) return false
         var meta = PetCatalog.stateMeta(petId, state)
         var duration = durationOverrideMs > 0 ? durationOverrideMs : PetStateMachine.durationMs(meta)
         if (!isFinite(duration)) duration = PetStateMachine.cycleMs(meta)
@@ -191,12 +248,13 @@ Item {
     function finishTransient() {
         var next = queuedTransient
         clearTransients()
+        celebrationBubble = null
         baseElapsedMs = 0
         resting = false
         if (next) startTransient(next.state, next.durationMs)
     }
     function startMoving() {
-        if (roams) {
+        if (roamsSpecies) {
             var span = 70 + Math.random() * 150
             destination = Math.max(0, Math.min(width - petSize, petX + (Math.random() < 0.5 ? -1 : 1) * span))
             facingLeft = destination < petX
@@ -213,7 +271,7 @@ Item {
         var meta = PetCatalog.stateMeta(petId, "locomotion")
         var f = PetStateMachine.frameAt(meta, Math.floor(baseElapsedMs / 200), false)
         baseElapsedMs += 200
-        if (!roams) {
+        if (!roamsSpecies) {
             swimTicksLeft -= 1
             if (swimTicksLeft <= 0) {
                 walking = false
@@ -237,6 +295,7 @@ Item {
     function cosmeticTick() {
         if (!active) return
         var dt = Math.max(200, root.timerInterval)
+        if (heartMsLeft > 0) heartMsLeft = Math.max(0, heartMsLeft - dt)
         if (transientState !== "") {
             transientElapsedMs += dt
             if (transientElapsedMs >= transientDurationMs) finishTransient()
@@ -253,9 +312,9 @@ Item {
             baseElapsedMs = 0
             idleTicks -= Math.round(dt / 200)
             if (idleTicks <= 0) {
-                // The pause is over: walk, or (held by a click, hover or a state that
-                // cannot roam) one more beat followed by a whole new pause.
-                if (selected || hovered || !PetStateMachine.canRoam(facts)) idleTicks = randomPause()
+                // The pause is over: walk, or (held by hover or a state that cannot
+                // roam) one more beat followed by a whole new pause.
+                if (petMouse.containsMouse || !canRoam) idleTicks = randomPause()
                 else { resting = false; startMoving(); updateInterval(); return }
             }
             // A single-frame hold (needs_care, error) has no beat to play: keep resting.
@@ -267,7 +326,7 @@ Item {
         if (baseElapsedMs >= PetStateMachine.cycleMs(displayMeta) || PetStateMachine.frameCount(displayMeta) <= 1) {
             // Beat done: hold the first frame and sleep until the next beat or walk.
             baseElapsedMs = 0
-            resting = true
+            resting = !anim.bob
         }
         updateInterval()
     }
@@ -275,91 +334,33 @@ Item {
         var ms = 200
         if (transientState !== "") {
             ms = reducedMotion ? transientDurationMs - transientElapsedMs : PetStateMachine.frameMsOf(transientMeta)
+        } else if (heartMsLeft > 0 && !motionRunning) {
+            ms = heartMsLeft
         } else if (walking) {
             ms = 200
         } else if (resting) {
-            // One wake for the whole remaining pause (about 0.1 wakeups/s, spec §12),
-            // bounded so a malformed pause range cannot park the scene for long.
+            // One wake for the whole remaining pause, bounded so a malformed pause range
+            // cannot park the scene for long; a heart bubble still ends on time.
             ms = Math.min(60000, Math.max(200, idleTicks * 200))
+            if (heartMsLeft > 0) ms = Math.min(ms, heartMsLeft)
         } else {
             ms = PetStateMachine.frameMsOf(displayMeta)
         }
         timerInterval = PetStateMachine.snapInterval(ms)
     }
-    function requestCare(action) {
-        if (!active || !selected || !hasLife) return
-        stopMoving()
-        idleTicks = 60
-        if (action === "sleep" || action === "wake") {
-            if (controller.canSleep)
-                controller.perform(action === "wake" ? "pet.wake" : "pet.sleep", {}, action)
-        } else controller.careClicked(action)
-    }
-    function eventsMaxSeq(events) {
-        var max = -1
-        for (var i = 0; i < events.length; i++)
-            if (events[i] && typeof events[i].seq === "number" && events[i].seq > max) max = events[i].seq
-        return max
-    }
-    // Celebrates unseen growth once and acknowledges it once. Called on a click on
-    // the pet, and after this UI's own task acceptance.
-    function acknowledgeGrowth(events) {
-        var list = Array.isArray(events) ? events : unseenEvents
-        var max = eventsMaxSeq(list)
-        if (max < 0 || !life) return false
-        if (max > celebratedThroughSeq) {
-            celebratedThroughSeq = max
-            startTransient("celebrate", 0)
-        }
-        sendEventsSeen(max)
-        return true
-    }
-    // `outcome` is the real task.accept_artifact result: {receipt, duplicate}. The receipt
-    // lists the stages this acceptance reached (`evolved_to`) but no event seqs; those come
-    // from the follow-up state.get, already in `unseenEvents` when the host announces it.
-    function celebrateFromAcceptance(outcome) {
-        var receipt = outcome && outcome.receipt ? outcome.receipt : null
-        var stages = receipt && Array.isArray(receipt.evolved_to) ? receipt.evolved_to : []
-        if (stages.length === 0 || !life) return false
-        if (receipt.life_id && String(receipt.life_id) !== String(life.life_id)) return false
-        var events = unseenEvents.filter(function (e) { return stages.indexOf(e.stage) >= 0 })
-        if (events.length === 0) return false
-        return acknowledgeGrowth(events)
-    }
-    function sendEventsSeen(seq) {
-        if (seq <= seenSentThroughSeq || !life || !host) return
-        if (hostBusy) return // retried on the next explicit interaction
-        if (seenRequestedSeq !== seq || seenRetryKey === "") {
-            seenRequestedSeq = seq
-            seenRetryKey = nextKey("seen")
-        }
-        var key = seenRetryKey
-        host.request("pet.events_seen", {life_id: String(life.life_id), through_seq: seq}, function (response) {
-            if (response && response.ok) {
-                root.seenSentThroughSeq = Math.max(root.seenSentThroughSeq, seq)
-                root.seenRetryKey = ""
-            }
-        }, key)
-    }
-    // Cosmetic look change: one pet.select request and nothing else. The new look
-    // arrives through the snapshot (or the bar-state merge), never through a refresh.
-    function selectLook(id) {
-        var target = String(id || "")
-        if (!canSelectLook || !PetCatalog.isSpecies(target) || target === petId) return false
-        if (selectRetryKey === "" || selectRetryPet !== target) {
-            selectRetryKey = nextKey("select")
-            selectRetryPet = target
-        }
-        var key = selectRetryKey
-        host.request("pet.select", {life_id: String(life.life_id), pet_id: target}, function (response) {
-            if (response && response.ok) root.selectRetryKey = ""
-        }, key)
-        return true
-    }
+    // A click on the pet: hop (bubble only in Calm mode), heart bubble, open Home. Never a
+    // silent no-op while the pet is drawn (K5).
     function petClicked() {
-        if (!active) return
-        if (unseenEvents.length > 0) acknowledgeGrowth(unseenEvents)
-        selected = !selected
+        if (!active) return false
+        clickCount += 1
+        stopMoving()
+        resting = false
+        idleTicks = 60
+        heartMsLeft = 1600
+        if (!reducedMotion) hop.restart()
+        updateInterval()
+        homeRequested()
+        return true
     }
 
     Timer {
@@ -368,35 +369,23 @@ Item {
         interval: root.timerInterval; repeat: true; running: root.schedulerRunning
         onTriggered: root.cosmeticTick()
     }
-    PetCare {
-        id: controller
-        objectName: "desktopPet.careController"
-        host: root.host
-        visible: false
-        enabled: false
-        reducedMotion: true
-        quietMode: true
-        showSprite: false
-        onReactionSeqChanged: root.startTransient(controller.lastReaction, 0)
-        onFailureSeqChanged: root.startTransient("error", 2000)
+    Timer {
+        id: wakeTimer
+        objectName: "desktopPet.wakeTimer"
+        repeat: false
+        onTriggered: root.refreshClock()
     }
-    // The host announces this UI's own confirmed acceptance (TaskReview emits
-    // host.taskAccepted after the follow-up state.get); growth then celebrates from that
-    // response. Other UIs wait for an explicit click.
-    Connections {
-        target: root.host
-        ignoreUnknownSignals: true
-        function onTaskAccepted(outcome) { root.celebrateFromAcceptance(outcome) }
+    SequentialAnimation {
+        id: hop
+        NumberAnimation { target: root; property: "hopOffset"; to: -18; duration: 150; easing.type: Easing.OutQuad }
+        NumberAnimation { target: root; property: "hopOffset"; to: 0; duration: 250; easing.type: Easing.OutBounce }
     }
     Item {
         id: pet
         objectName: "desktopPet.pet"
-        x: root.petX; y: root.floorY
+        x: root.petX; y: root.floorY + root.hopOffset + root.bobOffset
         width: root.petSize; height: root.petSize
         visible: root.active
-        activeFocusOnTab: root.active
-        Keys.onReturnPressed: root.petClicked()
-        Keys.onSpacePressed: root.petClicked()
         PetSprite {
             id: sprite
             objectName: "desktopPet.sprite"
@@ -407,169 +396,48 @@ Item {
             frame: root.frame
             facingLeft: root.facingLeft
             reducedMotion: root.reducedMotion
+            opacity: root.face.state === "paused" ? 0.85 : 1
         }
         // Input covers the manifest hit box only, matching the host's input mask.
         MouseArea {
             id: petMouse
+            objectName: "desktopPet.mouse"
             x: root.hitBox.x; y: root.hitBox.y
             width: root.hitBox.width; height: root.hitBox.height
             hoverEnabled: true
             enabled: root.active
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            acceptedButtons: Qt.LeftButton
             cursorShape: Qt.PointingHandCursor
             onClicked: root.petClicked()
         }
         Accessible.role: Accessible.Button
-        Accessible.name: (root.hasLife ? root.petName + ". " : "No companion. ") + "Open care menu"
+        Accessible.name: root.petName + ". Open CodePet"
         Accessible.onPressAction: root.petClicked()
     }
-    // Static growth badge; decorative and outside the input region.
-    Text {
-        objectName: "desktopPet.growthBadge"
-        visible: root.active && root.growthBadge && !root.selected
-        x: Math.max(0, Math.min(root.width - width, pet.x + root.hitBox.x + root.hitBox.width - width / 2))
-        y: Math.max(0, pet.y + root.hitBox.y - height)
-        text: "★ grew"
-        color: "#f2c14e"; font.pixelSize: 11; font.bold: true
-        textFormat: Text.PlainText
-    }
-    // Hover bars are informational and deliberately outside the input region.
+    // Picture-only thought bubble; decorative and outside the input region.
     Rectangle {
-        id: bars
-        x: Math.max(0, Math.min(root.width - width, pet.x + pet.width / 2 - width / 2))
-        y: Math.max(0, pet.y + root.hitBox.y - height - 4)
-        width: Math.min(136, root.width); height: 31; radius: 10
-        visible: root.active && root.hovered && !root.selected && root.hasLife
-        color: "#ed171c29"; border.color: "#354157"
+        id: bubble
+        objectName: "desktopPet.bubble"
+        readonly property int icon: 40
+        visible: root.active && root.bubbleIcons.length > 0
+        width: icons.implicitWidth + 16; height: icon + 12; radius: height / 2
+        x: Math.max(0, Math.min(root.width - width, pet.x + root.hitBox.x + root.hitBox.width - width / 3))
+        y: Math.max(0, pet.y + root.hitBox.y - height - 6)
+        color: "#f2ffffff"; border.color: "#33000000"; border.width: 1
         Row {
-            anchors.centerIn: parent; spacing: 5
+            id: icons
+            anchors.centerIn: parent
+            spacing: 4
             Repeater {
-                model: ["hunger", "thirst", "mental_health", "hygiene"]
-                Rectangle {
+                model: root.bubbleIcons
+                Image {
                     required property string modelData
-                    width: 26; height: 5; radius: 2; color: "#364052"
-                    Rectangle {
-                        width: parent.width * Math.max(0, Math.min(1, Number(controller.meters[parent.modelData] || 0) / 10000))
-                        height: parent.height; radius: 2; color: "#99d4ac"
-                    }
-                }
-            }
-        }
-    }
-    Rectangle {
-        id: menu
-        objectName: "desktopPet.menu"
-        x: Math.max(0, Math.min(root.width - width, pet.x + pet.width / 2 - width / 2))
-        y: Math.max(0, pet.y - height - 12)
-        width: Math.min(260, root.width)
-        height: Math.min(content.implicitHeight + 28, root.height)
-        radius: 18; color: "#f519202e"; border.color: "#45516a"; border.width: 1
-        visible: root.active && root.selected
-        enabled: visible
-        clip: true
-        // Swallow empty menu-space clicks; nothing leaks to the underlying desktop.
-        MouseArea { anchors.fill: parent }
-        Flickable {
-            anchors.fill: parent; anchors.margins: 14
-            contentHeight: content.implicitHeight; clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            Column {
-                id: content
-                width: parent.width; spacing: 9
-                Row {
-                    width: parent.width
-                    Text {
-                        width: parent.width - 36; elide: Text.ElideRight; textFormat: Text.PlainText
-                        text: root.life ? root.petName + " · " + PetCatalog.stageName(root.petId, root.stage) : "CodePet"
-                        color: "#f0f4fa"; font.pixelSize: 17; font.bold: true
-                    }
-                    SceneButton {
-                        width: 32; height: 26; text: "×"
-                        Accessible.name: "Close care menu"
-                        onClicked: root.selected = false
-                    }
-                }
-                Text {
-                    objectName: "desktopPet.status"
-                    width: parent.width; text: root.statusText
-                    color: "#a8b9cf"; font.pixelSize: 11; wrapMode: Text.Wrap; textFormat: Text.PlainText
-                    Accessible.name: text
-                }
-                Repeater {
-                    model: root.hasLife ? [ { key: "hunger", label: "Nourishment", tint: "#e6bd8a" }, { key: "thirst", label: "Hydration", tint: "#8ecae5" }, { key: "mental_health", label: "Mood", tint: "#c3abe8" }, { key: "hygiene", label: "Hygiene", tint: "#97d4b0" } ] : []
-                    Column {
-                        id: meterRow
-                        required property var modelData
-                        width: content.width; spacing: 4
-                        property real value: Math.max(0, Math.min(100, Number(controller.meters[modelData.key] || 0) / 100))
-                        Row {
-                            width: parent.width
-                            Text { width: parent.width - 40; text: meterRow.modelData.label; color: "#c4d0e1"; font.pixelSize: 11 }
-                            Text { width: 40; horizontalAlignment: Text.AlignRight; text: Math.round(meterRow.value) + "%"; color: "#c4d0e1"; font.pixelSize: 11 }
-                        }
-                        Rectangle {
-                            width: parent.width; height: 4; radius: 2; color: "#354052"
-                            Rectangle { width: parent.width * meterRow.value / 100; height: 4; radius: 2; color: meterRow.modelData.tint }
-                        }
-                    }
-                }
-                Grid {
-                    columns: 2; spacing: 6
-                    visible: root.hasLife
-                    Repeater {
-                        model: ["food", "water", "play", "wash", "bathroom", "sleep"]
-                        SceneButton {
-                            id: careButton
-                            required property string modelData
-                            objectName: "desktopPet.care." + modelData
-                            width: (content.width - 6) / 2; height: 31
-                            text: modelData === "sleep" && root.sleeping ? "Wake / settle" : PetCatalog.careLabel(root.petId, modelData)
-                            enabled: menu.visible && (modelData === "sleep" ? controller.canSleep : controller.canCare)
-                            Accessible.name: text
-                            onClicked: root.requestCare(modelData === "sleep" && root.sleeping ? "wake" : modelData)
-                        }
-                    }
-                }
-                Text {
-                    width: parent.width; text: controller.feedback; color: "#a8b9cf"; font.pixelSize: 10; wrapMode: Text.Wrap; textFormat: Text.PlainText
-                    visible: root.hasLife
-                }
-                SceneButton {
-                    objectName: "desktopPet.chooseLook"
-                    width: parent.width; height: 31; text: "Choose look…"
-                    visible: root.life !== null
-                    enabled: menu.visible && root.canSelectLook
-                    Accessible.name: "Choose look. Cosmetic only"
-                    onClicked: { root.selected = false; root.chooserRequested() }
-                }
-                SceneButton {
-                    objectName: "desktopPet.adopt"
-                    width: parent.width; height: 31; text: "Adopt…"
-                    visible: !root.hasLife && root.snap !== null
-                    enabled: menu.visible
-                    onClicked: {
-                        root.selected = false
-                        root.adoptRequested()
-                        if (root.host && typeof root.host.openLife === "function") root.host.openLife()
-                        else root.taskPanelRequested()
-                    }
-                }
-                SceneButton {
-                    width: parent.width; height: 33; text: "Open task panel · simulation"
-                    enabled: menu.visible
-                    onClicked: { root.selected = false; root.taskPanelRequested() }
-                }
-                Row {
-                    width: parent.width; spacing: 4
-                    CheckBox {
-                        width: parent.width - 50; text: "Less motion"; checked: root.reducedMotion
-                        onToggled: root.reducedMotionRequested(checked)
-                        palette.windowText: "#bac8dc"
-                    }
-                    SceneButton {
-                        width: 46; height: 32; text: "Hide"
-                        onClicked: { root.selected = false; root.hideRequested() }
-                    }
+                    width: bubble.icon; height: bubble.icon
+                    source: Qt.resolvedUrl("../assets/icons/" + modelData)
+                    sourceSize: Qt.size(bubble.icon * 2, bubble.icon * 2)
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: false
+                    smooth: true
                 }
             }
         }

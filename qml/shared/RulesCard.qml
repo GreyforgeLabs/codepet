@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import "LifeText.js" as LifeText
 
-// One-time life-rules card for an unarmed life (SPEC-v0.2 §2 D1, §12). It shows the full
+// One-time life-rules card for an unarmed life (docs/decisions/0001-v0.2-lifecycle.md D1). It shows the full
 // rules with the life's exact numbers, a mode choice with Permadeath preselected, and a
 // required acknowledgement. Only "Start life rules" sends anything: pet.rules
 // {life_id, mode, acknowledge_rules: true}, reusing one retry key per choice. Until then the

@@ -1,0 +1,100 @@
+{
+  "format": "codepet-live-projection-v1",
+  "captured_date": "2026-10-16",
+  "client": "codex",
+  "installed_version_observed": "0.163.0",
+  "version_observation": "readiness --version; not retained in hook payload",
+  "outcome": {
+    "submitted": true,
+    "model_turn_completed": true,
+    "outcome": "turn_completed"
+  },
+  "identity_transform": "All capture id hashes replaced by deterministic synthetic qa identifiers in first-seen order; equality retained within this file only.",
+  "projection_limits": [
+    "Metadata projections, not complete raw client payloads.",
+    "Unallowlisted enum strings became other; the original value cannot be recovered.",
+    "codepet_v, tools/counts, prompt_id, session mode fields outside the allowlist, content and paths were not retained.",
+    "capture_and_shim_us measures observer plus shim only, not native total hook latency."
+  ],
+  "hook_captures": [
+    {
+      "client": "codex",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-codex-001",
+        "turn_id": "qa-codex-002",
+        "hook_event_name": "UserPromptSubmit",
+        "permission_mode": "default"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7645
+    },
+    {
+      "client": "codex",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-codex-001",
+        "turn_id": "qa-codex-002",
+        "hook_event_name": "PostToolUse",
+        "permission_mode": "default",
+        "tool_name": "Bash",
+        "tool_use_id": "qa-codex-003"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7661
+    },
+    {
+      "client": "codex",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-codex-001",
+        "turn_id": "qa-codex-002",
+        "hook_event_name": "Stop",
+        "permission_mode": "default",
+        "stop_hook_active": false
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7800
+    },
+    {
+      "client": "codex",
+      "input_over_limit": false,
+      "metadata": {
+        "session_id": "qa-codex-001",
+        "hook_event_name": "SessionEnd",
+        "reason": "other"
+      },
+      "environment": {
+        "claude_entrypoint": "absent",
+        "grok_hook_event_present": false,
+        "claude_pid_present": false
+      },
+      "shim_exit": 0,
+      "capture_and_shim_us": 7592
+    }
+  ],
+  "source_captures": [
+    {
+      "file": "codex.jsonl",
+      "sha256": "97d06f97fa078431aaaf3b49c609543b31a0db6e91cb4baa70ba64bc84c30094"
+    }
+  ],
+  "unverified": [
+    "native_total_hook_latency"
+  ]
+}

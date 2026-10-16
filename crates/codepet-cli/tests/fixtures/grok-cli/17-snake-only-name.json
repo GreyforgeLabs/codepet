@@ -1,0 +1,27 @@
+{
+ "name": "snake-only-name",
+ "client": "grok-cli",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"hookEventName\":\"user_prompt_submit\",\"sessionId\":\"01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b\",\"promptId\":\"g-3\",\"prompt\":\"CANARY-prompt-7f3a\"}\n",
+ "expect": {
+  "event_id": "a8d74406b6fd032b81de476601f1fc58",
+  "record": {
+   "v": 1,
+   "client": "grok-cli",
+   "kind": "turn_start",
+   "session": "01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b",
+   "turn": "g-3",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "d093858ff6656284",
+   "at_ms": 1792123876111
+  }
+ }
+}

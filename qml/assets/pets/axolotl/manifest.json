@@ -21,6 +21,13 @@
   "bathroom": "Cleans the filter; the axolotl stays in its plant hide.",
   "sleep": "Rests tucked inside its rock hide."
  },
+ "careIconSet": "aquatic",
+ "careWords": {
+  "food": "Pellets",
+  "water": "Fresh water",
+  "play": "Tunnels",
+  "wash": "Clean tank"
+ },
  "stages": [
   {
    "stage": 1,
@@ -579,7 +586,7 @@
    "sha256": "19dd4e4a8c334be04f4e469b6c68276076e8eeb279cba6c9f95f247e88143377",
    "source": "GreyforgeLabs/codepet origin/art/generated-source-library:docs/art-library/source/axolotl/v2/source-sheet.png (PR #7)"
   },
-  "generator": "gpt-image-2 via local Codex CLI imagegen (operator ChatGPT subscription)"
+  "generator": "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
  },
  "files": {
   "s1/b00.webp": "50310b7d3c30d110c497fcbcc63957e07042239b3fc3b12f77922919828756cc",

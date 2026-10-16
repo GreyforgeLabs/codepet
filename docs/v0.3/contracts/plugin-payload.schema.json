@@ -1,0 +1,73 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://greyforge.tech/codepet/plugin-payload.schema.json",
+ "title": "Synthesized hook payload of the OpenCode and Hermes plugins (codepet_v 1)",
+ "description": "One JSON object plus a newline, < 512 bytes, written to the shim's stdin by the CodePet OpenCode plugin (codepet.js) or Hermes plugin. Plugins must only emit payloads that validate. The hook is a lenient reader (agent_vectors.json normalization rules): invalid tools -> 0, non-boolean interactive -> true, unknown keys are never read. Extra rules: exactly one of session_id or approval_key; approval_key only from hermes and only with event waiting or activity; opencode turn_id is <pluginStartMs>-<n>; completed/failed/interrupted are never sent (the Hermes plugin maps on_session_end to turn_done/turn_failed/turn_cancelled itself).",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "codepet_v",
+  "event"
+ ],
+ "properties": {
+  "codepet_v": {
+   "const": 1
+  },
+  "event": {
+   "enum": [
+    "session_start",
+    "turn_start",
+    "activity",
+    "waiting",
+    "idle_prompt",
+    "turn_done",
+    "turn_failed",
+    "turn_cancelled",
+    "session_end"
+   ]
+  },
+  "session_id": {
+   "$ref": "#/$defs/id"
+  },
+  "turn_id": {
+   "$ref": "#/$defs/id"
+  },
+  "tools": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 1000,
+   "description": "completed tool calls of the turn, counted in the plugin (turn_done only)"
+  },
+  "interactive": {
+   "type": "boolean",
+   "description": "OpenCode: false when process.argv holds the exact token run or serve; Hermes never sends false (it drops non-interactive platforms)"
+  },
+  "approval_key": {
+   "$ref": "#/$defs/id"
+  },
+  "codepet_test": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{32}$",
+   "description": "only in clients.test ready-check payloads"
+  }
+ },
+ "$defs": {
+  "id": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 128,
+   "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+  }
+ },
+ "x-per-client": {
+  "opencode": {
+   "never": [
+    "approval_key"
+   ],
+   "turn_id_pattern": "^[0-9]+-[0-9]+$"
+  },
+  "hermes": {
+   "approval_events": "event waiting|activity with approval_key and no session_id, for surface cli or transport:* only"
+  }
+ }
+}

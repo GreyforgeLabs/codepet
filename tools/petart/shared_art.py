@@ -13,7 +13,7 @@ SS = 4  # supersampling factor
 
 LICENSE_TEXT = """MIT License
 
-Copyright (c) 2026 CodePet contributors
+Copyright (c) 2026 Greyforge Labs
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -1,4 +1,4 @@
-// PetChooser smoke test (SPEC-v0.2 §12, §17.7 T6): grid, keyboard, accessibility, lazy
+// PetChooser smoke test (docs/pets.md): grid, keyboard, accessibility, lazy
 // thumbnails, pet.select with one retry key per choice, and every disabled state
 // (busy, presentation lock, no life, death pending). Pick mode never sends anything.
 // Run: QT_QPA_PLATFORM=offscreen python3 qml/tests/run_qml.py qml/tests/ChooserSmoke.qml

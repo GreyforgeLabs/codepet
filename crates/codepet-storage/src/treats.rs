@@ -1,0 +1,272 @@
+//! The treat jar (spec §6.4 "Treat check" and "Growth", §11 decision 1): real finished turns
+//! drop treats into the living life's jar; tapping **Treats** (`treats.give`) is the explicit
+//! acceptance that turns one treat into 5 XP, exactly once (invariant R).
+//!
+//! Durable rules, all computed from `activity_turns` (so they survive restarts, X3):
+//! - a turn earns at most one treat (`UNIQUE(session_key, turn_key)`, X1);
+//! - the jar holds at most [`JAR_MAX`] unspent treats;
+//! - at most one treat per session per 30 s, 12 per rolling hour and 48 per rolling 24 h,
+//!   over every life (adopting a new pet never resets the caps). Windows are half-open: an
+//!   earn exactly one window ago no longer counts. Forgotten rows (`earned_at_ms = 0`) never
+//!   count. "Forget coding history" keeps a marked, hour-coarsened earn time for treats
+//!   earned in the last 24 h ([`forget_earn_times`]), so Forget never resets a cap; the next
+//!   write, settling read or fold after they leave the daily window clears those times
+//!   ([`expire_forgotten`]). An ordinary earn time never carries the marker
+//!   ([`ordinary_earn_ms`]).
+//!
+//! With the existing curve (`level_xp` 0/80/200/400/700, stages at levels 2 and 4) a pet is
+//! grown after 16 treats and mature after 80. The fold (WP2) earns through [`earn`]; nothing
+//! here runs a settlement or touches care, arming or life state (E1).
+use crate::life::{self, EvolvedBy};
+use crate::model::Snapshot;
+use crate::store::V03Policy;
+use crate::{fault, lifecycle_store, Result, StorageError, Store};
+use codepet_core::agent::{
+    forgotten_earn_ms, ordinary_earn_ms, CAP_SESSION_MS, DAY_MS, FORGOTTEN_MARK_MS, HOUR_MS,
+    JAR_MAX, TREAT_XP,
+};
+use rusqlite::{params, Connection, OptionalExtension};
+
+/// The pure cap rule, in order: jar full, then the session's 30 s, then 12 per rolling hour,
+/// then 48 per rolling 24 h, over `earned_at_ms` values (0 = forgotten, never counts).
+pub use codepet_core::agent::caps_allow;
+/// The cap verdict for one qualifying turn (`agent_vectors.json` `caps`): the pure rule lives
+/// in `codepet_core::agent` (one implementation for the fold, the jar and the vectors).
+pub use codepet_core::agent::CapVerdict as CapCheck;
+
+/// Unspent treats of `life_id`.
+pub(crate) fn jar(c: &Connection, life_id: &str) -> Result<u32> {
+    let n: i64 = c.query_row(
+        "SELECT count(*) FROM activity_turns WHERE life_id = ?1 AND given_at_ms IS NULL",
+        [life_id],
+        |r| r.get(0),
+    )?;
+    u32::try_from(n).map_err(|_| StorageError::Corrupt)
+}
+
+/// The living life's jar for the export and the snapshot: `(jar, full)`, `(0, false)` with
+/// no living life.
+pub(crate) fn jar_of_living(c: &Connection) -> Result<(u32, bool)> {
+    let Some(l) = life::active_life(c)? else {
+        return Ok((0, false));
+    };
+    let n = jar(c, &l.life_id)?.min(JAR_MAX);
+    Ok((n, n >= JAR_MAX))
+}
+
+/// [`caps_allow`] over the durable rows: the jar of `life_id` and every life's earns.
+pub(crate) fn check(c: &Connection, life_id: &str, session_key: &str, at: i64) -> Result<CapCheck> {
+    let jar = jar(c, life_id)?;
+    if jar >= JAR_MAX {
+        return Ok(CapCheck::JarFull);
+    }
+    let count = |sql: &str, p: &[&dyn rusqlite::ToSql]| -> Result<i64> {
+        Ok(c.query_row(sql, p, |r| r.get(0))?)
+    };
+    let session = count(
+        "SELECT count(*) FROM activity_turns WHERE session_key = ?1 AND earned_at_ms > 0
+         AND earned_at_ms > ?2",
+        &[&session_key, &(at - CAP_SESSION_MS)],
+    )?;
+    let window = |ms: i64| -> Result<i64> {
+        count(
+            "SELECT count(*) FROM activity_turns WHERE earned_at_ms > 0 AND earned_at_ms > ?1",
+            &[&(at - ms)],
+        )
+    };
+    let n = |v: i64| u32::try_from(v).unwrap_or(u32::MAX);
+    Ok(codepet_core::agent::caps_verdict(
+        jar,
+        session > 0,
+        n(window(HOUR_MS)?),
+        n(window(DAY_MS)?),
+    ))
+}
+
+/// "Forget coding history" for `activity_turns.earned_at_ms` (owner decision 2026-10-16,
+/// `notes.md` §7 item 1): an earn time that can no longer count toward any cap
+/// (`<= now - 24 h`) becomes 0; a newer one becomes [`forgotten_earn_ms`] (rounded up to the
+/// end of its hour, plus the marker), so the 30 s, hourly and daily caps stay durable and can
+/// only get stricter. No identity is added; the HMAC keys are immutable (X1). Returns the
+/// number of rows changed (0 when nothing changed, so a repeated Forget is a no-op).
+pub(crate) fn forget_earn_times(c: &Connection, now: i64) -> Result<usize> {
+    let day_ago = now.saturating_sub(DAY_MS);
+    let mut n = c.execute(
+        "UPDATE activity_turns SET earned_at_ms = 0 WHERE earned_at_ms > 0 AND earned_at_ms <= ?1",
+        [day_ago],
+    )?;
+    let recent = {
+        let mut st =
+            c.prepare("SELECT id, earned_at_ms FROM activity_turns WHERE earned_at_ms > ?1")?;
+        let rows = st.query_map([day_ago], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (id, earned) in recent {
+        let kept = forgotten_earn_ms(earned, now);
+        if kept != earned {
+            n += c.execute(
+                "UPDATE activity_turns SET earned_at_ms = ?2 WHERE id = ?1",
+                params![id, kept],
+            )?;
+        }
+    }
+    Ok(n)
+}
+
+/// Whether an earn time kept by [`forget_earn_times`] has left the daily window and waits
+/// for [`expire_forgotten`] (a read; the settling snapshot and retention ask it first).
+pub(crate) fn forgotten_due(c: &Connection, now: i64) -> Result<bool> {
+    Ok(c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM activity_turns WHERE earned_at_ms > 0
+           AND earned_at_ms <= ?1 AND earned_at_ms % ?2 = ?3)",
+        params![now.saturating_sub(DAY_MS), HOUR_MS, FORGOTTEN_MARK_MS],
+        |r| r.get(0),
+    )?)
+}
+
+/// Clears (sets 0) at most `limit` earn times kept by [`forget_earn_times`] that have left
+/// the daily window and so can no longer count toward a cap. It does not wait for the
+/// hooks: every write's settlement prologue, a settling `state.get` and every fold run call
+/// it, as does retention before its hour coarsening, which must never floor a marked time.
+pub(crate) fn expire_forgotten(c: &Connection, now: i64, limit: i64) -> Result<usize> {
+    Ok(c.execute(
+        "UPDATE activity_turns SET earned_at_ms = 0 WHERE id IN
+           (SELECT id FROM activity_turns WHERE earned_at_ms > 0 AND earned_at_ms <= ?1
+            AND earned_at_ms % ?2 = ?3 LIMIT ?4)",
+        params![
+            now.saturating_sub(DAY_MS),
+            HOUR_MS,
+            FORGOTTEN_MARK_MS,
+            limit
+        ],
+    )?)
+}
+
+/// What [`earn`] did with one qualifying finished turn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Earned {
+    /// One treat dropped into the jar.
+    Treat,
+    /// This (session, turn) already earned (X1); nothing changed.
+    Duplicate,
+    /// No treat: the jar is full (the export's `finished_jar_full`).
+    JarFull,
+    /// No treat: a durable cap applies.
+    Capped(CapCheck),
+    /// No treat: CodePet is Off (X2; the fold drops such events before this).
+    Off,
+}
+
+/// Drops one treat for a qualifying turn into `life_id`'s jar if the jar and the caps allow
+/// it (called by the fold inside its transaction; `session_key` / `turn_key` are the 32-hex
+/// HMAC keys, `client` a supported client id). The caller has already decided that the turn
+/// qualifies (`agent::turn_qualifies`) and that CodePet is On (X2).
+pub(crate) fn earn(
+    c: &Connection,
+    life_id: &str,
+    client: &str,
+    session_key: &str,
+    turn_key: &str,
+    at: i64,
+) -> Result<Earned> {
+    let exists: bool = c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM activity_turns WHERE session_key = ?1 AND turn_key = ?2)",
+        params![session_key, turn_key],
+        |r| r.get(0),
+    )?;
+    if exists {
+        return Ok(Earned::Duplicate);
+    }
+    if !crate::app::enabled(c)? {
+        return Ok(Earned::Off);
+    }
+    match check(c, life_id, session_key, at)? {
+        CapCheck::Allow => {}
+        CapCheck::JarFull => return Ok(Earned::JarFull),
+        capped => return Ok(Earned::Capped(capped)),
+    }
+    c.execute(
+        "INSERT INTO activity_turns (session_key, turn_key, client, life_id, earned_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![session_key, turn_key, client, life_id, ordinary_earn_ms(at)],
+    )?;
+    Ok(Earned::Treat)
+}
+
+impl Store {
+    /// `treats.give` (spec §6.2): gives **one** treat to the living companion `life_id`.
+    /// Marks the oldest unspent treat given and inserts its `activity_xp` row (5 XP) in the
+    /// same transaction, then journals any stage it reaches (`evolved`, `source: treat`).
+    /// Exactly once per request id (receipt replay). Refused while Off (`INVALID_STATE`), with
+    /// an empty jar (`NO_TREATS`) and while the companion is asleep, paused or fainted
+    /// (`PET_NEEDS_CARE`).
+    pub fn give_treat(&mut self, request_id: &str, life_id: &str) -> Result<Snapshot> {
+        let params = format!("{{\"life_id\":{}}}", serde_json::Value::from(life_id));
+        self.v03_command(
+            request_id,
+            "treats.give",
+            &params,
+            V03Policy::RefusedWhileOff,
+            Some("treat_before_commit"),
+            |c, at, _| {
+                let life = life::active_life(c)?.ok_or(StorageError::NoActivePet)?;
+                if life.life_id != life_id {
+                    return Err(StorageError::LifeNotFound);
+                }
+                let vitals = lifecycle_store::load(c)?;
+                if vitals.death_pending {
+                    return Err(StorageError::InvalidState(
+                        "the companion cannot eat right now",
+                    ));
+                }
+                let oldest: Option<i64> = c
+                    .query_row(
+                        "SELECT id FROM activity_turns WHERE life_id = ?1 AND given_at_ms IS NULL
+                         ORDER BY id LIMIT 1",
+                        [&life.life_id],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let Some(row) = oldest else {
+                    return Err(StorageError::NoTreats);
+                };
+                let (sleeping, paused): (bool, bool) = c.query_row(
+                    "SELECT (SELECT sleep_started_at_ms IS NOT NULL FROM pet_care WHERE id = 1),
+                        (SELECT decay_paused FROM pet_state WHERE id = 1)",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                if sleeping || paused || vitals.vitals.fainted {
+                    return Err(StorageError::PetNeedsCare);
+                }
+                let (old_xp, _) = life::life_xp(c, &life.life_id)?;
+                let n = c.execute(
+                    "UPDATE activity_turns SET given_at_ms = ?1 WHERE id = ?2
+                     AND given_at_ms IS NULL",
+                    params![at.wall.max(1), row],
+                )?;
+                if n != 1 {
+                    return Err(StorageError::InvalidState("the treat changed concurrently"));
+                }
+                c.execute(
+                    "INSERT INTO activity_xp (life_id, turn_row_id, amount, granted_at_ms,
+                        request_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![life.life_id, row, TREAT_XP, at.wall, request_id],
+                )?;
+                if life::record_evolution(
+                    c,
+                    &life.life_id,
+                    EvolvedBy::Treat { request_id },
+                    old_xp,
+                    TREAT_XP,
+                    at.wall,
+                )? {
+                    fault("evolve_before_commit");
+                }
+                Ok(true)
+            },
+        )
+    }
+}

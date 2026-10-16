@@ -1,8 +1,41 @@
-# Companion lifecycle (v0.2)
+# Companion lifecycle (v0.3)
+
+The numerical `lifecycle-v1` care rules below remain in force. v0.3 changes how a
+life starts, how growth is earned, and the UI. These rules supersede the historical
+v0.2 task/default descriptions retained below.
+
+- Fresh state has no life until **Let's go!** (`pet.start`). The cat is preselected;
+  the pet starts cared for, with **gentle** rules and the desktop pet enabled.
+- An existing unarmed pet keeps its identity, name, look, growth and history.
+  Let's go! arms it in gentle mode. Migration never arms a life or charges absence.
+  Already armed lives keep their chosen mode.
+- Hunger and thirst remain the only lethal needs. Gentle mode faints rather than
+  ending the life; matching care revives. **Hardcore**, in Help, permits permanent
+  endings and needs the typed pet name, acknowledgement and a healthy pet.
+- **Off** freezes care, grace and earning, stops presence recording and exits the
+  desktop pet. On resumes without catch-up. The bar remains to turn it on again.
+- Real interactive coding activity earns bounded treats. Giving one grants five
+  XP exactly once. From zero XP, grown takes sixteen treats and mature takes eighty.
+  Old earned XP is kept. Agent events never settle care or change a life status.
+- No Start, preflight, task slot, mandatory work nap or readiness gate is exposed by
+  the default build. The old task methods exist only with `legacy-tasks`.
+- **Memories** reads paged journal events across current and ended lives, including
+  growth already seen. It neither settles time nor acknowledges a celebration.
+
+The bar records attended time; an overlay on its own does not. UI/presence
+mutations settle then finalize. Agent folds and read-only memories do neither.
+See [architecture](architecture.md), [privacy](security.md) and
+[validation](validation.md).
+
+## Historical v0.2 reference
+
+The following detailed record is preserved for the old implementation and its
+`legacy-tasks` tests. Task actions, default permadeath, first-run placeholders,
+and v0.2 screen text below are historical, not v0.3 UI behavior.
 
 This page documents ruleset `lifecycle-v1`: evolution by XP, the humane permadeath lifecycle, attended-time accounting, and how storage enforces them. It is the reference for the storage layer (`crates/codepet-storage`) and for UI copy.
 
-The product decisions behind it (D1 to D12) are recorded in `docs/decisions/0001-v0.2-lifecycle.md`. They are delegated defaults for a private testing prerelease.
+The product decisions behind it (D1 to D12) are recorded in `docs/decisions/0001-v0.2-lifecycle.md`. They are the v1 defaults, first shipped in the v0.2.0 testing prerelease and carried into v0.2.1.
 
 **Verification status.** Everything below about storage is covered by the `codepet-storage` unit tests (`life_tests.rs`, `lifecycle_tests.rs`, `presence_tests.rs`, `bar_export_tests.rs`, `migration_v4_tests.rs`). The tests exercise the documented SQLite behaviour with a manual clock. They do not exercise the bar plugin's recorder on a live Omarchy session, the CLI wiring, or the QML UI. Those have their own tests and live QA, recorded in `docs/validation.md`.
 
@@ -23,7 +56,7 @@ Every number is a ruleset value from `codepet_core::lifecycle::RULES_V1`. Its ca
 | Level XP thresholds (L1 to L5) | 0, 80, 200, 400, 700 | same |
 | Stage minimum levels (young, grown, mature) | 1, 2, 4 | same |
 
-Mood and hygiene only ever warn. Bathroom and nap requirements still block Start, as in v0.1, and are never neglect.
+Mood and hygiene only ever warn. Bathroom and nap requirements still block Start, as before, and are never neglect.
 
 All durations are **attended (active) time**: time the bar plugin observed you at the computer while the companion's clock was running. Nothing counts offline or overnight.
 

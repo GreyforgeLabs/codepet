@@ -1,7 +1,9 @@
 //! `bar-state.json` export (spec §10): bar-safe contents, bounds, mode 0600, and a file
 //! that only ever moves forward in `state_version`.
 use super::*;
-use codepet_core::lifecycle::{Mode, Pace, HOUR_MS};
+#[cfg(feature = "legacy-tasks")]
+use codepet_core::lifecycle::Pace;
+use codepet_core::lifecycle::{Mode, HOUR_MS};
 
 fn read_bar(env: &Env) -> Value {
     serde_json::from_slice(&fs::read(env.paths.bar_state_path()).unwrap()).unwrap()
@@ -33,10 +35,28 @@ fn export_writes_the_contract_shape_with_mode_0600() {
             "task",
             "presence",
             "unseen_events",
-            "memorial"
+            "memorial",
+            "enabled",
+            "agent",
+            "treats",
+            "clients"
         ])
     );
     assert_eq!(v["schema"], "codepet.bar.v1");
+    // v0.3 blocks (spec §8) with their WP0 defaults; v0.2 readers ignore them.
+    assert_eq!(v["enabled"], true);
+    assert_eq!(
+        v["agent"],
+        serde_json::json!({
+            "state": "idle", "apps": [], "stale_at_ms": null,
+            "finished_seq": 0, "finished_at_ms": null, "finished_app": null,
+            "finished_treat": false, "finished_jar_full": false,
+            "hello_seq": 0, "hello_at_ms": null, "hello_app": null,
+            "test": null, "error_at_ms": null, "error_app": null, "helpers_busy": false
+        })
+    );
+    assert_eq!(v["treats"], serde_json::json!({"jar": 0, "full": false}));
+    assert_eq!(v["clients"], serde_json::json!({}));
     assert_eq!(v["app_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(v["ruleset"], "lifecycle-v1");
     assert_eq!(v["generated_at_ms"], T0);
@@ -103,6 +123,7 @@ fn export_writes_the_contract_shape_with_mode_0600() {
     assert_eq!(fs::read(&path).unwrap(), bytes);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn export_is_bar_safe_and_bounded() {
     let env = Env::new();
@@ -133,6 +154,7 @@ fn export_is_bar_safe_and_bounded() {
         .all(|r| r.as_str().unwrap().len() <= MAX_REASON_BYTES));
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn readiness_reasons_are_cut_at_char_boundaries() {
     let env = Env::new();
@@ -265,11 +287,14 @@ fn presence_wanted_follows_the_rust_side_eligibility() {
     assert!(!wanted(&store));
     store.set_paused(false).unwrap();
     assert!(wanted(&store));
-    let task = task_in_state(&mut store, &env, State::ReviewReady);
-    assert!(!wanted(&store));
-    let digest = store.review(&task).unwrap().review.unwrap().digest;
-    store.discard(&task, &digest).unwrap();
-    assert!(wanted(&store));
+    #[cfg(feature = "legacy-tasks")]
+    {
+        let task = task_in_state(&mut store, &env, State::ReviewReady);
+        assert!(!wanted(&store));
+        let digest = store.review(&task).unwrap().review.unwrap().digest;
+        store.discard(&task, &digest).unwrap();
+        assert!(wanted(&store));
+    }
     let id = life_id(&store);
     store.retire("r", &id, "Ginger").unwrap();
     assert!(!wanted(&store));
@@ -375,6 +400,39 @@ fn the_ui_fixture_has_exactly_the_exported_shape() {
         extra.is_empty(),
         "fixture has fields Rust never emits: {extra:?}"
     );
+}
+
+#[test]
+fn the_export_has_the_v03_contract_shape() {
+    // docs/v0.3/contracts/fixtures/bar-v2/*.json are the frozen v0.3 export states. The
+    // WP0 export emits the same keys (the label stays codepet.bar.v1 until both readers
+    // accept v2, see docs/v0.3/contracts/notes.md).
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../docs/v0.3/contracts/fixtures/bar-v2/clients-mixed.json"
+    ))
+    .unwrap();
+    let env = Env::with_boot();
+    let (store, _id) = armed(&env);
+    assert!(store.export_bar_state().unwrap());
+    let real = read_bar(&env);
+    assert_eq!(real["schema"], BAR_SCHEMA);
+    assert_eq!(fixture["schema"], BAR_SCHEMA_V2);
+    let (mut a, mut b) = (BTreeSet::new(), BTreeSet::new());
+    shape(&real, "", &mut a);
+    shape(&fixture, "", &mut b);
+    let missing: Vec<_> = a.difference(&b).collect();
+    assert!(missing.is_empty(), "contract fixture lacks {missing:?}");
+    // The fixture fills options a fresh export leaves empty (apps, test, client records).
+    let extra: Vec<_> = b
+        .difference(&a)
+        .filter(|k| {
+            !k.starts_with(".critical.")
+                && !k.starts_with(".agent.apps[].")
+                && !k.starts_with(".agent.test.")
+                && !k.starts_with(".clients.")
+        })
+        .collect();
+    assert!(extra.is_empty(), "export lacks contract fields: {extra:?}");
 }
 
 #[test]

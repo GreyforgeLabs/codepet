@@ -1,0 +1,12 @@
+{
+ "name": "ready-check-no-nonce-file",
+ "client": "codex",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"hook_event_name\":\"Stop\",\"session_id\":\"codepet-ready-check\",\"turn_id\":\"codepet-ready-check\",\"codepet_test\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f0\"}\n",
+ "expect": {
+  "drop": "test_nonce"
+ }
+}

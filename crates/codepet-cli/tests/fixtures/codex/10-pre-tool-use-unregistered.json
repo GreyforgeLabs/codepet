@@ -1,0 +1,12 @@
+{
+ "name": "pre-tool-use-unregistered",
+ "client": "codex",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"01a13cfb-647c-7fd3-8500-3c7f8733825c\",\"turn_id\":\"7\",\"transcript_path\":\"/home/u/.codex/sessions/CANARY-transcript-7f3a.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"hook_event_name\":\"PreToolUse\",\"model\":\"CANARY-model-7f3a\",\"permission_mode\":\"default\",\"tool_name\":\"Bash\",\"tool_use_id\":\"call_x\"}\n",
+ "expect": {
+  "drop": "unmapped"
+ }
+}

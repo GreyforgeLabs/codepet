@@ -1,0 +1,86 @@
+{
+  "claude-code": [
+    {
+      "hook_event_name": "UserPromptSubmit",
+      "session_id": "codepet-ready-check",
+      "prompt_id": "codepet-ready-check",
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+      "hook_event_name": "Stop",
+      "session_id": "codepet-ready-check",
+      "prompt_id": "codepet-ready-check",
+      "stop_hook_active": false,
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+  ],
+  "codex": [
+    {
+      "hook_event_name": "UserPromptSubmit",
+      "session_id": "codepet-ready-check",
+      "turn_id": "codepet-ready-check",
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+      "hook_event_name": "Stop",
+      "session_id": "codepet-ready-check",
+      "turn_id": "codepet-ready-check",
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+  ],
+  "opencode": [
+    {
+      "codepet_v": 1,
+      "event": "turn_start",
+      "session_id": "codepet-ready-check",
+      "turn_id": "codepet-ready-check",
+      "interactive": true,
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+      "codepet_v": 1,
+      "event": "turn_done",
+      "session_id": "codepet-ready-check",
+      "turn_id": "codepet-ready-check",
+      "tools": 0,
+      "interactive": true,
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+  ],
+  "hermes": [
+    {
+      "codepet_v": 1,
+      "event": "turn_start",
+      "session_id": "codepet-ready-check",
+      "turn_id": "codepet-ready-check",
+      "interactive": true,
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+      "codepet_v": 1,
+      "event": "turn_done",
+      "session_id": "codepet-ready-check",
+      "turn_id": "codepet-ready-check",
+      "tools": 0,
+      "interactive": true,
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+  ],
+  "grok-cli": [
+    {
+      "hookEventName": "user_prompt_submit",
+      "hook_event_name": "UserPromptSubmit",
+      "sessionId": "codepet-ready-check",
+      "promptId": "codepet-ready-check",
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+      "hookEventName": "stop",
+      "hook_event_name": "Stop",
+      "sessionId": "codepet-ready-check",
+      "promptId": "codepet-ready-check",
+      "reason": "end_turn",
+      "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+  ]
+}

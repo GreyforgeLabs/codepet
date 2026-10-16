@@ -1,4 +1,5 @@
 //! Result shapes from docs/milestone-1.md. Enums serialize as their stable core strings.
+use crate::agent_export::{AgentExport, ClientsExport, TreatsExport};
 use codepet_core::{Category, Draft, Provider, State, Verification};
 use serde::{Deserialize, Serialize};
 
@@ -237,10 +238,17 @@ pub struct Snapshot {
     pub meters: MetersView,
     pub care: CareView,
     pub progression: ProgressionView,
+    // The v0.2 task-pipeline fields, dropped from the v0.3 snapshot (spec §6.2) and present
+    // only in the `legacy-tasks` build.
+    #[cfg(feature = "legacy-tasks")]
     pub decay: DecayView,
+    #[cfg(feature = "legacy-tasks")]
     pub settings: SettingsView,
+    #[cfg(feature = "legacy-tasks")]
     pub active_task: Option<TaskBrief>,
+    #[cfg(feature = "legacy-tasks")]
     pub recent: Vec<TaskBrief>,
+    #[cfg(feature = "legacy-tasks")]
     pub providers: Vec<ProviderInfo>,
     /// The living companion, or `null` when none is living.
     pub life: Option<LifeView>,
@@ -248,6 +256,17 @@ pub struct Snapshot {
     /// The living companion's evolutions no UI has acknowledged yet (`pet.events_seen`).
     pub unseen_events: Vec<UnseenEvent>,
     pub memorial: MemorialBrief,
+    // ---- v0.3 (spec §6.2): the same blocks as `bar-state.json` (one loader). ----
+    /// The On/Off switch (`meta.enabled`).
+    pub enabled: bool,
+    /// "Count background helpers" (`meta.count_helpers`).
+    pub count_helpers: bool,
+    /// Coding-app activity (`bar.v2.schema.json` `$defs/agent`).
+    pub agent: AgentExport,
+    /// Client records (`$defs/clients`).
+    pub clients: ClientsExport,
+    /// The living life's treat jar (`$defs/treats`).
+    pub treats: TreatsExport,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -371,7 +390,13 @@ pub struct CareView {
     pub sleep_started_at_ms: Option<i64>,
     pub work_sessions: u32,
     pub execution_ms: i64,
+    /// v0.2 readiness gate; dropped from the v0.3 snapshot (spec §6.2), `legacy-tasks` only.
+    #[cfg(feature = "legacy-tasks")]
+    #[serde(default)]
     pub ready_to_work: bool,
+    /// v0.2 readiness reasons; dropped from the v0.3 snapshot, `legacy-tasks` only.
+    #[cfg(feature = "legacy-tasks")]
+    #[serde(default)]
     pub readiness_reasons: Vec<String>,
     pub welcome_care_available: bool,
 }

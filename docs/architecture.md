@@ -1,45 +1,73 @@
-# Architecture (milestone 1)
+# Architecture (v0.3)
 
-Rust owns all task state and rewards. QML renders what Rust returns and sends explicit requests. There is no daemon: each `codepet` invocation answers one request and exits, except that a successful `task.start` continues as that task's per-job mock supervisor.
+CodePet observes coding apps and maintains a desktop pet. It never launches a
+coding app or reads its transcripts or project files.
 
-## Crates
+## Components
 
-- `codepet-core`: pure enums with stable string forms, draft validation (lexical paths, byte limits), the state transition table, reward arithmetic and the shared override-reason limit. It also keeps the earlier in-memory `Engine` used by `mock-demo` and core tests. No IO.
-- `codepet-protocol`: request/response/event envelopes (v1), method names, error codes, typed params with `deny_unknown_fields`, and a bounded frame reader/writer (64 KiB, no NUL, valid UTF-8, trailing newline). No transport and no state.
-- `codepet-storage`: the durable task engine on SQLite (bundled). It checks and creates the state directory (`$XDG_STATE_HOME/codepet`, 0700, owned by the effective UID, no symlink), opens the database with WAL and `synchronous=FULL`, migrates by `user_version` (backing up an older version first) and refuses newer or corrupt databases without modifying them. Every mutation is one `BEGIN IMMEDIATE` transaction; task state changes append a `task_events` row. Explicit care/rest mutations have idempotent receipts, and snapshot commands settle persisted sleep and checkpoint live execution without a resident timer (so `state.get` is classified as mutating; with nothing to settle it is a plain read, and a checkpoint never invalidates preflight approvals). It owns preflight tokens, the single active slot (a partial unique index), review digests, the acceptance/reward ledger with request idempotency, explicit recovery and debug-only fault injection points.
-- `codepet` (CLI): `providers`, `state`, `rpc`, `mock-demo` and help. `rpc` reads one frame from stdin, dispatches it to storage, prints one frame and exits 0 or 1. The mock supervisor lives here.
+- `codepet-core`: pure care, lifecycle, growth, agent normalization and priority rules.
+- `codepet-protocol`: bounded, versioned JSON requests and typed parameters.
+- `codepet-storage`: SQLite schema v5, receipts, immutable life history, bounded
+  agent state, durable treat limits and atomic bar exports.
+- `codepet` CLI: short-lived RPC, migration, hook, fold, client jobs and diagnostics.
+- `omarchy-plugin/`: the bar cell, kid-facing popup and attended-presence recorder.
+- `qml/shell.qml`: the Quickshell desktop pet, reading the same exported state.
 
-## Request flow
+## Data flow
 
-1. The UI sends one envelope to `codepet rpc` (a new process per request).
-2. The CLI parses and validates the frame and params before opening storage. Unknown or unimplemented methods are refused without touching the state directory.
-3. Storage performs the action in one transaction and returns a typed result or error. Results are bounded so that every response fits one frame: lists use task briefs, drafts are capped at 32 KiB of JSON and artifacts at 24 KiB (see [milestone-1.md](milestone-1.md)).
-4. After `task.start` commits `preparing` with the process's PID and `/proc` start time, the same process prints the response and then runs the mock supervisor. Each step is a compare-and-set that honors a `cancelling` request made by another process. The mock spawns nothing and never reads or writes the selected folder; it seals a simulated artifact that is never marked `passed`.
-5. `task.recover` is explicit. A job whose recorded supervisor is gone becomes `interrupted`; a review whose digest no longer recomputes becomes `recovery_required`. Nothing is resumed or retried.
+```text
+coding app event → silent shim → bounded normalizer → metadata-only inbox
+                                                      ↓
+                                             short-lived fold
+                                                      ↓
+                                           SQLite → bar-state.json
+                                                      ↓
+                                            bar + desktop pet
 
-## QML
+explicit UI action → one codepet rpc → durable transaction → export
+```
 
-`qml/shared` holds the panel, task form and review components. They take a `host` object with `snapshot`, `busy`, `lastError` and `request()`. `qml/standalone/PreviewHost.qml` is a pure-QML host with fixed fixtures; it refuses every state-changing method and is not connected to Rust. `qml/omarchy/HostAdapter.qml` is the Quickshell host: one `codepet rpc` process per request, argv only, no shell. It has been exercised against a test stub, not the real binary. Quickshell imports appear only in the host entry `qml/shell.qml`, under `qml/omarchy` and in its test harness. See [qml/README.md](../qml/README.md).
+The hook never opens SQLite or creates directories. It records enums, counts,
+flags, HMAC identifiers and timestamps, then may request a fold. The fold takes
+`fold.lock` before opening the database, batches events and exits. Agent events
+cannot settle care, arm, revive or kill a pet. No persistent Rust process polls.
 
-## Limits of this milestone
+A qualifying interactive finished turn can earn one treat, uniquely keyed by
+session and turn. The caps persist across restarts: one per session per thirty
+seconds, twelve per rolling hour, forty-eight per rolling day, and ten in the jar.
+Errors, cancellation, tests and tool calls alone never earn. Duration qualifies
+work; it never awards XP. Giving a treat is explicit acceptance and grants five
+XP exactly once through a request-id receipt.
 
-- Paths are checked lexically by core and, at preflight and start, against the home directory and the CodePet state directory (resolved through symlinks). There is no staging, canonical scope check, ownership or mount policy for project folders, because nothing reads or writes them yet.
-- Supervisor liveness is PID plus start time from `/proc`; there is no containment, cgroup or transient unit. A mock supervisor that is a child of the UI process may stop with it; recovery then marks the task `interrupted`.
-- Settings are stored and validated; decay is not computed. *(Superseded in v0.2.0: armed lives decay during attended time settled by storage; see below.)*
-- History is kept indefinitely; there is no retention, export or deletion yet.
-- There is no event streaming. Clients poll nothing on their own; they refresh after explicit actions and may read persisted events with `events.subscribe`.
+## UI and power
 
-Future target (spec): explicit short commands plus one per-job supervisor that owns staging, containment, execution and review; an optional job-scoped event helper; Omarchy/Quickshell as a host adapter separate from a plain Qt standalone launcher.
+Both surfaces watch atomically replaced `bar-state.json`. Filesystem events cause
+reads, never RPC. Startup and popup opening call `state.get`; explicit mutations
+return and republish state. A successful reply triggers a file re-read. Desktop
+launch decisions live in `DesktopPetFlow.js`; face priority is generated from the
+shared agent vectors. No retired task window is routed.
 
-## Care and progression
+The bar records presence only while enabled and attended. Off freezes care and
+earning, stops its timers, and makes the desktop pet exit. The shim checks the Off
+flag before starting the binary. The bar cell stays available to turn CodePet on.
+Codex's client-owned login shell precedes that check.
 
-Schema v2 adds independent care/rest counters, per-task start debit/execution accounting and a task-keyed demo XP ledger. Rust snapshots expose readiness and separate real/demo progression; QML never computes authoritative rewards or grants readiness. See [care-progression.md](care-progression.md).
+`pet.memories` is a read-only, bounded journal projection with exclusive sequence
+pagination. It never exports raw journal data, acknowledges growth or settles time.
 
-## v0.2.0 additions
+## Storage and compatibility
 
-- `codepet-core` gains pure `species`, `evolution`, `lifecycle` (ruleset `lifecycle-v1`, the integer `advance()` engine) and `presence` (sidecar validation) modules, with vector fixtures shared with the JavaScript models.
-- `codepet-storage` migrates to schema v4 (lives, life events, vitals, presence ledger and cursor, rulesets). Every write runs settle presence → settle sleep → command → finalize a due end → `state_version++` → commit. `Store::export_bar_state()` writes the bar-safe `bar-state.json` under the writer lock, only forward.
-- The CLI adds `--version` and the eight life methods, and republishes `bar-state.json` after every successful mutating request, after `codepet state` and after each committed mock-supervisor step.
-- The Omarchy bar plugin (`omarchy-plugin/`, id `greyforge.codepet`) reads `bar-state.json`, records attended presence (leader only) and sends requests only after explicit clicks. The overlay merges the same file as data and never launches Rust because it changed.
+Only `codepet migrate` and RPC `state.get` can migrate. The installer keeps recovery backups, migrates saved state and rescans the shell. Migration retains pet identity, care,
+growth and life history. The old task tables are preserved; the default build
+cannot route their methods. `legacy-tasks` is transitional and non-default.
 
-Rules: [lifecycle.md](lifecycle.md). Decisions: [decisions/0001-v0.2-lifecycle.md](decisions/0001-v0.2-lifecycle.md). Plugin: [omarchy-plugin.md](omarchy-plugin.md).
+Mutations use one `BEGIN IMMEDIATE`; UI/presence mutations settle, execute,
+finalize, increment `state_version`, and commit before exporting. Request IDs make
+retryable mutations idempotent. Lifecycle triggers protect ended lives and history.
+
+The v0.3 export deliberately retains the `codepet.bar.v1` envelope label with
+additive fields. This lets a still-loaded v0.2.1 reader survive the upgrade window.
+Both v0.3 readers accept v1 and v2. The SQLite version is independently v5.
+
+See [contracts](v0.3/contracts/README.md), [security](security.md), and
+[validation](validation.md) for policy and actual verification.

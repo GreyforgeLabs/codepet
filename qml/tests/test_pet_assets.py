@@ -11,7 +11,14 @@ airborne frames exposed on the species locomotion block, per-stage hit boxes no 
 open-eyed sleep frames for species that rest with their eyes open, recorded anchors (pivot on
 groundY for floor species, prop and badge anchors in the canvas, swim bounds inside their
 water box and below its water line, globally and per stage), and the provenance and docs
-coverage.
+coverage. v0.3 (SPEC-v0.3 §4.1, docs/v0.3/contracts/icons.json): `careIconSet` is optional
+(floor | aquatic | robot; absent means the habitat default) and must resolve to the contract's
+`care_icon_set.resolved`; `careWords` is optional, any subset of food/water/play/wash, each
+entry one or two plain words (letters only, no digits, no K2 jargon, no calm-copy banned
+term), and every `{word}` template of docs/v0.3/contracts/strings.json that the species'
+careIconSet selects (the `aquatic.`/`robot.` override first, then the floor key) stays at most
+8 words with that entry filled in. The K2 list and the K8 word count come from
+check_contracts.py and the calm-copy list from copy_lint.py, so there is one copy of each.
 
 Strict by default: all 15 species must be extracted (`placeholder: false`). With
 CODEPET_ALLOW_PARTIAL_ART=1, species still awaiting source sheets are skipped with a
@@ -25,6 +32,7 @@ CODEPET_ASSET_ROOT=<dir> validates another tree laid out like the repository
 qml/tests/test_pet_assets_invalid.py uses it to prove broken packs are rejected.
 """
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -36,12 +44,34 @@ ROOT = (Path(os.environ["CODEPET_ASSET_ROOT"]).resolve() if os.environ.get("CODE
 PETS = ROOT / "qml/assets/pets"
 REGISTRY_JS = ROOT / "qml/shared/PetRegistry.js"
 DOCS = ROOT / "docs/pets.md"
+ICONS_CONTRACT = ROOT / "docs/v0.3/contracts/icons.json"
+STRINGS_CONTRACT = ROOT / "docs/v0.3/contracts/strings.json"
+TOOLS = Path(__file__).resolve().parents[2]   # lint lists are code: always this checkout's copies
 CORE = ROOT / "crates/codepet-core/src"
 
 STATE_NAMES = ("idle", "locomotion", "food", "water", "play", "wash", "bathroom",
                "sleep_enter", "sleep", "sleep_exit", "celebrate", "working", "waiting",
                "needs_care", "error")
 CARE = ("food", "water", "play", "wash", "bathroom")
+NEEDS = ("food", "water", "play", "wash")
+CARE_ICON_SETS = ("floor", "aquatic", "robot")
+CARE_WORD_RE = re.compile(r"^[A-Z][a-z]*( [a-z]+)?$")
+
+
+def _load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# SPEC-v0.3 K2 (never on a kid-facing screen; careWords reach the screen as {word}), the K8
+# word count and the calm-copy list: the contract checker's and copy_lint's own definitions.
+_contracts = _load_module("codepet_check_contracts", TOOLS / "docs/v0.3/contracts/check_contracts.py")
+_copy_lint = _load_module("codepet_copy_lint", TOOLS / "qml/tests/copy_lint.py")
+JARGON = tuple(_contracts.JARGON)
+count_words = _contracts.words
+banned_in = _copy_lint.banned_in
 NO_FALLBACK = CARE + ("sleep_enter", "sleep", "sleep_exit")
 CANVAS, GROUND_Y, THUMB, MARGIN, GROUND_TOL = 192, 184, 96, 2, 6
 HOPPER_STYLES = ("hop", "leap")
@@ -172,12 +202,96 @@ lic = (PETS / "LICENSE").read_text() if (PETS / "LICENSE").is_file() else ""
 if "MIT License" not in lic:
     fail("qml/assets/pets/LICENSE must be the MIT licence")
 provenance = (PETS / "PROVENANCE.md").read_text() if (PETS / "PROVENANCE.md").is_file() else ""
-for phrase in ("GPT Image 2", "ChatGPT subscription", "Codex CLI", "PR #7", "MIT", "not been legally reviewed"):
+for phrase in ("GPT Image 2", "ChatGPT plan", "Codex CLI", "PR #7", "MIT", "not been legally reviewed"):
     if phrase not in provenance:
         fail(f"PROVENANCE.md must state {phrase!r}")
 docs = DOCS.read_text() if DOCS.is_file() else ""
 if not docs:
     fail("docs/pets.md missing")
+
+# ----------------------------------------------------------------- v0.3 care fields
+
+contract_sets = {}
+contract_words = {}
+if ICONS_CONTRACT.is_file():
+    _icons = json.loads(ICONS_CONTRACT.read_text())
+    contract_sets = _icons["care_icon_set"]["resolved"]
+    contract_words = _icons.get("care_words", {}).get("examples", {})
+# Owner decision 2026-10-16 (notes.md §7 item 3): the cat's play bubble names the shared
+# painted floor `play` icon, a red striped ball, so its word is "Ball" (never "Yarn").
+PINNED_CARE_WORDS = {("cat", "play"): "Ball"}
+strings = json.loads(STRINGS_CONTRACT.read_text()) if STRINGS_CONTRACT.is_file() else None
+
+
+def default_care_icon_set(man):
+    """icons.json default_rule: absent -> 'aquatic' for aquatic habitats, else 'floor'."""
+    return "aquatic" if man.get("habitat") == "aquatic" else "floor"
+
+
+def word_templates(care_set, need):
+    """The strings.json templates holding {word} that a species of this careIconSet shows for a need."""
+    out = []
+    for key in strings:
+        if "." in key and key.split(".", 1)[0] in CARE_ICON_SETS:
+            continue                              # an override; reached through its base key
+        if need not in key.split("."):
+            continue
+        text = strings.get(f"{care_set}.{key}", strings[key]) if care_set != "floor" else strings[key]
+        if "{word}" in text:
+            out.append((key, text))
+    return out
+
+
+def care_word_problem(word):
+    """Why a careWords entry is not a plain kid word, or None."""
+    if not isinstance(word, str) or not CARE_WORD_RE.match(word):
+        return "must be one or two plain words (capitalised first word, letters only)"
+    if len(word) > 16:
+        return "is longer than 16 characters"
+    for w in word.lower().split():          # word-start match, as check_contracts K2 does
+        for term in JARGON:
+            if w.startswith(term):
+                return f"uses the forbidden word {term!r}"
+    term = banned_in(word)
+    if term:
+        return f"uses the calm-copy banned term {term!r}"
+    return None
+
+
+def check_care_v03(pre, sid, man):
+    got = man.get("careIconSet", default_care_icon_set(man))
+    if got not in CARE_ICON_SETS:
+        fail(f"{pre} careIconSet must be one of {CARE_ICON_SETS}")
+    elif contract_sets and contract_sets.get(sid) != got:
+        fail(f"{pre} careIconSet {got!r} != icons.json care_icon_set.resolved {contract_sets.get(sid)!r}"
+             f"{'' if 'careIconSet' in man else ' (absent: habitat default)'}")
+    if "careWords" not in man:
+        return
+    words = man["careWords"]
+    if not isinstance(words, dict) or not set(words) <= set(NEEDS):
+        fail(f"{pre} careWords must map some of food, water, play and wash to words")
+        return
+    labels = man.get("careLabels", {})
+    for need, word in sorted(words.items()):
+        pinned = PINNED_CARE_WORDS.get((sid, need))
+        if pinned is not None and word != pinned:
+            fail(f"{pre} careWords.{need} {word!r} must be {pinned!r} (notes.md §7 item 3)")
+        example = contract_words.get(sid, {}).get(need)
+        if example is not None and word != example:
+            fail(f"{pre} careWords.{need} {word!r} != icons.json care_words example {example!r}")
+        why = care_word_problem(word)
+        if why:
+            fail(f"{pre} careWords.{need} {word!r} {why}")
+            continue
+        if strings is None or got not in CARE_ICON_SETS:
+            continue
+        for key, text in word_templates(got, need):
+            n = count_words(text.replace("{word}", word))
+            if n > 8:
+                fail(f"{pre} careWords.{need} makes {key} {n} words (K8: at most 8)")
+    if len(words) == len(NEEDS) and words == {k: labels.get(k) for k in NEEDS}:
+        fail(f"{pre} careWords must not just copy careLabels")
+
 
 # ----------------------------------------------------------------- per species
 
@@ -212,6 +326,7 @@ for idx, sid in enumerate(CORE_IDS):
         v = labels.get(action)
         if not isinstance(v, str) or not v.strip() or len(v) > 24:
             fail(f"{pre} careLabels.{action} must be 1..24 chars")
+    check_care_v03(pre, sid, man)
     stages = man.get("stages", [])
     if [s.get("stage") for s in stages] != [1, 2, 3] or [s.get("key") for s in stages] != ["young", "grown", "mature"]:
         fail(f"{pre} stages must be 1/young, 2/grown, 3/mature")

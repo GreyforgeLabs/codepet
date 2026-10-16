@@ -7,26 +7,52 @@
 //! export is reported on one bounded stderr line and never changes the response or exit
 //! code.
 use crate::errors::Failure;
+#[cfg(feature = "legacy-tasks")]
 use crate::supervisor::{self, Job};
+use codepet_core::agent::ClientId;
 use codepet_core::lifecycle::{Mode, Pace};
-use codepet_core::{Category, Draft, Provider, Settings, PROTOCOL_VERSION};
+use codepet_core::PROTOCOL_VERSION;
+#[cfg(feature = "legacy-tasks")]
+use codepet_core::{Category, Draft, Provider, Settings};
 use codepet_protocol::{
-    parse_params, parse_request, read_frame, DraftParams, EmptyParams, ErrorCode,
-    EventsSubscribeParams, HelloParams, HistoryListParams, LifecycleRulesParams, Method,
+    parse_params, parse_request, read_frame, AgentForgetHistoryParams, AppSetEnabledParams,
+    AppSetHelpersParams, ClientsConnectParams, ClientsDisconnectParams, ClientsStatusParams,
+    ClientsTestParams, EmptyParams, ErrorCode, HelloParams, LifecycleRulesParams, Method,
     PetAdoptParams, PetCareParams, PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams,
-    PetPauseParams, PetRetireParams, PetRulesParams, PetSelectParams, ProtocolError, Request,
-    Response, SettingsUpdateParams, TaskAcceptArtifactParams, TaskDiscardParams, TaskIdParams,
-    TaskPreflightParams, TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
+    PetMemoriesParams, PetPauseParams, PetRenameParams, PetRetireParams, PetRulesParams,
+    PetSelectParams, PetStartParams, ProtocolError, Request, Response, TreatsGiveParams,
+};
+#[cfg(feature = "legacy-tasks")]
+use codepet_protocol::{
+    DraftParams, EventsSubscribeParams, HistoryListParams, SettingsUpdateParams,
+    TaskAcceptArtifactParams, TaskDiscardParams, TaskIdParams, TaskPreflightParams,
+    TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
 };
 use codepet_storage::{
-    lifecycle_rules_json, AcceptRequest, AdoptRequest, Leniency, MockOptions, MockOutcome,
-    ProviderInfo, StatePaths, Store, Supervisor, SystemClock, TaskInput,
+    lifecycle_rules_json, AdoptRequest, JobTarget, Leniency, StartRequest, StatePaths, Store,
+    SystemClock,
+};
+#[cfg(feature = "legacy-tasks")]
+use codepet_storage::{
+    AcceptRequest, MockOptions, MockOutcome, ProviderInfo, Supervisor, TaskInput,
 };
 use serde_json::{json, Value};
 use std::io::{self, Write};
 use std::sync::Arc;
 
 type Outcome = Result<(Value, Option<Job>), Failure>;
+
+/// The default build never continues as a task supervisor: no task can start (spec §6.5).
+#[cfg(not(feature = "legacy-tasks"))]
+pub enum Job {}
+
+/// The store a started job took over.
+fn job_store(job: &Job) -> &Store {
+    #[cfg(feature = "legacy-tasks")]
+    return &job.store;
+    #[cfg(not(feature = "legacy-tasks"))]
+    match *job {}
+}
 
 /// Bytes of an export failure quoted on stderr.
 const MAX_EXPORT_ERROR_BYTES: usize = 200;
@@ -56,15 +82,22 @@ pub fn export_error_line(reason: &str) -> String {
     format!("codepet: bar-state.json not updated: {}", &flat[..end])
 }
 
-/// The storage handle of one request, opened only when a method needs it.
+/// The storage handle of one request, opened only when a method needs it. Only
+/// `state.get` may upgrade an older database (migration ownership, spec §6.2); every other
+/// method answers `SCHEMA_UNSUPPORTED` ("needs `codepet migrate`") for one, untouched.
 #[derive(Default)]
 struct Ctx {
     store: Option<Store>,
+    may_migrate: bool,
 }
 impl Ctx {
     fn store(&mut self) -> Result<&mut Store, Failure> {
         if self.store.is_none() {
-            self.store = Some(open()?);
+            self.store = Some(if self.may_migrate {
+                open()?
+            } else {
+                open_current()?
+            });
         }
         Ok(self.store.as_mut().expect("store was just opened"))
     }
@@ -92,7 +125,10 @@ pub fn run() -> i32 {
     // The start already committed `preparing` under this PID, so supervise even if the
     // client went away: the job then ends in a durable state instead of `interrupted`.
     if let Some(job) = job {
+        #[cfg(feature = "legacy-tasks")]
         let _ = supervisor::run(job);
+        #[cfg(not(feature = "legacy-tasks"))]
+        match job {}
     }
     match (written, ok) {
         (Ok(()), true) => 0,
@@ -102,8 +138,12 @@ pub fn run() -> i32 {
 
 /// `codepet state`: the `state.get` result, or a typed failure. A successful snapshot
 /// (which may have settled presence, a nap or a due end) republishes `bar-state.json`.
+/// It never migrates (spec §6.2: only `codepet migrate` and `rpc` `state.get` may); an
+/// older database is refused untouched with `SCHEMA_UNSUPPORTED` ("needs codepet migrate").
 pub fn state_get() -> Result<Value, Failure> {
-    let store = open()?;
+    let mut store = open_current()?;
+    // v0.3 (§6.3): first fold at most one waiting inbox batch, unless a fold runs.
+    crate::fold::drain_once(&mut store);
     let value = serde_json::to_value(store.snapshot()?)?;
     publish_bar_state(&store);
     Ok(value)
@@ -117,13 +157,16 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
     };
     let id = request.id.clone();
     let method = request.method;
-    let mut ctx = Ctx::default();
+    let mut ctx = Ctx {
+        store: None,
+        may_migrate: method == Method::StateGet,
+    };
     match dispatch(request, &mut ctx) {
         Ok((result, job)) => {
             // Publish before answering, so a client that sees this response finds the
             // passive state file at least as new. A started task's store moved into its job.
             if method.is_mutating() {
-                if let Some(store) = job.as_ref().map(|j| &j.store).or(ctx.store.as_ref()) {
+                if let Some(store) = job.as_ref().map(job_store).or(ctx.store.as_ref()) {
                     publish_bar_state(store);
                 }
             }
@@ -153,9 +196,16 @@ pub fn handle(frame: &str) -> (Response, Option<Job>) {
 const COMMITTED_TOO_LARGE: &str = "The request may have been applied, but its result is too \
     large to return. Reload with state.get before retrying.";
 
+/// Opens and, when older, migrates the database (`rpc` `state.get` only).
 fn open() -> Result<Store, Failure> {
     let paths = StatePaths::from_env()?;
     Ok(Store::open(&paths, Arc::new(SystemClock))?)
+}
+
+/// Opens a current database; an older one is refused untouched (run `codepet migrate`).
+pub(crate) fn open_current() -> Result<Store, Failure> {
+    let paths = StatePaths::from_env()?;
+    Ok(Store::open_current(&paths, Arc::new(SystemClock))?)
 }
 
 fn done(value: Value) -> Outcome {
@@ -169,7 +219,28 @@ fn encode(value: serde_json::Result<Value>) -> Outcome {
 fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
     let p = req.params;
     match req.method {
+        // The retired task pipeline (spec §6.5): unrouted in the default build, where these
+        // names never parse; with `legacy-tasks` they keep their v0.2 behaviour.
+        #[cfg(not(feature = "legacy-tasks"))]
+        Method::EventsSubscribe
+        | Method::ProvidersInspect
+        | Method::TaskCreate
+        | Method::TaskGet
+        | Method::TaskUpdate
+        | Method::TaskPreflight
+        | Method::TaskStart
+        | Method::TaskCancel
+        | Method::TaskReview
+        | Method::TaskLogs
+        | Method::TaskApply
+        | Method::TaskAcceptArtifact
+        | Method::TaskDiscard
+        | Method::TaskRollback
+        | Method::TaskRecover
+        | Method::HistoryList
+        | Method::SettingsUpdate => Err(Failure::new(ErrorCode::UnknownMethod, "unknown method")),
         // Parsed but refused before any params or state are touched.
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskLogs | Method::TaskApply | Method::TaskRollback => Err(Failure::new(
             ErrorCode::InvalidState,
             NOT_IMPLEMENTED_MESSAGE,
@@ -183,20 +254,34 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ));
             }
             let last_seq = ctx.store()?.last_seq()?;
-            done(json!({
+            // v0.3 retires the supervisor handshake with the task pipeline (spec §6.2).
+            #[cfg(not(feature = "legacy-tasks"))]
+            let hello = json!({
+                "protocol_version": PROTOCOL_VERSION,
+                "last_seq": last_seq,
+            });
+            #[cfg(feature = "legacy-tasks")]
+            let hello = json!({
                 "protocol_version": PROTOCOL_VERSION,
                 "supervisor": null,
                 "last_seq": last_seq,
-            }))
+            });
+            done(hello)
         }
         Method::StateGet => {
             let _: EmptyParams = parse_params(p)?;
+            // v0.3 (§8 rule 1): opening the popup drains the inbox (one batch).
+            crate::fold::drain_once(ctx.store()?);
+            // §5.2 kill-safety: resume (or roll back) a clients job whose process died.
+            crate::clients_job::recover(ctx.store()?);
             encode(serde_json::to_value(ctx.store()?.snapshot()?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::ProvidersInspect => {
             let _: EmptyParams = parse_params(p)?;
             done(json!({ "providers": ProviderInfo::all() }))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::EventsSubscribe => {
             let e: EventsSubscribeParams = parse_params(p)?;
             let after = to_i64(e.after_seq, "after_seq")?;
@@ -205,6 +290,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                     .events_after(after, Some(e.limit_or_default()))?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::HistoryList => {
             let h: HistoryListParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.history(
@@ -213,15 +299,18 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 Some(h.limit_or_default()),
             )?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskGet => {
             let t: TaskIdParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.task(&t.task_id)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskCreate => {
             let d: DraftParams = parse_params(p)?;
             let input = task_input(&d)?;
             encode(serde_json::to_value(ctx.store()?.create_task(&input)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskUpdate => {
             let u: TaskUpdateParams = parse_params(p)?;
             let input = task_input(&u.draft())?;
@@ -230,6 +319,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ctx.store()?.update_task(&u.task_id, expected, &input)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskPreflight => {
             let t: TaskPreflightParams = parse_params(p)?;
             let revision = to_i64(t.revision, "revision")?;
@@ -237,6 +327,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ctx.store()?.preflight(&t.task_id, revision)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskStart => {
             let t: TaskStartParams = parse_params(p)?;
             let revision = to_i64(t.revision, "revision")?;
@@ -257,14 +348,17 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
             };
             Ok((value, Some(job)))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskCancel => {
             let t: TaskIdParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.cancel(&t.task_id)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskReview => {
             let t: TaskIdParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.review(&t.task_id)?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskAcceptArtifact => {
             let a: TaskAcceptArtifactParams = parse_params(p)?;
             let request = AcceptRequest {
@@ -278,16 +372,19 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 ctx.store()?.accept_artifact(&request)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskDiscard => {
             let d: TaskDiscardParams = parse_params(p)?;
             encode(serde_json::to_value(
                 ctx.store()?.discard(&d.task_id, &d.review_digest)?,
             ))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::TaskRecover => {
             let _: EmptyParams = parse_params(p)?;
             encode(serde_json::to_value(ctx.store()?.recover()?))
         }
+        #[cfg(feature = "legacy-tasks")]
         Method::SettingsUpdate => {
             let s: SettingsUpdateParams = parse_params(p)?;
             let expected = to_i64(s.expected_revision, "expected_revision")?;
@@ -346,6 +443,7 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 &r.life_id,
                 mode,
                 r.acknowledge_rules,
+                r.confirm_name.as_deref(),
             )?))
         }
         Method::PetConfigureLife => {
@@ -384,12 +482,119 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                     .memorial(m.before_ordinal, Some(m.limit_or_default()))?,
             ))
         }
+        Method::PetMemories => {
+            let m: PetMemoriesParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.memories(m.before_seq, m.limit)?,
+            ))
+        }
         // Static ruleset text: answered without opening (or creating) the state directory.
         Method::LifecycleRules => {
             let _: LifecycleRulesParams = parse_params(p)?;
             encode(serde_json::from_str(&lifecycle_rules_json()))
         }
+        // ---- v0.3 (spec §6.2). Each returns the `state.get` snapshot. ----
+        Method::PetStart => {
+            let s: PetStartParams = parse_params(p)?;
+            let request = StartRequest {
+                life_id: s.life_id.as_deref(),
+                species: &s.species,
+                name: s.name.as_deref(),
+                mode: mode(&s.mode)?,
+                acknowledge_rules: s.acknowledge_rules,
+            };
+            encode(serde_json::to_value(
+                ctx.store()?.start_pet(&req.id, &request)?,
+            ))
+        }
+        Method::PetRename => {
+            let r: PetRenameParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.rename(&req.id, &r.life_id, &r.name)?,
+            ))
+        }
+        Method::TreatsGive => {
+            let t: TreatsGiveParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.give_treat(&req.id, &t.life_id)?,
+            ))
+        }
+        Method::AppSetEnabled => {
+            let e: AppSetEnabledParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.set_enabled(&req.id, e.enabled)?,
+            ))
+        }
+        Method::AppSetHelpers => {
+            let e: AppSetHelpersParams = parse_params(p)?;
+            encode(serde_json::to_value(
+                ctx.store()?.set_helpers(&req.id, e.enabled)?,
+            ))
+        }
+        Method::AgentForgetHistory => {
+            let _: AgentForgetHistoryParams = parse_params(p)?;
+            let store = ctx.store()?;
+            let snapshot = store.forget_history(&req.id)?;
+            // fold.lock is released: hand records written meanwhile to a fold.
+            crate::fold::hand_off_leftovers(&store.paths().state_dir);
+            encode(serde_json::to_value(snapshot))
+        }
+        // WP3: the clients methods (spec §5.2). connect/disconnect/test refuse TEST_STATE
+        // under a test state home; every job is detached and never holds the bar's RPC slot.
+        Method::ClientsStatus => {
+            let _: ClientsStatusParams = parse_params(p)?;
+            done(crate::clients::status(ctx.store()?)?)
+        }
+        Method::ClientsConnect => {
+            let c: ClientsConnectParams = parse_params(p)?;
+            let list = client_ids(&c.clients)?;
+            done(crate::clients::start(
+                ctx.store()?,
+                &req.id,
+                "clients.connect",
+                "connect",
+                JobTarget::Named(list),
+            )?)
+        }
+        Method::ClientsDisconnect => {
+            let c: ClientsDisconnectParams = parse_params(p)?;
+            let list = client_ids(std::slice::from_ref(&c.client))?;
+            done(crate::clients::start(
+                ctx.store()?,
+                &req.id,
+                "clients.disconnect",
+                "disconnect",
+                JobTarget::Named(list),
+            )?)
+        }
+        Method::ClientsTest => {
+            let c: ClientsTestParams = parse_params(p)?;
+            let one = match c.client.as_deref() {
+                Some(id) => Some(client_ids(&[id.to_owned()])?[0]),
+                None => None,
+            };
+            done(crate::clients::start(
+                ctx.store()?,
+                &req.id,
+                "clients.test",
+                "test",
+                JobTarget::Connected(one),
+            )?)
+        }
     }
+}
+
+/// Client ids in client order (protocol already checked the closed set).
+fn client_ids(ids: &[String]) -> Result<Vec<ClientId>, Failure> {
+    let mut out = Vec::new();
+    for id in ids {
+        let c = ClientId::parse(id).ok_or_else(|| Failure::invalid_params("unknown client"))?;
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out.sort_by_key(|c| *c as u8);
+    Ok(out)
 }
 
 /// Validates a life mode with core's parser (protocol already checked the closed set).
@@ -402,6 +607,7 @@ fn to_i64(v: u64, field: &str) -> Result<i64, Failure> {
 }
 
 /// Validates enum-valued strings with core's parsers; content checks stay in storage/core.
+#[cfg(feature = "legacy-tasks")]
 fn task_input(d: &DraftParams) -> Result<TaskInput, Failure> {
     let category =
         Category::parse(&d.category).ok_or_else(|| Failure::invalid_params("unknown category"))?;
@@ -450,6 +656,46 @@ mod tests {
         assert!(line.starts_with(prefix));
         assert!(line.len() - prefix.len() <= MAX_EXPORT_ERROR_BYTES);
         assert!(line.len() - prefix.len() >= MAX_EXPORT_ERROR_BYTES - 1);
+    }
+
+    /// In-process tests never open storage (the process environment is the developer's own):
+    /// the WP1 methods are exercised end to end by `tests/v03.rs` under a throwaway home.
+    #[test]
+    fn v03_methods_are_validated_before_storage() {
+        let cases = [
+            (
+                "pet.start",
+                r#"{"species":"cat","mode":"gentle","acknowledge_rules":true}"#,
+            ),
+            ("pet.rename", r#"{"life_id":"life-1","name":"Ginger"}"#),
+            ("treats.give", r#"{"life_id":"life-1"}"#),
+            ("app.set_enabled", r#"{"enabled":false}"#),
+            ("app.set_helpers", r#"{"enabled":true}"#),
+            ("agent.forget_history", "{}"),
+            ("clients.status", "{}"),
+            ("clients.connect", r#"{"clients":["claude-code"]}"#),
+            ("clients.disconnect", r#"{"client":"codex"}"#),
+            ("clients.test", "{}"),
+            ("pet.memories", "{}"),
+        ];
+        assert_eq!(cases.len(), Method::V03_ADDED.len());
+        assert!(
+            Method::V03_PENDING.is_empty(),
+            "WP3 implemented the clients methods"
+        );
+        for (method, params) in cases {
+            let m = Method::parse(method).unwrap();
+            // Bad params are INVALID_PARAMS before anything is opened.
+            let frame = format!(r#"{{"v":1,"id":"r","method":"{method}","params":{{"bogus":1}}}}"#);
+            let (response, job) = handle(&frame);
+            assert!(job.is_none());
+            assert_eq!(
+                response.error.expect(method).code,
+                ErrorCode::InvalidParams,
+                "{method}"
+            );
+            let _ = (m, params);
+        }
     }
 
     #[test]

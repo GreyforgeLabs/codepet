@@ -1,0 +1,780 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://greyforge.tech/codepet/bar.v2.schema.json",
+ "title": "CodePet bar-state.json v2 (SPEC-v0.3 \u00a78)",
+ "description": "The passive state file read by the Omarchy bar widget and the desktop overlay. Written only by Rust (rpc, fold, clients job) under the DB writer lock, temp + fsync + rename, 0600, <= 16 KiB, monotonic state_version per db_id. Readers accept codepet.bar.v1 and codepet.bar.v2 for one release; the writer keeps the v1 label until both readers accept v2 (notes.md). The task/care.ready_to_work/care.readiness_reasons keys are inert v0.3.0 compatibility values, dropped in v0.3.1.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema",
+  "state_version",
+  "db_id",
+  "generated_at_ms",
+  "app_version",
+  "ruleset",
+  "life",
+  "meters",
+  "needs",
+  "critical",
+  "care",
+  "task",
+  "presence",
+  "unseen_events",
+  "memorial",
+  "enabled",
+  "agent",
+  "treats",
+  "clients"
+ ],
+ "properties": {
+  "schema": {
+   "enum": [
+    "codepet.bar.v1",
+    "codepet.bar.v2"
+   ]
+  },
+  "state_version": {
+   "type": "integer",
+   "minimum": 0
+  },
+  "db_id": {
+   "type": "string",
+   "pattern": "^db-[0-9a-f]{24}$"
+  },
+  "generated_at_ms": {
+   "type": "integer",
+   "minimum": 0
+  },
+  "app_version": {
+   "type": "string",
+   "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+  },
+  "ruleset": {
+   "const": "lifecycle-v1"
+  },
+  "life": {
+   "oneOf": [
+    {
+     "type": "null"
+    },
+    {
+     "$ref": "#/$defs/life"
+    }
+   ]
+  },
+  "meters": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "hunger": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 10000
+    },
+    "thirst": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 10000
+    },
+    "mental_health": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 10000
+    },
+    "hygiene": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 10000
+    }
+   },
+   "required": [
+    "hunger",
+    "thirst",
+    "mental_health",
+    "hygiene"
+   ]
+  },
+  "needs": {
+   "type": "array",
+   "minItems": 4,
+   "maxItems": 4,
+   "items": {
+    "$ref": "#/$defs/need"
+   }
+  },
+  "critical": {
+   "oneOf": [
+    {
+     "type": "null"
+    },
+    {
+     "$ref": "#/$defs/critical"
+    }
+   ]
+  },
+  "care": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "sleeping": {
+     "type": "boolean"
+    },
+    "sleep_remaining_ms": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "sleep_started_at_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "sleep_due": {
+     "type": "boolean"
+    },
+    "bathroom_due": {
+     "type": "boolean"
+    },
+    "ready_to_work": {
+     "type": "boolean",
+     "description": "v0.3.0 compat: always false"
+    },
+    "readiness_reasons": {
+     "type": "array",
+     "maxItems": 8,
+     "items": {
+      "type": "string",
+      "maxLength": 160
+     },
+     "description": "v0.3.0 compat: always []"
+    }
+   },
+   "required": [
+    "sleeping",
+    "sleep_remaining_ms",
+    "sleep_started_at_ms",
+    "sleep_due",
+    "bathroom_due",
+    "ready_to_work",
+    "readiness_reasons"
+   ]
+  },
+  "task": {
+   "type": "null",
+   "description": "v0.3.0 compat: always null"
+  },
+  "presence": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "wanted": {
+     "type": "boolean",
+     "description": "false while Off (v0.3 adds the enabled condition)"
+    },
+    "life_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "tick_ms": {
+     "const": 60000
+    },
+    "idle_timeout_s": {
+     "const": 180
+    }
+   },
+   "required": [
+    "wanted",
+    "life_id",
+    "tick_ms",
+    "idle_timeout_s"
+   ]
+  },
+  "unseen_events": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "seq": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "stage": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+     }
+    },
+    "required": [
+     "seq",
+     "stage"
+    ]
+   }
+  },
+  "memorial": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "count": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "latest_name": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "count",
+    "latest_name"
+   ]
+  },
+  "enabled": {
+   "type": "boolean",
+   "description": "the On/Off switch (meta.enabled)"
+  },
+  "agent": {
+   "$ref": "#/$defs/agent"
+  },
+  "treats": {
+   "$ref": "#/$defs/treats"
+  },
+  "clients": {
+   "$ref": "#/$defs/clients"
+  }
+ },
+ "$defs": {
+  "life": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "life_id": {
+     "type": "string",
+     "pattern": "^life-[0-9a-f]{24}$"
+    },
+    "ordinal": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 96
+    },
+    "appearance": {
+     "enum": [
+      "cat",
+      "dog",
+      "capybara",
+      "penguin",
+      "robot",
+      "iguana",
+      "spider",
+      "snake",
+      "goldfish",
+      "rabbit",
+      "turtle",
+      "frog",
+      "owl",
+      "red_panda",
+      "axolotl"
+     ]
+    },
+    "stage": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 3
+    },
+    "level": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "xp": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "next_stage_xp": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "status": {
+     "enum": [
+      "healthy",
+      "warning",
+      "critical",
+      "dead",
+      "retired"
+     ]
+    },
+    "mode": {
+     "enum": [
+      "permadeath",
+      "gentle"
+     ]
+    },
+    "armed": {
+     "type": "boolean"
+    },
+    "pace": {
+     "enum": [
+      "steady",
+      "playtest"
+     ]
+    },
+    "paused": {
+     "type": "boolean"
+    },
+    "fainted": {
+     "type": "boolean"
+    },
+    "death_pending": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "life_id",
+    "ordinal",
+    "name",
+    "appearance",
+    "stage",
+    "level",
+    "xp",
+    "next_stage_xp",
+    "status",
+    "mode",
+    "armed",
+    "pace",
+    "paused",
+    "fainted",
+    "death_pending"
+   ]
+  },
+  "need": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "need": {
+     "enum": [
+      "hunger",
+      "thirst",
+      "mental_health",
+      "hygiene"
+     ]
+    },
+    "action": {
+     "enum": [
+      "food",
+      "water",
+      "play",
+      "wash"
+     ]
+    },
+    "state": {
+     "enum": [
+      "ok",
+      "low",
+      "empty",
+      "critical"
+     ]
+    },
+    "until_warning_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "until_critical_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "until_end_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    }
+   },
+   "required": [
+    "need",
+    "action",
+    "state",
+    "until_warning_ms",
+    "until_critical_ms",
+    "until_end_ms"
+   ]
+  },
+  "critical": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "need": {
+     "enum": [
+      "hunger",
+      "thirst"
+     ]
+    },
+    "action": {
+     "enum": [
+      "food",
+      "water"
+     ]
+    },
+    "grace_ms": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "elapsed_ms": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "remaining_ms": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "since_ms": {
+     "type": "integer",
+     "minimum": 0
+    }
+   },
+   "required": [
+    "need",
+    "action",
+    "grace_ms",
+    "elapsed_ms",
+    "remaining_ms",
+    "since_ms"
+   ]
+  },
+  "agent": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "state": {
+     "enum": [
+      "idle",
+      "error",
+      "working",
+      "waiting"
+     ]
+    },
+    "apps": {
+     "type": "array",
+     "maxItems": 5,
+     "items": {
+      "$ref": "#/$defs/app"
+     }
+    },
+    "stale_at_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "finished_seq": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "finished_at_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "finished_app": {
+     "enum": [
+      "claude-code",
+      "codex",
+      "opencode",
+      "hermes",
+      "grok-cli",
+      null
+     ]
+    },
+    "finished_treat": {
+     "type": "boolean"
+    },
+    "finished_jar_full": {
+     "type": "boolean"
+    },
+    "hello_seq": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "hello_at_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "hello_app": {
+     "enum": [
+      "claude-code",
+      "codex",
+      "opencode",
+      "hermes",
+      "grok-cli",
+      null
+     ]
+    },
+    "test": {
+     "oneOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "state": {
+         "enum": [
+          "running",
+          "done",
+          "failed"
+         ],
+         "description": "running: the clients job started the check (its at_ms); done/failed: the job's verdict (at_ms = verdict time). Only the clients job changes it; the fold only records test events while it is running."
+        },
+        "at_ms": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "client": {
+         "enum": [
+          "claude-code",
+          "codex",
+          "opencode",
+          "hermes",
+          "grok-cli",
+          null
+         ],
+         "description": "the first client of the ready check in client order; {app} of the testing face and of 'Open a new {app} window.'"
+        }
+       },
+       "required": [
+        "state",
+        "at_ms",
+        "client"
+       ]
+      }
+     ]
+    },
+    "error_at_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "error_app": {
+     "enum": [
+      "claude-code",
+      "codex",
+      "opencode",
+      "hermes",
+      "grok-cli",
+      null
+     ]
+    },
+    "helpers_busy": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "state",
+    "apps",
+    "stale_at_ms",
+    "finished_seq",
+    "finished_at_ms",
+    "finished_app",
+    "finished_treat",
+    "finished_jar_full",
+    "hello_seq",
+    "hello_at_ms",
+    "hello_app",
+    "test",
+    "error_at_ms",
+    "error_app",
+    "helpers_busy"
+   ]
+  },
+  "app": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "enum": [
+      "claude-code",
+      "codex",
+      "opencode",
+      "hermes",
+      "grok-cli"
+     ]
+    },
+    "state": {
+     "enum": [
+      "working",
+      "waiting",
+      "error"
+     ]
+    },
+    "since_ms": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "stale_at_ms": {
+     "type": "integer",
+     "minimum": 0
+    }
+   },
+   "required": [
+    "id",
+    "state",
+    "since_ms",
+    "stale_at_ms"
+   ]
+  },
+  "client": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "installed": {
+     "type": "boolean",
+     "description": "clients.status saw the client's binary and config dir (file-only). Helpers hides a row that is neither installed nor connected."
+    },
+    "version": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "maxLength": 64,
+     "description": "detected version (file-only source, WP3 documents it per client); null when unknown or not installed"
+    },
+    "connected": {
+     "type": "boolean"
+    },
+    "needs_step": {
+     "enum": [
+      "codex_trust",
+      "codex_hooks_off",
+      null
+     ]
+    },
+    "last_seen_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "first_seen_ms": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "failed_reason": {
+     "enum": [
+      "not_installed",
+      "too_old",
+      "blocked",
+      "settings_changed",
+      "ready_check",
+      null
+     ]
+    },
+    "job": {
+     "oneOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "id": {
+         "type": "string",
+         "pattern": "^job-[0-9a-f]{24}$"
+        },
+        "kind": {
+         "enum": [
+          "connect",
+          "disconnect",
+          "test"
+         ]
+        },
+        "state": {
+         "const": "running"
+        }
+       },
+       "required": [
+        "id",
+        "kind",
+        "state"
+       ]
+      }
+     ]
+    }
+   },
+   "required": [
+    "installed",
+    "version",
+    "connected",
+    "needs_step",
+    "last_seen_ms",
+    "first_seen_ms",
+    "failed_reason",
+    "job"
+   ]
+  },
+  "treats": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "jar": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 10
+    },
+    "full": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "jar",
+    "full"
+   ]
+  },
+  "clients": {
+   "type": "object",
+   "propertyNames": {
+    "enum": [
+     "claude-code",
+     "codex",
+     "opencode",
+     "hermes",
+     "grok-cli"
+    ]
+   },
+   "additionalProperties": {
+    "$ref": "#/$defs/client"
+   },
+   "description": "One entry per client_hooks row. clients.status creates a row for each of the five supported clients on its first run (rows are never deleted), so the map is empty only before the first Helpers/Connect-card open. Connect/Disconnect jobs and the fold keep their client's row current."
+  }
+ }
+}

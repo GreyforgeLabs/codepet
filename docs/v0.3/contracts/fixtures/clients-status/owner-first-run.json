@@ -1,0 +1,69 @@
+{
+ "clients": [
+  {
+   "id": "claude-code",
+   "name": "Claude Code",
+   "installed": true,
+   "version": "2.1.294",
+   "connected": false,
+   "needs_step": null,
+   "last_seen_ms": null,
+   "first_seen_ms": null,
+   "events_7d": 0,
+   "failed_reason": null,
+   "job": null
+  },
+  {
+   "id": "codex",
+   "name": "Codex",
+   "installed": true,
+   "version": "0.163.0",
+   "connected": false,
+   "needs_step": null,
+   "last_seen_ms": null,
+   "first_seen_ms": null,
+   "events_7d": 0,
+   "failed_reason": null,
+   "job": null
+  },
+  {
+   "id": "opencode",
+   "name": "OpenCode",
+   "installed": true,
+   "version": "1.19.0",
+   "connected": false,
+   "needs_step": null,
+   "last_seen_ms": null,
+   "first_seen_ms": null,
+   "events_7d": 0,
+   "failed_reason": null,
+   "job": null
+  },
+  {
+   "id": "hermes",
+   "name": "Hermes",
+   "installed": true,
+   "version": "0.21.3",
+   "connected": false,
+   "needs_step": null,
+   "last_seen_ms": null,
+   "first_seen_ms": null,
+   "events_7d": 0,
+   "failed_reason": null,
+   "job": null
+  },
+  {
+   "id": "grok-cli",
+   "name": "Grok",
+   "installed": true,
+   "version": "1.0.52",
+   "connected": false,
+   "needs_step": null,
+   "last_seen_ms": null,
+   "first_seen_ms": null,
+   "events_7d": 0,
+   "failed_reason": null,
+   "job": null
+  }
+ ]
+}

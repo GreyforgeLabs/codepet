@@ -4,7 +4,6 @@
 use crate::care::{self, TimeMark};
 use crate::life::{self, LifeRow};
 use crate::presence_io::{self, PresenceRead};
-use crate::schema::SLOT_STATES;
 use crate::{fault, Result, StatePaths, StorageError};
 use codepet_core::lifecycle::{self as lc, Critical, Event, Vitals, SETTLE_CAP_MS, TICK_MS};
 use codepet_core::Category;
@@ -165,14 +164,6 @@ fn reject(c: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn slot_busy(c: &Connection) -> Result<bool> {
-    Ok(c.query_row(
-        &format!("SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN {SLOT_STATES})"),
-        [],
-        |r| r.get(0),
-    )?)
-}
-
 /// Spec §5.2: charges the bar's attended presence to the living companion, at most once
 /// per session and capped by CLOCK_BOOTTIME elapsed since the previous settlement. Any
 /// uncertainty (no boot clock, a refused file, a blocker) charges nothing.
@@ -252,10 +243,17 @@ pub(crate) fn settle_presence(c: &Connection, paths: &StatePaths, at: &TimeMark)
     let paused: bool = c.query_row("SELECT decay_paused FROM pet_state WHERE id = 1", [], |r| {
         r.get(0)
     })?;
+    // Off is a blocker too (spec §7.3): the time is discarded, never banked, so On resumes
+    // with no catch-up.
     let blocked = match &life {
         None => true,
         Some(l) => {
-            l.life_id != doc.life_id || !l.armed || paused || row.death_pending || slot_busy(c)?
+            l.life_id != doc.life_id
+                || !l.armed
+                || paused
+                || row.death_pending
+                || life::slot_busy(c)?
+                || !crate::app::enabled(c)?
         }
     };
     if blocked {
@@ -378,6 +376,7 @@ pub(crate) fn on_care(c: &Connection, filled: &[Category], now: i64) -> Result<(
     rederive_status(c, &life, &row.vitals, now)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// A Start debit: binds the task to the living companion and ends every satiety hold.
 pub(crate) fn on_debit(c: &Connection, task_id: &str, now: i64) -> Result<()> {
     let life = life::active_life(c)?.ok_or(StorageError::NoActivePet)?;
@@ -391,6 +390,7 @@ pub(crate) fn on_debit(c: &Connection, task_id: &str, now: i64) -> Result<()> {
     rederive_status(c, &life, &row.vitals, now)
 }
 
+#[cfg(feature = "legacy-tasks")]
 /// A pre-execution refund restored the meters of `task_id`'s life: each meter now full
 /// gets its satiety hold back. A refund for a life that is no longer active touches no
 /// vitals.

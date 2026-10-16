@@ -1,0 +1,27 @@
+{
+ "name": "stop-cancelled",
+ "client": "grok-cli",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"hookEventName\":\"stop_cancelled\",\"hook_event_name\":\"StopCancelled\",\"sessionId\":\"01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"workspaceRoot\":\"/home/u/CANARY-workspace-7f3a\",\"timestamp\":\"2026-10-16T12:00:00Z\",\"permissionMode\":\"default\",\"promptId\":\"g-1\",\"reason\":\"user_interrupt\"}\n",
+ "expect": {
+  "event_id": "2dfa451e542ddec854fd7570529a5790",
+  "record": {
+   "v": 1,
+   "client": "grok-cli",
+   "kind": "turn_cancelled",
+   "session": "01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b",
+   "turn": "g-1",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "fc2cf2bd36be5adf",
+   "at_ms": 1792123876111
+  }
+ }
+}

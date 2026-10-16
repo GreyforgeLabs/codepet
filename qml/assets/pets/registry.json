@@ -57,6 +57,13 @@
     "sleep": "Loaf nap"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Kibble",
+    "water": "Fresh water",
+    "play": "Ball",
+    "wash": "Brushing"
+   },
    "stages": [
     {
      "stage": 1,
@@ -440,6 +447,13 @@
     "sleep": "Cushion nap"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Kibble",
+    "water": "Cool water",
+    "play": "Fetch",
+    "wash": "Bubble bath"
+   },
    "stages": [
     {
      "stage": 1,
@@ -821,6 +835,13 @@
     "sleep": "Side rest"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Sweet grass",
+    "water": "Cool water",
+    "play": "Splash",
+    "wash": "Warm bath"
+   },
    "stages": [
     {
      "stage": 1,
@@ -1204,6 +1225,13 @@
     "sleep": "Head-tuck nap"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Fish",
+    "water": "Icy water",
+    "play": "Pebbles",
+    "wash": "Splash"
+   },
    "stages": [
     {
      "stage": 1,
@@ -1590,6 +1618,13 @@
     "food": "Robots don't eat; this swaps in a fresh energy cell.",
     "water": "Robots don't drink; this checks the coolant."
    },
+   "careIconSet": "robot",
+   "careWords": {
+    "food": "Battery",
+    "water": "Cool breeze",
+    "play": "Magnets",
+    "wash": "Polish"
+   },
    "stages": [
     {
      "stage": 1,
@@ -1973,6 +2008,13 @@
     "sleep": "Lengthwise rest"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Leaves",
+    "water": "Dew drops",
+    "play": "Sunshine",
+    "wash": "Mist"
+   },
    "stages": [
     {
      "stage": 1,
@@ -2356,6 +2398,13 @@
     "sleep": "Silk retreat"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Bug snack",
+    "water": "Dew drop",
+    "play": "Silk swing",
+    "wash": "Brushing"
+   },
    "stages": [
     {
      "stage": 1,
@@ -2739,6 +2788,13 @@
     "sleep": "Spiral rest"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Dinner",
+    "water": "Cool water",
+    "play": "Hoops",
+    "wash": "Mist"
+   },
    "stages": [
     {
      "stage": 1,
@@ -3125,6 +3181,13 @@
     "water": "Fish don't drink from bowls; this refreshes the tank water.",
     "bathroom": "Cleans the filter; the fish stays behind its plants.",
     "sleep": "Fish rest with their eyes open."
+   },
+   "careIconSet": "aquatic",
+   "careWords": {
+    "food": "Fish flakes",
+    "water": "Fresh water",
+    "play": "Bubbles",
+    "wash": "Clean tank"
    },
    "stages": [
     {
@@ -3572,6 +3635,13 @@
     "sleep": "Ears-down loaf"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Hay",
+    "water": "Cool water",
+    "play": "Ball",
+    "wash": "Brushing"
+   },
    "stages": [
     {
      "stage": 1,
@@ -3966,6 +4036,13 @@
     "sleep": "Shell tuck"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Lettuce",
+    "water": "Cool water",
+    "play": "Pebbles",
+    "wash": "Shell scrub"
+   },
    "stages": [
     {
      "stage": 1,
@@ -4349,6 +4426,13 @@
     "sleep": "Leaf crouch"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Bugs",
+    "water": "Puddle",
+    "play": "Lily pads",
+    "wash": "Rain"
+   },
    "stages": [
     {
      "stage": 1,
@@ -4741,6 +4825,13 @@
     "sleep": "Shoulder tuck"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Dinner",
+    "water": "Cool water",
+    "play": "Beads",
+    "wash": "Fluffy feathers"
+   },
    "stages": [
     {
      "stage": 1,
@@ -5131,6 +5222,13 @@
     "sleep": "Tail-nose nap"
    },
    "careHints": {},
+   "careIconSet": "floor",
+   "careWords": {
+    "food": "Bamboo",
+    "water": "Cool water",
+    "play": "Leaf swing",
+    "wash": "Clean paws"
+   },
    "stages": [
     {
      "stage": 1,
@@ -5517,6 +5615,13 @@
     "water": "Axolotls don't drink from bowls; this refreshes the tank water.",
     "bathroom": "Cleans the filter; the axolotl stays in its plant hide.",
     "sleep": "Rests tucked inside its rock hide."
+   },
+   "careIconSet": "aquatic",
+   "careWords": {
+    "food": "Pellets",
+    "water": "Fresh water",
+    "play": "Tunnels",
+    "wash": "Clean tank"
    },
    "stages": [
     {

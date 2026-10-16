@@ -1,6 +1,8 @@
 //! Attended presence end to end: the bar leader's `presence.json` is settled by ordinary
 //! CLI commands (`rpc` and `codepet state`) under the real system clocks. Nothing in the CLI
 //! records presence itself, and a refused or uncertain file never fails a command.
+// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+#![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use codepet_storage::{Clock, SystemClock};
 use common::{error_code, Env, HOUR, MIN};
@@ -21,7 +23,7 @@ fn armed(env: &Env) -> String {
 
 #[test]
 fn cli_commands_settle_presence_capped_by_boot_time_exactly_once() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     // The backend measures the cap from the arming command's own settle stamp, which lies
     // inside `env.arm()`; start the bound before it so the bound is never the smaller one.
@@ -56,7 +58,7 @@ fn cli_commands_settle_presence_capped_by_boot_time_exactly_once() {
 
 #[test]
 fn the_state_command_settles_presence_and_publishes() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life = armed(&env);
     let now = SystemClock.now_ms();
     env.write_presence("bar-cli-0002", &life, now - 10 * MIN, now, MIN);
@@ -72,7 +74,7 @@ fn the_state_command_settles_presence_and_publishes() {
 
 #[test]
 fn an_unarmed_life_never_charges_even_after_arming() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     env.care_routine();
     let life = env.life_id();
     let now = SystemClock.now_ms();
@@ -88,9 +90,10 @@ fn an_unarmed_life_never_charges_even_after_arming() {
     assert_eq!(env.bar_state().unwrap()["presence"]["wanted"], true);
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[test]
 fn pause_and_a_held_slot_discard_presence() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life = armed(&env);
     env.ok("pet.pause", json!({"paused": true}));
     let now = SystemClock.now_ms();
@@ -115,7 +118,7 @@ fn pause_and_a_held_slot_discard_presence() {
 
 #[test]
 fn refused_presence_files_never_fail_a_command_or_charge() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life = armed(&env);
     let now = SystemClock.now_ms();
     let good = json!({
@@ -171,7 +174,7 @@ fn refused_presence_files_never_fail_a_command_or_charge() {
 
 #[test]
 fn no_living_companion_freezes_presence() {
-    let env = Env::new();
+    let env = Env::with_first_run_pet();
     let life = armed(&env);
     env.retire();
     let now = SystemClock.now_ms();

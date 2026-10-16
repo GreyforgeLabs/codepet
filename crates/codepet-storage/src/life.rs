@@ -9,10 +9,11 @@ use crate::care::{self, TimeMark};
 use crate::lifecycle_store::{self, VitalsRow};
 use crate::model::{
     CriticalView, LifeOutcome, LifeSummary, LifeView, LifecycleView, MemorialBrief, MemorialPage,
-    MetersView, NeedView, NextStageView, RulesView, UnseenEvent,
+    MetersView, NeedView, NextStageView, RulesView, Snapshot, UnseenEvent,
 };
+#[cfg(feature = "legacy-tasks")]
 use crate::schema::SLOT_STATES;
-use crate::store::{passed_away_if, replay_or_run, seal};
+use crate::store::{passed_away_if, replay_or_run, seal, V03Policy};
 use crate::{fault, sys, Result, StorageError, Store};
 use codepet_core::evolution::{
     level_for_xp, next_level_xp, next_stage, stage_for_xp, stage_key, stages_crossed,
@@ -36,6 +37,17 @@ pub struct AdoptRequest<'a> {
     pub name: Option<&'a str>,
     pub mode: Mode,
     pub pace: Pace,
+    pub acknowledge_rules: bool,
+}
+
+/// `pet.start`. `name: None` keeps an existing life's name, or uses the species' default
+/// name for a new one.
+#[derive(Clone, Copy, Debug)]
+pub struct StartRequest<'a> {
+    pub life_id: Option<&'a str>,
+    pub species: &'a str,
+    pub name: Option<&'a str>,
+    pub mode: Mode,
     pub acknowledge_rules: bool,
 }
 
@@ -193,6 +205,7 @@ fn life_by_id(c: &Connection, life_id: &str) -> Result<Option<LifeRow>> {
     .transpose()
 }
 
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn is_living(c: &Connection, life_id: &str) -> Result<bool> {
     Ok(life_by_id(c, life_id)?.is_some_and(|l| l.status.is_living()))
 }
@@ -244,10 +257,14 @@ pub(crate) fn journal(
     Ok((n == 1).then(|| c.last_insert_rowid()))
 }
 
-/// Per-life demo XP and accepted-task count: exactly the life's `demo_xp_rewards` rows.
+/// Per-life XP and accepted-task count (spec §6.4 "Growth"): XP is the life's legacy demo
+/// XP (`demo_xp_rewards`, which keeps counting) plus its treat XP (`activity_xp`, 5 per given
+/// treat); the count is its accepted v0.2 tasks.
 pub(crate) fn life_xp(c: &Connection, life_id: &str) -> Result<(u32, u32)> {
     let (xp, n): (i64, i64) = c.query_row(
-        "SELECT COALESCE(SUM(amount), 0), count(*) FROM demo_xp_rewards WHERE life_id = ?1",
+        "SELECT (SELECT COALESCE(SUM(amount), 0) FROM demo_xp_rewards WHERE life_id = ?1)
+              + (SELECT COALESCE(SUM(amount), 0) FROM activity_xp WHERE life_id = ?1),
+            (SELECT count(*) FROM demo_xp_rewards WHERE life_id = ?1)",
         [life_id],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
@@ -257,12 +274,24 @@ pub(crate) fn life_xp(c: &Connection, life_id: &str) -> Result<(u32, u32)> {
     ))
 }
 
+/// What earned the XP an evolution is journaled for.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum EvolvedBy<'a> {
+    /// A v0.2 task acceptance (`task_id`; `legacy-tasks` only).
+    #[cfg(feature = "legacy-tasks")]
+    Task(&'a str),
+    /// A treat given by `treats.give` (its request id).
+    Treat { request_id: &'a str },
+}
+
 /// Journals each stage newly reached by `old_xp + gained` as `evolved` (once per life and
-/// stage, unseen). Returns whether any row was added.
+/// stage, unseen: `dedup_key 'stage:<n>'` is unique per life whatever earned it). A treat
+/// adds `"source":"treat"` and its request id (`schema-v5.sql` step 8). Returns whether any
+/// row was added.
 pub(crate) fn record_evolution(
     c: &Connection,
     life_id: &str,
-    task_id: &str,
+    by: EvolvedBy<'_>,
     old_xp: u32,
     gained: u32,
     now: i64,
@@ -271,17 +300,25 @@ pub(crate) fn record_evolution(
     let new_xp = old_xp.saturating_add(gained);
     let mut added = false;
     for stage in stages_crossed(old_xp, new_xp, rules) {
-        let data = json!({
+        let mut data = json!({
             "from": stage - 1, "to": stage, "xp": new_xp, "level": level_for_xp(new_xp, rules)
         });
+        let (task_id, request_id) = match by {
+            #[cfg(feature = "legacy-tasks")]
+            EvolvedBy::Task(task_id) => (Some(task_id), None),
+            EvolvedBy::Treat { request_id } => {
+                data["source"] = json!("treat");
+                (None, Some(request_id))
+            }
+        };
         added |= journal(
             c,
             life_id,
             "evolved",
             Some(&format!("stage:{stage}")),
             &data,
-            Some(task_id),
-            None,
+            task_id,
+            request_id,
             now,
         )?
         .is_some();
@@ -290,6 +327,7 @@ pub(crate) fn record_evolution(
 }
 
 /// Stages journaled by the acceptance of `task_id`, ascending.
+#[cfg(feature = "legacy-tasks")]
 pub(crate) fn evolved_by_task(c: &Connection, task_id: &str) -> Result<Vec<u8>> {
     let mut stmt = c.prepare(
         "SELECT dedup_key FROM life_events WHERE task_id = ?1 AND kind = 'evolved' ORDER BY seq",
@@ -317,16 +355,35 @@ pub(crate) fn action_for(need: Category) -> &'static str {
     }
 }
 
-/// This database's identity: a digest of its first life's id. Life #1 is created with a
-/// random id by the lifecycle migration (or a fresh install) and is never changed or
-/// deleted (terminal-life triggers), so the value is stable for one database and differs
-/// for a recreated database or one re-migrated from a pre-lifecycle backup. Readers of
-/// `bar-state.json` compare `state_version` only within one `db_id`.
+/// This database's identity, stable for its whole life and different for a recreated
+/// database or one re-migrated from a pre-lifecycle backup. Readers of `bar-state.json`
+/// compare `state_version` only within one `db_id`.
+///
+/// - A database from v0.2 (life #1 created by the lifecycle migration, origin `migrated` or
+///   `first_run`): a digest of life #1's random id, exactly as v0.2 published it. Life #1 is
+///   never changed or deleted (terminal-life triggers).
+/// - A database created by v0.3, which starts without a companion: a domain-separated digest
+///   of `meta.hook_salt` (32 random bytes written once by the v5 migration and never
+///   rotated; the digest does not reveal it). Adopting the first companion later does not
+///   change it.
 pub(crate) fn db_id(c: &Connection) -> Result<String> {
-    let first: String = c.query_row("SELECT life_id FROM lives WHERE ordinal = 1", [], |r| {
-        r.get(0)
-    })?;
-    let digest = crate::sys::sha256_hex(format!("codepet-db-id:{first}").as_bytes());
+    let first: Option<String> = c
+        .query_row(
+            "SELECT life_id FROM lives WHERE ordinal = 1 AND origin IN ('migrated','first_run')",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let seed = match first {
+        Some(life_id) => format!("codepet-db-id:{life_id}"),
+        None => {
+            let salt: Option<Vec<u8>> =
+                c.query_row("SELECT hook_salt FROM meta WHERE id = 1", [], |r| r.get(0))?;
+            let salt = salt.ok_or(StorageError::Corrupt)?;
+            format!("codepet-db-id:salt:{}", crate::sys::sha256_hex(&salt))
+        }
+    };
+    let digest = crate::sys::sha256_hex(seed.as_bytes());
     Ok(format!("db-{}", &digest[..24]))
 }
 
@@ -338,17 +395,27 @@ pub(crate) fn state_version(c: &Connection) -> Result<i64> {
     )
 }
 
-fn slot_busy(c: &Connection) -> Result<bool> {
+/// True while a task holds the active slot. Only the retired task pipeline can occupy it
+/// (`legacy-tasks`); the v5 migration closed every slot task, so in the default build the
+/// slot is always free: `death_pending` is never created, the `slot_busy` blocker never
+/// triggers and the frozen reason `task` never occurs (spec §6.5).
+#[cfg(feature = "legacy-tasks")]
+pub(crate) fn slot_busy(c: &Connection) -> Result<bool> {
     Ok(c.query_row(
         &format!("SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN {SLOT_STATES})"),
         [],
         |r| r.get(0),
     )?)
 }
+/// See the `legacy-tasks` variant: the default build has no slot holder.
+#[cfg(not(feature = "legacy-tasks"))]
+pub(crate) fn slot_busy(_c: &Connection) -> Result<bool> {
+    Ok(false)
+}
 
-/// True when a pending end can finalize now (the slot is free).
+/// True when a pending end can finalize now (the slot is free and CodePet is On).
 pub(crate) fn death_due(c: &Connection) -> Result<bool> {
-    Ok(lifecycle_store::load(c)?.death_pending && !slot_busy(c)?)
+    Ok(lifecycle_store::load(c)?.death_pending && !slot_busy(c)? && crate::app::enabled(c)?)
 }
 
 fn rules_view(r: &Rules) -> RulesView {
@@ -376,8 +443,8 @@ pub(crate) struct LifeBlock {
     pub lifecycle: LifecycleView,
     pub unseen_events: Vec<UnseenEvent>,
     pub memorial: MemorialBrief,
-    /// Rust's half of the bar recorder's eligibility (§5.1): alive, armed, not paused, no
-    /// slot task, not pending. Sleep deliberately does not clear it.
+    /// Rust's half of the bar recorder's eligibility (§5.1): On, alive, armed, not paused,
+    /// no slot task, not pending. Sleep deliberately does not clear it.
     pub presence_wanted: bool,
 }
 
@@ -395,8 +462,11 @@ impl LifeBlock {
             |r| r.get(0),
         )?;
         let busy = slot_busy(c)?;
+        let enabled = crate::app::enabled(c)?;
+        // `protocol.json` `snapshot_v03.frozen_reason_precedence`.
         let frozen_reason = match &life {
             None => "no_life",
+            Some(_) if !enabled => "off",
             Some(_) if row.death_pending => "pending",
             Some(l) if !l.armed => "unarmed",
             Some(_) if paused => "paused",
@@ -404,9 +474,10 @@ impl LifeBlock {
             Some(_) if sleeping => "sleeping",
             Some(_) => "none",
         };
-        let presence_wanted = life
-            .as_ref()
-            .is_some_and(|l| l.armed && !paused && !busy && !row.death_pending);
+        let presence_wanted = enabled
+            && life
+                .as_ref()
+                .is_some_and(|l| l.armed && !paused && !busy && !row.death_pending);
         let lifecycle = lifecycle_view(life.as_ref(), &row, frozen_reason);
         let life_view = life
             .as_ref()
@@ -658,7 +729,8 @@ fn end_life(
 /// life ended.
 pub(crate) fn finalize_if_due(c: &Connection, at: &TimeMark) -> Result<bool> {
     let row = lifecycle_store::load(c)?;
-    if !row.death_pending || slot_busy(c)? {
+    // E2: no death while Off; a pending end waits for On like everything else.
+    if !row.death_pending || slot_busy(c)? || !crate::app::enabled(c)? {
         return Ok(false);
     }
     let life = active_life(c)?.ok_or(StorageError::Corrupt)?;
@@ -669,6 +741,169 @@ pub(crate) fn finalize_if_due(c: &Connection, at: &TimeMark) -> Result<bool> {
         fault("death_before_commit");
     }
     Ok(ended)
+}
+
+/// Inserts a new adopted life at level 1, 0 XP, young, meters 70.00, armed with `req.mode`
+/// (the caller checked that no life is living, the slot is free and the rules were
+/// acknowledged), resets the care block (welcome routine available again) and journals
+/// `born` and `armed`. Returns the new life id. Shared by `pet.adopt` and `pet.start`.
+fn insert_adopted_life(
+    c: &Connection,
+    at: &TimeMark,
+    request_id: &str,
+    req: &AdoptRequest<'_>,
+    name: &str,
+) -> Result<String> {
+    let now = at.wall;
+    let rules = RULES_V1.for_pace(req.pace);
+    let life_id = new_life_id()?;
+    let ordinal: i64 = c.query_row("SELECT COALESCE(MAX(ordinal), 0) + 1 FROM lives", [], |r| {
+        r.get(0)
+    })?;
+    let inserted = c.execute(
+        "INSERT INTO lives (life_id, ordinal, name, species, appearance, origin,
+                status, mode, armed, armed_at_ms, pace, ruleset, decay_hunger,
+                decay_thirst, decay_mental_health, decay_hygiene, full_hold_ms,
+                warning_at, critical_after_ms, grace_ms, adopted_at_ms,
+                adoption_request_id)
+             VALUES (?1, ?2, ?3, ?4, ?4, 'adopted', 'healthy', ?5, 1, ?6, ?7, ?8, ?9,
+                ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?6, ?17)",
+        params![
+            life_id,
+            ordinal,
+            name,
+            req.species,
+            req.mode.as_str(),
+            now,
+            req.pace.as_str(),
+            RULESET_V1,
+            rules.decay_per_hour[0],
+            rules.decay_per_hour[1],
+            rules.decay_per_hour[2],
+            rules.decay_per_hour[3],
+            rules.full_hold_ms,
+            rules.warning_at,
+            rules.critical_after_ms,
+            rules.grace_ms,
+            request_id
+        ],
+    );
+    match inserted {
+        // The partial unique index is the last line against a second life.
+        Err(e) if e.sqlite_error_code() == Some(rusqlite::ErrorCode::ConstraintViolation) => {
+            return Err(StorageError::InvalidState("a companion is already living"))
+        }
+        other => other?,
+    };
+    c.execute(
+        "UPDATE pet_state SET hunger = ?1, thirst = ?1, mental_health = ?1,
+                hygiene = ?1, decay_paused = 0, updated_at_ms = ?2 WHERE id = 1",
+        params![METER_START, now],
+    )?;
+    c.execute(
+        "UPDATE pet_care SET starts_since_bathroom = 0, work_sessions = 0,
+                execution_ms = 0, rest_required = 0, sleep_started_at_ms = NULL,
+                sleep_wall_ms = NULL, sleep_boot = NULL, sleep_steady_ms = NULL,
+                sleep_remaining_ms = 120000, welcome_care_available = 1 WHERE id = 1",
+        [],
+    )?;
+    let fresh = Vitals::from_meters([METER_START; 4], rules);
+    lifecycle_store::save(
+        c,
+        &VitalsRow {
+            life_id: Some(life_id.clone()),
+            vitals: fresh,
+            critical_since_ms: None,
+            death_pending: false,
+            attended_total_ms: 0,
+        },
+        now,
+    )?;
+    care::bump(c)?;
+    journal(
+        c,
+        &life_id,
+        "born",
+        None,
+        &json!({"origin": "adopted", "species": req.species,
+                "mode": req.mode.as_str(), "pace": req.pace.as_str()}),
+        None,
+        Some(request_id),
+        now,
+    )?;
+    journal(
+        c,
+        &life_id,
+        "armed",
+        None,
+        &json!({"mode": req.mode.as_str()}),
+        None,
+        Some(request_id),
+        now,
+    )?;
+    Ok(life_id)
+}
+
+/// `pet.start` on a living unarmed life: the look, an optional rename, then the rules
+/// with `pet.rules` semantics (mode + arm), each journaled as its own method would.
+fn arm_existing(
+    c: &Connection,
+    at: &TimeMark,
+    request_id: &str,
+    life: &LifeRow,
+    req: &StartRequest<'_>,
+    name: Option<&str>,
+) -> Result<()> {
+    if life.appearance != req.species {
+        c.execute(
+            "UPDATE lives SET appearance = ?1, revision = revision + 1 WHERE life_id = ?2",
+            params![req.species, life.life_id],
+        )?;
+        journal(
+            c,
+            &life.life_id,
+            "appearance_changed",
+            None,
+            &json!({"from": life.appearance, "to": req.species}),
+            None,
+            Some(request_id),
+            at.wall,
+        )?;
+    }
+    if let Some(name) = name.filter(|n| *n != life.name) {
+        c.execute(
+            "UPDATE lives SET name = ?1, revision = revision + 1 WHERE life_id = ?2",
+            params![name, life.life_id],
+        )?;
+    }
+    c.execute(
+        "UPDATE lives SET mode = ?1, armed = 1, armed_at_ms = COALESCE(armed_at_ms, ?2),
+            revision = revision + 1 WHERE life_id = ?3",
+        params![req.mode.as_str(), at.wall, life.life_id],
+    )?;
+    journal(
+        c,
+        &life.life_id,
+        "armed",
+        None,
+        &json!({"mode": req.mode.as_str()}),
+        None,
+        Some(request_id),
+        at.wall,
+    )?;
+    if life.mode != req.mode {
+        journal(
+            c,
+            &life.life_id,
+            "mode_changed",
+            None,
+            &json!({"from": life.mode.as_str(), "to": req.mode.as_str()}),
+            None,
+            Some(request_id),
+            at.wall,
+        )?;
+    }
+    Ok(())
 }
 
 /// Canonical params JSON for lifecycle idempotency: fixed key order, serde_json escaping.
@@ -705,6 +940,14 @@ impl Store {
         let sha = sys::sha256_hex(params.as_bytes());
         let (tx, at, ended) = self.write_settled()?;
         let (outcome, replayed) = replay_or_run(&tx, request_id, method, &sha, at.wall, || {
+            // `protocol.json` `off_behaviour`: nothing may age, arm, grow or end a life while
+            // Off (`pet.select` and `pet.events_seen` stay allowed).
+            if matches!(
+                method,
+                "pet.adopt" | "pet.rules" | "pet.configure_life" | "pet.retire"
+            ) {
+                crate::app::ensure_on(&tx)?;
+            }
             // A request made while the companion was still living never adopts over an end
             // that only this command's settlement made final: the memorial comes first.
             if ended && method == "pet.adopt" {
@@ -787,7 +1030,6 @@ impl Store {
             &params,
             Some("adopt_before_commit"),
             |c, at| {
-                let now = at.wall;
                 if active_life(c)?.is_some() {
                     return Err(StorageError::InvalidState("a companion is already living"));
                 }
@@ -799,96 +1041,7 @@ impl Store {
                 if !req.acknowledge_rules {
                     return Err(StorageError::AcknowledgementRequired);
                 }
-                let rules = RULES_V1.for_pace(req.pace);
-                let life_id = new_life_id()?;
-                let ordinal: i64 =
-                    c.query_row("SELECT COALESCE(MAX(ordinal), 0) + 1 FROM lives", [], |r| {
-                        r.get(0)
-                    })?;
-                let inserted = c.execute(
-                    "INSERT INTO lives (life_id, ordinal, name, species, appearance, origin,
-                        status, mode, armed, armed_at_ms, pace, ruleset, decay_hunger,
-                        decay_thirst, decay_mental_health, decay_hygiene, full_hold_ms,
-                        warning_at, critical_after_ms, grace_ms, adopted_at_ms,
-                        adoption_request_id)
-                     VALUES (?1, ?2, ?3, ?4, ?4, 'adopted', 'healthy', ?5, 1, ?6, ?7, ?8, ?9,
-                        ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?6, ?17)",
-                    params![
-                        life_id,
-                        ordinal,
-                        name,
-                        req.species,
-                        req.mode.as_str(),
-                        now,
-                        req.pace.as_str(),
-                        RULESET_V1,
-                        rules.decay_per_hour[0],
-                        rules.decay_per_hour[1],
-                        rules.decay_per_hour[2],
-                        rules.decay_per_hour[3],
-                        rules.full_hold_ms,
-                        rules.warning_at,
-                        rules.critical_after_ms,
-                        rules.grace_ms,
-                        request_id
-                    ],
-                );
-                match inserted {
-                    // The partial unique index is the last line against a second life.
-                    Err(e)
-                        if e.sqlite_error_code()
-                            == Some(rusqlite::ErrorCode::ConstraintViolation) =>
-                    {
-                        return Err(StorageError::InvalidState("a companion is already living"))
-                    }
-                    other => other?,
-                };
-                c.execute(
-                    "UPDATE pet_state SET hunger = ?1, thirst = ?1, mental_health = ?1,
-                        hygiene = ?1, decay_paused = 0, updated_at_ms = ?2 WHERE id = 1",
-                    params![METER_START, now],
-                )?;
-                c.execute(
-                    "UPDATE pet_care SET starts_since_bathroom = 0, work_sessions = 0,
-                        execution_ms = 0, rest_required = 0, sleep_started_at_ms = NULL,
-                        sleep_wall_ms = NULL, sleep_boot = NULL, sleep_steady_ms = NULL,
-                        sleep_remaining_ms = 120000, welcome_care_available = 1 WHERE id = 1",
-                    [],
-                )?;
-                let fresh = Vitals::from_meters([METER_START; 4], rules);
-                lifecycle_store::save(
-                    c,
-                    &VitalsRow {
-                        life_id: Some(life_id.clone()),
-                        vitals: fresh,
-                        critical_since_ms: None,
-                        death_pending: false,
-                        attended_total_ms: 0,
-                    },
-                    now,
-                )?;
-                care::bump(c)?;
-                journal(
-                    c,
-                    &life_id,
-                    "born",
-                    None,
-                    &json!({"origin": "adopted", "species": req.species,
-                        "mode": req.mode.as_str(), "pace": req.pace.as_str()}),
-                    None,
-                    Some(request_id),
-                    now,
-                )?;
-                journal(
-                    c,
-                    &life_id,
-                    "armed",
-                    None,
-                    &json!({"mode": req.mode.as_str()}),
-                    None,
-                    Some(request_id),
-                    now,
-                )?;
+                insert_adopted_life(c, at, request_id, req, &name)?;
                 Ok(true)
             },
         )
@@ -896,26 +1049,44 @@ impl Store {
 
     /// `pet.rules`: arms an unarmed life (needs `acknowledge_rules`) and/or changes its
     /// mode. Permadeath → gentle is allowed any time while living; gentle → permadeath
-    /// needs the acknowledgement and a healthy companion. Neglect, carries and holds are
-    /// never reset.
+    /// (turning Hardcore on, SPEC-v0.3 §11-2) needs the acknowledgement, `confirm_name`
+    /// matching the companion's name (normalized like `pet.retire`) and a healthy companion.
+    /// Neglect, carries and holds are never reset.
     pub fn set_rules(
         &mut self,
         request_id: &str,
         life_id: &str,
         mode: Mode,
         acknowledge_rules: bool,
+        confirm_name: Option<&str>,
     ) -> Result<LifeOutcome> {
-        let params = canonical(&[
-            ("acknowledge_rules", acknowledge_rules.into()),
+        let mut fields = vec![
+            ("acknowledge_rules", Value::from(acknowledge_rules)),
             ("life_id", life_id.into()),
             ("mode", mode.as_str().into()),
-        ]);
+        ];
+        // Absent stays absent, so receipts of calls without it keep their v0.2 digest.
+        if let Some(name) = confirm_name {
+            fields.insert(1, ("confirm_name", name.into()));
+        }
+        let params = canonical(&fields);
         self.life_command(request_id, "pet.rules", &params, None, |c, at| {
             let (life, _) = living_target(c, life_id)?;
             let arming = !life.armed;
             let switching = life.mode != mode;
-            if (arming || (switching && mode == Mode::Permadeath)) && !acknowledge_rules {
+            let hardcore_on = switching && mode == Mode::Permadeath;
+            if (arming || hardcore_on) && !acknowledge_rules {
                 return Err(StorageError::AcknowledgementRequired);
+            }
+            if hardcore_on
+                && confirm_name
+                    .and_then(|n| normalize_pet_name(n).ok())
+                    .as_deref()
+                    != Some(life.name.as_str())
+            {
+                return Err(StorageError::InvalidParams(
+                    "type the companion's name to turn on Hardcore",
+                ));
             }
             if switching && mode == Mode::Permadeath && life.status != LifeStatus::Healthy {
                 return Err(StorageError::InvalidState(
@@ -1109,6 +1280,142 @@ impl Store {
             )?;
             Ok(n > 0)
         })
+    }
+
+    /// `pet.start` (spec §6.2, §2.1): one transaction behind **Let's go!**. With no living
+    /// companion it adopts `species` (pace steady, `name` or the species' default name).
+    /// With a living unarmed one (the owner's upgraded Ginger) it selects the look
+    /// `species`, renames when `name` is given, sets the rules with `pet.rules` semantics and
+    /// arms. Then it spends the welcome routine when it is still available and the pet is
+    /// awake. `life_id`, when given, must name the living companion. Refused while Off;
+    /// `ALREADY_ARMED` for an armed companion; `ACKNOWLEDGEMENT_REQUIRED` without the
+    /// acknowledgement; `NAME_INVALID` for a name core refuses. Returns the snapshot.
+    pub fn start_pet(&mut self, request_id: &str, req: &StartRequest<'_>) -> Result<Snapshot> {
+        if !is_species(req.species) {
+            return Err(StorageError::InvalidParams("unknown companion"));
+        }
+        let name = req
+            .name
+            .map(|n| normalize_pet_name(n).map_err(StorageError::NameInvalid))
+            .transpose()?;
+        let params = canonical(&[
+            ("acknowledge_rules", req.acknowledge_rules.into()),
+            ("life_id", req.life_id.map_or(Value::Null, Value::from)),
+            ("mode", req.mode.as_str().into()),
+            ("name", req.name.map_or(Value::Null, Value::from)),
+            ("species", req.species.into()),
+        ]);
+        let mut point = None;
+        let snapshot = self.v03_command(
+            request_id,
+            "pet.start",
+            &params,
+            V03Policy::RefusedWhileOff,
+            None,
+            |c, at, ended| {
+                match active_life(c)? {
+                    None => {
+                        // Never adopt over an end that only this click's settlement made
+                        // final: the memorial comes first (as `pet.adopt`).
+                        if ended {
+                            return Err(StorageError::PassedAway);
+                        }
+                        if req.life_id.is_some() {
+                            return Err(StorageError::LifeNotFound);
+                        }
+                        if slot_busy(c)? {
+                            return Err(StorageError::InvalidState(
+                                "finish or discard the current task before adopting",
+                            ));
+                        }
+                        if !req.acknowledge_rules {
+                            return Err(StorageError::AcknowledgementRequired);
+                        }
+                        let default = default_name(req.species)
+                            .ok_or(StorageError::InvalidParams("unknown companion"))?;
+                        let name = name.as_deref().unwrap_or(default);
+                        let adopt = AdoptRequest {
+                            species: req.species,
+                            name: Some(name),
+                            mode: req.mode,
+                            pace: Pace::Steady,
+                            acknowledge_rules: true,
+                        };
+                        insert_adopted_life(c, at, request_id, &adopt, name)?;
+                        point = Some("adopt_before_commit");
+                    }
+                    Some(life) => {
+                        if req.life_id.is_some_and(|id| id != life.life_id) {
+                            return Err(StorageError::LifeNotFound);
+                        }
+                        if life.armed {
+                            return Err(StorageError::AlreadyArmed);
+                        }
+                        if !req.acknowledge_rules {
+                            return Err(StorageError::AcknowledgementRequired);
+                        }
+                        let vitals = lifecycle_store::load(c)?;
+                        if vitals.death_pending {
+                            return Err(StorageError::InvalidState(
+                                "the companion cannot change right now; finish the current task",
+                            ));
+                        }
+                        if req.mode == Mode::Permadeath && life.status != LifeStatus::Healthy {
+                            return Err(StorageError::InvalidState(
+                                "switch to permadeath only while the companion is healthy",
+                            ));
+                        }
+                        arm_existing(c, at, request_id, &life, req, name.as_deref())?;
+                    }
+                }
+                // The welcome routine (fills every need once), unless asleep.
+                let (welcome, sleeping): (bool, bool) = c.query_row(
+                    "SELECT welcome_care_available, sleep_started_at_ms IS NOT NULL
+                     FROM pet_care WHERE id = 1",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                if welcome && !sleeping {
+                    crate::store::fill_care(c, at, "routine", false)?;
+                }
+                care::bump(c)?;
+                if let Some(point) = point {
+                    fault(point);
+                }
+                Ok(true)
+            },
+        )?;
+        Ok(snapshot)
+    }
+
+    /// `pet.rename` (spec §6.2): renames the living companion `life_id`. The name is
+    /// validated by core's `normalize_pet_name` before the UPDATE (`NAME_INVALID`), so the
+    /// `lives.name` CHECK never fires. Cosmetic: allowed while Off, sleeping or fainted.
+    pub fn rename(&mut self, request_id: &str, life_id: &str, name: &str) -> Result<Snapshot> {
+        let normalized = normalize_pet_name(name).map_err(StorageError::NameInvalid)?;
+        let params = canonical(&[("life_id", life_id.into()), ("name", name.into())]);
+        self.v03_command(
+            request_id,
+            "pet.rename",
+            &params,
+            V03Policy::AllowedWhileOff,
+            None,
+            |c, _, _| {
+                let life = active_life(c)?.ok_or(StorageError::NoActivePet)?;
+                if life.life_id != life_id {
+                    return Err(StorageError::LifeNotFound);
+                }
+                if life.name == normalized {
+                    return Ok(false);
+                }
+                c.execute(
+                    "UPDATE lives SET name = ?1, revision = revision + 1
+                     WHERE life_id = ?2 AND status IN ('healthy','warning','critical')",
+                    params![normalized, life.life_id],
+                )?;
+                Ok(true)
+            },
+        )
     }
 
     /// `pet.memorial`: one read-only page of ended lives, newest ordinal first.

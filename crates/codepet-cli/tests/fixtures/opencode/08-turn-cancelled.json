@@ -1,0 +1,27 @@
+{
+ "name": "turn-cancelled",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_cancelled\",\"session_id\":\"ses_7a1b\",\"turn_id\":\"1792123800000-4\"}\n",
+ "expect": {
+  "event_id": "43e9e3ad03edc9b5c81c947d1092cd38",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "turn_cancelled",
+   "session": "ses_7a1b",
+   "turn": "1792123800000-4",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "fd08197e0aecf2c4",
+   "at_ms": 1792123876111
+  }
+ }
+}

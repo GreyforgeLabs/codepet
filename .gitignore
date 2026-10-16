@@ -1,5 +1,8 @@
 /target/
+/art-src/
 *.swp
 .DS_Store
 .env
 .env.*
+__pycache__/
+*.pyc

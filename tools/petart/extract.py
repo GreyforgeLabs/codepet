@@ -12,9 +12,12 @@ Dev-time tool only; nothing here runs inside the app. Python 3, Pillow, numpy, s
     python3 tools/petart/extract.py --previews        # scale/direction sheets + playback (run directory)
     python3 tools/petart/extract.py --gallery         # docs/screenshots/codepet-v0.2-roster.webp
 
-Source sheets live outside the repository (about 200 MB):
-`$CODEPET_ART_SRC` or `~/Media/codepet-art/v0.2/<srcdir>/stage{1,2,3}-{base,care}.png`
-with `provenance.json`. Files named `*.reject-*.png` are ignored. A species is *ready* when
+Source sheets are not in Git (about 200 MB); they are the release asset
+`codepet-art-sources-v0.2.tar`. Extract it into `art-src/` at the repository root (Git
+ignores it): `tar xf codepet-art-sources-v0.2.tar -C art-src` gives the default
+`art-src/v0.2/<srcdir>/stage{1,2,3}-{base,care}.png` with `provenance.json`. Use `--src`
+or `$CODEPET_ART_SRC` for another location. QA output (contact sheets, previews) goes to
+`target/petart-run` (`$CODEPET_RUN_DIR` to override). Files named `*.reject-*.png` are ignored. A species is *ready* when
 all six sheets exist and each matches the sha256 recorded in its `provenance.json`;
 species that are not ready get a `placeholder: true` manifest so the registry always
 lists all 15 companions.
@@ -45,8 +48,10 @@ PETS_REL = Path("qml/assets/pets")
 REGISTRY_JS_REL = Path("qml/shared/PetRegistry.js")
 DOCS_REL = Path("docs/pets.md")
 GALLERY_REL = Path("docs/screenshots/codepet-v0.2-roster.webp")
-DEFAULT_SRC = Path(os.environ.get("CODEPET_ART_SRC", "~/Media/codepet-art/v0.2")).expanduser()
-DEFAULT_RUN = Path(os.environ.get("CODEPET_RUN_DIR", "~/Work/runs/codepet--2026-10-15--v0.2")).expanduser()
+DEFAULT_SRC = Path(os.environ.get("CODEPET_ART_SRC", REPO / "art-src" / "v0.2")).expanduser()
+DEFAULT_RUN = Path(os.environ.get("CODEPET_RUN_DIR", REPO / "target" / "petart-run")).expanduser()
+# Manifests record the generator in neutral words, whatever wording a provenance.json uses.
+GENERATOR = "gpt-image-2 via Codex CLI image tool (ChatGPT plan)"
 OVERRIDES = HERE / "overrides.json"
 
 WEBP = dict(format="WEBP", quality=86, method=6, lossless=False, exact=False)
@@ -520,6 +525,8 @@ def base_manifest(sid, prov):
         "provenance": f"../PROVENANCE.md#{sid.replace('_', '-')}",
         "careLabels": dict(sp["careLabels"]),
         "careHints": dict(sp["careHints"]),
+        "careIconSet": roster.CARE_ICON_SET[sid],
+        "careWords": dict(roster.CARE_WORDS[sid]),
         "stages": [{"stage": i + 1, "key": roster.STAGE_KEYS[i], "name": names[i],
                     "minLevel": roster.STAGE_MIN_LEVEL[i]} for i in range(3)],
         "stageNamesSource": names_src,
@@ -551,9 +558,16 @@ def build_manifest(sid, prov, sheets, files, stage_meta, stage_boxes, airborne, 
     if isinstance(ref, dict) and ref.get("sha256"):
         m["source"]["reference"] = {"file": ref.get("file"), "sha256": ref.get("sha256"),
                                     "source": ref.get("source")}
-    m["source"]["generator"] = (prov or {}).get("tool")
+    m["source"]["generator"] = generator_label((prov or {}).get("tool"))
     m["files"] = dict(sorted(files.items()))
     return m
+
+
+def generator_label(tool):
+    """The manifest's generator: GENERATOR for any gpt-image-2 route, else as recorded."""
+    if isinstance(tool, str) and "gpt-image-2" in tool.lower():
+        return GENERATOR
+    return tool
 
 
 def placeholder_manifest(sid, src_root, reason):

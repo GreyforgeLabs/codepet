@@ -1,0 +1,12 @@
+{
+ "name": "approval-turn-done-dropped",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_done\",\"approval_key\":\"sk-cli-1\"}\n",
+ "expect": {
+  "drop": "unmapped"
+ }
+}

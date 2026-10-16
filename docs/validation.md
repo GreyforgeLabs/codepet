@@ -1,10 +1,93 @@
-# v0.2.0 validation: release branch after review fixes, greyarch, 2026-10-15
+# v0.3.0 qualification (2026-10-16)
 
-Branch `release/v0.2.0` with WP-5 (pet art) merged, the confirmed review findings fixed
-in separate `Fix review finding:` commits, the WP-5 art QA fixes merged (re-extracted
-frames) and the WP-INT cleanups (death-pending copy, review-digest hint, CI art checks,
-docs). The gates below were rerun after those last changes. Local workstation (Arch Linux, kernel
-7.2.5-3-omarchy, AMD Ryzen 5 3600): rustc/cargo 1.98.1, PySide6 6.11.2 / Qt 6.11.2,
+Current implementation: `v0.3`, following the frozen
+[contracts](v0.3/contracts/README.md). This section distinguishes source tests,
+offscreen UI, nested compositor behavior, live clients and human acceptance.
+It does not inherit passes from v0.2 records below.
+
+| Gate | Current evidence |
+|---|---|
+| Default Rust baseline at a81f2a8 | passed; final implementation gates below |
+| Memories read-only paging and privacy | storage and CLI regression tests passed |
+| Big status text (K3) | HomeSmoke: 979 checks, zero failures; heading size enforced |
+| Memories navigation | MoreSmoke: 137 checks, zero failures, including older/newest pages |
+| Contract vectors, copy lint, bar model | passed after contract amendments |
+| Full default/legacy Rust and strict clippy | 405 / 558 tests passed; 3 explicit/release-only tests ignored in each; fmt and strict clippy passed |
+| Rust 1.85 minimum supported version | 401 / 554 tests passed before the four additional projection/replay tests, 3 ignored each; fmt and strict clippy passed on both feature sets |
+| Full QML/assets/install suite | All 14 offscreen QML smokes, 169 Node tests, Python UI/assets/install suites, both client plugin suites, copy lint, 267 contract vectors and notices passed |
+| Nested compositor, input/focus, rename bursts and Off process exit | passed in a dedicated nested Hyprland: first-run one click + one tap in under 1 s; five real renames correlated by state version; Off removed overlay and stopped UI schedulers; outside-pet input reached the underlying window; startup preserved focus; pet click opened Home exactly once |
+| Real client turns and redacted captures | Codex 0.163.0, Grok 1.0.60, OpenCode 1.19.0 and Hermes 0.21.3 completed one read-only turn each. Claude Code 2.1.294 hit its weekly limit; only its failure lifecycle and ENTRYPOINT were verified. Sanitized projections and three native-hook replay tests plus adapter replays passed; see [capture limits](../crates/codepet-cli/tests/fixtures/live-2026-10-16/README.md) |
+| Hook latency | Corrected isolated harness: 16,000 measured calls + 1,600 warmups, all silent exit 0; loaded direct-hook p99 2.91–7.27 ms; Off baseline p50 2.43–2.80 ms. No measured budget failures. Only 28/40 baseline groups met the host-idle criterion. All 10 Codex login-shell groups remain explicitly unmeasured; earlier login-shell timing observations were not isolation-qualified |
+| Nested visual coverage | 165 captures, observed font scales 0.75 / 1.0 / 1.25 at base sizes 12 / 16 / 20; five Helpers rows and hints, Connect cards with 1–4 apps. Independent review found no clipping in the sampled screens. Earlier mislabeled-size runs are superseded |
+| Release archive install/uninstall and rollback | passed: stripped archive and install/uninstall gates; synthetic v4 → v5 upgrade preserved the entire life row, journal and XP ledgers; v4 backup reopened with 0.2.1 and the old binary refused schema 5. The fixture has zero XP and no historical tasks |
+| Kid read-aloud (K12) | pending human feedback; never inferred from automated checks |
+| Live installation | archive installed over 0.2.0; schema 4 → 5 backup created; Ginger’s identity, goldfish look, XP, stage and unarmed life settings preserved. The running shell reloaded the plugin without a restart. Overlay loaded and exited normally because desktop-pet visibility was off |
+| Live resource behavior | whole-desktop resource isolation, monitor hotplug and fractional scale remain unmeasured |
+
+Offscreen source/runtime checks are not compositor or live-desktop acceptance.
+Human K12 acceptance, native total hook latency, Grok compatibility loading/session-mode details and Hermes approval
+key correlation remain unverified. No additional model turns were submitted to fill
+those gaps. The preserved art-source archive will accompany v0.3.0; v0.2.1 was a
+prepared candidate and was not published. Previous results remain below as historical
+evidence.
+
+---
+
+# v0.2.1 validation: first public release, local Omarchy workstation, 2026-10-15
+
+Branch `release/v0.2.1`: the 0.2.0 code plus the release-readiness changes listed in
+[CHANGELOG.md](../CHANGELOG.md) (install from the release archive, release packaging and
+third-party notices, the plain-text and child-process fixes, public documentation).
+
+## Automated gates (this run)
+
+Local workstation (Arch Linux, kernel 7.2.5-3-omarchy): rustc/cargo 1.98.1 and 1.85.0
+(MSRV), PySide6 6.11.2 / Qt 6.11.2 and the CI pin PySide6 6.8.3, Quickshell 0.3.1, Node
+26.8.1. Cargo ran one build at a time in a 4 GiB memory-capped scope with `-j 2 --offline`.
+
+- `cargo fmt --all --check`: passed (stable and 1.85.0)
+- `cargo test --workspace --locked`: 340 passed, 0 failed, 0 ignored (codepet unit 5, care 10,
+  cli 10, crash 9, lifecycle 10, presence 6, rpc 17; codepet-core 55; codepet-protocol 55;
+  codepet-storage 163); the same 340 with `cargo +1.85.0`
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed (stable and 1.85.0)
+- `codepet mock-demo` and `codepet --version` (`codepet 0.2.1`): passed
+- Offscreen QML smokes (`qml/tests/run_qml.py`) under PySide6 6.11.2 and 6.8.3, all 0
+  failures: CareFlowSmoke 42 checks, CareSmoke 34, ChooserSmoke 44, FilteredDraftSmoke 8,
+  LifeSmoke 241, OverlaySmoke 107, PetSpriteSmoke 21, PreviewSmoke 193, TimelineSmoke 11
+- `test_overlay_windows.py` (7 checks), `test_quickshell_host.py` (40 tests, including the
+  real-RPC harness with `CODEPET_TEST_BIN`), `test_bar_plugin.py` (29 tests, plus
+  `omarchy plugin validate` on a staged copy), `test_sprite_assets.py`, `test_pet_assets.py`
+  (15 of 15 packs, strict), `test_pet_assets_invalid.py`, `test_pet_distinctness.py`,
+  `test_install_scripts.py` (20 tests), `copy_lint.py` (0 findings), `test_ci_matrix.py`,
+  `test_release_docs.py` (10 tests): passed; shellcheck on the packaging and release
+  scripts: passed
+- `node --test qml/tests/*.mjs`: 139 passed
+- `python3 -I docs/art-library/verify.py` and `test_verify.py` (22 tests): passed
+- `pyside6-qmllint` 6.8.3 (the CI command): exit 0, one existing warning
+  (`devicePixelRatio` on `QQuickWindow` in `PetSprite.qml`)
+- `python3 tools/petart/extract.py --check` against the cleaned v0.2.1 source-sheet asset:
+  the committed frames are byte-identical to a fresh extraction
+- `tools/release/package.sh`: the archive's binary is stripped and has no home-directory
+  paths, every entry is owned by 0/0, every relative Markdown link resolves, and the
+  extracted archive passed a dry run, an install and an uninstall in a throwaway HOME
+
+Offscreen and isolated-Quickshell runs prove QML loading and the request/file contracts.
+They are not Wayland, compositor, input, focus or resource validation.
+
+## Live QA (v0.2.1)
+
+Placeholder. Live desktop QA for v0.2.1 (the release checklist below, items 1 to 7) is
+run and recorded separately; no live result is claimed in this file until it is added
+here. The v0.2.0 section below keeps its own results.
+
+---
+
+# v0.2.0 validation: release branch after review fixes, local Omarchy workstation, 2026-10-15
+
+Branch `release/v0.2.0` with the pet art merged, review fixes and art QA fixes applied
+(re-extracted frames) and the release cleanups (death-pending copy, review-digest hint, CI
+art checks, docs). The gates below were rerun after those last changes. Local workstation
+(Arch Linux, kernel 7.2.5-3-omarchy): rustc/cargo 1.98.1, PySide6 6.11.2 / Qt 6.11.2,
 Quickshell 0.3.1, Node 26.8.1. Cargo ran one build at a time in a 4 GiB memory-capped scope
 with `-j 2 --offline`.
 
@@ -39,15 +122,14 @@ with `-j 2 --offline`.
 Offscreen and isolated-Quickshell runs prove QML loading and the request/file contracts.
 They are not Wayland, compositor, input, focus or resource validation.
 
-## Contact-sheet review (spec §17.4 row 5)
+## Contact-sheet review
 
 Contact sheets come from `tools/petart/extract.py --contact` (light and dark backgrounds).
 Scale, direction and playback previews come from `tools/petart/extract.py --previews`:
 `<id>-scales.webp` shows each stage at 64, 96 and 112 px at 1x, 1.25x, 1.5x and 2x, facing
 right and mirrored left, and `<id>-s<stage>-playback.webp` is an animated WebP stepping
 through every state at its frame time in both directions. Both land in the run directory
-(`~/Work/runs/codepet--2026-10-15--v0.2/previews`, generated for all 15 species in this
-pass), not in Git. No human review is recorded in this run; each wave and column stays
+(a local run directory, generated for all 15 species in this pass), not in Git. No human review is recorded in this run; each wave and column stays
 **untested** until someone checks it and records the result here.
 
 | Wave | Species | gait | care poses | stage readability | fish in water | not recolors | 64/96/112 px at 1x–2x | both directions | playback | Result |
@@ -60,7 +142,7 @@ The goldfish `sleep_enter` frame was corrected after these sheets were first dra
 now rendered from the open-eyed idle pose); Wave 2 reviewers should check it in the
 playback preview.
 
-## Live QA on greyarch (spec §17.9)
+## Live QA (release checklist)
 
 Not run in this pass (the release step installs and runs it). Each item is pass, fail or
 untested; nothing below has been observed on the live desktop yet.
@@ -71,20 +153,20 @@ untested; nothing below has been observed on the live desktop yet.
 | 2 | popup care commits and the badge updates via bar-state.json; zero idle execs over 10 minutes (strace); right click starts exactly one overlay; click-through and no focus theft | untested |
 | 3 | separate test state home: presence ticks, stops on idle/lock/fullscreen/pause; warning → critical → death → memorial → adoption (playtest); stateHome restored to "" | untested |
 | 4 | evolution through accepted mock tasks: one celebration only, none after restart | untested |
-| 5 | all 15 looks at every stage at bar and overlay sizes (only while the operator is hands-off) | untested |
+| 5 | all 15 looks at every stage at bar and overlay sizes (needs an idle desktop session) | untested |
 | 6 | `tools/measure-overlay.sh`: PSS, CPU and wakeups for the overlay `qs` and the shell, plugin off and on, idle and active, smallest and largest pack; first-switch latency (not measured by the tool) | untested |
 | 7 | monitor hotplug and fractional scale | untested |
 
 ---
 
-# Integration validation: PRs #1-#4 plus review fixes, greyarch, 2026-10-15
+# Integration validation: PRs #1-#4 plus review fixes, local workstation, 2026-10-15
 
 Branch `integrate/v0.2`, based on `origin/main` `6a5f654`. PRs merged in order with real
 merge commits: #1 core settings preflight, #2 review-metadata recovery, #3 care/sleep/demo
 progression, #4 transparent desktop overlay. The #2/#3 combination merged cleanly as text
 but did not compile (`now` → `at.wall` in `recover()`) and #2's abandonment test expected the
 old meter model; both were resolved inside the #3 merge commit. Twelve confirmed review
-findings were then fixed in separate `Fix review finding:` commits (schema is now v3).
+findings were then fixed in separate commits (schema is now v3).
 
 Local workstation (Arch Linux, kernel 7.2.5-3-omarchy): rustc/cargo 1.98.1, PySide6 6.11.2
 / Qt 6.11.2 (`/usr/lib/qt6/bin/qmllint`), Quickshell 0.3.1, Node 26.8.1. Cargo ran in a
@@ -113,9 +195,9 @@ Quickshell load smokes run offscreen without a compositor and are not desktop va
 
 ---
 
-# Care/progression validation — cloud workspace, 2026-10-15
+# Care/progression validation — CI-like Linux build environment, 2026-10-15
 
-This revision was implemented and tested only in the cloud workspace, based directly on
+This revision was implemented and tested only in a CI-like Linux build environment, based directly on
 remote main `6a5f654`. Independent bugfix PRs #1 and #2 are not included or merged.
 Real providers remain disabled; no user-computer files or project directories were changed.
 
@@ -130,7 +212,7 @@ Official Rust 1.85.0 (declared minimum) and 1.99.0 (stable), existing locked dep
   no provider launch and no project changes (the older in-memory demo remains distinct)
 - `git diff --check`: passed
 
-The cancellation regression retains its no-child-process assertion on cloud kernels lacking
+The cancellation regression retains its no-child-process assertion on kernels lacking
 `/proc/<pid>/task/<tid>/children`, using a read-only PPid scan fallback. No test was skipped.
 
 New coverage includes all-four-full Start gating, transactional two-process races and debit,
@@ -143,7 +225,7 @@ interleavings; fixes received regression coverage.
 
 ## Qt offscreen gates
 
-Qt/PySide6 6.8.3 installed from official PyPI into an isolated temporary cloud directory:
+Qt/PySide6 6.8.3 installed from official PyPI into an isolated temporary directory:
 
 - PreviewSmoke: 34 checks passed
 - CareSmoke: 26 checks passed
@@ -165,12 +247,12 @@ The previous validation records below are retained as history and describe earli
 
 # Validation
 
-## Milestone 1 on greyarch, 2026-10-14 (after the review fixes)
+## Milestone 1 on a local workstation, 2026-10-14 (after the review fixes)
 
 Local workstation (Arch Linux, kernel 7.2.5-3-omarchy, x86_64). This is not an Omarchy,
 Quickshell or desktop runtime validation.
 
-### Platform versions recorded (handoff step 5)
+### Platform versions recorded
 
 Omarchy 4.0.4, Quickshell 0.3.1, Qt 6.11.2 (qt6-base, qt6-declarative), bubblewrap 0.12.0,
 system SQLite 3.53.4 (unused; the build bundles 3.51.3), kernel 7.2.5-3-omarchy, Hyprland
@@ -256,7 +338,7 @@ milestone 1 and describes the dependency-free scaffold.
 
 # Scaffold validation
 
-Verified in the Linux cloud build workspace on 2026-10-14. This is not Omarchy/Qt runtime validation.
+Verified in a CI-like Linux build environment on 2026-10-14. This is not Omarchy/Qt runtime validation.
 
 ## Passed
 
@@ -293,7 +375,7 @@ The spec copy was compared byte-for-byte with the latest source specification at
 Based on care PR #3 head `1f18e5e78c2f316804eb5205b95071da4160e3dd`;
 no Rust, protocol, storage or provider code changed in this revision.
 
-Fresh validation in the cloud workspace (not inherited earlier results):
+Fresh validation in a CI-like Linux build environment (not inherited earlier results):
 
 - Official Rust 1.85.0: `cargo fmt --all --check` passed
 - `cargo test --workspace --locked`: all 174 tests passed, unfiltered
@@ -319,4 +401,4 @@ of this file. Quickshell runtime,
 compositor input pass-through/focus, monitor hotplug, trusted lock/suspend/fullscreen
 hooks, accessibility integration and CPU/PSS/power measurements were **not run**.
 No live desktop compatibility claim follows from offscreen tests. See
-[the explicit live checklist](desktop-overlay.md#live-validation-checklist-not-performed-in-the-cloud).
+[the explicit live checklist](desktop-overlay.md#live-validation-checklist).

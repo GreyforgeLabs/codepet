@@ -1,5 +1,11 @@
-//! Pure, in-memory mock model. No filesystem, network, provider, or process IO.
+//! Pure, in-memory model. No filesystem, network, provider, or process IO.
 //! Receipts and snapshots are NOT durable storage or an IPC security boundary.
+//!
+//! v0.3 (spec §6.5): the in-memory mock task `Engine` (and its meters, receipts, tokens and
+//! events) is the retired task pipeline; it is compiled only with the non-default
+//! `legacy-tasks` feature and deleted in v0.3.1. The task vocabulary (`State`, `Draft`,
+//! `Provider`, `Verification`) stays: storage still reads the historic task tables.
+pub mod agent;
 pub mod evolution;
 pub mod lifecycle;
 pub mod presence;
@@ -7,13 +13,17 @@ mod privacy;
 pub mod species;
 pub use privacy::redact_display_text;
 
+#[cfg(feature = "legacy-tasks")]
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Component, Path};
+#[cfg(feature = "legacy-tasks")]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(feature = "legacy-tasks")]
 static INSTANCE: AtomicU64 = AtomicU64::new(1);
 
 pub const MAX_PROMPT_BYTES: usize = 16 * 1024;
 pub const MAX_FRAME_BYTES: usize = 64 * 1024;
+#[cfg(feature = "legacy-tasks")]
 pub const MAX_EVENTS: usize = 128;
 pub const MAX_TASKS: usize = 256;
 /// Override reasons are 1..=512 bytes after trimming, without NUL (core, protocol, storage).
@@ -22,7 +32,9 @@ pub const PROTOCOL_VERSION: u16 = 1;
 /// Meter values are integer hundredths: 7000 = 70.0.
 pub const METER_START: u16 = 7000;
 pub const METER_MAX: u16 = 10000;
+#[cfg(feature = "legacy-tasks")]
 pub const REWARD_HUNDREDTHS: u16 = 2000;
+#[cfg(feature = "legacy-tasks")]
 pub type JobId = u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,10 +72,12 @@ impl Category {
         }
     }
 }
+#[cfg(feature = "legacy-tasks")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Meters {
     values: [u16; 4],
 }
+#[cfg(feature = "legacy-tasks")]
 impl Default for Meters {
     fn default() -> Self {
         Self {
@@ -71,6 +85,7 @@ impl Default for Meters {
         }
     }
 }
+#[cfg(feature = "legacy-tasks")]
 impl Meters {
     pub fn hundredths(&self, category: Category) -> u16 {
         self.values[category.index()]
@@ -312,12 +327,14 @@ impl Verification {
         Self::ALL.into_iter().find(|v| v.as_str() == s)
     }
 }
+#[cfg(feature = "legacy-tasks")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Review {
     pub digest: u64,
     pub artifact: String,
     pub verification: Verification,
 }
+#[cfg(feature = "legacy-tasks")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub job_id: JobId,
@@ -325,6 +342,7 @@ pub struct Receipt {
     pub verification: Verification,
     pub override_reason: Option<String>,
 }
+#[cfg(feature = "legacy-tasks")]
 #[derive(Clone, Debug)]
 pub struct Task {
     pub id: JobId,
@@ -334,12 +352,14 @@ pub struct Task {
     pub review: Option<Review>,
     pub receipt: Option<Receipt>,
 }
+#[cfg(feature = "legacy-tasks")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
     pub seq: u64,
     pub job_id: JobId,
     pub state: State,
 }
+#[cfg(feature = "legacy-tasks")]
 /// Opaque model capability. Not serialized, not a production authentication token.
 #[derive(Clone, Debug)]
 pub struct StartToken {
@@ -385,6 +405,7 @@ pub fn validate_frame(version: u16, bytes: &[u8]) -> Result<&str, Error> {
     Ok(text)
 }
 
+#[cfg(feature = "legacy-tasks")]
 #[derive(Debug)]
 pub struct Engine {
     instance: u64,
@@ -397,6 +418,7 @@ pub struct Engine {
     generation: u64,
     tokens: BTreeMap<JobId, StartToken>,
 }
+#[cfg(feature = "legacy-tasks")]
 impl Default for Engine {
     fn default() -> Self {
         Self {
@@ -412,6 +434,7 @@ impl Default for Engine {
         }
     }
 }
+#[cfg(feature = "legacy-tasks")]
 impl Engine {
     pub fn meters(&self) -> &Meters {
         &self.meters
