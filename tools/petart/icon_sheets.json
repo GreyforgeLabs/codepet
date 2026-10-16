@@ -1,0 +1,20 @@
+{
+ "schema": "codepet.icon-sheets.v1",
+ "note": "Selected GPT Image 2 source sheets for tools/petart/icons.py (SPEC-v0.3 §4). Prompts, nonces and rejects: qml/assets/icons/PROVENANCE.md.",
+ "sheets": [
+  {"id": "care-floor", "source": "raw/care-floor.a1.png", "sha256": "8460746af3d236b1d5a947b8c6ee119e96884c3dc71181334c79489e9a009cea", "key": "#00FF00", "grid": [4, 3], "px": 256, "pad": 0.06,
+   "ids": ["food", "water", "play", "wash", "treat_jar", "bed", "sun_wake", "wand_change", "gear_more", "star", "power", "heart"]},
+  {"id": "care-aquatic", "source": "raw/care-aquatic.a1.png", "sha256": "c5c40d910143297d5d5e46a42cb5e05e7a5762bfc636ca3107655347930d0269", "key": "#FF00FF", "grid": [2, 2], "px": 256, "pad": 0.06,
+   "ids": ["food", "water", "play", "wash"]},
+  {"id": "care-robot", "source": "raw/care-robot.a1.png", "sha256": "37e5bebcc4560c8e1e62dbf07bc78855ed2bdca0c3953c20f6c5b9a9cc16f785", "key": "#00FF00", "grid": [2, 2], "px": 256, "pad": 0.06,
+   "ids": ["food", "water", "play", "wash"]},
+  {"id": "status", "source": "raw/status.a1.png", "sha256": "9f6df0547c4bf3ee5f72514f4abcf05542cdfeb44c5c6384d8ab0c0fd0a74016", "key": "#FF00FF", "grid": [4, 3], "px": 256, "pad": 0.06,
+   "ids": ["laptop", "bubble_wait", "bandage", "moon", "screen", "leaf_calm", "flame_hardcore", "robot_helpers", "help", "memories", "wave_goodbye", "confetti"]},
+  {"id": "apps", "source": "raw/apps.a2.png", "sha256": "990361b6a2c9d9c3db0913fc4329b07b743c038f0f9fb385914ebad686e2a7c1", "key": "#00FF00", "grid": [5, 1], "px": 256, "pad": 0.04,
+   "ids": ["app_claude_code", "app_codex", "app_opencode", "app_hermes", "app_grok"]},
+  {"id": "ui", "source": "raw/ui.a1.png", "sha256": "da25c97564cdbbc0291aec00956b9b0fe7682aec7a133a5cf10815d4c31987fd", "key": "#00FF00", "grid": [2, 1], "px": 256, "pad": 0.06,
+   "ids": ["egg", "pencil"]},
+  {"id": "bar", "source": "raw/bar.a1.png", "sha256": "1eee87f79e2f2f438caf4a0d21a5507533e6bc34230401186316c8dbb9e8a45b", "key": "#00FF00", "grid": [5, 2], "px": 64, "pad": 0.03,
+   "ids": ["badge_hand", "badge_drop", "badge_bowl", "badge_ball", "badge_tub", "badge_star", "badge_bandage", "badge_moon", "badge_egg", "badge_sparkle"]}
+ ]
+}
