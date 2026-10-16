@@ -7,7 +7,7 @@
  "at_ms": 1792123876111,
  "stdin": "{\"session_id\":\"01a13cfb-647c-7fd3-8500-3c7f8733825c\",\"transcript_path\":null,\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"hook_event_name\":\"SessionEnd\",\"reason\":\"other\"}\n",
  "expect": {
-  "event_id": "ec3782f28b78a4da6bc3be8614220a92",
+  "event_id": "3d53615cd1625e668e051c692631100a",
   "record": {
    "v": 1,
    "client": "codex",

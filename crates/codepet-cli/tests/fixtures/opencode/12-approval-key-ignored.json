@@ -7,7 +7,7 @@
  "at_ms": 1792123876111,
  "stdin": "{\"codepet_v\":1,\"event\":\"waiting\",\"session_id\":\"ses_7a1b\",\"approval_key\":\"k1\"}\n",
  "expect": {
-  "event_id": "0d2a37cccdb9cf23429634d89ccd56de",
+  "event_id": "a0643341101cb0d2eaf27673d8d689cb",
   "record": {
    "v": 1,
    "client": "opencode",

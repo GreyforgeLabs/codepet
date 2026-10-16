@@ -1,5 +1,6 @@
 #!/bin/sh
 # managed by codepet: observe-only bridge; prints nothing; always exits 0
+exec >/dev/null 2>&1
 S='@CODEPET_STATE_DIR@'
 B='@CODEPET_BIN@'
 d() { timeout -s KILL 0.3 cat >/dev/null 2>&1; exit 0; }

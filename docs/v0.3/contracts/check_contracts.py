@@ -580,7 +580,9 @@ class World:
                 if kind == "turn_done":
                     s["state"] = "idle"
                     if inter:
+                        # finished_jar_full describes this finished turn only (notes.md §5).
                         self.finished_seq += 1
+                        self.finished_jar_full = False
                     extra = o["extra"] + (e.get("tools") or 0)
                     n = len(o["tools"]) + extra
                     prev = d if d and d["key"] == o["key"] else None
@@ -980,10 +982,14 @@ def check_vectors(V: dict, strings: dict, schema: dict) -> None:
                 fail(f"normalization: {vec['client']} {json.dumps(vec['payload'])[:60]} {k} = {got.get(k)!r}, expected {v!r}")
         if "drop" in got and got["drop"] not in V["normalization"]["drop_reasons"]:
             fail(f"normalization: unknown drop reason {got['drop']}")
+    if not set(V["event_ids"]["state_kinds"]) <= set(kinds):
+        fail("event_ids: state_kinds must be event kinds")
     for vec in V["event_ids"]["vectors"]:
         body = vec["payload_utf8"].encode()
         dig = hashlib.sha256(body).hexdigest()[:16]
-        key = f"codepet-ev1|{vec['client']}|{vec['kind']}|{vec['session']}|{dig}|{vec['at_ms'] // C['event_bucket_ms']}"
+        at = vec["at_ms"]
+        bucket = at if vec["kind"] in V["event_ids"]["state_kinds"] else at // C["event_bucket_ms"]
+        key = f"codepet-ev1|{vec['client']}|{vec['kind']}|{vec['session']}|{dig}|{bucket}"
         eid = hashlib.sha256(key.encode()).hexdigest()[:32]
         if {"dig": dig, "event_id": eid} != vec["expect"]:
             fail(f"event_ids: {vec['kind']}@{vec['at_ms']}")
@@ -1159,6 +1165,27 @@ def smoke_shim(template: str) -> None:
         r = subprocess.run([str(tomb), "codex"], input=b"x" * 100000, capture_output=True, timeout=5)
         if r.returncode != 0 or r.stdout or r.stderr:
             fail("shim smoke: the tombstone must exit 0 silently")
+
+        def open_stdin(path, client):
+            # The argv form (OpenCode, Hermes) with stdin never closed: the 0.3 s drain is
+            # cut by SIGKILL, and the shell's job report must not reach the client.
+            p = subprocess.Popen([str(path), client], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, env={"PATH": "/usr/bin:/bin"})
+            p.stdin.write(b'{"x":1}\n')
+            p.stdin.flush()
+            try:
+                rc = p.wait(timeout=5)
+                out, err = p.stdout.read(), p.stderr.read()
+            finally:
+                p.stdin.close()
+                p.stdout.close()
+                p.stderr.close()
+            if rc != 0 or out or err:
+                fail(f"shim smoke: {path.name} with stdin never closed -> rc {rc} out {out!r} err {err!r}")
+
+        (state / "off").touch()
+        open_stdin(shim, "opencode")
+        open_stdin(tomb, "hermes")
 
 
 def check_protocol(proto: dict, bar: dict) -> None:

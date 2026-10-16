@@ -12,12 +12,11 @@ use crate::spool::{
 };
 use crate::{Clock, Result, StatePaths, StorageError, Store, DB_FILE};
 use codepet_core::agent::{
-    apply_session_event, approval_transition, caps_verdict, fold_gate, pet_state, turn_qualifies,
-    CapVerdict, ClientId, DoneTurn, EventKind, FoldGate, FoldOutcome, OpenTurn, Session,
-    SessionEvent, SessionRow, SessionState, TreatCheck, AGENT_EVENTS_KEEP_MS,
+    apply_session_event, approval_transition, caps_verdict, event_bucket, fold_gate, pet_state,
+    turn_qualifies, CapVerdict, ClientId, DoneTurn, EventKind, FoldGate, FoldOutcome, OpenTurn,
+    Session, SessionEvent, SessionRow, SessionState, TreatCheck, AGENT_EVENTS_KEEP_MS,
     AGENT_EVENTS_MAX_ROWS, AGENT_SESSIONS_KEEP_MS, CAP_SESSION_MS, DAY_MS, ERROR_RECENT_MS,
-    EVENT_BUCKET_MS, FUTURE_CLAMP_MS, HOUR_MS, JAR_MAX, RETENTION_INTERVAL_MS, RETENTION_LIMIT,
-    TURN_TIMES_EXACT_MS,
+    FUTURE_CLAMP_MS, HOUR_MS, JAR_MAX, RETENTION_INTERVAL_MS, RETENTION_LIMIT, TURN_TIMES_EXACT_MS,
 };
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use std::cell::RefCell;
@@ -302,7 +301,7 @@ fn fold_one(c: &Connection, ctx: &FoldCtx, rec: &InboxRecord) -> Result<bool> {
     };
     let cid = client.as_str();
     let field = rec.session_field();
-    let bucket = rec.at_ms.div_euclid(EVENT_BUCKET_MS).to_string();
+    let bucket = event_bucket(&rec.kind, rec.at_ms).to_string();
     let dedupe = ctx.key(DOMAIN_DEDUPE, cid, &[&rec.kind, &field, &rec.dig, &bucket]);
     let exists: bool = c.query_row(
         "SELECT EXISTS(SELECT 1 FROM agent_events WHERE dedupe_key = ?1)",
@@ -400,21 +399,22 @@ fn fold_one(c: &Connection, ctx: &FoldCtx, rec: &InboxRecord) -> Result<bool> {
             }
         }
     }
+    let jar_full = verdict == Some(CapVerdict::JarFull);
     if t.finished && interactive {
         c.execute(
             "UPDATE meta SET finished_seq = finished_seq + 1, finished_at_ms = ?1,
                finished_app = ?2, finished_treat = ?3, finished_jar_full = ?4 WHERE id = 1",
-            params![at, cid, earned, verdict == Some(CapVerdict::JarFull)],
+            params![at, cid, earned, jar_full],
         )?;
-    } else if earned {
-        // A late tool earned the finished turn's treat: its celebration shows the treat.
-        if let Some(check) = &t.treat {
-            c.execute(
-                "UPDATE meta SET finished_treat = 1
-                 WHERE id = 1 AND finished_app = ?1 AND finished_at_ms = ?2",
-                params![cid, check.at_ms],
-            )?;
-        }
+    } else if let Some(check) = t.treat.as_ref().filter(|_| earned || jar_full) {
+        // The late-tool re-check of the finished turn earned its treat or met a full jar:
+        // that turn's celebration shows it (`finished_jar_full` describes only the last
+        // finished turn).
+        c.execute(
+            "UPDATE meta SET finished_treat = ?3, finished_jar_full = ?4
+             WHERE id = 1 AND finished_app = ?1 AND finished_at_ms = ?2",
+            params![cid, check.at_ms, earned, jar_full],
+        )?;
     }
     save_session(c, &skey, cid, interactive, &s)?;
     let counted = t.counted_tool_turn.is_some();

@@ -31,6 +31,7 @@ spec.loader.exec_module(cc)
 
 AT_MS = 1792123876111
 BUCKET_MS = 3000
+VECTORS = json.loads((ROOT / "docs/v0.3/contracts/agent_vectors.json").read_text())
 NONCE = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
 KINDS = ["session_start", "turn_start", "activity", "waiting", "idle_prompt", "turn_done",
          "turn_failed", "turn_cancelled", "session_end"]
@@ -240,7 +241,9 @@ def expect_for(client, raw, extra):
     else:
         inter = True  # no codex/grok ancestor in the test process tree
     session_field = got["session"] if got.get("session") is not None else f"~ak:{got.get('akey')}"
-    key = f"codepet-ev1|{client}|{got['kind']}|{session_field}|{dig}|{AT_MS // BUCKET_MS}"
+    # agent_vectors.json event_ids.bucket: state kinds use the millisecond itself.
+    bucket = AT_MS if got["kind"] in VECTORS["event_ids"]["state_kinds"] else AT_MS // BUCKET_MS
+    key = f"codepet-ev1|{client}|{got['kind']}|{session_field}|{dig}|{bucket}"
     eid = hashlib.sha256(key.encode()).hexdigest()[:32]
     record = {"v": 1, "client": client, "kind": got["kind"], "session": got.get("session"),
               "turn": got.get("turn"), "tool": got.get("tool"), "akey": got.get("akey"),

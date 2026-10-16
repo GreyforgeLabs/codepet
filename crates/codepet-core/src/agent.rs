@@ -96,6 +96,16 @@ impl EventKind {
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.as_str() == s)
     }
+    /// Idempotent state changes (`agent_vectors.json` `event_ids.state_kinds`). A real
+    /// duplicate delivery of one is harmless, but a legitimate repeat can be byte-identical
+    /// (a second permission prompt for the same tool), so they are never deduped by the
+    /// 3 s bucket: their event-id bucket is the millisecond ([`event_bucket`]).
+    pub fn is_state_change(self) -> bool {
+        matches!(
+            self,
+            Self::SessionStart | Self::Waiting | Self::IdlePrompt | Self::SessionEnd
+        )
+    }
     /// Kinds that close a turn; they close only the turn whose key matches (§6.4).
     pub fn is_closer(self) -> bool {
         matches!(
@@ -208,6 +218,17 @@ pub const MAX_INBOX_FILES: usize = 2048;
 pub const MAX_ID_FIELD_BYTES: usize = 128;
 /// Event-id time bucket for duplicate-delivery dedupe.
 pub const EVENT_BUCKET_MS: i64 = 3000;
+
+/// The event id's (and dedupe key's) time bucket: `floor(at_ms / 3000)`, or `at_ms`
+/// itself for a state change ([`EventKind::is_state_change`]; an unknown kind uses the
+/// 3 s bucket).
+pub fn event_bucket(kind: &str, at_ms: i64) -> i64 {
+    if EventKind::parse(kind).is_some_and(EventKind::is_state_change) {
+        at_ms
+    } else {
+        at_ms.div_euclid(EVENT_BUCKET_MS)
+    }
+}
 /// Events per fold transaction.
 pub const FOLD_BATCH_EVENTS: usize = 64;
 /// Time budget of one fold transaction.
@@ -1267,6 +1288,26 @@ mod tests {
         assert_eq!(int("max_inbox_files") as usize, MAX_INBOX_FILES);
         assert_eq!(int("max_id_field_bytes") as usize, MAX_ID_FIELD_BYTES);
         assert_eq!(int("event_bucket_ms"), EVENT_BUCKET_MS);
+        let state_kinds: Vec<&str> = v["event_ids"]["state_kinds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k.as_str().unwrap())
+            .collect();
+        for k in EventKind::ALL {
+            assert_eq!(
+                k.is_state_change(),
+                state_kinds.contains(&k.as_str()),
+                "{k:?}"
+            );
+            let bucket = event_bucket(k.as_str(), 1_792_123_876_111);
+            let want = if k.is_state_change() {
+                1_792_123_876_111
+            } else {
+                1_792_123_876_111 / EVENT_BUCKET_MS
+            };
+            assert_eq!(bucket, want, "{k:?}");
+        }
         assert_eq!(int("fold_batch_events") as usize, FOLD_BATCH_EVENTS);
         assert_eq!(int("fold_batch_ms") as u64, FOLD_BATCH_MS);
         assert_eq!(int("fold_run_ms") as u64, FOLD_RUN_MS);
@@ -1574,6 +1615,7 @@ mod tests {
             }
             if t.finished && inter {
                 self.finished_seq += 1;
+                self.finished_jar_full = false;
             }
             let mut earned = false;
             if let Some(check) = &t.treat {

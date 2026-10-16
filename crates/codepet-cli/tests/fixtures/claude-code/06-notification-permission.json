@@ -9,7 +9,7 @@
  "at_ms": 1792123876111,
  "stdin": "{\"session_id\":\"5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11\",\"transcript_path\":\"/home/u/.claude/projects/CANARY-proj-7f3a/5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"permission_mode\":\"default\",\"hook_event_name\":\"Notification\",\"message\":\"CANARY-message-7f3a\",\"title\":\"CANARY-title-7f3a\",\"notification_type\":\"permission_prompt\"}\n",
  "expect": {
-  "event_id": "56627918de35606754074b96bc4e160a",
+  "event_id": "c1aababe65c00e980fad2d35f217889c",
   "record": {
    "v": 1,
    "client": "claude-code",

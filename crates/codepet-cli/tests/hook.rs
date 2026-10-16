@@ -222,8 +222,8 @@ fn stdin_never_closed_is_bounded() {
         "the record is written even when stdin stays open"
     );
     fs::write(hk.state.join("off"), b"").unwrap();
-    // Through the stored command a shell client runs (see shim_direct_run_job_message for
-    // the direct form).
+    // Through the stored command a shell client runs (every stored form, the argv form
+    // included, is in off_with_stdin_never_closed_is_silent_in_every_stored_form).
     let mut shim = Command::new("/bin/sh");
     shim.arg("-c")
         .arg(hk.stored_command("codex"))
@@ -448,34 +448,48 @@ fn a_locked_database_does_not_slow_the_hook() {
     c.execute_batch("ROLLBACK").unwrap();
 }
 
-/// Contract defect found in WP2 (reported, not fixed here: the shim bytes are frozen).
-/// When the 0.3 s drain expires, `timeout -s KILL` is killed and bash (`/bin/sh` on this
-/// host) prints its job message "Killed ..." on the **shim's own** stderr. The stored
-/// commands of shell clients redirect it (`>/dev/null 2>&1 || true`) and the OpenCode and
-/// Hermes plugins spawn the shim with stderr ignored, so no client sees it; a direct run
-/// does. Proposed fix: `exec >/dev/null 2>&1` as the shim's (and tombstone's) first
-/// command. This test pins the argv form's real behaviour: exit 0, empty stdout, bounded.
+/// K10 with stdin never closed: when the 0.3 s drain is cut, `timeout -s KILL` dies and
+/// bash (`/bin/sh` on this host) reports the job ("Killed ...") on the shell's own stderr.
+/// The shim and the tombstone start with `exec >/dev/null 2>&1` (contract amendment,
+/// notes.md §5), so every client's stored form, the argv form of OpenCode and Hermes
+/// included, stays silent, exits 0 and is bounded.
 #[test]
-fn shim_direct_run_job_message() {
+fn off_with_stdin_never_closed_is_silent_in_every_stored_form() {
     let hk = Hk::new();
     fs::write(hk.state.join("off"), b"").unwrap();
-    let mut c = Command::new(&hk.shim);
-    c.arg("opencode")
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = c.spawn().unwrap();
-    let pipe = child.stdin.take().unwrap();
-    let t = Instant::now();
-    let out = child.wait_with_output().unwrap();
-    drop(pipe);
-    assert!(out.status.success() && out.stdout.is_empty());
-    assert!(t.elapsed() < Duration::from_millis(400));
-    let err = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        err.is_empty() || err.contains("Killed"),
-        "only the shell's job message may appear: {err:?}"
-    );
+    let open_stdin = |cmd: &mut Command, ctx: &str| {
+        cmd.env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = cmd.spawn().unwrap();
+        let mut pipe = child.stdin.take().unwrap();
+        pipe.write_all(claude_stop()).unwrap();
+        let t = Instant::now();
+        let out = child.wait_with_output().unwrap();
+        let took = t.elapsed();
+        drop(pipe);
+        assert_silent_ok(&out, ctx);
+        assert!(took < Duration::from_millis(400), "{ctx} took {took:?}");
+    };
+    for client in CLIENTS {
+        let mut cmd = if matches!(client, "opencode" | "hermes") {
+            let mut c = Command::new(&hk.shim);
+            c.arg(client);
+            c
+        } else {
+            let mut c = Command::new("/bin/sh");
+            c.arg("-c").arg(hk.stored_command(client));
+            c
+        };
+        open_stdin(&mut cmd, &format!("{client} stored form, off"));
+    }
+    fs::write(&hk.shim, TOMBSTONE).unwrap();
+    fs::set_permissions(&hk.shim, fs::Permissions::from_mode(0o755)).unwrap();
+    for client in ["opencode", "hermes"] {
+        let mut c = Command::new(&hk.shim);
+        c.arg(client);
+        open_stdin(&mut c, &format!("{client} tombstone run directly"));
+    }
 }

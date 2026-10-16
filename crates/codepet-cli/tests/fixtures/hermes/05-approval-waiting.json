@@ -7,7 +7,7 @@
  "at_ms": 1792123876111,
  "stdin": "{\"codepet_v\":1,\"event\":\"waiting\",\"approval_key\":\"sk-cli-1\"}\n",
  "expect": {
-  "event_id": "473f38438aa0762e4f5756c21a9c1964",
+  "event_id": "c28f8287cf40046e8c300efdfbffee83",
   "record": {
    "v": 1,
    "client": "hermes",

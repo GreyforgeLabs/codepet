@@ -7,7 +7,7 @@
  "at_ms": 1792123876111,
  "stdin": "{\"codepet_v\":1,\"event\":\"session_start\",\"session_id\":\"20261016_120000_ab12cd\",\"interactive\":true}\n",
  "expect": {
-  "event_id": "f1badcbab4da98edf9f23083e8ae0416",
+  "event_id": "fff894f5d69f08600b7ed9beb33beceb",
   "record": {
    "v": 1,
    "client": "hermes",

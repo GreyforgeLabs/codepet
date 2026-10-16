@@ -7,7 +7,7 @@
  "at_ms": 1792123876111,
  "stdin": "{\"hookEventName\":\"stop\",\"hook_event_name\":\"Stop\",\"sessionId\":\"01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"workspaceRoot\":\"/home/u/CANARY-workspace-7f3a\",\"timestamp\":\"2026-10-16T12:00:00Z\",\"permissionMode\":\"default\",\"reason\":\"channel_closed\"}\n",
  "expect": {
-  "event_id": "3a430c0cead4bb99051a5baa9935ce1c",
+  "event_id": "3a706dda766e1987b28be4137fa9e74f",
   "record": {
    "v": 1,
    "client": "grok-cli",

@@ -18,6 +18,7 @@ STATE_PH, BIN_PH, NONCE_PH = "@CODEPET_STATE_DIR@", "@CODEPET_BIN@", "@CODEPET_T
 
 SHIM = f"""#!/bin/sh
 # managed by codepet: observe-only bridge; prints nothing; always exits 0
+exec >/dev/null 2>&1
 S='{STATE_PH}'
 B='{BIN_PH}'
 d() {{ timeout -s KILL 0.3 cat >/dev/null 2>&1; exit 0; }}
@@ -33,6 +34,7 @@ exit 0
 """
 TOMBSTONE = """#!/bin/sh
 # managed by codepet: tombstone
+exec >/dev/null 2>&1
 timeout -s KILL 0.3 cat >/dev/null 2>&1; exit 0
 """
 
@@ -145,6 +147,7 @@ commands = O([
         ("reference_sha256", sha(shim_ref)),
         ("tombstone_sha256", sha(TOMBSTONE.encode())),
         ("doctor", "codepet doctor prints the installed shim's sha256 and checks its S/B against the bar's paths"),
+        ("silence", "the first command of the shim and the tombstone is `exec >/dev/null 2>&1` (stdin stays for the drain): the shell's own messages, such as bash's 'Killed' job report when the 0.3 s drain is cut, never reach the argv-form clients (OpenCode, Hermes). Amended after the WP2 review (notes.md §5)"),
     ])),
     ("stored_command", O([
         ("shell", "<shim> <client-id> >/dev/null 2>&1 || true  (claude-code, codex, grok-cli: the client runs it through a shell)"),

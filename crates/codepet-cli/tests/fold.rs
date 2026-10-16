@@ -250,3 +250,52 @@ fn off_starts_nothing_and_the_fold_drops_stragglers() {
     );
     assert_eq!(db.int("SELECT COUNT(*) FROM agent_sessions"), 0);
 }
+
+/// Two byte-identical permission prompts in one turn with a tool between them, all inside
+/// one 3 s bucket (contract amendment, notes.md §5 item 2): the pet ends "waiting".
+#[cfg(debug_assertions)]
+#[test]
+fn a_second_identical_permission_prompt_still_means_waiting() {
+    let hk = Hk::with_db();
+    let now = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let base = now - now.rem_euclid(3000);
+    let prompt = r#","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash""#;
+    let steps = [
+        ("SessionStart", r#","source":"startup""#.to_owned()),
+        ("UserPromptSubmit", r#","prompt_id":"p1""#.to_owned()),
+        (
+            "PreToolUse",
+            r#","prompt_id":"p1","tool_use_id":"tu1","tool_name":"Bash""#.to_owned(),
+        ),
+        ("Notification", prompt.to_owned()),
+        (
+            "PreToolUse",
+            r#","prompt_id":"p1","tool_use_id":"tu2","tool_name":"Bash""#.to_owned(),
+        ),
+        ("Notification", prompt.to_owned()),
+    ];
+    for (i, (event, extra)) in steps.iter().enumerate() {
+        let at = (base + 1 + i as i64).to_string();
+        let env = [
+            ("CLAUDE_CODE_ENTRYPOINT", "cli"),
+            ("CODEPET_TEST_NOW_MS", &at),
+        ];
+        assert_silent_ok(
+            &hk.stored("claude-code", &claude(event, extra), &env),
+            event,
+        );
+    }
+    assert!(hk.wait_for(Duration::from_secs(5), || {
+        hk.inbox_names().is_empty() && hk.fold_processes() == 0
+    }));
+    let bar = hk.bar_state().unwrap();
+    assert_eq!(bar["agent"]["state"], "waiting", "{bar}");
+    assert_eq!(
+        hk.db()
+            .int("SELECT COUNT(*) FROM agent_events WHERE kind = 'waiting' AND outcome = 'folded'"),
+        2
+    );
+}

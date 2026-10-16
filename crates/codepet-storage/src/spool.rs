@@ -12,7 +12,7 @@
 //! unlinks and counts it).
 use crate::sys::hex;
 use codepet_core::agent::{
-    valid_id, ClientId, EventKind, EVENT_BUCKET_MS, MAX_INBOX_FILES, MAX_INBOX_RECORD_BYTES,
+    event_bucket, valid_id, ClientId, EventKind, MAX_INBOX_FILES, MAX_INBOX_RECORD_BYTES,
 };
 use rustix::fs::{AtFlags, Mode, OFlags, RenameFlags};
 use rustix::io::Errno;
@@ -44,12 +44,14 @@ pub fn payload_digest(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))[..16].to_owned()
 }
 
-/// The event id (and inbox file stem): duplicate deliveries of one hook firing share it.
+/// The event id (and inbox file stem): duplicate deliveries of one hook firing share it
+/// (within a 3 s bucket; state changes only within the same millisecond, see
+/// [`event_bucket`]).
 /// `session_field` is the raw session id, or `~ak:<approval_key>` for an approval event.
 pub fn event_id(client: &str, kind: &str, session_field: &str, dig: &str, at_ms: i64) -> String {
     let key = format!(
         "codepet-ev1|{client}|{kind}|{session_field}|{dig}|{}",
-        at_ms.div_euclid(EVENT_BUCKET_MS)
+        event_bucket(kind, at_ms)
     );
     hex(&Sha256::digest(key.as_bytes()))[..32].to_owned()
 }

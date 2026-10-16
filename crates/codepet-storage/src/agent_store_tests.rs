@@ -559,6 +559,78 @@ fn retention_is_hourly_limited_and_coarsens() {
     assert!(store.agent_retention().unwrap());
 }
 
+/// Two byte-identical permission prompts in one turn, an activity between them, all inside
+/// one 3 s bucket (notes.md §5 item 2): the second "needs you" is not a duplicate. A
+/// delivery of the same firing (same millisecond) still is, and activity keeps the bucket.
+#[test]
+fn identical_state_changes_in_one_bucket_are_not_deduped() {
+    let env = Env::new();
+    let mut store = env.fold();
+    let t = T0 - T0.rem_euclid(3000);
+    let prompt = |at| InboxRecord {
+        note: Some("permission_prompt".into()),
+        dig: "353401f5cd906398".into(),
+        ..env.rec("claude-code", "waiting", at)
+    };
+    env.fold_one(
+        &mut store,
+        turn(env.rec("claude-code", "turn_start", t), "p1"),
+    );
+    env.fold_one(
+        &mut store,
+        tool(
+            turn(env.rec("claude-code", "activity", t + 100), "p1"),
+            "tu1",
+        ),
+    );
+    assert_eq!(env.fold_one(&mut store, prompt(t + 200)).recorded, 1);
+    assert_eq!(
+        env.state_of("claude-code", "s1").as_deref(),
+        Some("waiting")
+    );
+    env.fold_one(
+        &mut store,
+        tool(
+            turn(env.rec("claude-code", "activity", t + 300), "p1"),
+            "tu2",
+        ),
+    );
+    assert_eq!(
+        env.state_of("claude-code", "s1").as_deref(),
+        Some("working")
+    );
+    let again = env.fold_one(&mut store, prompt(t + 400));
+    assert_eq!(
+        (again.recorded, again.duplicates),
+        (1, 0),
+        "a second prompt"
+    );
+    assert_eq!(
+        env.state_of("claude-code", "s1").as_deref(),
+        Some("waiting")
+    );
+    let dup = env.fold_one(&mut store, prompt(t + 400));
+    assert_eq!((dup.recorded, dup.duplicates), (0, 1), "the same delivery");
+    assert_eq!(
+        env.int("SELECT COUNT(*) FROM agent_events WHERE kind = 'waiting'"),
+        2
+    );
+    // Activity keeps the 3 s bucket: an identical repeat is a duplicate delivery.
+    let a = InboxRecord {
+        dig: "00000000000000aa".into(),
+        ..tool(
+            turn(env.rec("claude-code", "activity", t + 500), "p1"),
+            "tu3",
+        )
+    };
+    assert_eq!(env.fold_one(&mut store, a.clone()).recorded, 1);
+    let b = InboxRecord {
+        at_ms: t + 2900,
+        ..a
+    };
+    assert_eq!(env.fold_one(&mut store, b).duplicates, 1);
+}
+
 #[test]
 fn the_export_carries_the_agent_block_and_the_jar() {
     let env = Env::new();

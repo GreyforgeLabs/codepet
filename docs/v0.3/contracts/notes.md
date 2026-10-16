@@ -260,3 +260,37 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
 
 No migration code, no fold, no hook body, no installer, no QML, no icons. The v5 DDL is a
 contract file only (`SCHEMA_VERSION` stays 4). Live client checks (§9.5) are WP7.
+
+## 5. Amendments after the freeze (WP2 review, 2026-10-16)
+
+Each amendment changed the generator, the contract file, `check_contracts.py` and every
+consumer together. The SPEC text (§5.1 shim, §5.8 event id, §6.4) predates them; where they
+differ, these entries win.
+
+1. **The shim and the tombstone silence the shell itself.** With stdin never closed, the
+   0.3 s drain ends with `timeout -s KILL`, and bash (`/bin/sh` on Arch) reports the killed
+   job ("<shim>: line 5: <pid> Killed ...") on the shell's own stderr. Shell clients redirect
+   it in their stored command, but OpenCode and Hermes run the shim directly (argv form), so
+   K10 failed for them. Resolved: `exec >/dev/null 2>&1` is the first command of
+   `shim.sh.template` and `shim-tombstone.sh` (stdin stays for the drain); the
+   `commands.json` sha256 values were regenerated (the stored command strings and the Codex
+   trust hashes do not include the shim bytes, so they are unchanged). The shim smoke now
+   runs the argv form and the tombstone with stdin left open.
+2. **State changes are never deduped by the 3 s bucket.** SPEC §5.8 assumed legitimate
+   repeats "have different payloads or times", but a second Claude Code permission prompt
+   for the same tool is byte-identical (the Notification has no turn or tool id and a
+   generic message), as is a repeated Codex `PermissionRequest`, so the second "needs you"
+   was swallowed and the pet showed "working" while the client waited. Resolved: for the
+   idempotent kinds `session_start`, `waiting`, `idle_prompt` and `session_end`
+   (`event_ids.state_kinds`) the bucket of the event id and of the dedupe key is `at_ms`
+   itself, so only deliveries of one firing within the same millisecond share an id. A real
+   duplicate delivery of a state change is harmless. `activity`, `turn_start` and the
+   closers keep the 3 s bucket.
+3. **`finished_jar_full` describes only the last finished turn.** The reference model
+   changed the flag only when a turn qualified, so after a full-jar turn a short tool-less
+   turn still exported `true` ("jar is full", even after the treats were given); the Rust
+   fold cleared it. Resolved (WP2 choice, flagged for the owner): every interactive
+   `turn_done` clears it, and the treat check of that turn sets it when the verdict is
+   `jar_full`, including the one late-tool re-check (which the Rust fold did not record).
+   New `sessions` vectors: `jar_full_describes_only_the_last_finished_turn` and
+   `late_tool_recheck_on_a_full_jar_sets_jar_full`.
