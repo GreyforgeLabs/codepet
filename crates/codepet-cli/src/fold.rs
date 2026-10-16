@@ -296,7 +296,7 @@ fn drain(
 ) -> Result<usize, Failure> {
     let mut size = FOLD_BATCH_EVENTS;
     let mut removed = 0;
-    while started.elapsed() < budget {
+    while !budget_spent(started, budget, removed) {
         let scan = inbox.scan(now_ms())?;
         let dropped = scan.poison.len() + usize::from(scan.overflow);
         if scan.events.is_empty() && dropped == 0 {
@@ -322,14 +322,12 @@ fn drain(
                 }
                 first = false;
             }
-            #[cfg(debug_assertions)]
-            debug_slow_batch();
             export_after(store, b.changed, b.urgent, pending);
             if t0.elapsed() > Duration::from_millis(FOLD_BATCH_MS) {
                 size = (size / 2).max(MIN_BATCH);
             }
             rest = tail;
-            if rest.is_empty() || started.elapsed() >= budget {
+            if rest.is_empty() || budget_spent(started, budget, removed) {
                 break;
             }
         }
@@ -337,23 +335,21 @@ fn drain(
     Ok(removed)
 }
 
-/// The run budget (5 s). Debug builds: `CODEPET_FAULT=fold_short_run` makes it 100 ms so
-/// tests can spend it.
-fn run_budget() -> Duration {
+/// The real run budget remains 5 s. The debug handoff fault spends it only after a
+/// completed batch, so scheduler/setup latency cannot consume a tiny test budget
+/// before any progress and accidentally exercise the zero-progress stop instead.
+fn budget_spent(started: Instant, budget: Duration, _removed: usize) -> bool {
     #[cfg(debug_assertions)]
-    if std::env::var_os("CODEPET_FAULT").is_some_and(|f| f == "fold_short_run") {
-        return Duration::from_millis(100);
+    if _removed > 0 && debug_short_run() {
+        return true;
     }
-    Duration::from_millis(FOLD_RUN_MS)
+    started.elapsed() >= budget
 }
 
-/// Debug builds: `CODEPET_FAULT=fold_short_run` also makes every batch take 150 ms, so
-/// one run folds a single batch and spends its budget.
 #[cfg(debug_assertions)]
-fn debug_slow_batch() {
-    if std::env::var_os("CODEPET_FAULT").is_some_and(|f| f == "fold_short_run") {
-        std::thread::sleep(Duration::from_millis(150));
-    }
+fn debug_short_run() -> bool {
+    std::env::var_os("CODEPET_FAULT")
+        .is_some_and(|f| f == "fold_short_run" || f == "fold_short_run_slow_start")
 }
 
 /// One fold run. `Ok(true)`: the budget is spent, records are left and this run made
@@ -361,7 +357,11 @@ fn debug_slow_batch() {
 /// its whole budget does not hand off; the next hook retries.)
 fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<bool, Failure> {
     let started = Instant::now();
-    let budget = run_budget();
+    let budget = Duration::from_millis(FOLD_RUN_MS);
+    #[cfg(debug_assertions)]
+    if std::env::var_os("CODEPET_FAULT").is_some_and(|f| f == "fold_short_run_slow_start") {
+        std::thread::sleep(Duration::from_millis(150));
+    }
     let mut store = Store::open_for_fold(state_dir, Arc::new(SystemClock))?;
     let inbox = Inbox::open(state_dir)?;
     let mut pending = false;
@@ -378,7 +378,7 @@ fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<bool, Failure> {
         // folds what arrives), then export once. Past the run budget it exports at once.
         while pending {
             let age = export_age_ms(state_dir);
-            if age >= EXPORT_MIN_INTERVAL_MS || started.elapsed() >= budget {
+            if age >= EXPORT_MIN_INTERVAL_MS || budget_spent(started, budget, removed) {
                 let _ = store.export_bar_state();
                 pending = false;
             } else {
@@ -393,7 +393,7 @@ fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<bool, Failure> {
         if !inbox.has_records()? {
             return Ok(false);
         }
-        if started.elapsed() >= budget {
+        if budget_spent(started, budget, removed) {
             return Ok(removed > 0);
         }
         if !lock.relock() {

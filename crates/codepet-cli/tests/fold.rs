@@ -370,6 +370,19 @@ fn drain_once_skips_a_held_lock_and_hands_off_the_rest() {
 #[cfg(debug_assertions)]
 #[test]
 fn a_fold_past_its_budget_hands_the_rest_to_a_fresh_fold() {
+    assert_budget_handoff("fold_short_run");
+}
+
+/// A scheduler/setup delay longer than the former 100 ms fault budget must not turn
+/// the handoff test into a zero-progress run that intentionally starts no successor.
+#[cfg(debug_assertions)]
+#[test]
+fn a_fold_budget_handoff_survives_slow_startup() {
+    assert_budget_handoff("fold_short_run_slow_start");
+}
+
+#[cfg(debug_assertions)]
+fn assert_budget_handoff(fault: &str) {
     let hk = Hk::with_db();
     hk.block_folds();
     let start = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
@@ -384,12 +397,14 @@ fn a_fold_past_its_budget_hands_the_rest_to_a_fresh_fold() {
     hk.unblock_folds();
     let p = claude("PreToolUse", r#","prompt_id":"p1","tool_use_id":"last""#);
     let mut env = CLI.to_vec();
-    env.push(("CODEPET_FAULT", "fold_short_run"));
+    env.push(("CODEPET_FAULT", fault));
     assert_silent_ok(&hk.hook("claude-code", &p, &env), "trigger");
     assert!(
         hk.wait_for(Duration::from_secs(10), || hk.inbox_names().is_empty()),
-        "stranded after a spent budget: {}",
-        hk.inbox_names().len()
+        "stranded after a spent budget ({fault}): {}, folds: {}, backoff: {:?}",
+        hk.inbox_names().len(),
+        hk.fold_processes(),
+        fs::read_to_string(hk.state.join("fold.backoff")).ok()
     );
     assert!(hk.wait_for(Duration::from_secs(3), || hk.fold_processes() == 0));
     assert_eq!(hk.db().int("SELECT COUNT(*) FROM agent_events"), 201);
