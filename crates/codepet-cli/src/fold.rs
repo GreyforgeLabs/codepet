@@ -11,9 +11,12 @@
 //!   `/dev/null` output; the fold never migrates and never creates a directory.
 //! - Loop: batches of at most 64 records (halved while a batch takes over 50 ms), each one
 //!   `BEGIN IMMEDIATE`, until the inbox is empty or 5 s passed; then retention (hourly),
-//!   the final export, unlock, and one more look: records left → `LOCK_NB` again (busy →
-//!   another fold has them; exit). Every hook writes its record before trying the lock,
-//!   so no record is stranded while hooks keep firing.
+//!   the final export (rate-limited: if the last export is under 250 ms old, the fold
+//!   waits out the rest under the lock and folds what arrived meanwhile, so bursts of
+//!   short fold runs never export more than about four times a second), unlock, and one
+//!   more look: records left → `LOCK_NB` again (busy → another fold has them; exit).
+//!   Every hook writes its record before trying the lock, so no record is stranded while
+//!   hooks keep firing.
 //! - Failure: `fold.backoff` (count, error class; mtime = retry time, 5 s doubling to
 //!   10 min). Hooks skip spawning while it lies in the future; the first success removes it.
 use codepet_core::agent::{
@@ -295,6 +298,7 @@ fn drain(
 
 fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<(), Failure> {
     let started = Instant::now();
+    let budget = Duration::from_millis(FOLD_RUN_MS);
     let mut store = Store::open_for_fold(state_dir, Arc::new(SystemClock))?;
     let inbox = Inbox::open(state_dir)?;
     let mut pending = false;
@@ -305,17 +309,24 @@ fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<(), Failure> {
             let _ = store.agent_retention();
             retention_done = true;
         }
-        if pending {
-            let _ = store.export_bar_state();
-            pending = false;
+        // The last batch always exports, but never sooner than 250 ms after the previous
+        // export: wait out the rest (holding the lock, so hooks keep writing and this fold
+        // folds what arrives), then export once. Past the run budget it exports at once.
+        while pending {
+            let age = export_age_ms(state_dir);
+            if age >= EXPORT_MIN_INTERVAL_MS || started.elapsed() >= budget {
+                let _ = store.export_bar_state();
+                pending = false;
+            } else {
+                let rest = u64::try_from(EXPORT_MIN_INTERVAL_MS - age).unwrap_or(0);
+                std::thread::sleep(Duration::from_millis(rest));
+                drain(&mut store, &inbox, started, &mut pending)?;
+            }
         }
         // Unlock before the last look: a hook that wrote after it either sees the lock
         // free and starts a fold, or its record is in this look.
         lock.unlock();
-        if started.elapsed() >= Duration::from_millis(FOLD_RUN_MS)
-            || !inbox.has_records()?
-            || !lock.relock()
-        {
+        if started.elapsed() >= budget || !inbox.has_records()? || !lock.relock() {
             return Ok(());
         }
     }
