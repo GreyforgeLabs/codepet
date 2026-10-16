@@ -1,0 +1,402 @@
+//! The `clients.*` protocol methods (spec §5.2, §6.2) and the plain-word `codepet connect`
+//! / `codepet disconnect` wrappers (§6.3).
+//!
+//! `clients.status` is file-only (no client program, no network): it detects every
+//! supported client, reads CodePet's own artifacts (and Codex's trust entries), writes
+//! `client_hooks` and re-exports. `clients.connect`, `clients.disconnect` and
+//! `clients.test` start a detached `codepet clients-job` and return `{job_id}` at once;
+//! they answer `TEST_STATE` while the bar runs with a `stateHome` test override (the bar
+//! then sets `CODEPET_TEST_STATE=1`), so a test can never repoint the owner's real shim.
+use crate::clients_job::{self, Journal};
+use crate::errors::Failure;
+use crate::install::{self, codex, detect, Artifact, Ctx, Env};
+use codepet_core::agent::ClientId;
+use codepet_protocol::ErrorCode;
+use codepet_storage::{JobTarget, StatusUpdate, Store};
+use serde_json::{json, Value};
+use std::io::Write;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+/// Set by the bar when it runs with a `stateHome` test override.
+pub const TEST_STATE_ENV: &str = "CODEPET_TEST_STATE";
+
+fn test_state() -> bool {
+    std::env::var_os(TEST_STATE_ENV).is_some_and(|v| !v.is_empty())
+}
+
+/// The integrations context of this process (status, connect).
+pub fn context(store: &Store) -> Result<Ctx, Failure> {
+    let env = Env::from_process()
+        .ok_or_else(|| Failure::new(ErrorCode::InvalidState, "HOME is not an absolute path"))?;
+    let bin = clients_job::shim_bin()
+        .ok_or_else(|| Failure::new(ErrorCode::Internal, "cannot find the codepet binary"))?;
+    Ctx::new(env, store.paths().clone(), bin).ok_or_else(|| {
+        Failure::new(
+            ErrorCode::InvalidState,
+            "no data directory (HOME or XDG_DATA_HOME)",
+        )
+    })
+}
+
+/// What the files say about one client (file-only).
+pub fn detect_update(ctx: &Ctx, c: ClientId) -> StatusUpdate {
+    let d = detect::detect(&ctx.env, c);
+    let flagged = ctx.paths.disconnected_flag_path(c.as_str()).exists();
+    let (artifact, needs_step) = if c == ClientId::Codex {
+        let st = codex::status(ctx);
+        (st.artifact, st.needs_step)
+    } else {
+        (install::status(ctx, c), Some(None))
+    };
+    StatusUpdate {
+        client: c,
+        installed: d.installed(),
+        version: d.version,
+        connected: Some(!flagged && artifact == Artifact::Current),
+        needs_step,
+    }
+}
+
+/// `clients.status`.
+pub fn status(store: &mut Store) -> Result<Value, Failure> {
+    clients_job::recover(store);
+    let ctx = context(store)?;
+    let updates: Vec<StatusUpdate> = ClientId::ALL
+        .iter()
+        .map(|c| detect_update(&ctx, *c))
+        .collect();
+    let rows = store.record_clients_status(&updates)?;
+    let clients: Vec<Value> = ClientId::ALL
+        .iter()
+        .map(|c| {
+            let r = rows
+                .iter()
+                .find(|r| r.client == c.as_str())
+                .cloned()
+                .unwrap_or_default();
+            json!({
+                "id": c.as_str(),
+                "name": c.display_name(),
+                "installed": r.installed,
+                "version": r.detected_version,
+                "connected": r.connected,
+                "needs_step": r.needs_step,
+                "last_seen_ms": r.last_seen_ms,
+                "first_seen_ms": r.first_seen_ms,
+                "events_7d": r.events_7d,
+                "failed_reason": r.failed_reason(),
+                "job": match (&r.job_id, &r.job_kind) {
+                    (Some(id), Some(kind)) => json!({"id": id, "kind": kind, "state": "running"}),
+                    _ => Value::Null,
+                },
+            })
+        })
+        .collect();
+    Ok(json!({ "clients": clients }))
+}
+
+/// Starts a job for an RPC; returns `{job_id}`.
+pub fn start(
+    store: &mut Store,
+    request_id: &str,
+    method: &str,
+    kind: &str,
+    target: JobTarget,
+) -> Result<Value, Failure> {
+    if test_state() {
+        return Err(Failure::new(
+            ErrorCode::TestState,
+            "the bar runs with a test state home; connect from a normal session",
+        ));
+    }
+    clients_job::recover(store);
+    let canonical = match &target {
+        JobTarget::Named(list) => {
+            let mut ids: Vec<&str> = list.iter().map(|c| c.as_str()).collect();
+            ids.sort_by_key(|id| ClientId::parse(id).map(|c| c as u8));
+            json!({ "clients": ids }).to_string()
+        }
+        JobTarget::Connected(one) => json!({ "client": one.map(ClientId::as_str) }).to_string(),
+    };
+    let ctx = context(store)?;
+    let job_id = clients_job::new_job_id()
+        .map_err(|_| Failure::new(ErrorCode::Internal, "no random job id"))?;
+    let refuses_off = kind != "disconnect";
+    let (job_id, clients, replayed) = store.start_clients_job(
+        request_id,
+        method,
+        &canonical,
+        refuses_off,
+        kind,
+        &target,
+        &job_id,
+    )?;
+    if !replayed {
+        let started = clients_job::create_journal(&ctx.paths, &job_id, kind, &clients, &ctx.bin)
+            .and_then(|()| clients_job::spawn(&job_id));
+        if started.is_err() {
+            let _ = store.finish_clients_job(&job_id);
+            return Err(Failure::new(
+                ErrorCode::Internal,
+                "could not start the clients job",
+            ));
+        }
+    }
+    Ok(json!({ "job_id": job_id }))
+}
+
+// ---- `codepet connect` / `codepet disconnect` ----------------------------------------
+
+const USAGE_CONNECT: &str = "usage: codepet connect <client>... | --all   (clients: claude-code, codex, opencode, hermes, grok-cli)";
+const USAGE_DISCONNECT: &str = "usage: codepet disconnect <client>   (clients: claude-code, codex, opencode, hermes, grok-cli)";
+/// How long the wrappers wait for their job.
+const WAIT: Duration = Duration::from_secs(120);
+
+fn usage(line: &str) -> i32 {
+    let _ = writeln!(std::io::stderr(), "{line}");
+    2
+}
+
+fn say(line: &str) {
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{line}");
+}
+
+fn waited_journal(store: &Store, job_id: &str) -> Option<Journal> {
+    let started = Instant::now();
+    while started.elapsed() < WAIT {
+        if let Some(j) = clients_job::read_journal(store.paths(), job_id).filter(|j| j.done) {
+            return Some(j);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    None
+}
+
+fn plain(r: &clients_job::JournalResult) -> String {
+    let c = ClientId::parse(&r.id).expect("journal ids are client ids");
+    let name = c.display_name();
+    match (r.outcome.as_str(), r.step.as_deref(), r.reason.as_deref()) {
+        ("connected", ..) => format!("{name}: connected. Open a new {name} window{}.", if c == ClientId::ClaudeCode { " (or type /reload-plugins)" } else { "" }),
+        ("needs_step", Some("codex_hooks_off"), _) => format!("{name}: hooks are turned off in Codex ([features] hooks = false); CodePet changed nothing"),
+        ("needs_step", ..) => format!("{name}: connected, one more step: open Codex, type /hooks, trust the CodePet lines"),
+        ("disconnected", ..) => match &r.detail {
+            Some(d) => format!("{name}: stopped watching ({d})"),
+            None => format!("{name}: stopped watching"),
+        },
+        (_, _, Some(reason)) => format!(
+            "{name}: couldn't {} ({}){}",
+            "connect",
+            match reason {
+                "not_installed" => "not installed",
+                "too_old" => "too old",
+                "settings_changed" => "its settings changed in an unexpected way",
+                "ready_check" => "the ready check did not arrive",
+                _ => "something blocked it",
+            },
+            r.detail.as_ref().map(|d| format!(": {d}")).unwrap_or_default()
+        ),
+        _ => format!("{name}: {}", r.outcome),
+    }
+}
+
+fn run_job(method: codepet_protocol::Method, params: Value) -> i32 {
+    let opened = crate::rpc::open_current();
+    let mut store = match opened {
+        Ok(s) => s,
+        Err(f) => {
+            let _ = writeln!(std::io::stderr(), "{}: {}", f.code, f.message);
+            return 1;
+        }
+    };
+    let id = match clients_job::random_hex(12) {
+        Ok(h) => format!("cli-{h}"),
+        Err(_) => return 1,
+    };
+    let result = match method {
+        codepet_protocol::Method::ClientsConnect => {
+            let list: Vec<ClientId> = params["clients"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().and_then(ClientId::parse))
+                .collect();
+            start(
+                &mut store,
+                &id,
+                "clients.connect",
+                "connect",
+                JobTarget::Named(list),
+            )
+        }
+        _ => {
+            let c = params["client"]
+                .as_str()
+                .and_then(ClientId::parse)
+                .expect("validated");
+            start(
+                &mut store,
+                &id,
+                "clients.disconnect",
+                "disconnect",
+                JobTarget::Named(vec![c]),
+            )
+        }
+    };
+    let job_id = match result {
+        Ok(v) => v["job_id"].as_str().unwrap_or_default().to_owned(),
+        Err(f) if f.code == ErrorCode::InvalidState && f.message.contains("off") => {
+            let _ = writeln!(
+                std::io::stderr(),
+                "CodePet is off. Turn it on first: codepet on"
+            );
+            return 1;
+        }
+        Err(f) => {
+            let _ = writeln!(
+                std::io::stderr(),
+                "{}: {}",
+                f.code,
+                f.message.replace('\n', " ")
+            );
+            return 1;
+        }
+    };
+    let Some(j) = waited_journal(&store, &job_id) else {
+        say("Still working in the background; open Helpers or run codepet doctor later.");
+        return 1;
+    };
+    let mut ok = true;
+    for r in &j.results {
+        say(&plain(r));
+        ok &= r.outcome != "failed";
+    }
+    match j.test.as_deref() {
+        Some("done") => say("Ready check: passed."),
+        Some(_) => {
+            say("Ready check: nothing arrived. Run codepet doctor.");
+            ok = false;
+        }
+        None => {}
+    }
+    i32::from(!ok)
+}
+
+/// `codepet connect <id>... | --all`.
+pub fn connect_cli(args: &[std::ffi::OsString]) -> i32 {
+    let args: Vec<&str> = match args.iter().map(|a| a.to_str()).collect::<Option<Vec<_>>>() {
+        Some(a) => a,
+        None => return usage(USAGE_CONNECT),
+    };
+    let list: Vec<ClientId> = if args == ["--all"] {
+        let mut store = match crate::rpc::open_current() {
+            Ok(s) => s,
+            Err(f) => {
+                let _ = writeln!(std::io::stderr(), "{}: {}", f.code, f.message);
+                return 1;
+            }
+        };
+        if let Err(f) = status(&mut store) {
+            let _ = writeln!(std::io::stderr(), "{}: {}", f.code, f.message);
+            return 1;
+        }
+        let rows = store.client_rows().unwrap_or_default();
+        let picked: Vec<ClientId> = rows
+            .iter()
+            .filter(|r| r.installed && !r.connected && r.job_id.is_none())
+            .filter_map(|r| ClientId::parse(&r.client))
+            .filter(|c| *c != ClientId::Codex)
+            .collect();
+        if picked.is_empty() {
+            say("Nothing to connect: every installed app is connected (Codex only when named: codepet connect codex).");
+            return 0;
+        }
+        picked
+    } else {
+        if args.is_empty() {
+            return usage(USAGE_CONNECT);
+        }
+        let mut out = Vec::new();
+        for a in &args {
+            match ClientId::parse(a) {
+                Some(c) if !out.contains(&c) => out.push(c),
+                Some(_) => {}
+                None => return usage(USAGE_CONNECT),
+            }
+        }
+        out
+    };
+    let ids: Vec<&str> = list.iter().map(|c| c.as_str()).collect();
+    run_job(
+        codepet_protocol::Method::ClientsConnect,
+        json!({ "clients": ids }),
+    )
+}
+
+/// `codepet disconnect <id>`.
+pub fn disconnect_cli(args: &[std::ffi::OsString]) -> i32 {
+    let [one] = args else {
+        return usage(USAGE_DISCONNECT);
+    };
+    let Some(c) = one.to_str().and_then(ClientId::parse) else {
+        return usage(USAGE_DISCONNECT);
+    };
+    run_job(
+        codepet_protocol::Method::ClientsDisconnect,
+        json!({ "client": c.as_str() }),
+    )
+}
+
+/// `codepet clients-refresh` (internal; the installer's step 5): refreshes connected
+/// clients' wholly CodePet-owned files whose marker is present and whose bytes differ, and
+/// upgrades an older shim in place (same paths). Never runs a client CLI, never touches
+/// Codex's shared file. Prints one line per refreshed artifact.
+pub fn refresh_cli() -> i32 {
+    let store = match crate::rpc::open_current() {
+        Ok(s) => s,
+        Err(f) => {
+            let _ = writeln!(std::io::stderr(), "{}: {}", f.code, f.message);
+            return 1;
+        }
+    };
+    let ctx = match context(&store) {
+        Ok(c) => c,
+        Err(f) => {
+            let _ = writeln!(std::io::stderr(), "{}: {}", f.code, f.message);
+            return 1;
+        }
+    };
+    if let install::ShimState::Shim {
+        state_dir,
+        bin,
+        current: false,
+    } = install::shim_state(&ctx.shim)
+    {
+        let old = Ctx {
+            bin: PathBuf::from(bin),
+            paths: codepet_storage::StatePaths {
+                state_dir: PathBuf::from(&state_dir),
+                ..ctx.paths.clone()
+            },
+            ..ctx.clone()
+        };
+        if install::install_shim(&old).is_ok() {
+            say("refreshed: the CodePet hook shim");
+        }
+    }
+    let rows = store.client_rows().unwrap_or_default();
+    let mut failed = false;
+    for c in ClientId::ALL {
+        let connected = rows.iter().any(|r| r.client == c.as_str() && r.connected);
+        if !connected {
+            continue;
+        }
+        match install::refresh(&ctx, c) {
+            Ok(true) => say(&format!("refreshed: {}", c.display_name())),
+            Ok(false) => {}
+            Err(_) => failed = true,
+        }
+    }
+    i32::from(failed)
+}

@@ -9,6 +9,7 @@
 use crate::errors::Failure;
 #[cfg(feature = "legacy-tasks")]
 use crate::supervisor::{self, Job};
+use codepet_core::agent::ClientId;
 use codepet_core::lifecycle::{Mode, Pace};
 use codepet_core::PROTOCOL_VERSION;
 #[cfg(feature = "legacy-tasks")]
@@ -19,7 +20,7 @@ use codepet_protocol::{
     ClientsTestParams, EmptyParams, ErrorCode, HelloParams, LifecycleRulesParams, Method,
     PetAdoptParams, PetCareParams, PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams,
     PetPauseParams, PetRenameParams, PetRetireParams, PetRulesParams, PetSelectParams,
-    PetStartParams, ProtocolError, Request, Response, TreatsGiveParams, V03_PENDING_MESSAGE,
+    PetStartParams, ProtocolError, Request, Response, TreatsGiveParams,
 };
 #[cfg(feature = "legacy-tasks")]
 use codepet_protocol::{
@@ -28,7 +29,8 @@ use codepet_protocol::{
     TaskStartParams, TaskUpdateParams, NOT_IMPLEMENTED_MESSAGE,
 };
 use codepet_storage::{
-    lifecycle_rules_json, AdoptRequest, Leniency, StartRequest, StatePaths, Store, SystemClock,
+    lifecycle_rules_json, AdoptRequest, JobTarget, Leniency, StartRequest, StatePaths, Store,
+    SystemClock,
 };
 #[cfg(feature = "legacy-tasks")]
 use codepet_storage::{
@@ -206,12 +208,6 @@ pub(crate) fn open_current() -> Result<Store, Failure> {
     Ok(Store::open_current(&paths, Arc::new(SystemClock))?)
 }
 
-/// The v0.3 skeleton's refusal: params were valid, the body lands in a later work package.
-/// Answered before the state directory is opened, so nothing is created or published.
-fn pending() -> Outcome {
-    Err(Failure::new(ErrorCode::NotImplemented, V03_PENDING_MESSAGE))
-}
-
 fn done(value: Value) -> Outcome {
     Ok((value, None))
 }
@@ -276,6 +272,8 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
             let _: EmptyParams = parse_params(p)?;
             // v0.3 (§8 rule 1): opening the popup drains the inbox (one batch).
             crate::fold::drain_once(ctx.store()?);
+            // §5.2 kill-safety: resume (or roll back) a clients job whose process died.
+            crate::clients_job::recover(ctx.store()?);
             encode(serde_json::to_value(ctx.store()?.snapshot()?))
         }
         #[cfg(feature = "legacy-tasks")]
@@ -535,25 +533,62 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
             crate::fold::hand_off_leftovers(&store.paths().state_dir);
             encode(serde_json::to_value(snapshot))
         }
-        // WP3: the clients methods. connect/disconnect refuse TEST_STATE under a test
-        // state home; every job is detached and never holds the bar's RPC slot.
+        // WP3: the clients methods (spec §5.2). connect/disconnect/test refuse TEST_STATE
+        // under a test state home; every job is detached and never holds the bar's RPC slot.
         Method::ClientsStatus => {
             let _: ClientsStatusParams = parse_params(p)?;
-            pending()
+            done(crate::clients::status(ctx.store()?)?)
         }
         Method::ClientsConnect => {
-            let _: ClientsConnectParams = parse_params(p)?;
-            pending()
+            let c: ClientsConnectParams = parse_params(p)?;
+            let list = client_ids(&c.clients)?;
+            done(crate::clients::start(
+                ctx.store()?,
+                &req.id,
+                "clients.connect",
+                "connect",
+                JobTarget::Named(list),
+            )?)
         }
         Method::ClientsDisconnect => {
-            let _: ClientsDisconnectParams = parse_params(p)?;
-            pending()
+            let c: ClientsDisconnectParams = parse_params(p)?;
+            let list = client_ids(std::slice::from_ref(&c.client))?;
+            done(crate::clients::start(
+                ctx.store()?,
+                &req.id,
+                "clients.disconnect",
+                "disconnect",
+                JobTarget::Named(list),
+            )?)
         }
         Method::ClientsTest => {
-            let _: ClientsTestParams = parse_params(p)?;
-            pending()
+            let c: ClientsTestParams = parse_params(p)?;
+            let one = match c.client.as_deref() {
+                Some(id) => Some(client_ids(&[id.to_owned()])?[0]),
+                None => None,
+            };
+            done(crate::clients::start(
+                ctx.store()?,
+                &req.id,
+                "clients.test",
+                "test",
+                JobTarget::Connected(one),
+            )?)
         }
     }
+}
+
+/// Client ids in client order (protocol already checked the closed set).
+fn client_ids(ids: &[String]) -> Result<Vec<ClientId>, Failure> {
+    let mut out = Vec::new();
+    for id in ids {
+        let c = ClientId::parse(id).ok_or_else(|| Failure::invalid_params("unknown client"))?;
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out.sort_by_key(|c| *c as u8);
+    Ok(out)
 }
 
 /// Validates a life mode with core's parser (protocol already checked the closed set).
@@ -637,6 +672,10 @@ mod tests {
             ("clients.test", "{}"),
         ];
         assert_eq!(cases.len(), Method::V03_ADDED.len());
+        assert!(
+            Method::V03_PENDING.is_empty(),
+            "WP3 implemented the clients methods"
+        );
         for (method, params) in cases {
             let m = Method::parse(method).unwrap();
             // Bad params are INVALID_PARAMS before anything is opened.
@@ -648,17 +687,7 @@ mod tests {
                 ErrorCode::InvalidParams,
                 "{method}"
             );
-            if !Method::V03_PENDING.contains(&m) {
-                continue;
-            }
-            // The clients methods (WP3) still answer NOT_IMPLEMENTED without storage.
-            let frame = format!(r#"{{"v":1,"id":"r","method":"{method}","params":{params}}}"#);
-            let (response, job) = handle(&frame);
-            assert!(job.is_none());
-            let error = response.error.expect(method);
-            assert_eq!(error.code, ErrorCode::NotImplemented, "{method}");
-            assert!(!error.retryable);
-            assert_eq!(response.id.as_deref(), Some("r"));
+            let _ = (m, params);
         }
     }
 

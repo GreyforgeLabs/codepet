@@ -338,13 +338,9 @@ impl Method {
         }
     }
     /// The v0.3 methods whose work package has not landed in this build: they validate their
-    /// params, then answer `NOT_IMPLEMENTED` before opening storage.
-    pub const V03_PENDING: [Self; 4] = [
-        Self::ClientsStatus,
-        Self::ClientsConnect,
-        Self::ClientsDisconnect,
-        Self::ClientsTest,
-    ];
+    /// params, then answer `NOT_IMPLEMENTED` before opening storage. Empty since WP3 (the
+    /// clients methods).
+    pub const V03_PENDING: [Self; 0] = [];
     /// Parses a routed method name. A method of [`Self::V03_REMOVED`] parses only with the
     /// `legacy-tasks` feature; otherwise it is unknown, exactly like a name that never existed.
     pub fn parse(s: &str) -> Option<Self> {
