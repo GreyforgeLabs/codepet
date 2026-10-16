@@ -249,8 +249,8 @@ pub(crate) fn build(c: &Connection, generated_at_ms: i64) -> Result<BarState> {
             latest_name: block.memorial.latest.map(|l| l.name),
         },
         enabled: true,
-        agent: AgentExport::default(),
-        treats: TreatsExport::default(),
+        agent: crate::agent_store::agent_export(c, generated_at_ms)?,
+        treats: crate::agent_store::treats_export(c)?,
         clients: ClientsExport::new(),
     })
 }

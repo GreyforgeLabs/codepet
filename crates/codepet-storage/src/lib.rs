@@ -51,6 +51,11 @@ pub use paths::{
 };
 pub use store::{AcceptRequest, SealOutcome, Step, Store};
 pub use sys::Supervisor;
+// v0.3 ingestion (WP2): the hook inbox and the fold.
+pub use agent_store::{dev_apply_v5_contract_schema, FoldBatch, AGENT_SCHEMA_VERSION};
+pub use spool::{
+    event_id, hmac_key, payload_digest, Inbox, InboxRecord, InboxScan, SpoolWrite, INBOX_EXT,
+};
 
 /// Current SQLite `user_version`.
 pub const SCHEMA_VERSION: i64 = 4;
@@ -77,7 +82,7 @@ pub const MAX_REQUEST_ID_BYTES: usize = 128;
 /// pruned. A retry of a care request older than this window runs as a new action.
 pub const MAX_CARE_RECEIPTS: i64 = 256;
 /// Names accepted by `CODEPET_FAULT` in debug builds.
-pub const FAULT_POINTS: [&str; 9] = [
+pub const FAULT_POINTS: [&str; 10] = [
     "accept_before_commit",
     "accept_after_commit",
     "start_after_commit",
@@ -87,6 +92,8 @@ pub const FAULT_POINTS: [&str; 9] = [
     "adopt_before_commit",
     "evolve_before_commit",
     "presence_before_commit",
+    // v0.3 (WP2): the fold aborts after its batch, before the commit.
+    "fold_before_commit",
 ];
 /// Bounded idempotency receipts for frequent lifecycle clicks (`pet.select`,
 /// `pet.events_seen`, `pet.rules`, `pet.configure_life`), pruned like care receipts.
