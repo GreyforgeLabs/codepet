@@ -36,6 +36,12 @@ jobs:
           python3 qml/tests/test_pet_assets.py
           python3 qml/tests/test_pet_assets_invalid.py
           python3 qml/tests/test_pet_distinctness.py
+      # v0.3 icon set (SPEC-v0.3 §4): both install trees, sizes, alpha, key residue, provenance.
+      # tools/petart/icons.py --check needs the source sheets (not in the repository).
+      - name: Icon assets (v0.3 icon set, invalid-set fixtures)
+        run: |
+          python3 qml/tests/test_icon_assets.py
+          python3 qml/tests/test_icon_assets_invalid.py
       # tools/petart/extract.py --check needs the GPT Image 2 source sheets, the v0.2.1
       # release asset codepet-art-sources-v0.2.tar (about 200 MB, not in the repository), so
       # it is not run in CI. The manifests' sha256 checks above cover the committed frames.

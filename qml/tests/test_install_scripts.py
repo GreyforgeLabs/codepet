@@ -148,7 +148,8 @@ class InstallDryRun(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         out = r.stdout
         plugin = sorted(l.split(" ", 1)[1] for l in out.splitlines() if l.startswith("plugin "))
-        expected = sorted(f"greyforge.codepet/{p.name}" for p in PLUGIN.iterdir() if p.is_file())
+        expected = sorted(f"greyforge.codepet/{p.relative_to(PLUGIN).as_posix()}"
+                          for p in PLUGIN.rglob("*") if p.is_file())
         expected = sorted(expected + ["greyforge.codepet/LifeText.js"])
         self.assertEqual(plugin, expected)
         runtime = {l.split(" ", 1)[1] for l in out.splitlines() if l.startswith("runtime ")}
@@ -223,8 +224,9 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual([p for p in qml.rglob("*") if p.is_symlink()], [])
         plugin = e.config / "omarchy/plugins/greyforge.codepet"
         self.assertEqual([p for p in plugin.rglob("*") if p.is_symlink() or not (p.is_file() or p.is_dir())], [])
-        for p in PLUGIN.iterdir():
-            self.assertEqual((plugin / p.name).read_bytes(), p.read_bytes(), p.name)
+        for p in (q for q in PLUGIN.rglob("*") if q.is_file()):
+            rel = p.relative_to(PLUGIN)
+            self.assertEqual((plugin / rel).read_bytes(), p.read_bytes(), str(rel))
         self.assertEqual((plugin / "LifeText.js").read_bytes(), (REPO / "qml/shared/LifeText.js").read_bytes())
         calls = e.calls()
         self.assertFalse(any(c.startswith(("cargo", "systemd-run")) for c in calls), "prebuilt: no build")
