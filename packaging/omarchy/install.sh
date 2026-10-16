@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh: install or update CodePet for the current user on Omarchy (spec §15).
+# install.sh: install or update CodePet for the current user on Omarchy (v0.3, SPEC-v0.3 §6.6).
 #
 #   packaging/omarchy/install.sh [--dry-run] [--no-plugin]
 #
@@ -9,46 +9,62 @@
 #
 # Steps, all idempotent:
 #   1. build the `codepet` binary (memory-capped), unless CODEPET_BIN_SOURCE names a
-#      prebuilt one or this is a release archive (its bin/codepet);
-#   2. install `codepet` and `codepet-overlay` into ~/.local/bin atomically
-#      (temporary name, then rename) and check `codepet --version`;
-#   3. record whether an overlay is running, copy qml/{shell.qml,shared,omarchy,assets}
-#      to ~/.local/share/codepet/releases/<version>/qml and atomically repoint the
-#      `current` symlink there (it lives outside the plugin folder);
-#   4. stage the bar plugin (omarchy-plugin/ plus qml/shared/LifeText.js, byte for
-#      byte, no symlinks) beside the plugins folder (~/.config/omarchy/.codepet-stage-*,
-#      the same filesystem, outside the watched folder), run `omarchy plugin validate`, and
-#      move it into ~/.config/omarchy/plugins/greyforge.codepet with one rename
-#      (`mv --exchange` on update), so the shell sees one change and hot-reloads once;
-#      enable it once (right section, before the tray) if shell.json does not list it,
-#      after asking the running shell to rescan and waiting until it lists the plugin
-#      (without a running shell, the enable command is printed instead);
-#   5. on update, print restart advice for a running overlay and the shell; on a first
-#      install, print how to meet the companion.
+#      prebuilt one or this is a release archive (its bin/codepet); before anything is
+#      replaced, that binary must report exactly `codepet <version>` of this tree, and this
+#      tree's plugin needs a 0.3.x backend (an older binary refuses schema 5 data);
+#   2. upgrade only: stop a running desktop overlay and any CodePet 0.2 task supervisor,
+#      each by its exact PID (never a pattern kill);
+#   3. install `codepet` and `codepet-overlay` into ~/.local/bin atomically (temporary
+#      name, then rename);
+#   4. copy qml/{shell.qml,shared,omarchy,assets} to ~/.local/share/codepet/releases/
+#      <version>/qml and atomically repoint the `current` symlink there;
+#   5. stage the bar plugin (omarchy-plugin/ plus qml/shared/LifeText.js, byte for byte, no
+#      symlinks) beside the plugins folder (~/.config/omarchy/.codepet-stage-*, the same
+#      filesystem, outside the watched folder), run `omarchy plugin validate`, and move it
+#      into ~/.config/omarchy/plugins/greyforge.codepet with one rename (`mv --exchange` on
+#      update), so the shell sees one change and hot-reloads once; on an update the running
+#      shell is asked to rescan its plugins; on a first install the plugin is enabled once
+#      (right section, before the tray) after the shell lists it (without a running shell
+#      the enable command is printed instead);
+#   6. run `codepet migrate` (creates the pet's data at schema 5, or upgrades a v0.2
+#      database after a `VACUUM INTO …bak-v4-<ms>` backup; a newer or corrupt database is
+#      refused untouched);
+#   7. refresh the CodePet-owned files of already connected coding apps (`codepet
+#      clients-refresh`: only files that carry CodePet's marker and differ; it never runs a
+#      coding app and never edits a shared file such as Codex's hooks.json);
+#   8. upgrade only: start the desktop overlay again if it was running.
+#
+# The bar icons ship twice (omarchy-plugin/assets/icons for the bar, qml/assets/icons for
+# the overlay); the install refuses when the two copies differ.
 #
 # An update keeps the replaced release tree and plugin under ~/.cache/codepet as
 # release-backup-<version>-<ts> and plugin-backup-<ts>; only the newest of each is kept.
 # Under ~/.local/share/codepet/releases it keeps the new release and the one `current`
-# pointed to before; older release trees are removed, unless an overlay is running
-# (it may still read its own release tree).
+# pointed to before; older release trees are removed, unless an overlay is running (it may
+# still read its own release tree). Pruning never touches ~/.local/share/codepet/{bin,
+# integrations,staging} (the hook shim and the coding-app integrations).
 #
-# It never reads, writes, moves or deletes $XDG_STATE_HOME/codepet (the pet's data):
-# the first `codepet state` after install migrates the database itself and keeps a
-# backup. It never restarts the shell or the overlay, and never arms a pet.
+# The pet's data in $XDG_STATE_HOME/codepet is touched only by `codepet migrate` and
+# `codepet clients-refresh` (step 6-7). The installer never connects a coding app, never
+# arms a pet and never restarts the shell (it prints the restart command when needed).
 #
 # --dry-run stages the files in a private temporary directory, lists them, checks none
 #   is a symlink, removes the temporary directory and changes nothing else: no build,
-#   no install, no omarchy or qs command.
-# --no-plugin skips step 4 (binaries and overlay runtime only).
+#   no install, no omarchy, qs or codepet command.
+# --no-plugin skips step 5 (binaries and overlay runtime only).
 #
 # Environment (optional): CODEPET_BIN_SOURCE (prebuilt codepet), CODEPET_OMARCHY (the
-# omarchy command, default `omarchy`), CARGO_TARGET_DIR,
-# XDG_DATA_HOME, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_STATE_HOME (absolute paths only).
+# omarchy command, default `omarchy`), CODEPET_QS (the Quickshell command, default `qs`),
+# CARGO_TARGET_DIR, XDG_DATA_HOME, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_STATE_HOME
+# (absolute paths only).
 set -euo pipefail
 
 PROG=install.sh
 PLUGIN_ID=greyforge.codepet
 OMARCHY=${CODEPET_OMARCHY:-omarchy}
+QS=${CODEPET_QS:-qs}
+# The release series this tree's plugin and overlay speak to (schema 5, protocol v1).
+SERIES=0.3
 
 usage() {
     echo "usage: $PROG [--dry-run] [--no-plugin]"
@@ -118,6 +134,16 @@ for src in "${RUNTIME_SOURCES[@]}" "${PLUGIN_SOURCES[@]}" "$LAUNCHER_SOURCE"; do
     [ -z "$links" ] || die "refusing to install a symlink: ${links//$'\n'/, }"
 done
 
+# The two shipped copies of the icon set must be the same files.
+if [ -d "$REPO/qml/assets/icons" ] || [ -d "$REPO/omarchy-plugin/assets/icons" ]; then
+    diff -r -q -- "$REPO/qml/assets/icons" "$REPO/omarchy-plugin/assets/icons" >/dev/null 2>&1 ||
+        die "the icon copies in qml/assets/icons and omarchy-plugin/assets/icons differ"
+fi
+case "$VERSION" in
+    "$SERIES".*) ;;
+    *) die "this tree ships the CodePet $SERIES bar plugin but its version is $VERSION" ;;
+esac
+
 # stage_runtime <dir>: <dir>/qml/{shell.qml,shared,omarchy,assets}
 stage_runtime() {
     mkdir -p -- "$1/qml"
@@ -169,7 +195,8 @@ if [ "$DRY" -eq 1 ]; then
             echo "would enable: omarchy plugin enable $PLUGIN_ID --section right --before omarchy.tray"
         fi
     fi
-    echo "state: $STATE_HOME/codepet is never touched"
+    echo "would run: codepet migrate (the pet's data in $STATE_HOME/codepet: created, or upgraded after a backup)"
+    echo "would run: codepet clients-refresh (connected coding apps: CodePet-owned files only)"
     echo "staged files: $count, symlinks: 0"
     exit 0
 fi
@@ -191,7 +218,7 @@ done
 [ "$webp_plugin" -eq 1 ] ||
     echo "$PROG: warning: Qt's WebP image plugin (qt6-imageformats) was not found; the pet will render blank without it" >&2
 
-# 1. build (or use a prebuilt binary)
+# 1. build (or use a prebuilt binary), then check it before anything is replaced
 if [ -n "${CODEPET_BIN_SOURCE:-}" ]; then
     BIN_SRC=$CODEPET_BIN_SOURCE
 elif [ "$ARCHIVE" -eq 1 ]; then
@@ -209,6 +236,12 @@ fi
 if [ ! -f "$BIN_SRC" ] || [ -L "$BIN_SRC" ]; then
     die "no codepet binary at $BIN_SRC"
 fi
+got=$("$BIN_SRC" --version 2>/dev/null || true)
+case "$got" in
+    "codepet $SERIES".*) ;;
+    *) die "$BIN_SRC reports '$got': this plugin needs a codepet $SERIES.x (an older one refuses the pet's schema 5 data); nothing was changed" ;;
+esac
+[ "$got" = "codepet $VERSION" ] || die "$BIN_SRC reports '$got', expected 'codepet $VERSION'; nothing was changed"
 
 # prune_backups <prefix> <kept>: after a successful swap, remove this script's earlier
 # backups named $WORK/<prefix>*, keeping only <kept> (the one just made), so repeated
@@ -224,7 +257,62 @@ prune_backups() {
     done
 }
 
-# 2. binaries, each by temporary name then rename
+# overlay_pids: the pids of running CodePet overlays (qs instances whose config lives under
+# this runtime's current/ or releases/), from `qs list --all --json`.
+overlay_pids() {
+    command -v "$QS" >/dev/null 2>&1 || return 0
+    "$QS" list --all --json 2>/dev/null | CP_DATA="$RUNTIME" awk '
+        BEGIN { cur = ENVIRON["CP_DATA"] "/current/"; rel = ENVIRON["CP_DATA"] "/releases/" }
+        /^[ \t]*\{/ { path = ""; pid = "" }
+        /"config_path"[ \t]*:/ { l = $0; sub(/^[^:]*:[ \t]*"/, "", l); sub(/",?[ \t]*$/, "", l); path = l }
+        /"pid"[ \t]*:/ { l = $0; sub(/^[^:]*:[ \t]*/, "", l); sub(/,?[ \t]*$/, "", l); if (l ~ /^[0-9]+$/) pid = l }
+        /^[ \t]*\}/ { if (pid != "" && (index(path, cur) == 1 || index(path, rel) == 1)) print pid }'
+}
+# supervisor_pids: CodePet 0.2 task supervisors, i.e. this user's processes running
+# `<~/.local/bin/codepet> rpc` (a v0.2 `rpc` that started a task stays on as its
+# supervisor). Matched on exact argv tokens from /proc, never by pattern.
+supervisor_pids() {
+    local d pid uid me args i
+    me=$(id -u)
+    for d in /proc/[0-9]*; do
+        pid=${d#/proc/}
+        [ "$pid" != "$$" ] || continue
+        uid=$(awk '/^Uid:/ { print $2 }' "$d/status" 2>/dev/null) || continue
+        [ "$uid" = "$me" ] || continue
+        mapfile -d '' -t args <"$d/cmdline" 2>/dev/null || continue
+        for ((i = 0; i + 1 < ${#args[@]} && i < 2; i++)); do
+            if [ "${args[$i]}" = "$BIN_DIR/codepet" ] && [ "${args[$((i + 1))]}" = rpc ]; then
+                echo "$pid"
+                break
+            fi
+        done
+    done
+}
+# stop_pid <pid> <what>: TERM, then KILL after about 3 s; exact pid only.
+stop_pid() {
+    local n
+    kill -TERM "$1" 2>/dev/null || return 0
+    for ((n = 0; n < 30; n++)); do
+        kill -0 "$1" 2>/dev/null || { echo "stopped $2 (pid $1)"; return 0; }
+        sleep 0.1
+    done
+    kill -KILL "$1" 2>/dev/null || true
+    echo "stopped $2 (pid $1, forced)"
+}
+
+# 2. upgrade: stop the overlay and any 0.2 supervisor before files move under them
+OVERLAY_RUNNING=0
+if [ "$UPDATE" -eq 1 ]; then
+    for pid in $(overlay_pids); do
+        OVERLAY_RUNNING=1
+        stop_pid "$pid" "the desktop overlay"
+    done
+    for pid in $(supervisor_pids); do
+        stop_pid "$pid" "a CodePet 0.2 task supervisor"
+    done
+fi
+
+# 3. binaries, each by temporary name then rename
 install_file() { # install_file <src> <dest>
     install -m 0755 -- "$1" "$2.tmp-$TS"
     mv -f -- "$2.tmp-$TS" "$2"
@@ -236,16 +324,7 @@ got=$("$BIN_DIR/codepet" --version 2>/dev/null || true)
 install_file "$REPO/$LAUNCHER_SOURCE" "$BIN_DIR/codepet-overlay"
 echo "installed: $BIN_DIR/codepet ($got), $BIN_DIR/codepet-overlay"
 
-# 3. overlay runtime; record a running overlay before `current` moves
-OVERLAY_RUNNING=0
-OVERLAY_REPORTS_TASKS=0
-if [ "$UPDATE" -eq 1 ] && overlay_status=$("$BIN_DIR/codepet-overlay" status 2>/dev/null); then
-    OVERLAY_RUNNING=1
-    # An overlay from 0.2.0 does not report its task supervisor, so `quit` refuses it.
-    case "$overlay_status" in
-        *'"supervisor":'*) OVERLAY_REPORTS_TASKS=1 ;;
-    esac
-fi
+# 4. overlay runtime
 PREVIOUS=$(readlink -- "$RUNTIME/current" 2>/dev/null || true)
 PREVIOUS=${PREVIOUS#releases/}
 mkdir -p -- "$RUNTIME/releases" "$WORK"
@@ -269,22 +348,24 @@ ln -s -- "releases/$VERSION" "$RUNTIME/.current-$TS"
 mv -T -- "$RUNTIME/.current-$TS" "$RUNTIME/current"
 echo "runtime: $RUNTIME/current -> releases/$VERSION"
 # Keep the new release and the previous one; remove older release trees, but never
-# while an overlay runs (it may be reading an older tree).
+# while an overlay still runs (it may be reading an older tree). Only release trees under
+# releases/ are candidates: bin/, integrations/ and staging/ are never pruned.
+STILL_RUNNING=$(overlay_pids)
 for old in "$RUNTIME/releases/"*; do
     name=${old##*/}
     if [ "$name" = "$VERSION" ] || [ "$name" = "$PREVIOUS" ] || [ -L "$old" ] || [ ! -d "$old" ] ||
         ! [[ "$name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         continue
     fi
-    if [ "$OVERLAY_RUNNING" -eq 1 ]; then
-        echo "runtime: kept older release $old while the overlay runs"
+    if [ -n "$STILL_RUNNING" ]; then
+        echo "runtime: kept older release $old while an overlay runs"
         continue
     fi
     rm -rf -- "$old"
     echo "removed older release: $old"
 done
 
-# 4. bar plugin
+# 5. bar plugin
 ENABLE_HINT="omarchy plugin enable $PLUGIN_ID --section right --before omarchy.tray"
 # discovered: ask the running shell to rescan, then wait (up to about 2 s) until it lists
 # the plugin, as omarchy-plugin-add does. The shell otherwise learns of a new folder only
@@ -305,6 +386,7 @@ discovered() {
     done
     return 1
 }
+RELOADED=0
 if [ "$NO_PLUGIN" -eq 0 ]; then
     # Staged beside plugins/ (same filesystem, so every move below is one rename) but
     # outside it, so the shell's plugin watcher never sees a partial tree.
@@ -325,6 +407,11 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
         mv -T -- "$stage" "$WORK/plugin-backup-$TS"
         echo "plugin: updated $PLUGIN_DIR (previous copy: $WORK/plugin-backup-$TS)"
         prune_backups plugin-backup- "$WORK/plugin-backup-$TS"
+        # Ask the running shell to rescan, so it reloads the swapped plugin now.
+        if "$OMARCHY" shell shell rescanPlugins >/dev/null 2>&1; then
+            RELOADED=1
+            echo "plugin: the running shell was asked to reload it"
+        fi
     else
         mv -T -- "$stage" "$PLUGIN_DIR"
         echo "plugin: installed $PLUGIN_DIR"
@@ -343,18 +430,37 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
     fi
 fi
 
-# 5. advice only; nothing is restarted here
-if [ "$UPDATE" -eq 1 ]; then
-    if [ "$OVERLAY_RUNNING" -eq 1 ] && [ "$OVERLAY_REPORTS_TASKS" -eq 1 ]; then
-        echo "The desktop overlay is still running the previous release. Once no task is executing:"
-        echo "  codepet-overlay quit && codepet-overlay show"
-    elif [ "$OVERLAY_RUNNING" -eq 1 ]; then
-        echo "The desktop overlay is still running a release that does not report running tasks (0.2.0)."
-        echo "Finish or cancel any task in its Tasks window (codepet-overlay tasks), then log out and"
-        echo "back in, or, once no task is running:"
-        echo "  codepet-overlay quit --force && codepet-overlay show"
+# 6. the pet's data: create or upgrade (schema 5); a refusal leaves it untouched
+FAILED=0
+if migrated=$("$BIN_DIR/codepet" migrate 2>&1); then
+    echo "data: $migrated"
+else
+    FAILED=1
+    echo "$PROG: codepet migrate failed; the pet's data in $STATE_HOME/codepet was not changed:" >&2
+    printf '%s\n' "$migrated" >&2
+fi
+
+# 7. connected coding apps: refresh CodePet-owned files whose bytes changed
+if [ "$FAILED" -eq 0 ]; then
+    if refreshed=$("$BIN_DIR/codepet" clients-refresh 2>&1); then
+        [ -z "$refreshed" ] || printf 'apps: %s\n' "$refreshed"
+    else
+        echo "$PROG: warning: could not refresh every connected app's files (run: codepet doctor)" >&2
+        [ -z "$refreshed" ] || printf '%s\n' "$refreshed" >&2
     fi
-    if [ "$NO_PLUGIN" -eq 0 ]; then
+fi
+
+# 8. upgrade: the overlay comes back if it was running
+if [ "$OVERLAY_RUNNING" -eq 1 ]; then
+    if "$BIN_DIR/codepet-overlay" show >/dev/null 2>&1; then
+        echo "overlay: started again"
+    else
+        echo "overlay: not started again; start it with: codepet-overlay show"
+    fi
+fi
+
+if [ "$UPDATE" -eq 1 ]; then
+    if [ "$NO_PLUGIN" -eq 0 ] && [ "$RELOADED" -eq 0 ]; then
         echo "If the bar does not pick up the plugin by itself (never while the session is locked):"
         if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
             echo "  HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE omarchy restart shell"
@@ -364,11 +470,13 @@ if [ "$UPDATE" -eq 1 ]; then
     fi
 else
     if [ "$NO_PLUGIN" -eq 0 ]; then
-        echo "Next: click CodePet on the bar (right section) to meet your companion. Its clock stays"
-        echo "unarmed until you choose Set up… and pick permadeath or gentle."
+        echo "Next: click CodePet on the bar (right section), pick a pet and tap Let's go!"
     else
-        echo "Next: without the bar widget the companion's time stays frozen (see the README)."
+        echo "Next: without the bar widget the pet's time stays frozen (see the README)."
     fi
     echo "Desktop pet: codepet-overlay show"
 fi
-echo "state: $STATE_HOME/codepet was not touched"
+if [ "$FAILED" -eq 0 ]; then
+    echo "done: CodePet $VERSION is installed"
+fi
+exit "$FAILED"

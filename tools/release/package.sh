@@ -30,7 +30,11 @@
 # targets are rewritten to tag-pinned GitHub URLs); every archive entry is owned by
 # 0/0; the extracted archive passes `install.sh --dry-run`, a full install into a
 # throwaway HOME (stub omarchy and qs; the plugin is validated with the real
-# `omarchy plugin validate` when it exists) and `uninstall.sh`.
+# `omarchy plugin validate` when it exists; v0.3: `codepet migrate` creates the pet's data
+# there and `codepet doctor --json` answers) and `uninstall.sh` (v0.3: with a stand-in hook
+# shim, which it must replace by the frozen tombstone after disconnecting every app).
+# The binary embeds the client integration templates (integrations/), so they count as
+# its sources for the clean-tree gate.
 set -euo pipefail
 
 PROG=package.sh
@@ -69,7 +73,7 @@ echo "== CodePet $VERSION release archive"
 # (a stray __pycache__/ or editor file would otherwise be copied into the archive)
 SHIPPED=(LICENSE README.md CHANGELOG.md THIRD-PARTY-LICENSES.md docs packaging/omarchy
     omarchy-plugin qml/README.md qml/shell.qml qml/shared qml/omarchy qml/assets
-    tools/measure-overlay.sh Cargo.toml Cargo.lock crates)
+    tools/measure-overlay.sh Cargo.toml Cargo.lock crates integrations)
 dirty=$(git -C "$REPO" status --porcelain --ignored --untracked-files=all -- "${SHIPPED[@]}") ||
     die "git status failed"
 if [ -n "$dirty" ]; then
@@ -175,11 +179,18 @@ gate "$X/packaging/omarchy/install.sh" > "$GATE/install.log" 2>&1 ||
     die "archive install failed: $(cat "$GATE/install.log")"
 [ "$(gate "$H/.local/bin/codepet" --version)" = "codepet $VERSION" ] || die "installed binary has the wrong version"
 [ -f "$H/.config/omarchy/plugins/greyforge.codepet/manifest.json" ] || die "the bar plugin was not installed"
-[ ! -e "$H/.local/state/codepet" ] || die "the install touched the state directory"
+[ -f "$H/.local/state/codepet/codepet.sqlite3" ] || die "the install did not migrate the pet's data"
+gate "$H/.local/bin/codepet" doctor --json | grep -q '"schema":"codepet.doctor.v1"' ||
+    die "codepet doctor --json did not answer"
+mkdir -p -- "$H/.local/share/codepet/bin"
+printf '#!/bin/sh\n# managed by codepet: release-gate stand-in\nexit 0\n' > "$H/.local/share/codepet/bin/codepet-hook"
+chmod 0755 "$H/.local/share/codepet/bin/codepet-hook"
 gate "$X/packaging/omarchy/uninstall.sh" > "$GATE/uninstall.log" 2>&1 ||
     die "archive uninstall failed: $(cat "$GATE/uninstall.log")"
 [ ! -e "$H/.config/omarchy/plugins/greyforge.codepet" ] || die "uninstall left the plugin in place"
-echo "gate: archive dry run, install and uninstall in a throwaway HOME passed"
+cmp -s -- "$H/.local/share/codepet/bin/codepet-hook" "$X/docs/v0.3/contracts/shim-tombstone.sh" ||
+    die "uninstall did not replace the hook shim by the tombstone"
+echo "gate: archive dry run, install (migrate, doctor) and uninstall (disconnect, tombstone) in a throwaway HOME passed"
 
 rm -rf -- "$OUT/stage"
 echo "== done"
