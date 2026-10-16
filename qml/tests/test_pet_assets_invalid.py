@@ -246,6 +246,21 @@ class InvalidPacks(unittest.TestCase):
         self.assertIn("goldfish: careWords.wash makes react.wash 11 words", out)
         self.assertNotIn("cat: careWords.wash", out)
 
+    def test_cat_play_word_is_ball(self):
+        # notes.md §7 item 3: the cat's play word names the shared ball icon.
+        man = self.manifest("cat")
+        man["careWords"]["play"] = "Yarn"
+        self.write_manifest("cat", man)
+        self.assertRejected("cat: careWords.play 'Yarn' must be 'Ball'")
+        # The icons.json example follows the manifests too.
+        ip = self.root / "docs/v0.3/contracts/icons.json"
+        icons = json.loads(ip.read_text())
+        icons["care_words"]["examples"]["goldfish"]["food"] = "Pellets"
+        ip.write_text(json.dumps(icons))
+        man["careWords"]["play"] = "Ball"
+        self.write_manifest("cat", man)
+        self.assertRejected("goldfish: careWords.food 'Fish flakes' != icons.json care_words example 'Pellets'")
+
     def test_registry_drift(self):
         man = self.manifest("cat")
         man["careLabels"]["food"] = "Something else"
