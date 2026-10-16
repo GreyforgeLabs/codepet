@@ -7,8 +7,13 @@
   ],
   "format": {
     "ship": "WebP, quality 86, lossless alpha, square, centred",
-    "source_key": "#00FF00",
-    "provenance": "one PROVENANCE.md entry per sheet"
+    "source_key": {
+      "default": "#00FF00",
+      "alternative": "#FF00FF",
+      "rule": "chosen per sheet (and per patch) as `key` in tools/petart/icon_sheets.json: green by default, magenta when a subject is green (care-aquatic: the plant arch; status: the calm leaf)"
+    },
+    "patches": "a sheet may name smaller patch sheets in icon_sheets.json whose cells replace single ids, so one icon is regenerated without re-rolling its reviewed sheet",
+    "provenance": "one PROVENANCE.md entry per sheet and patch: generator, licence, source sha256 and prompt; wrapper nonces, rollout ids and local paths stay with the source sheets (the file ships inside the plugin)"
   },
   "sheets": [
     {
