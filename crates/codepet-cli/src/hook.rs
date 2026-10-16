@@ -21,8 +21,8 @@ use codepet_core::agent::{
     ancestor_comm, interactive, normalize, ClientId, Normalized, HOOK_DRAIN_MS, MAX_HOOK_READ_BYTES,
 };
 use codepet_storage::{
-    event_id, payload_digest, Inbox, InboxRecord, CLIENTS_DIR, DISCONNECTED_SUFFIX,
-    FOLD_BACKOFF_FILE, OFF_FLAG, TEST_NONCE_FILE,
+    event_id, payload_digest, Inbox, InboxRecord, CLIENTS_DIR, DISCONNECTED_SUFFIX, OFF_FLAG,
+    TEST_NONCE_FILE,
 };
 use std::ffi::OsString;
 use std::fs;
@@ -73,7 +73,8 @@ fn hook(args: &[OsString], started: Instant) {
         if let Ok(inbox) = Inbox::open(&state_dir) {
             let id = record.event_id();
             if inbox.write(&id, &record).is_ok() {
-                trigger_fold(&state_dir);
+                // Step 4: unless a fold runs (lock busy) or the last one backs off.
+                crate::fold::trigger(&state_dir);
             }
         }
     }
@@ -205,17 +206,4 @@ fn record_for(
         )
     );
     record.valid().then_some(record)
-}
-
-/// Step 4: start a fold unless one runs (lock busy) or the last one is backing off.
-fn trigger_fold(state_dir: &Path) {
-    if let Ok(m) = fs::symlink_metadata(state_dir.join(FOLD_BACKOFF_FILE)) {
-        if m.modified().is_ok_and(|t| t > SystemTime::now()) {
-            return;
-        }
-    }
-    let Some(lock) = crate::fold::try_lock(state_dir) else {
-        return;
-    };
-    crate::fold::spawn_detached(state_dir, lock);
 }

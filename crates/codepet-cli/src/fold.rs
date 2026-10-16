@@ -14,9 +14,11 @@
 //!   the final export (rate-limited: if the last export is under 250 ms old, the fold
 //!   waits out the rest under the lock and folds what arrived meanwhile, so bursts of
 //!   short fold runs never export more than about four times a second), unlock, and one
-//!   more look: records left → `LOCK_NB` again (busy → another fold has them; exit).
-//!   Every hook writes its record before trying the lock, so no record is stranded while
-//!   hooks keep firing.
+//!   more look: records left → `LOCK_NB` again (busy → another fold has them; exit). When
+//!   the run budget is spent, the rest goes to a fresh detached fold (its own budget)
+//!   instead of waiting for the next hook. Every hook writes its record before trying the
+//!   lock, and every holder of the lock looks again after releasing it (the fold here,
+//!   `drain_once` in [`drain_once_then`]), so no record is stranded.
 //! - Failure: `fold.backoff` (count, error class; mtime = retry time, 5 s doubling to
 //!   10 min). Hooks skip spawning while it lies in the future; the first success removes it.
 use codepet_core::agent::{
@@ -86,8 +88,29 @@ pub(crate) fn spawn_detached(state_dir: &Path, lock: File) {
     if let Some(f) = std::env::var_os("CODEPET_FAULT") {
         cmd.env("CODEPET_FAULT", f);
     }
-    // The child is reparented when the hook exits; it is never waited for.
-    let _ = cmd.spawn();
+    // The child is reparented when this process exits; a longer-lived caller reaps it
+    // from a thread so it never lingers as a zombie.
+    if let Ok(mut child) = cmd.spawn() {
+        std::thread::spawn(move || child.wait());
+    }
+}
+
+/// `fold.backoff` lies in the future: the last fold failed and is backing off.
+fn backing_off(state_dir: &Path) -> bool {
+    fs::symlink_metadata(state_dir.join(FOLD_BACKOFF_FILE))
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t > SystemTime::now())
+}
+
+/// Starts a detached fold unless the last one is backing off or a fold holds the lock
+/// (it will see every record already written). Used by the hook (§5.1 step 4).
+pub(crate) fn trigger(state_dir: &Path) {
+    if backing_off(state_dir) {
+        return;
+    }
+    if let Some(lock) = try_lock(state_dir) {
+        spawn_detached(state_dir, lock);
+    }
 }
 
 /// Where the held lock lives.
@@ -203,8 +226,12 @@ pub fn run(args: &[OsString]) -> i32 {
         return 0;
     }
     match fold_loop(&state_dir, &lock) {
-        Ok(()) => {
+        Ok(more) => {
             let _ = fs::remove_file(state_dir.join(FOLD_BACKOFF_FILE));
+            if more {
+                // The run budget is spent and records are left: a fresh fold takes them.
+                trigger(&state_dir);
+            }
             0
         }
         Err(e) => {
@@ -249,19 +276,21 @@ fn export_after(store: &Store, changed: bool, urgent: bool, pending: &mut bool) 
 }
 
 /// Folds everything in the inbox in batches, until it is empty or the run budget is spent.
+/// Returns how many inbox entries it removed.
 fn drain(
     store: &mut Store,
     inbox: &Inbox,
     started: Instant,
+    budget: Duration,
     pending: &mut bool,
-) -> Result<(), Failure> {
-    let budget = Duration::from_millis(FOLD_RUN_MS);
+) -> Result<usize, Failure> {
     let mut size = FOLD_BATCH_EVENTS;
+    let mut removed = 0;
     while started.elapsed() < budget {
         let scan = inbox.scan(now_ms())?;
         let dropped = scan.poison.len() + usize::from(scan.overflow);
         if scan.events.is_empty() && dropped == 0 {
-            return Ok(());
+            return Ok(removed);
         }
         let mut rest = &scan.events[..];
         let mut first = true;
@@ -272,17 +301,19 @@ fn drain(
             let b = store.fold_batch(&records, if first { dropped } else { 0 })?;
             // Committed: the folded (and duplicate or failed) files go.
             for (name, _) in chunk {
-                inbox.remove(name);
+                removed += usize::from(inbox.remove(name));
             }
             if first {
                 for p in &scan.poison {
-                    inbox.remove(p);
+                    removed += usize::from(inbox.remove(p));
                 }
                 if scan.overflow {
-                    inbox.remove(INBOX_OVERFLOW_FILE);
+                    removed += usize::from(inbox.remove(INBOX_OVERFLOW_FILE));
                 }
                 first = false;
             }
+            #[cfg(debug_assertions)]
+            debug_slow_batch();
             export_after(store, b.changed, b.urgent, pending);
             if t0.elapsed() > Duration::from_millis(FOLD_BATCH_MS) {
                 size = (size / 2).max(MIN_BATCH);
@@ -293,18 +324,41 @@ fn drain(
             }
         }
     }
-    Ok(())
+    Ok(removed)
 }
 
-fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<(), Failure> {
+/// The run budget (5 s). Debug builds: `CODEPET_FAULT=fold_short_run` makes it 100 ms so
+/// tests can spend it.
+fn run_budget() -> Duration {
+    #[cfg(debug_assertions)]
+    if std::env::var_os("CODEPET_FAULT").is_some_and(|f| f == "fold_short_run") {
+        return Duration::from_millis(100);
+    }
+    Duration::from_millis(FOLD_RUN_MS)
+}
+
+/// Debug builds: `CODEPET_FAULT=fold_short_run` also makes every batch take 150 ms, so
+/// one run folds a single batch and spends its budget.
+#[cfg(debug_assertions)]
+fn debug_slow_batch() {
+    if std::env::var_os("CODEPET_FAULT").is_some_and(|f| f == "fold_short_run") {
+        std::thread::sleep(Duration::from_millis(150));
+    }
+}
+
+/// One fold run. `Ok(true)`: the budget is spent, records are left and this run made
+/// progress, so the caller hands the rest to a fresh fold. (A run that removed nothing in
+/// its whole budget does not hand off; the next hook retries.)
+fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<bool, Failure> {
     let started = Instant::now();
-    let budget = Duration::from_millis(FOLD_RUN_MS);
+    let budget = run_budget();
     let mut store = Store::open_for_fold(state_dir, Arc::new(SystemClock))?;
     let inbox = Inbox::open(state_dir)?;
     let mut pending = false;
     let mut retention_done = false;
+    let mut removed = 0;
     loop {
-        drain(&mut store, &inbox, started, &mut pending)?;
+        removed += drain(&mut store, &inbox, started, budget, &mut pending)?;
         if !retention_done {
             let _ = store.agent_retention();
             retention_done = true;
@@ -320,14 +374,21 @@ fn fold_loop(state_dir: &Path, lock: &Lock) -> Result<(), Failure> {
             } else {
                 let rest = u64::try_from(EXPORT_MIN_INTERVAL_MS - age).unwrap_or(0);
                 std::thread::sleep(Duration::from_millis(rest));
-                drain(&mut store, &inbox, started, &mut pending)?;
+                removed += drain(&mut store, &inbox, started, budget, &mut pending)?;
             }
         }
         // Unlock before the last look: a hook that wrote after it either sees the lock
         // free and starts a fold, or its record is in this look.
         lock.unlock();
-        if started.elapsed() >= budget || !inbox.has_records()? || !lock.relock() {
-            return Ok(());
+        if !inbox.has_records()? {
+            return Ok(false);
+        }
+        if started.elapsed() >= budget {
+            return Ok(removed > 0);
+        }
+        if !lock.relock() {
+            // Busy: another fold holds the lock and sees these records.
+            return Ok(false);
         }
     }
 }
@@ -376,17 +437,37 @@ fn write_backoff(state_dir: &Path, class: &str) {
 
 /// `codepet state` and `state.get`: fold at most one batch first, when no fold holds the
 /// lock (`LOCK_NB`) and the database is v5. Errors are ignored (the snapshot still answers).
+/// After releasing the lock it looks again: records left (beyond the batch, or written by
+/// a hook that found the lock busy meanwhile) go to a detached fold.
 pub(crate) fn drain_once(store: &mut Store) {
+    drain_once_then(store, trigger);
+}
+
+/// [`drain_once`] with the hand-off as a parameter (tests observe it without spawning).
+/// This is the re-check every holder of `fold.lock` makes after releasing it (§5.1
+/// ordering invariant): a hook that wrote while the lock was held found it busy and
+/// started no fold, so records left now go to `hand_off` instead of waiting for the next
+/// hook.
+fn drain_once_then(store: &mut Store, hand_off: impl FnOnce(&Path)) {
     let dir = store.paths().state_dir.clone();
     if !store.agent_ready().unwrap_or(false) {
         return;
     }
-    let Some(_lock) = try_lock(&dir) else {
-        return;
-    };
     let Ok(inbox) = Inbox::open(&dir) else {
         return;
     };
+    let Some(lock) = try_lock(&dir) else {
+        return;
+    };
+    fold_one_batch(store, &dir, &inbox);
+    drop(lock);
+    if inbox.has_records().unwrap_or(false) {
+        hand_off(&dir);
+    }
+}
+
+/// `drain_once`'s batch, under the held lock.
+fn fold_one_batch(store: &mut Store, dir: &Path, inbox: &Inbox) {
     let Ok(scan) = inbox.scan(now_ms()) else {
         return;
     };
@@ -407,5 +488,106 @@ pub(crate) fn drain_once(store: &mut Store) {
             inbox.remove(INBOX_OVERFLOW_FILE);
         }
         let _ = fs::remove_file(dir.join(FOLD_BACKOFF_FILE));
+    }
+    #[cfg(debug_assertions)]
+    if std::env::var_os("CODEPET_FAULT").is_some_and(|f| f == "drain_once_slow") {
+        // Debug builds: hold the lock a while after the batch, so tests can write a
+        // record that finds the lock busy.
+        std::thread::sleep(Duration::from_millis(1500));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codepet_storage::{dev_apply_v5_contract_schema, StatePaths, INBOX_DIR};
+    use std::cell::Cell;
+    use std::os::unix::fs::DirBuilderExt;
+
+    /// A v5 state dir with an inbox holding `n` activity records of one open turn.
+    fn state(n: usize) -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let xdg = tmp.path().join("xdg");
+        let paths =
+            StatePaths::resolve(|k| (k == "XDG_STATE_HOME").then(|| xdg.clone().into())).unwrap();
+        drop(Store::open(&paths, Arc::new(SystemClock)).unwrap());
+        dev_apply_v5_contract_schema(&paths.db_path).unwrap();
+        let dir = paths.state_dir.clone();
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(dir.join(INBOX_DIR))
+            .unwrap();
+        let inbox = Inbox::open(&dir).unwrap();
+        let now = now_ms();
+        for i in 0..n {
+            let r = InboxRecord {
+                v: 1,
+                client: "codex".into(),
+                kind: if i == 0 { "turn_start" } else { "activity" }.into(),
+                session: Some("s1".into()),
+                turn: Some("1".into()),
+                tool: (i > 0).then(|| format!("call_{i}")),
+                akey: None,
+                note: None,
+                tools: 0,
+                interactive: true,
+                test: false,
+                dig: format!("{i:016x}"),
+                at_ms: now - 1000 + i64::try_from(i).unwrap(),
+            };
+            inbox.write(&r.event_id(), &r).unwrap();
+        }
+        (tmp, dir)
+    }
+
+    fn inbox_len(dir: &Path) -> usize {
+        fs::read_dir(dir.join(INBOX_DIR))
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".ev")
+            })
+            .count()
+    }
+
+    /// §6.3: one batch of at most 64 records, then (lock released) the rest is handed off.
+    #[test]
+    fn drain_once_folds_one_batch_and_hands_off_the_rest() {
+        let (_t, dir) = state(100);
+        let mut store = Store::open_for_fold(&dir, Arc::new(SystemClock)).unwrap();
+        let handed = Cell::new(None);
+        drain_once_then(&mut store, |d| handed.set(Some(d.to_path_buf())));
+        assert_eq!(inbox_len(&dir), 100 - FOLD_BATCH_EVENTS);
+        assert_eq!(handed.take().as_deref(), Some(dir.as_path()));
+        // The lock was released before the hand-off (a fold can take it).
+        assert!(try_lock(&dir).is_some());
+    }
+
+    /// Everything folded in the batch: nothing is handed off.
+    #[test]
+    fn drain_once_with_an_empty_rest_hands_off_nothing() {
+        let (_t, dir) = state(10);
+        let mut store = Store::open_for_fold(&dir, Arc::new(SystemClock)).unwrap();
+        let handed = Cell::new(false);
+        drain_once_then(&mut store, |_| handed.set(true));
+        assert_eq!(inbox_len(&dir), 0);
+        assert!(!handed.get());
+    }
+
+    /// Another holder has the lock: nothing is folded and nothing handed off (the holder
+    /// sees the records when it looks again).
+    #[test]
+    fn drain_once_skips_a_held_lock() {
+        let (_t, dir) = state(5);
+        let held = try_lock(&dir).unwrap();
+        let mut store = Store::open_for_fold(&dir, Arc::new(SystemClock)).unwrap();
+        let handed = Cell::new(false);
+        drain_once_then(&mut store, |_| handed.set(true));
+        assert_eq!(inbox_len(&dir), 5);
+        assert!(!handed.get());
+        drop(held);
     }
 }

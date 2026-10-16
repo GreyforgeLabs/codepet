@@ -5,6 +5,7 @@ mod hookkit;
 
 use hookkit::{assert_silent_ok, Hk, BIN};
 use std::fs;
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -249,6 +250,126 @@ fn off_starts_nothing_and_the_fold_drops_stragglers() {
         1
     );
     assert_eq!(db.int("SELECT COUNT(*) FROM agent_sessions"), 0);
+}
+
+/// §5.1 ordering invariant, `drain_once` side: `codepet state` holds fold.lock while it
+/// folds its batch; a hook that writes meanwhile finds the lock busy and starts nothing.
+/// After releasing the lock, `drain_once` looks again and hands the record to a fold.
+#[cfg(debug_assertions)]
+#[ignore = "needs WP1: `codepet state` opens only schema v4 until the v5 migration lands; un-ignore in the WP1 rebase (fold.rs unit tests cover drain_once now)"]
+#[test]
+fn drain_once_hands_records_written_meanwhile_to_a_fold() {
+    let hk = Hk::with_db();
+    hk.block_folds();
+    let start = claude("SessionStart", r#","source":"startup""#);
+    assert_silent_ok(&hk.stored("claude-code", &start, &CLI), "start");
+    assert_eq!(hk.inbox_names().len(), 1);
+    hk.unblock_folds();
+    // The fault holds the lock for 1.5 s after the batch.
+    let mut state = hk
+        .cmd(["state"])
+        .env("CODEPET_FAULT", "drain_once_slow")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(
+        hk.wait_for(Duration::from_secs(3), || hk.inbox_names().is_empty()),
+        "drain_once folded its batch"
+    );
+    let p = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.stored("claude-code", &p, &CLI), "while held");
+    assert_eq!(hk.inbox_names().len(), 1, "the lock was busy: no fold");
+    assert_eq!(hk.fold_processes(), 0);
+    assert!(state.wait().unwrap().success());
+    assert!(
+        hk.wait_for(Duration::from_secs(3), || hk.inbox_names().is_empty()),
+        "stranded: {:?}",
+        hk.inbox_names()
+    );
+    assert!(hk.wait_for(Duration::from_secs(3), || {
+        hk.fold_processes() == 0
+            && hk
+                .bar_state()
+                .is_some_and(|b| b["agent"]["state"] == "working")
+    }));
+}
+
+/// §6.3 `drain_once`: with the lock held by another holder it folds nothing; otherwise it
+/// folds a batch and hands the rest (more than 64 records) to a fold.
+#[ignore = "needs WP1: `codepet state` opens only schema v4 until the v5 migration lands; un-ignore in the WP1 rebase (fold.rs unit tests cover drain_once now)"]
+#[test]
+fn drain_once_skips_a_held_lock_and_hands_off_the_rest() {
+    let hk = Hk::with_db();
+    hk.block_folds();
+    let start = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.hook("claude-code", &start, &CLI), "start");
+    for i in 0..99 {
+        let p = claude(
+            "PreToolUse",
+            &format!(r#","prompt_id":"p1","tool_use_id":"t{i}""#),
+        );
+        assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "tool");
+    }
+    assert_eq!(hk.inbox_names().len(), 100);
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(hk.state.join("fold.lock"))
+        .unwrap();
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive).unwrap();
+    let out = hk.cmd(["state"]).output().unwrap();
+    assert!(out.status.success());
+    assert_eq!(hk.inbox_names().len(), 100, "a held lock: nothing folded");
+    drop(lock);
+    // The backoff is still in the future: drain_once folds anyway (§5.1), and its success
+    // clears the backoff so the rest goes to a fold.
+    let out = hk.cmd(["state"]).output().unwrap();
+    assert!(out.status.success());
+    assert!(
+        hk.wait_for(Duration::from_secs(5), || hk.inbox_names().is_empty()),
+        "left: {}",
+        hk.inbox_names().len()
+    );
+    assert!(hk.wait_for(Duration::from_secs(3), || hk.fold_processes() == 0));
+    assert_eq!(hk.db().int("SELECT COUNT(*) FROM agent_events"), 100);
+    assert_eq!(
+        hk.db().int("SELECT open_turn_tools FROM agent_sessions"),
+        99
+    );
+}
+
+/// §5.1: a fold that spends its run budget with records left hands them to a fresh fold
+/// (its own budget) instead of leaving them for the next hook. The debug fault makes each
+/// run fold one batch and spend its budget, so 200 records need several runs.
+#[cfg(debug_assertions)]
+#[test]
+fn a_fold_past_its_budget_hands_the_rest_to_a_fresh_fold() {
+    let hk = Hk::with_db();
+    hk.block_folds();
+    let start = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.hook("claude-code", &start, &CLI), "start");
+    for i in 0..199 {
+        let p = claude(
+            "PreToolUse",
+            &format!(r#","prompt_id":"p1","tool_use_id":"t{i}""#),
+        );
+        assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "tool");
+    }
+    hk.unblock_folds();
+    let p = claude("PreToolUse", r#","prompt_id":"p1","tool_use_id":"last""#);
+    let mut env = CLI.to_vec();
+    env.push(("CODEPET_FAULT", "fold_short_run"));
+    assert_silent_ok(&hk.hook("claude-code", &p, &env), "trigger");
+    assert!(
+        hk.wait_for(Duration::from_secs(10), || hk.inbox_names().is_empty()),
+        "stranded after a spent budget: {}",
+        hk.inbox_names().len()
+    );
+    assert!(hk.wait_for(Duration::from_secs(3), || hk.fold_processes() == 0));
+    assert_eq!(hk.db().int("SELECT COUNT(*) FROM agent_events"), 201);
+    assert!(!hk.state.join("fold.backoff").exists());
 }
 
 /// Two byte-identical permission prompts in one turn with a tool between them, all inside
