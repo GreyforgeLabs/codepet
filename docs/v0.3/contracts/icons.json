@@ -141,9 +141,9 @@
         "hermes",
         "grok-cli"
       ],
-      "rule": "brand-neutral: distinct coloured rounded square + generic glyph (spark, terminal prompt, open book, bird, comet); no vendor logos; the app name text is always shown next to the tile",
+      "rule": "brand-neutral: distinct coloured rounded square + generic glyph (light bulb, terminal prompt, open book, bird, comet); no vendor logos and no star, sparkle or asterisk shapes; the app name text is always shown next to the tile",
       "glyphs": {
-        "app_claude_code": "spark",
+        "app_claude_code": "light bulb",
         "app_codex": "terminal prompt",
         "app_opencode": "open book",
         "app_hermes": "bird",
@@ -246,7 +246,7 @@
       "cat": {
         "food": "Kibble",
         "water": "Fresh water",
-        "play": "Yarn"
+        "play": "Ball"
       },
       "goldfish": {
         "food": "Fish flakes"

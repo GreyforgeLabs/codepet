@@ -118,7 +118,7 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
 11. **"Forget coding history clears the timestamps of `activity_turns`."** Clearing
     `given_at_ms` to NULL would put given treats back in the jar. Resolved: Forget sets
     `earned_at_ms = 0` and, for given rows, `given_at_ms = 0`; caps ignore 0. A trigger
-    forbids `given_at_ms` going back to NULL.
+    forbids `given_at_ms` going back to NULL. (`earned_at_ms` superseded by §7 item 1.)
 12. **Helpers row persistence.** "Couldn't connect" + reason must survive after the job
     ends, and the spinner needs the job. Resolved: `client_hooks.last_outcome`,
     `last_reason`, `job_id`, `job_kind`; the export's client entry carries `first_seen_ms`
@@ -225,7 +225,8 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
     `format.source_key` is now per sheet: green by default, magenta `#FF00FF` when a subject
     is green, recorded as `key` per sheet (and per patch) in `tools/petart/icon_sheets.json`.
     The same change adds single-cell `patches` (the care-floor `play` icon is a red striped
-    ball, the painted twin of `badge_ball`; the cat's yarn waits for a `careIcons` override)
+    ball, the painted twin of `badge_ball`; the cat's yarn waits for a `careIcons` override,
+    superseded by §7 item 3)
     and keeps nonces, rollout ids and local paths out of the shipped `PROVENANCE.md`.
 
 ## 3. Other WP0 decisions (not contradictions)
@@ -341,8 +342,8 @@ differ, these entries win.
 ## 7. Owner decisions after wave 1 (2026-10-16)
 
 Binding owner-delegated decisions, made after WP0, WP1, WP2 and WP4 merged (`v0.3` @
-`d49dcc3`). They supersede the contract text they name; the frozen files keep their old wording
-until a contract edit (listed at the end of each item).
+`d49dcc3`). They supersede the contract text they name; the contract edits listed at the end
+of each item are made (in their own commit, with `check_contracts.py` passing).
 
 1. **Forget keeps the caps durable** (resolves §5 item 7; amends note 11). "Forget coding
    history" still deletes `agent_events` and `agent_sessions` and sets a given row's
@@ -373,13 +374,14 @@ until a contract edit (listed at the end of each item).
    `forgotten_earn_times_go_after_the_day_without_a_fold`,
    `an_ordinary_earn_never_looks_kept_by_forget`; `codepet-core`
    `an_ordinary_earn_never_carries_the_forget_marker`.
-   **Contract edit needed:** `schema-v5.sql` comment on `activity_turns.earned_at_ms` ("Forget
-   coding history sets it to 0") and the Help copy in `strings.json` (adult pages, exempt from
-   K1/K2, K8 not applied to `help.*.body`). Replacement text:
+   **Contract edit (done):** the `schema-v5.sql` comment on `activity_turns.earned_at_ms` (a
+   comment only: the DDL is unchanged), the `agent.forget_history` semantics in
+   `protocol.json`, and the Help copy in `strings.json` (adult pages, exempt from K1/K2, K8 not
+   applied to `help.*.body`):
    - `help.forget.body`: "Forget coding history deletes CodePet's record of coding sessions and
      events and clears the times of earned treats. Treats from the last day keep a time rounded
-     to the hour until that day is over, so the treat limits still count. Treats still in the jar
-     and growth already earned stay."
+     to the hour, so the treat limits still count; CodePet clears it the first time it runs
+     after that day. Treats still in the jar and growth already earned stay."
    - `help.privacy.body`, last sentence: "Forget coding history deletes it, except the times of
      treats from the last day, rounded to the hour, which the treat limits need until that day
      is over."
@@ -392,8 +394,9 @@ until a contract edit (listed at the end of each item).
    mirror `qml/shared/PetRegistry.js` and the generator table in `tools/petart/roster.py`. This
    supersedes §2 item 34's "the cat's yarn waits for a `careIcons` override": no cat override
    is planned, and the care-floor `play` patch note in `PROVENANCE.md` says so.
-   **Contract edit needed:** `icons.json` `care_words.examples.cat.play` "Yarn" -> "Ball"
-   (an example; `check_contracts.py` does not read it).
+   **Contract edit (done):** `icons.json` `care_words.examples.cat.play` "Yarn" -> "Ball"
+   (an example; `check_contracts.py` does not read it, `qml/tests/test_pet_assets.py` pins
+   the cat's word).
 4. **A brand-neutral Claude Code tile.** The orange tile with a white four-point sparkle was
    too close to a vendor mark. `app_claude_code` is regenerated through the WP4 pipeline as a
    single-cell patch of the `apps` sheet (the other four tiles are unchanged): a rose-pink
@@ -402,6 +405,8 @@ until a contract edit (listed at the end of each item).
    checks passed on attempt 1) and reviewed by eye at 256, 64 and 20 px on dark and light.
    `tools/petart/icon_sheets.json` pins the patch; provenance is in
    `qml/assets/icons/PROVENANCE.md` (both trees byte-identical, `icons.py --check` OK).
-   **Contract edit needed:** `icons.json` `apps.glyphs.app_claude_code` "spark" -> "light
-   bulb" and the `apps.rule` glyph list; SPEC §4.1 names "spark" too.
+   **Contract edit (done):** `icons.json` `apps.glyphs.app_claude_code` "spark" -> "light
+   bulb", and the `apps.rule` glyph list now says "light bulb" and forbids star, sparkle and
+   asterisk shapes. SPEC §4.1 (outside the repository) still names "spark"; this item
+   supersedes it.
 
