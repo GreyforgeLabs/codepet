@@ -1,7 +1,7 @@
 #!/bin/sh
 # codepet-overlay: verb launcher for the CodePet desktop overlay (Quickshell).
 #
-#   codepet-overlay show|hide|toggle|panel|tasks|care|companion|life|refresh|status|quit [--force]
+#   codepet-overlay show|hide|toggle|refresh|status|quit [--force]
 #
 # The overlay is one separate, detached `qs` process. This script finds a running
 # instance and sends it an IPC verb; it never starts a second copy. `hide`,
@@ -14,8 +14,11 @@
 # refusal; it never ends an overlay reporting a running task. (The v0.3 installer does not
 # use `quit`: it stops a running overlay by its exact PID before an upgrade.)
 #
-# v0.3: `panel` opens the pet's panel; `tasks`, `care`, `companion` and `life` are kept for
-# a CodePet 0.2 bar that is still loaded until the shell reloads.
+# v0.3: the desktop pet opens the bar popup itself, so the stub `panel` verb and the v0.2
+# window verbs (`tasks`, `care`, `companion`, `life`) are gone (usage error). The pet does
+# not stay while CodePet is Off ($XDG_STATE_HOME/codepet/off) or while "Pet on my desktop"
+# is off: `show` and `toggle` then print why and exit 0 (CodePet notes.md section 9 item 5),
+# never a timeout or a failed verb.
 #
 # Exit status: 0 success (status: running), 1 failure (status: not running),
 # 2 usage error.
@@ -24,7 +27,8 @@
 #   CODEPET_OVERLAY_QML  entry file (default: the installed current release)
 #   CODEPET_BIN          codepet binary for the overlay (default ~/.local/bin/codepet)
 #   CODEPET_QS           Quickshell CLI (default: qs)
-#   XDG_DATA_HOME, XDG_STATE_HOME are passed through unchanged.
+#   XDG_DATA_HOME, XDG_STATE_HOME are passed through unchanged (XDG_STATE_HOME also
+#   locates CodePet's off flag).
 #
 # POSIX sh. Every expansion is quoted; nothing is evaluated.
 set -u
@@ -32,7 +36,7 @@ set -u
 PROG=codepet-overlay
 TOKEN="codepet-overlay"
 
-USAGE="usage: $PROG show|hide|toggle|panel|tasks|care|companion|life|refresh|status|quit [--force]"
+USAGE="usage: $PROG show|hide|toggle|refresh|status|quit [--force]"
 
 usage() {
     echo "$USAGE" >&2
@@ -47,7 +51,7 @@ case "$#" in
 esac
 VERB=$1
 case "$VERB" in
-    show|hide|toggle|panel|tasks|care|companion|life|refresh|status|quit) ;;
+    show|hide|toggle|refresh|status|quit) ;;
     -h|--help) echo "$USAGE"; exit 0 ;;
     *) usage ;;
 esac
@@ -66,6 +70,12 @@ CODEPET_DATA="$DATA_HOME/codepet"
 QML=${CODEPET_OVERLAY_QML:-"$CODEPET_DATA/current/qml/shell.qml"}
 BIN=${CODEPET_BIN:-"$HOME/.local/bin/codepet"}
 QS=${CODEPET_QS:-qs}
+STATE_HOME=${XDG_STATE_HOME:-}
+case "$STATE_HOME" in
+    /*) ;;
+    *) STATE_HOME="$HOME/.local/state" ;;
+esac
+OFF_FLAG="$STATE_HOME/codepet/off"
 
 if ! command -v "$QS" >/dev/null 2>&1; then
     echo "$PROG: Quickshell ($QS) is not installed" >&2
@@ -154,17 +164,35 @@ call() {
     return 0
 }
 
+# exit_if_off: CodePet is Off (the flag exists): say so and exit 0.
+exit_if_off() {
+    if [ -e "$OFF_FLAG" ]; then
+        echo "$PROG: CodePet is off"
+        exit 0
+    fi
+}
+
+# exit_if_leaving: the selected overlay reports that it is about to exit (`exit_reason`
+# in its status): say why and exit 0. An older overlay without the field says nothing.
+exit_if_leaving() {
+    st=$("$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet status 2>/dev/null) || st=
+    case "$st" in
+        *'"exit_reason":"off"'*)
+            echo "$PROG: CodePet is off"
+            exit 0 ;;
+        *'"exit_reason":"desktop_pet_off"'*)
+            echo "$PROG: the desktop pet is off"
+            exit 0 ;;
+    esac
+}
+
 start_overlay() {
     if [ ! -f "$QML" ]; then
         echo "$PROG: CodePet overlay is not installed ($QML is missing)" >&2
         return 1
     fi
-    case "$VERB" in
-        panel|tasks|care|companion|life) open=$VERB ;;
-        *) open= ;;
-    esac
     # -n refuses a duplicate of this config even if two launchers race.
-    CODEPET_BIN="$BIN" CODEPET_OPEN="$open" "$QS" -n -d -p "$QML" >/dev/null 2>&1 || {
+    CODEPET_BIN="$BIN" "$QS" -n -d -p "$QML" >/dev/null 2>&1 || {
         echo "$PROG: could not start the overlay" >&2
         return 1
     }
@@ -203,13 +231,13 @@ case "$VERB" in
             st=$("$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet status 2>/dev/null) || st=
             case "$st" in
                 *'"supervisor":true'*)
-                    echo "$PROG: a simulation task is executing; finish or cancel it in the overlay's Tasks window ($PROG tasks), then quit" >&2
+                    echo "$PROG: a simulation task is executing; finish or cancel it in the CodePet 0.2 overlay's Tasks window, then quit" >&2
                     exit 1 ;;
                 *'"supervisor":false'*) ;;
                 *)
                     if [ "$FORCE" -ne 1 ]; then
                         echo "$PROG: the running overlay did not report whether a simulation task is executing (an overlay from CodePet 0.2.0 cannot)" >&2
-                        echo "$PROG: finish or cancel any task in its Tasks window ($PROG tasks); then log out and back in, or run: $PROG quit --force" >&2
+                        echo "$PROG: finish or cancel any task in its Tasks window; then log out and back in, or run: $PROG quit --force" >&2
                         exit 1
                     fi ;;
             esac
@@ -229,16 +257,20 @@ case "$VERB" in
         echo "$PROG: overlay is not running; nothing to $VERB" >&2
         exit 0 ;;
     *)
+        # show and toggle: an overlay started (or kept) while CodePet is Off would exit at
+        # once, so none is started.
+        exit_if_off
         if running; then
-            call "$VERB"
-            exit $?
+            call "$VERB" || { exit_if_off; exit 1; }
+        else
+            start_overlay || { exit_if_off; exit 1; }
+            # A fresh overlay is already shown; a toggle from "not running" therefore
+            # means show.
+            case "$VERB" in
+                toggle) call show ;;
+                *) call "$VERB" ;;
+            esac || { exit_if_off; exit 1; }
         fi
-        start_overlay || exit 1
-        # A fresh overlay is already shown and has opened CODEPET_OPEN; a toggle
-        # from "not running" therefore means show.
-        case "$VERB" in
-            toggle) call show ;;
-            *) call "$VERB" ;;
-        esac
-        exit $? ;;
+        exit_if_leaving
+        exit 0 ;;
 esac

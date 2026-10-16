@@ -20,9 +20,6 @@
 var PLUGIN_ID = "greyforge.codepet"
 var SETTING = "overlayOnLoad"
 var MAX_SETTINGS_BYTES = 1048576
-// Verbs that open the bar popup. `panel` is the v0.3 name; the v0.2 window verbs stay as
-// aliases while the v0.2 bar menu and launcher still send them (until WP5 replaces them).
-var HOME_VERBS = ["panel", "tasks", "care", "companion", "life"]
 // One Omarchy IPC call per second at most, however fast the pet is clicked.
 var HOME_COOLDOWN_MS = 1000
 // How long a "Pet on my desktop" off must hold before a process that never saw it on exits.
@@ -167,8 +164,4 @@ function openHomeArgv(omarchyPath) {
     if (base !== "")
         return [base + "/bin/omarchy-shell"].concat(call)
     return ["/usr/bin/env", "OMARCHY_PATH=" + DEFAULT_OMARCHY_PATH, "omarchy-shell"].concat(call)
-}
-
-function opensHome(verb) {
-    return HOME_VERBS.indexOf(String(verb)) >= 0
 }

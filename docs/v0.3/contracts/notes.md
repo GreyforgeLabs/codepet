@@ -552,7 +552,7 @@ the spec left room, and what WP5 asks the contract owners to adopt.
 21. **Merge task (WP5 lands after WP6, §10).** WP6 keeps a stub `panel` verb and the
     `tasks`/`care`/`companion`/`life` aliases in `qml/shell.qml` so the old bar menu works
     until the popup lands. They are not on this branch; when WP5 is rebased onto WP6, remove
-    them from `qml/shell.qml` (and their tests) in the WP5 merge, as §10 assigns.
+    them from `qml/shell.qml` (and their tests) in the WP5 merge, as §10 assigns. Done at the integration merge (section 11 item 1).
 
 ## 9. WP6 decisions (overlay and shared state, 2026-10-16)
 
@@ -580,7 +580,8 @@ These fill gaps the spec left open; consumers named below must follow them.
    hold against the old bar: no stub can open a v0.2 popup from outside. WP6 and WP5
    therefore merge **back to back** (WP6, then WP5 at once; no install, tag, release or
    hand-off of the integration branch between them), and the stub condition is waived.
-   The overlay keeps `panel` and the v0.2 window verbs as aliases of `openHome`.
+   The overlay keeps `panel` and the v0.2 window verbs as aliases of `openHome` (removed at
+   the integration merge, section 11 item 1).
 2. **"Pet on my desktop" is `overlayOnLoad`** (the existing manifest setting, §7.2
    decision 5). The overlay reads `$HOME/.config/omarchy/shell.json` read-only, exactly the
    file the Omarchy shell reads and writes (`userConfigPath`, which ignores
@@ -833,3 +834,43 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
     (which runs it for all five apps) never reports or warns about apps CodePet never
     touched. The bar's Stop watching still always runs the job. Result lines use the
     job's own verb ("couldn't stop watching" for a Disconnect).
+
+## 11. Integration of wave 2 (fix, WP3, WP6, WP5; 2026-10-16)
+
+Merged into `v0.3` in the order `v0.3-fix`, `v0.3-wp3`, `v0.3-wp6`, `v0.3-wp5`. The notes
+sections were renumbered so each package keeps its own: 7 owner decisions, 8 WP5, 9 WP6,
+10 WP3 (WP3's drafts and comments said "section 7"; the code comments now say 10).
+
+1. **The stub `panel` verb and the v0.2 window verbs are gone** (SPEC §10 step 7, §8 item
+   21, §9 items 1 and 5). `qml/shell.qml` answers `openHome` only (`OverlayFlow.opensHome`
+   is removed) and `codepet-overlay` accepts `show|hide|toggle|refresh|status|quit`; any
+   other verb is a usage error (exit 2). The launcher no longer sets `CODEPET_OPEN`.
+2. **Launcher and Off (§9 item 5).** `show` and `toggle` start nothing while
+   `$XDG_STATE_HOME/codepet/off` exists and print `codepet-overlay: CodePet is off` (exit 0).
+   After a start or a call they read `status` once; an `exit_reason` of `off` or
+   `desktop_pet_off` prints `CodePet is off` or `the desktop pet is off` (exit 0) instead of
+   a failure. A failed start or call while the off flag exists also reports Off.
+3. **One `shell.json` for the bar, the overlay and the shell (§9 item 2).**
+   `CodePetBar.paths().shellConfig` is `$HOME/.config/omarchy/shell.json` whatever
+   `XDG_CONFIG_HOME` says (Omarchy's `userConfigPath` ignores it).
+4. **Launcher environment.** With a `stateHome` test override the bar passes the overlay
+   launcher `XDG_STATE_HOME`, `CODEPET_TEST_STATE=1` (§10 item 1) and, in Calm mode,
+   `CODEPET_REDUCED_MOTION=1` (§8 item 6); the overlay itself follows the live `calm`
+   setting (§9 item 7).
+5. **`petstate.js`** is WP6's generated module in both trees (§8 item 3); the WP5 priority
+   vectors replay against it unchanged.
+6. **Plugin copy** (`omarchy-plugin/strings.json`, `Strings.js`) regenerated from the
+   owner-decision `strings.json` (§7 item 1 Help text).
+7. **Still open (WP7):**
+   - The export label stays `codepet.bar.v1` (§2 item 3). Both v0.3 readers accept v2 now,
+     but the §6.6/§9.2 upgrade-window test (`crates/codepet-cli/tests/v021_readers.rs`)
+     requires a still-loaded v0.2.1 reader to keep reading the file, and those readers
+     refuse any other label. Switching needs an owner call on that window.
+   - `omarchy-plugin/DesktopPetFlow.js` (WP6) and the widget's own rules
+     (`CodePetBar.responseEffects`, `BarWidget.startup`/`turnOnAndOpen`) say the same
+     thing and are tested separately; the widget does not import the module yet (§8
+     item 7).
+   - The workspace version is still 0.2.1, so `install.sh` and `package.sh` refuse this
+     tree on purpose until WP7 bumps it (§10 item 13).
+   - The top-level `README.md` still describes v0.2 (verbs, tasks); WP7 docs.
+   - The §8 item 20 contract-owner items (K3 copy, Memories journal, WP5 strings).

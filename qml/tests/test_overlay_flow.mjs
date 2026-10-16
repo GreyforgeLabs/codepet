@@ -129,8 +129,7 @@ test('Home opens through the Omarchy shell, silently', () => {
     for (let t = 10000; t < 10900; t += 30) if (F.homeDue(last, t)) { sent += 1; last = t; }
     assert.equal(sent, 1, 'thirty clicks in under a second: one Omarchy call');
     assert.equal(F.PLUGIN_ID, JSON.parse(read('../../omarchy-plugin/manifest.json')).id);
-    for (const v of ['panel', 'tasks', 'care', 'companion', 'life']) assert.ok(F.opensHome(v), v);
-    for (const v of ['', 'show', 'hide', 'refresh', 'toString']) assert.ok(!F.opensHome(v), v);
+    assert.equal(F.opensHome, undefined, 'the v0.2 window verbs and the stub panel verb are gone');
 });
 
 test('every overlay value of the shared order has an animation', () => {

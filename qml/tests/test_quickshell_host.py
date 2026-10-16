@@ -256,14 +256,16 @@ class QuickshellLoad(unittest.TestCase):
                     return subprocess.run(["qs", "ipc", "-p", str(entry), "call", "--", "codepet",
                                            *call], env=env, capture_output=True, text=True,
                                           timeout=10)
-                for call in (["show"], ["hide"], ["panel"], ["tasks"], ["openHome"],
+                for call in (["show"], ["hide"], ["openHome"], ["openHome"], ["openHome"],
                              ["setReducedMotion", "true"], ["setFullscreen", "false"]):
                     r = ipc(*call)
                     self.assertEqual(r.returncode, 0, (call, r.stdout, r.stderr))
                     self.assertNotIn("target codepet", r.stdout, call)
                     self.assertNotIn("Function not found", r.stdout, call)
+                for retired in ("panel", "tasks", "care", "companion", "life"):
+                    self.assertIn("Function not found", ipc(retired).stdout, retired)
                 st = json.loads(ipc("status").stdout)
-                # panel, tasks and openHome within a second: one Omarchy call (coalesced).
+                # Three openHome calls within a second: one Omarchy call (coalesced).
                 self.assertEqual((st["supervisor"], st["home_requests"], st["calm"]), (False, 1, True), st)
                 self.assertNotIn("window", st)
                 ipc("hide")
@@ -327,16 +329,19 @@ class HostContractV03(unittest.TestCase):
         names = {name: ret for name, _args, ret in declared}
         self.assertEqual(names.get('ping'), 'string')
         self.assertEqual(names.get('status'), 'string')
-        for verb in ('show', 'hide', 'toggle', 'openHome', 'panel', 'tasks', 'care', 'companion', 'life',
+        for verb in ('show', 'hide', 'toggle', 'openHome',
                      'refresh', 'setReducedMotion', 'selectScreen', 'setSessionState', 'setFullscreen'):
             self.assertEqual(names.get(verb), 'void', verb)
-        # Every verb the launcher can send exists (an older verb opens Home).
+        # The stub `panel` verb and the v0.2 window verbs went with the v0.2 bar menu
+        # (SPEC-v0.3 §10 step 7).
+        for verb in ('panel', 'tasks', 'care', 'companion', 'life'):
+            self.assertNotIn(verb, names, verb)
+        # Every verb the launcher can send exists.
         verbs = re.search(r'case "\$VERB" in\n\s+([a-z|]+)\) ;;', LAUNCHER).group(1).split('|')
         for verb in verbs:
             if verb != 'quit':
                 self.assertIn(verb, names, verb)
-        for verb in ('panel', 'tasks', 'care', 'companion', 'life', 'openHome'):
-            self.assertIn('shell.openHome()', block(ipc, f'function {verb}(): void {{'), verb)
+        self.assertIn('shell.openHome()', block(ipc, 'function openHome(): void {'))
         # ping's fixed prefix is what the launcher's liveness check matches.
         self.assertIn('"codepet-overlay " +', ipc)
         self.assertIn('TOKEN="codepet-overlay"', LAUNCHER)
@@ -610,10 +615,11 @@ class LauncherStatic(unittest.TestCase):
         self.assertIn('while [ "$n" -lt 30 ]; do', LAUNCHER)
         self.assertIn('sleep 0.1', LAUNCHER)
         self.assertEqual(LAUNCHER.count('" -n -d -p "$QML"'), 1)
-        self.assertIn('CODEPET_BIN="$BIN" CODEPET_OPEN="$open" "$QS" -n -d -p "$QML"', LAUNCHER)
+        self.assertIn('CODEPET_BIN="$BIN" "$QS" -n -d -p "$QML"', LAUNCHER)
+        self.assertNotIn('CODEPET_OPEN', LAUNCHER, 'the v0.3 overlay ignores CODEPET_OPEN')
         self.assertIn('"$QS" list --all --json', LAUNCHER)
         # `call --` keeps qs 0.3.1 from parsing the `show` verb as `qs ipc show`.
-        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 4)
+        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 5)
         self.assertNotRegex(re.sub(r'#[^\n]*', '', LAUNCHER), r'call codepet')
         self.assertIn('/current/qml/shell.qml', LAUNCHER)
         self.assertIn('${XDG_DATA_HOME:-}', LAUNCHER)
@@ -700,8 +706,7 @@ print("unexpected qs call", args, file=sys.stderr)
 sys.exit(99)
 """
 
-ALL_FUNCTIONS = ["ping", "status", "show", "hide", "toggle", "tasks", "care", "companion",
-                 "life", "refresh"]
+ALL_FUNCTIONS = ["ping", "status", "show", "hide", "toggle", "openHome", "refresh"]
 
 
 class LauncherBehaviour(unittest.TestCase):
@@ -720,8 +725,11 @@ class LauncherBehaviour(unittest.TestCase):
         fake = root / "qs"
         fake.write_text(FAKE_QS.format(python=sys.executable))
         fake.chmod(0o700)
+        self.off_flag = root / "state/codepet/off"
+        self.off_flag.parent.mkdir(parents=True)
         self.env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home),
-                    "XDG_DATA_HOME": str(self.data), "CODEPET_QS": str(fake),
+                    "XDG_DATA_HOME": str(self.data), "XDG_STATE_HOME": str(root / "state"),
+                    "CODEPET_QS": str(fake),
                     "FAKEQS_STATE": str(self.state), "FAKEQS_LOG": str(self.log)}
         self.set_state()
 
@@ -746,12 +754,17 @@ class LauncherBehaviour(unittest.TestCase):
         return [c for c in calls if c["argv"][:3] == ["-n", "-d", "-p"]]
 
     def ipc_calls(self, calls):
+        """IPC verbs sent, without the liveness pings and the status reads."""
         return [c["argv"][1:3] + [c["argv"][6]] for c in calls
-                if c["argv"][:1] == ["ipc"] and c["argv"][6] != "ping"]
+                if c["argv"][:1] == ["ipc"] and c["argv"][6] not in ("ping", "status")]
+
+    def status_reads(self, calls):
+        return [c for c in calls if c["argv"][:1] == ["ipc"] and c["argv"][6] == "status"]
 
     def test_usage_errors(self):
         for argv in ([], ["stop"], ["show", "extra"], ["--pid"], ["show", "--force"],
-                     ["--force", "quit"], ["quit", "--now"], ["quit", "--force", "x"]):
+                     ["--force", "quit"], ["quit", "--now"], ["quit", "--force", "x"],
+                     ["panel"], ["tasks"], ["care"], ["companion"], ["life"], ["openHome"]):
             r, calls = self.run_launcher(*argv)
             self.assertEqual(r.returncode, 2, argv)
             self.assertEqual(calls, [], argv)
@@ -771,22 +784,43 @@ class LauncherBehaviour(unittest.TestCase):
         starts = self.launches(calls)
         self.assertEqual(len(starts), 1)
         self.assertEqual(starts[0]["argv"], ["-n", "-d", "-p", str(self.qml)])
-        self.assertEqual(starts[0]["open"], "")
+        self.assertIsNone(starts[0]["open"], "no CODEPET_OPEN: the v0.3 overlay ignores it")
         self.assertEqual(starts[0]["bin"], str(self.home / ".local/bin/codepet"))
         self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "show"]])
+        self.assertEqual(len(self.status_reads(calls)), 1, "it asks whether the pet stays")
+        self.assertEqual(r.stdout, "")
         # Now running: no further launch.
         r, calls = self.run_launcher("show")
         self.assertEqual(self.launches(calls), [])
         self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "show"]])
 
-    def test_view_verbs_open_through_codepet_open(self):
-        for verb in ("tasks", "care", "companion", "life"):
-            self.set_state()
+    def test_off_starts_nothing_and_says_so(self):
+        # notes.md section 9 item 5: Off is no failure; an overlay would only exit again.
+        self.off_flag.write_text("")
+        for verb in ("show", "toggle"):
             r, calls = self.run_launcher(verb)
-            self.assertEqual(r.returncode, 0, (verb, r.stderr))
-            starts = self.launches(calls)
-            self.assertEqual([s["open"] for s in starts], [verb])
-            self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), verb]])
+            self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "codepet-overlay: CodePet is off\n", ""), verb)
+            self.assertEqual(self.launches(calls), [], verb)
+            self.assertEqual(self.ipc_calls(calls), [], verb)
+        # hide, refresh, status and quit are unaffected.
+        r, calls = self.run_launcher("hide")
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("CodePet is off", r.stdout + r.stderr)
+
+    def test_an_overlay_that_is_leaving_is_reported_not_failed(self):
+        for reason, said in (("desktop_pet_off", "the desktop pet is off"), ("off", "CodePet is off")):
+            reply = '{"pet":"shown","supervisor":false,"exit_reason":"%s"}' % reason
+            for running in (False, True):
+                self.set_state(running=running, status_reply=reply)
+                r, calls = self.run_launcher("show")
+                self.assertEqual((r.returncode, r.stdout, r.stderr), (0, f"codepet-overlay: {said}\n", ""),
+                                 (reason, running))
+                self.assertEqual(len(self.launches(calls)), 0 if running else 1)
+                self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "show"]])
+        # A pet that stays says nothing more.
+        self.set_state(running=True, status_reply='{"pet":"shown","supervisor":false,"exit_reason":""}')
+        r, _ = self.run_launcher("toggle")
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
 
     def test_toggle_from_stopped_means_show(self):
         r, calls = self.run_launcher("toggle")
@@ -799,7 +833,7 @@ class LauncherBehaviour(unittest.TestCase):
 
     def test_running_instance_gets_every_verb_without_a_launch(self):
         self.set_state(running=True)
-        for verb in ("show", "hide", "toggle", "tasks", "care", "companion", "life", "refresh"):
+        for verb in ("show", "hide", "toggle", "refresh"):
             r, calls = self.run_launcher(verb)
             self.assertEqual(r.returncode, 0, (verb, r.stderr))
             self.assertEqual(self.launches(calls), [], verb)
@@ -867,7 +901,7 @@ class LauncherBehaviour(unittest.TestCase):
                                {"config_path": older, "id": "b", "pid": 4242,
                                 "launch_time": "t", "shell_id": "s"}])
         for verb, sent in (("show", "show"), ("toggle", "toggle"), ("hide", "hide"),
-                           ("tasks", "tasks")):
+                           ("refresh", "refresh")):
             r, calls = self.run_launcher(verb)
             self.assertEqual(r.returncode, 0, (verb, r.stderr))
             self.assertEqual(self.launches(calls), [], verb)
@@ -885,7 +919,7 @@ class LauncherBehaviour(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.launches(calls), [])
         self.assertEqual(self.ipc_calls(calls), [["--pid", "77", "show"]])
-        r, calls = self.run_launcher("companion")
+        r, calls = self.run_launcher("refresh")
         self.assertEqual(r.returncode, 1)
         self.assertIn("older CodePet release", r.stderr)
         self.assertEqual(self.launches(calls), [])
@@ -1092,12 +1126,12 @@ class QuickshellOverlayRuntime(unittest.TestCase):
                 self.assertEqual(self.rpc_log(env), [], "a readable file needs no state.get")
                 self.assertTrue(session.call("ping").stdout.startswith("codepet-overlay shown"))
                 # A burst (a child mashing the pet) is one Omarchy call; a later one is another.
-                for verb in ("openHome", "panel", "care", "openHome", "openHome"):
+                for verb in ("openHome", "openHome", "openHome", "openHome", "openHome"):
                     self.assertEqual(session.call(verb).returncode, 0, verb)
                 st = session.wait_for(lambda s: s.get("home_requests") == 1)
                 self.assertEqual(st.get("home_requests"), 1, st)
                 time.sleep(1.1)
-                self.assertEqual(session.call("panel").returncode, 0)
+                self.assertEqual(session.call("openHome").returncode, 0)
                 st = session.wait_for(lambda s: s.get("home_requests") == 2)
                 self.assertEqual(st.get("home_requests"), 2, st)
                 time.sleep(0.3)
@@ -1396,20 +1430,20 @@ class QuickshellOverlayRuntime(unittest.TestCase):
                 self.assertEqual(launcher("status").returncode, 1)
                 self.assertEqual(launcher("hide").returncode, 0)
                 self.assertEqual(instances(), [], "hide never starts the overlay")
-                r = launcher("tasks")
+                r = launcher("show")
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(len(instances()), 1)
                 code, st = overlay_status()
                 self.assertEqual(code, 0)
-                # A v0.2 window verb opens the bar popup, once.
-                self.assertEqual(st.get("home_requests"), 1, st)
-                time.sleep(1.1)  # Home requests within a second are coalesced
-                for verb in ("show", "toggle", "care", "show"):
+                # The launcher never opens the bar popup (the retired window verbs are gone).
+                self.assertEqual(st.get("home_requests"), 0, st)
+                self.assertEqual(launcher("tasks").returncode, 2)
+                for verb in ("show", "toggle", "toggle", "show"):
                     r = launcher(verb)
                     self.assertEqual(r.returncode, 0, (verb, r.stderr))
                 self.assertEqual(len(instances()), 1, "verbs never start a second copy")
                 code, st = overlay_status()
-                self.assertEqual((st.get("pet"), st.get("home_requests")), ("shown", 2), st)
+                self.assertEqual((st.get("pet"), st.get("home_requests")), ("shown", 0), st)
                 # An install re-points `current`; the running overlay is still the one.
                 current.unlink()
                 current.symlink_to(data / "releases/0.3.0")

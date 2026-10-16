@@ -183,14 +183,10 @@ ShellRoot {
         function show(): void { shell.explicitlyHidden = false }
         function hide(): void { shell.hidePet() }
         function toggle(): void { shell.explicitlyHidden = !shell.explicitlyHidden }
+        // Opens the bar popup at Home. The stub `panel` verb and the v0.2 window verbs
+        // (`tasks`, `care`, `companion`, `life`) went with the v0.2 bar menu (SPEC-v0.3 §10
+        // step 7; notes.md §8 item 21).
         function openHome(): void { shell.openHome() }
-        // `panel` opens the bar popup; the v0.2 window verbs are kept as aliases for the
-        // v0.2 bar menu and launcher until the v0.3 bar plugin replaces them.
-        function panel(): void { shell.openHome() }
-        function tasks(): void { shell.openHome() }
-        function care(): void { shell.openHome() }
-        function companion(): void { shell.openHome() }
-        function life(): void { shell.openHome() }
         function refresh(): void { shell.refresh() }
         function setReducedMotion(value: bool): void { shell.reducedMotionOverride = value }
         function selectScreen(name: string): void { shell.preferredScreenName = name }
