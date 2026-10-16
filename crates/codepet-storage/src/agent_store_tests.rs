@@ -524,7 +524,9 @@ fn fault_before_commit_keeps_the_batch_uncommitted() {
     let mut store = env.fold();
     let r = turn(env.rec("claude-code", "turn_start", T0), "t1");
     test_fault::arm(Some("fold_before_commit"));
-    let res = catch_unwind(AssertUnwindSafe(|| store.fold_batch(std::slice::from_ref(&r), 1)));
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        store.fold_batch(std::slice::from_ref(&r), 1)
+    }));
     test_fault::arm(None);
     assert!(res.is_err());
     assert_eq!(env.int("SELECT COUNT(*) FROM agent_events"), 0);

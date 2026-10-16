@@ -194,7 +194,10 @@ fn v03_commands_are_routed_but_not_implemented_and_touch_nothing() {
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     let err = String::from_utf8(output.stderr).unwrap();
-    assert!(err.starts_with("codepet fold: ") && err.lines().count() == 1, "{err}");
+    assert!(
+        err.starts_with("codepet fold: ") && err.lines().count() == 1,
+        "{err}"
+    );
     assert!(!std::path::Path::new("/nonexistent").exists());
     assert!(!env.xdg().exists());
 }
