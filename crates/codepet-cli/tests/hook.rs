@@ -409,8 +409,17 @@ fn a_client_writing_after_exit_only_sees_its_own_epipe() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = c.spawn().unwrap();
-    let mut pipe = child.stdin.take().unwrap();
+    let (out, error) = write_until_closed(c.spawn().unwrap());
+    assert_silent_ok(&out, "draining shim");
+    assert_eq!(error, Some(std::io::ErrorKind::BrokenPipe));
+}
+
+/// Writes to the child's stdin for up to 3 s, until a write fails; returns the output and
+/// the writer's error.
+fn write_until_closed(
+    mut child: std::process::Child,
+) -> (std::process::Output, Option<std::io::ErrorKind>) {
+    let mut pipe = child.stdin.take().expect("piped stdin");
     let writer = std::thread::spawn(move || {
         let chunk = vec![b'x'; 64 * 1024];
         let t = Instant::now();
@@ -422,8 +431,7 @@ fn a_client_writing_after_exit_only_sees_its_own_epipe() {
         None
     });
     let out = child.wait_with_output().unwrap();
-    assert_silent_ok(&out, "draining shim");
-    assert_eq!(writer.join().unwrap(), Some(std::io::ErrorKind::BrokenPipe));
+    (out, writer.join().unwrap())
 }
 
 /// The hook never opens SQLite: a database held under an exclusive lock changes nothing.
