@@ -21,10 +21,13 @@ fn request_id() -> Result<String, Failure> {
                 format!("no random id: {e}"),
             )
         })?;
-    Ok(format!(
-        "cli-{}",
-        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
-    ))
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut id = String::from("cli-");
+    for b in bytes {
+        id.push(char::from(HEX[usize::from(b >> 4)]));
+        id.push(char::from(HEX[usize::from(b & 15)]));
+    }
+    Ok(id)
 }
 
 fn fail(f: &Failure) -> i32 {
