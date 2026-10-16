@@ -127,9 +127,16 @@ napping; it updates the displayed countdown only.
   `pet.events_seen`. Anything else, including every `task.*` method, is refused before a
   process exists. Task supervisors must never be children of the shell.
 - One request in flight; buttons are disabled while busy; success is shown only after the
-  response. Frames are bounded to 64 KiB in both directions.
+  response. A request frame larger than 64 KiB is refused before a process starts. A
+  response line is checked against 64 KiB once the full line (up to its newline) has
+  arrived; a line that never ends is bounded only by the watchdog below, which is an
+  accepted limit of this transport.
 - `codepetBar.rpcWatchdog` (15 s, single shot) runs only while a request is in flight; its
-  handler only sends SIGTERM to that process and reports a timeout.
+  handler only reports a timeout and signals that one process, never sends a request.
+- A child whose answer was refused (oversize, not JSON or not the protocol envelope) or that
+  timed out is sent SIGTERM at once, and SIGKILL when the watchdog next fires if it is
+  still running. The slot stays busy until that child has exited, so no new request starts
+  beside it.
 - Care, bed, wake and pause reuse one request id per press until a response confirms it
   (the `PetCare.qml` pattern), so a retried press is applied at most once.
 - A binary that cannot start is reported as "CodePet is not installed: run

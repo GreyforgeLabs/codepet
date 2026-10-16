@@ -1,4 +1,4 @@
-# Security status (v0.2.0)
+# Security status (v0.2)
 
 CodePet still has no real execution surface. It cannot launch coding providers, tests, shells or commands from a task. The mock supervisor spawns no process, opens no socket and never reads or writes the selected project folder. There are no network calls. This is deliberate fail-closed behavior, not proof that a future runner is secure.
 
@@ -50,6 +50,16 @@ CodePet still has no real execution surface. It cannot launch coding providers, 
   `codepet-overlay <verb>` with argv arrays (no shell) after an explicit click, the leader's
   single startup read, or the `overlayOnLoad` setting; it never sends a `task.*` method. The
   overlay launcher quotes every expansion and evaluates nothing.
+
+## Changed in v0.2.1
+
+- **Plain-text names on buttons.** The Adopt, Retire and Keep buttons show the companion's
+  name as plain text, like every other label; a name can no longer be read as rich text.
+- **Refused `codepet rpc` children are ended.** When the bar refuses a child's answer
+  (larger than 64 KiB, not JSON or not the protocol envelope) or the child times out, it
+  sends SIGTERM, then SIGKILL on the next 15 s watchdog firing if the child is still
+  running, and starts no new request until that child has exited
+  ([omarchy-plugin.md](omarchy-plugin.md)).
 
 ## Not established
 
