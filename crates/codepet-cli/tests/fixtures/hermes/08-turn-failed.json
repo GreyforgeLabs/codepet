@@ -1,0 +1,27 @@
+{
+ "name": "turn-failed",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_failed\",\"session_id\":\"20261016_120000_ab12cd\",\"turn_id\":\"h-2\"}\n",
+ "expect": {
+  "event_id": "cbf7533593aa8fa44cc32617790d86e5",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "turn_failed",
+   "session": "20261016_120000_ab12cd",
+   "turn": "h-2",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "b704a878ee117c0c",
+   "at_ms": 1792123876111
+  }
+ }
+}

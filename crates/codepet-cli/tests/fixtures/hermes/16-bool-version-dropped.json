@@ -1,0 +1,12 @@
+{
+ "name": "bool-version-dropped",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":true,\"event\":\"turn_done\",\"session_id\":\"20261016_120000_ab12cd\"}\n",
+ "expect": {
+  "drop": "unmapped"
+ }
+}

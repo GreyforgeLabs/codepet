@@ -1,0 +1,27 @@
+{
+ "name": "ready-check-done",
+ "client": "grok-cli",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+ "at_ms": 1792123876111,
+ "stdin": "{\"hookEventName\":\"stop\",\"hook_event_name\":\"Stop\",\"sessionId\":\"codepet-ready-check\",\"promptId\":\"codepet-ready-check\",\"reason\":\"end_turn\",\"codepet_test\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f0\"}\n",
+ "expect": {
+  "event_id": "322580396d6cfbbd6b662bf22fea7de1",
+  "record": {
+   "v": 1,
+   "client": "grok-cli",
+   "kind": "turn_done",
+   "session": "codepet-ready-check",
+   "turn": "codepet-ready-check",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": true,
+   "dig": "dc35cd81fef85935",
+   "at_ms": 1792123876111
+  }
+ }
+}

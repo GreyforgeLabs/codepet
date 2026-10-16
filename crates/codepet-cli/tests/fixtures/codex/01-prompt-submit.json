@@ -1,0 +1,27 @@
+{
+ "name": "prompt-submit",
+ "client": "codex",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"01a13cfb-647c-7fd3-8500-3c7f8733825c\",\"turn_id\":\"7\",\"transcript_path\":\"/home/u/.codex/sessions/CANARY-transcript-7f3a.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"hook_event_name\":\"UserPromptSubmit\",\"model\":\"CANARY-model-7f3a\",\"permission_mode\":\"default\",\"prompt\":\"CANARY-prompt-7f3a \\\"session_id\\\":\\\"x\\\"\"}\n",
+ "expect": {
+  "event_id": "1d320bc359a344c60742b11be90c74fd",
+  "record": {
+   "v": 1,
+   "client": "codex",
+   "kind": "turn_start",
+   "session": "01a13cfb-647c-7fd3-8500-3c7f8733825c",
+   "turn": "7",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "1d22430affa284d4",
+   "at_ms": 1792123876111
+  }
+ }
+}

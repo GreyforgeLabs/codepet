@@ -1,0 +1,27 @@
+{
+ "name": "loop-stopped-keyless",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_cancelled\",\"session_id\":\"20261016_120000_ab12cd\"}\n",
+ "expect": {
+  "event_id": "7d3b63b98c3204b816d4ea734b48a208",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "turn_cancelled",
+   "session": "20261016_120000_ab12cd",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "f41bf4f87f84867d",
+   "at_ms": 1792123876111
+  }
+ }
+}

@@ -1,0 +1,29 @@
+{
+ "name": "session-end",
+ "client": "claude-code",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {
+  "CLAUDE_CODE_ENTRYPOINT": "cli"
+ },
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11\",\"transcript_path\":\"/home/u/.claude/projects/CANARY-proj-7f3a/5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"permission_mode\":\"default\",\"hook_event_name\":\"SessionEnd\",\"reason\":\"prompt_input_exit\"}\n",
+ "expect": {
+  "event_id": "8e846507c73407ab01bb85ce6a58a8f3",
+  "record": {
+   "v": 1,
+   "client": "claude-code",
+   "kind": "session_end",
+   "session": "5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "e87bc20dfb89678f",
+   "at_ms": 1792123876111
+  }
+ }
+}

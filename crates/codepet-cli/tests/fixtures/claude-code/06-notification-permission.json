@@ -1,0 +1,29 @@
+{
+ "name": "notification-permission",
+ "client": "claude-code",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {
+  "CLAUDE_CODE_ENTRYPOINT": "cli"
+ },
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11\",\"transcript_path\":\"/home/u/.claude/projects/CANARY-proj-7f3a/5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"permission_mode\":\"default\",\"hook_event_name\":\"Notification\",\"message\":\"CANARY-message-7f3a\",\"title\":\"CANARY-title-7f3a\",\"notification_type\":\"permission_prompt\"}\n",
+ "expect": {
+  "event_id": "56627918de35606754074b96bc4e160a",
+  "record": {
+   "v": 1,
+   "client": "claude-code",
+   "kind": "waiting",
+   "session": "5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": "permission_prompt",
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "353401f5cd906398",
+   "at_ms": 1792123876111
+  }
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "name": "ready-check-start",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_start\",\"session_id\":\"codepet-ready-check\",\"turn_id\":\"codepet-ready-check\",\"interactive\":true,\"codepet_test\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f0\"}\n",
+ "expect": {
+  "event_id": "ac73609bbd960b4f2bed7c578956e94a",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "turn_start",
+   "session": "codepet-ready-check",
+   "turn": "codepet-ready-check",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": true,
+   "dig": "a8897465b629354b",
+   "at_ms": 1792123876111
+  }
+ }
+}

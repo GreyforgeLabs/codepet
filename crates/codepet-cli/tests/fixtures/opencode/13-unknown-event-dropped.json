@@ -1,0 +1,12 @@
+{
+ "name": "unknown-event-dropped",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"explode\",\"session_id\":\"ses_7a1b\"}\n",
+ "expect": {
+  "drop": "unmapped"
+ }
+}

@@ -1,0 +1,29 @@
+{
+ "name": "stop-hook-active",
+ "client": "claude-code",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {
+  "CLAUDE_CODE_ENTRYPOINT": "cli"
+ },
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11\",\"transcript_path\":\"/home/u/.claude/projects/CANARY-proj-7f3a/5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"permission_mode\":\"default\",\"hook_event_name\":\"Stop\",\"prompt_id\":\"550e8400-e29b-41d4-a716-446655440000\",\"stop_hook_active\":true,\"last_assistant_message\":\"CANARY-answer-7f3a\"}\n",
+ "expect": {
+  "event_id": "ddb21a80b6e88e6ea98d800a5abba58a",
+  "record": {
+   "v": 1,
+   "client": "claude-code",
+   "kind": "turn_done",
+   "session": "5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11",
+   "turn": "550e8400-e29b-41d4-a716-446655440000",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "8c5cf176980366ec",
+   "at_ms": 1792123876111
+  }
+ }
+}

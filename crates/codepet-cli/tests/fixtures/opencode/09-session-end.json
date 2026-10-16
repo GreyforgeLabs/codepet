@@ -1,0 +1,27 @@
+{
+ "name": "session-end",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"session_end\",\"session_id\":\"ses_7a1b\"}\n",
+ "expect": {
+  "event_id": "d87b0ad72dae1e680ec9621fe62a07c6",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "session_end",
+   "session": "ses_7a1b",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "1286ce451a7fd58e",
+   "at_ms": 1792123876111
+  }
+ }
+}

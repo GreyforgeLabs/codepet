@@ -1,0 +1,27 @@
+{
+ "name": "permission-request",
+ "client": "codex",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"01a13cfb-647c-7fd3-8500-3c7f8733825c\",\"turn_id\":\"7\",\"transcript_path\":null,\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"hook_event_name\":\"PermissionRequest\",\"model\":\"CANARY-model-7f3a\",\"permission_mode\":\"default\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"CANARY-command-7f3a\",\"description\":null}}\n",
+ "expect": {
+  "event_id": "c472cccdd06c667f637ea24d465e9f36",
+  "record": {
+   "v": 1,
+   "client": "codex",
+   "kind": "waiting",
+   "session": "01a13cfb-647c-7fd3-8500-3c7f8733825c",
+   "turn": "7",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "8418da3ecfc8c5b3",
+   "at_ms": 1792123876111
+  }
+ }
+}

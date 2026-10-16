@@ -1,0 +1,252 @@
+//! The detached fold (SPEC-v0.3 §5.1, §6.4, §9.2): a hook that wins `fold.lock` starts
+//! exactly one fold, which folds the inbox, exports `bar-state.json` and exits; bursts
+//! keep at most one fold process and lose nothing; failures back off.
+mod hookkit;
+
+use hookkit::{assert_silent_ok, Hk, BIN};
+use std::fs;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+
+fn claude(event: &str, extra: &str) -> Vec<u8> {
+    format!(r#"{{"hook_event_name":"{event}","session_id":"sess-1"{extra}}}"#).into_bytes()
+}
+const CLI: [(&str, &str); 1] = [("CLAUDE_CODE_ENTRYPOINT", "cli")];
+
+#[test]
+fn a_hook_starts_one_fold_that_folds_and_exports() {
+    let hk = Hk::with_db();
+    for (event, extra) in [
+        ("SessionStart", r#","source":"startup""#),
+        ("UserPromptSubmit", r#","prompt_id":"p1","prompt":"hi""#),
+        (
+            "PreToolUse",
+            r#","prompt_id":"p1","tool_use_id":"tu1","tool_name":"Bash""#,
+        ),
+        ("Stop", r#","prompt_id":"p1""#),
+    ] {
+        assert_silent_ok(
+            &hk.stored("claude-code", &claude(event, extra), &CLI),
+            event,
+        );
+    }
+    let done = hk.wait_for(Duration::from_secs(5), || {
+        hk.inbox_names().is_empty()
+            && hk
+                .bar_state()
+                .is_some_and(|b| b["agent"]["finished_seq"] == 1 && b["treats"]["jar"] == 1)
+    });
+    let bar = hk.bar_state().unwrap_or_default();
+    assert!(done, "inbox {:?}, bar {bar}", hk.inbox_names());
+    assert_eq!(bar["agent"]["hello_seq"], 1);
+    assert_eq!(bar["agent"]["hello_app"], "claude-code");
+    assert_eq!(bar["agent"]["finished_treat"], true);
+    assert_eq!(bar["agent"]["state"], "idle");
+    let db = hk.db();
+    assert_eq!(
+        db.int("SELECT COUNT(*) FROM agent_events WHERE outcome = 'folded'"),
+        4
+    );
+    assert_eq!(
+        db.int("SELECT events_total FROM client_hooks WHERE client = 'claude-code'"),
+        4
+    );
+    assert!(db.int("SELECT last_seen_ms FROM client_hooks") > 0);
+    assert!(!hk.state.join("fold.backoff").exists());
+    assert!(hk.wait_for(Duration::from_secs(2), || hk.fold_processes() == 0));
+}
+
+/// §9.2 bursts: 20 concurrent writers (500 activity events): at most one fold process at
+/// any sample (every 5 ms), the inbox empties within 1 s of the last event, nothing lost.
+#[test]
+fn bursts_keep_one_fold_and_lose_nothing() {
+    let hk = Arc::new(Hk::with_db());
+    let start = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.stored("claude-code", &start, &CLI), "start");
+    let stop = Arc::new(AtomicBool::new(false));
+    let max = Arc::new(AtomicUsize::new(0));
+    let sampler = {
+        let (hk, stop, max) = (hk.clone(), stop.clone(), max.clone());
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::SeqCst) {
+                max.fetch_max(hk.fold_processes(), Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        })
+    };
+    let writers: Vec<_> = (0..20)
+        .map(|w| {
+            let hk = hk.clone();
+            std::thread::spawn(move || {
+                for i in 0..25 {
+                    let p = claude(
+                        "PreToolUse",
+                        &format!(r#","prompt_id":"p1","tool_use_id":"tu-{w}-{i}""#),
+                    );
+                    assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "burst");
+                }
+            })
+        })
+        .collect();
+    for w in writers {
+        w.join().unwrap();
+    }
+    let emptied = hk.wait_for(Duration::from_secs(1), || hk.inbox_names().is_empty());
+    let settled = hk.wait_for(Duration::from_secs(3), || hk.fold_processes() == 0);
+    stop.store(true, Ordering::SeqCst);
+    sampler.join().unwrap();
+    assert!(
+        emptied,
+        "inbox not empty 1 s after the last event: {}",
+        hk.inbox_names().len()
+    );
+    assert!(settled);
+    eprintln!(
+        "burst: max concurrent fold processes sampled = {}",
+        max.load(Ordering::SeqCst)
+    );
+    assert!(
+        max.load(Ordering::SeqCst) <= 1,
+        "fold processes seen at once: {max:?}"
+    );
+    let db = hk.db();
+    assert_eq!(
+        db.int("SELECT COUNT(*) FROM agent_events"),
+        501,
+        "nothing lost"
+    );
+    assert_eq!(db.int("SELECT open_turn_tools FROM agent_sessions"), 500);
+}
+
+/// A fold that always fails (here: a schema v4 database) writes `fold.backoff` with a
+/// future mtime; hooks then stop starting folds, so the spawn count stays bounded.
+#[test]
+fn a_failing_fold_backs_off() {
+    let hk = Hk::new();
+    let out = hk.cmd(["state"]).output().unwrap();
+    assert!(out.status.success());
+    let p = claude("Stop", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "first");
+    let backoff = hk.state.join("fold.backoff");
+    assert!(hk.wait_for(Duration::from_secs(3), || backoff.exists()));
+    assert!(hk.wait_for(Duration::from_secs(2), || hk.fold_processes() == 0));
+    let read =
+        || -> serde_json::Value { serde_json::from_slice(&fs::read(&backoff).unwrap()).unwrap() };
+    assert_eq!(read()["count"], 1);
+    assert_eq!(read()["class"], "schema");
+    let retry = fs::metadata(&backoff).unwrap().modified().unwrap();
+    assert!(retry > SystemTime::now() + Duration::from_secs(2));
+    for i in 0..30 {
+        let p = claude(
+            "PreToolUse",
+            &format!(r#","prompt_id":"p1","tool_use_id":"t{i}""#),
+        );
+        assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "during backoff");
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(read()["count"], 1, "no fold ran during the backoff");
+    assert_eq!(hk.inbox_names().len(), 31, "records wait in the inbox");
+    // A manual run fails the same way and doubles the delay.
+    let out = hk
+        .cmd(["fold", "--state-dir", hk.state.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("schema version 4"));
+    assert_eq!(read()["count"], 2);
+    let retry2 = fs::metadata(&backoff).unwrap().modified().unwrap();
+    assert!(retry2 > SystemTime::now() + Duration::from_secs(7));
+}
+
+#[test]
+fn a_manual_fold_takes_the_lock_itself_and_yields_to_a_holder() {
+    let hk = Hk::with_db();
+    hk.block_folds();
+    let p = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "event");
+    assert_eq!(hk.inbox_names().len(), 1);
+    // Another holder: the manual fold exits 0 at once and leaves the record.
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(hk.state.join("fold.lock"))
+        .unwrap();
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive).unwrap();
+    let dir = hk.state.to_str().unwrap().to_owned();
+    let out = hk.cmd(["fold", "--state-dir", &dir]).output().unwrap();
+    assert_silent_ok(&out, "busy");
+    assert_eq!(hk.inbox_names().len(), 1);
+    drop(lock);
+    let out = hk.cmd(["fold", "--state-dir", &dir]).output().unwrap();
+    assert_silent_ok(&out, "manual fold");
+    assert!(hk.inbox_names().is_empty());
+    assert!(
+        !hk.state.join("fold.backoff").exists(),
+        "success removes the backoff"
+    );
+    assert_eq!(hk.bar_state().unwrap()["agent"]["state"], "working");
+    // Bad arguments are a usage error (a fold is internal, but safe to run by hand).
+    for args in [vec!["fold"], vec!["fold", "--state-dir", "relative"]] {
+        let out = std::process::Command::new(BIN)
+            .args(&args)
+            .env_clear()
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn a_fold_killed_before_commit_leaves_the_inbox_for_the_next() {
+    let hk = Hk::with_db();
+    hk.block_folds();
+    for i in 0..3 {
+        let p = claude(
+            "PreToolUse",
+            &format!(r#","prompt_id":"p1","tool_use_id":"t{i}""#),
+        );
+        assert_silent_ok(&hk.hook("claude-code", &p, &CLI), "event");
+    }
+    let dir = hk.state.to_str().unwrap().to_owned();
+    let out = hk
+        .cmd(["fold", "--state-dir", &dir])
+        .env("CODEPET_FAULT", "fold_before_commit")
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "aborted");
+    assert_eq!(hk.inbox_names().len(), 3);
+    assert_eq!(hk.db().int("SELECT COUNT(*) FROM agent_events"), 0);
+    let out = hk.cmd(["fold", "--state-dir", &dir]).output().unwrap();
+    assert_silent_ok(&out, "retry");
+    assert!(hk.inbox_names().is_empty());
+    assert_eq!(hk.db().int("SELECT COUNT(*) FROM agent_events"), 3);
+}
+
+/// Off: the shim stops before the binary, and anything that slipped in is dropped by the
+/// fold without a treat.
+#[test]
+fn off_starts_nothing_and_the_fold_drops_stragglers() {
+    let hk = Hk::with_db();
+    fs::write(hk.state.join("off"), b"").unwrap();
+    let p = claude("UserPromptSubmit", r#","prompt_id":"p1""#);
+    assert_silent_ok(&hk.stored("claude-code", &p, &CLI), "off");
+    assert!(hk.inbox_names().is_empty());
+    assert_eq!(hk.fold_processes(), 0);
+    fs::remove_file(hk.state.join("off")).unwrap();
+    rusqlite::Connection::open(hk.state.join("codepet.sqlite3"))
+        .unwrap()
+        .execute_batch("UPDATE meta SET enabled = 0")
+        .unwrap();
+    assert_silent_ok(&hk.stored("claude-code", &p, &CLI), "straggler");
+    assert!(hk.wait_for(Duration::from_secs(3), || hk.inbox_names().is_empty()));
+    assert!(hk.wait_for(Duration::from_secs(2), || hk.fold_processes() == 0));
+    let db = hk.db();
+    assert_eq!(
+        db.int("SELECT COUNT(*) FROM agent_events WHERE outcome = 'dropped_off'"),
+        1
+    );
+    assert_eq!(db.int("SELECT COUNT(*) FROM agent_sessions"), 0);
+}

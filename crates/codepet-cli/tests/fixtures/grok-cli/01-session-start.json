@@ -1,0 +1,27 @@
+{
+ "name": "session-start",
+ "client": "grok-cli",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"hookEventName\":\"session_start\",\"hook_event_name\":\"SessionStart\",\"sessionId\":\"01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"workspaceRoot\":\"/home/u/CANARY-workspace-7f3a\",\"timestamp\":\"2026-10-16T12:00:00Z\",\"permissionMode\":\"default\",\"source\":\"new\"}\n",
+ "expect": {
+  "event_id": "86354c131afced6e6ac4ff29aa7d28eb",
+  "record": {
+   "v": 1,
+   "client": "grok-cli",
+   "kind": "session_start",
+   "session": "01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "ca7cd4c1379ad9d3",
+   "at_ms": 1792123876111
+  }
+ }
+}

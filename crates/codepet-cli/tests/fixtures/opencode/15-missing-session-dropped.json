@@ -1,0 +1,12 @@
+{
+ "name": "missing-session-dropped",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_done\",\"turn_id\":\"1-1\"}\n",
+ "expect": {
+  "drop": "bad_id"
+ }
+}

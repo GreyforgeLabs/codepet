@@ -1,0 +1,27 @@
+{
+ "name": "notification-idle",
+ "client": "grok-cli",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"hookEventName\":\"notification\",\"hook_event_name\":\"Notification\",\"sessionId\":\"01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"workspaceRoot\":\"/home/u/CANARY-workspace-7f3a\",\"timestamp\":\"2026-10-16T12:00:00Z\",\"permissionMode\":\"default\",\"notificationType\":\"idle_prompt\"}\n",
+ "expect": {
+  "event_id": "7ad679cb9b0dc8395a514d3a2c587179",
+  "record": {
+   "v": 1,
+   "client": "grok-cli",
+   "kind": "idle_prompt",
+   "session": "01a0b1c2-d3e4-4f56-8a7b-9c0d1e2f3a4b",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": "idle_prompt",
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "706c9f5a1a980cd5",
+   "at_ms": 1792123876111
+  }
+ }
+}

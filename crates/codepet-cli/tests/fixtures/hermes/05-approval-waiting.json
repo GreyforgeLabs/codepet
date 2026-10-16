@@ -1,0 +1,27 @@
+{
+ "name": "approval-waiting",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"waiting\",\"approval_key\":\"sk-cli-1\"}\n",
+ "expect": {
+  "event_id": "473f38438aa0762e4f5756c21a9c1964",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "waiting",
+   "session": null,
+   "turn": null,
+   "tool": null,
+   "akey": "sk-cli-1",
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "469f2c71d653c9a4",
+   "at_ms": 1792123876111
+  }
+ }
+}

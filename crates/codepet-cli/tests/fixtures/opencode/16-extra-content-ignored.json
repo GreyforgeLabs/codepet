@@ -1,0 +1,27 @@
+{
+ "name": "extra-content-ignored",
+ "client": "opencode",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_start\",\"session_id\":\"ses_7a1b\",\"turn_id\":\"1792123800000-6\",\"prompt\":\"CANARY-prompt-7f3a\",\"text\":\"CANARY-answer-7f3a\"}\n",
+ "expect": {
+  "event_id": "a178e4cd2823738fe1a80c5bb63c61a4",
+  "record": {
+   "v": 1,
+   "client": "opencode",
+   "kind": "turn_start",
+   "session": "ses_7a1b",
+   "turn": "1792123800000-6",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "68587aa37262377d",
+   "at_ms": 1792123876111
+  }
+ }
+}

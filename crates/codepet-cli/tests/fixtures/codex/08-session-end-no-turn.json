@@ -1,0 +1,27 @@
+{
+ "name": "session-end-no-turn",
+ "client": "codex",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"01a13cfb-647c-7fd3-8500-3c7f8733825c\",\"transcript_path\":null,\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"hook_event_name\":\"SessionEnd\",\"reason\":\"other\"}\n",
+ "expect": {
+  "event_id": "ec3782f28b78a4da6bc3be8614220a92",
+  "record": {
+   "v": 1,
+   "client": "codex",
+   "kind": "session_end",
+   "session": "01a13cfb-647c-7fd3-8500-3c7f8733825c",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "9733e753593cf998",
+   "at_ms": 1792123876111
+  }
+ }
+}

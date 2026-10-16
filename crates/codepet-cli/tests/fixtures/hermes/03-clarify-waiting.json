@@ -1,0 +1,27 @@
+{
+ "name": "clarify-waiting",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"waiting\",\"session_id\":\"20261016_120000_ab12cd\",\"turn_id\":\"h-1\"}\n",
+ "expect": {
+  "event_id": "695292f2b7b7bbffebb59a0654c8764c",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "waiting",
+   "session": "20261016_120000_ab12cd",
+   "turn": "h-1",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "cc2b6731550a5623",
+   "at_ms": 1792123876111
+  }
+ }
+}

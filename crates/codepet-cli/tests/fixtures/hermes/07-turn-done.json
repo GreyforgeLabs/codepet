@@ -1,0 +1,27 @@
+{
+ "name": "turn-done",
+ "client": "hermes",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {},
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"codepet_v\":1,\"event\":\"turn_done\",\"session_id\":\"20261016_120000_ab12cd\",\"turn_id\":\"h-1\",\"tools\":3}\n",
+ "expect": {
+  "event_id": "bf6fec6a6c3ea6dc7cc16748d21f450b",
+  "record": {
+   "v": 1,
+   "client": "hermes",
+   "kind": "turn_done",
+   "session": "20261016_120000_ab12cd",
+   "turn": "h-1",
+   "tool": null,
+   "akey": null,
+   "note": null,
+   "tools": 3,
+   "interactive": true,
+   "test": false,
+   "dig": "6a6526b0ef926cac",
+   "at_ms": 1792123876111
+  }
+ }
+}

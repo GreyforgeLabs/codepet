@@ -1,0 +1,29 @@
+{
+ "name": "notification-elicitation",
+ "client": "claude-code",
+ "source": "built from documented/binary-derived schemas (WP0 research), not a live capture",
+ "env": {
+  "CLAUDE_CODE_ENTRYPOINT": "cli"
+ },
+ "nonce": null,
+ "at_ms": 1792123876111,
+ "stdin": "{\"session_id\":\"5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11\",\"transcript_path\":\"/home/u/.claude/projects/CANARY-proj-7f3a/5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11.jsonl\",\"cwd\":\"/home/u/CANARY-cwd-7f3a\",\"permission_mode\":\"default\",\"hook_event_name\":\"Notification\",\"notification_type\":\"elicitation_dialog\"}\n",
+ "expect": {
+  "event_id": "d0e4ac9f3dd665df44206b8428309ac6",
+  "record": {
+   "v": 1,
+   "client": "claude-code",
+   "kind": "waiting",
+   "session": "5f0c2a1e-7b3d-4c9a-8e21-0d6b9a4f3c11",
+   "turn": null,
+   "tool": null,
+   "akey": null,
+   "note": "elicitation_dialog",
+   "tools": 0,
+   "interactive": true,
+   "test": false,
+   "dig": "443d42884bfa0c79",
+   "at_ms": 1792123876111
+  }
+ }
+}
