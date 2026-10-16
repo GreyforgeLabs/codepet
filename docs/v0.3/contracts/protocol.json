@@ -110,9 +110,11 @@
         "ACKNOWLEDGEMENT_REQUIRED",
         "NAME_INVALID",
         "INVALID_PARAMS",
-        "NO_ACTIVE_PET"
+        "NO_ACTIVE_PET",
+        "NOT_FOUND",
+        "INVALID_STATE"
       ],
-      "semantics": "One transaction. No living life -> adopt (pace steady). Living unarmed life -> select look, rename if a name is given, set rules with pet.rules semantics, arm. Then spend the welcome routine if welcome_care_available. life_id, when given, must name the living life (NOT_FOUND otherwise).",
+      "semantics": "One transaction. No living life -> adopt (pace steady). Living unarmed life -> select look, rename if a name is given, set rules with pet.rules semantics, arm. Then spend the welcome routine if welcome_care_available. life_id, when given, must name the living life (NOT_FOUND otherwise). While Off: INVALID_STATE (the picker shows Turn on instead of Let's go!).",
       "examples": {
         "valid": [
           {
@@ -258,9 +260,10 @@
         "PET_NEEDS_CARE",
         "NO_ACTIVE_PET",
         "NOT_FOUND",
-        "INVALID_PARAMS"
+        "INVALID_PARAMS",
+        "INVALID_STATE"
       ],
-      "semantics": "Gives one treat: marks the oldest unspent activity_turns row given and inserts one activity_xp row (5 XP) in the same transaction, then journals evolution. PET_NEEDS_CARE while asleep or fainted. Disabled (Off) -> INVALID_STATE.",
+      "semantics": "Gives one treat: marks the oldest unspent activity_turns row given and inserts one activity_xp row (5 XP) in the same transaction, then journals evolution. PET_NEEDS_CARE while asleep, paused or fainted. While Off: INVALID_STATE.",
       "examples": {
         "valid": [
           {
@@ -280,7 +283,7 @@
       "method": "app.set_enabled",
       "wp": "WP1",
       "mutating": true,
-      "receipt": false,
+      "receipt": true,
       "params": {
         "type": "object",
         "additionalProperties": false,
@@ -322,7 +325,7 @@
       "method": "app.set_helpers",
       "wp": "WP1",
       "mutating": true,
-      "receipt": false,
+      "receipt": true,
       "params": {
         "type": "object",
         "additionalProperties": false,
@@ -358,7 +361,7 @@
       "method": "agent.forget_history",
       "wp": "WP1",
       "mutating": true,
-      "receipt": false,
+      "receipt": true,
       "params": {
         "type": "object",
         "additionalProperties": false,
@@ -367,7 +370,8 @@
       },
       "result": "the state.get snapshot",
       "errors": [
-        "INVALID_PARAMS"
+        "INVALID_PARAMS",
+        "BUSY"
       ],
       "semantics": "SPEC §5.10. Deletes agent_events and agent_sessions; sets activity_turns.earned_at_ms to 0 and given_at_ms of given rows to 0 (unspent rows stay unspent). Unspent treats and earned XP stay. Takes fold.lock (LOCK_NB, BUSY if held) before the DB.",
       "examples": {
@@ -409,7 +413,8 @@
             "refresh": true
           }
         ]
-      }
+      },
+      "receipt_note": "Deliberately no receipt (notes.md section 2): it is a file-only re-check whose answer must reflect the files now; replaying a stored answer under the same request id would show stale status. It is idempotent."
     },
     {
       "method": "clients.connect",
@@ -441,14 +446,15 @@
         ]
       },
       "result": {
-        "job_id": "string"
+        "job_id": "string matching job_id_pattern"
       },
       "errors": [
         "TEST_STATE",
         "INVALID_PARAMS",
-        "BUSY"
+        "BUSY",
+        "INVALID_STATE"
       ],
-      "semantics": "Returns {job_id} at once; a detached `codepet clients-job` does the work (SPEC §5.2). This click is the consent. TEST_STATE while the bar runs with a stateHome test override.",
+      "semantics": "Returns {job_id} at once; a detached `codepet clients-job` does the work (SPEC §5.2). This click is the consent. TEST_STATE while the bar runs with a stateHome test override. While Off: INVALID_STATE (the ready check could only fail, because the shim exits on the off flag).",
       "examples": {
         "valid": [
           {
@@ -525,14 +531,14 @@
         ]
       },
       "result": {
-        "job_id": "string"
+        "job_id": "string matching job_id_pattern"
       },
       "errors": [
         "TEST_STATE",
         "INVALID_PARAMS",
         "BUSY"
       ],
-      "semantics": "Detached job: writes $STATE/clients/<id>.disconnected first, then removes exactly CodePet's artifact (Codex: tombstone rule).",
+      "semantics": "Detached job: writes $STATE/clients/<id>.disconnected first, then removes exactly CodePet's artifact (Codex: tombstone rule). Allowed while Off (uninstall disconnects every client).",
       "examples": {
         "valid": [
           {
@@ -574,13 +580,15 @@
         "required": []
       },
       "result": {
-        "job_id": "string"
+        "job_id": "string matching job_id_pattern"
       },
       "errors": [
         "INVALID_PARAMS",
-        "BUSY"
+        "BUSY",
+        "TEST_STATE",
+        "INVALID_STATE"
       ],
-      "semantics": "The ready check: writes a fresh $STATE/test.nonce (0600) and runs each connected client's exact stored command string with a client-shaped fixture carrying codepet_test=<nonce>: turn_start, then turn_done 1.5 s later. Test events drive only agent.test. No arrival within 5 s -> failed: ready_check.",
+      "semantics": "The ready check, as a detached job: sets meta.test_state running (test_at_ms, test_client = the first tested client in client order), writes a fresh $STATE/test.nonce (0600, 32 lowercase hex), and runs each tested connected client's exact stored command string (commands.json) with its ready_check payloads carrying codepet_test=<nonce>: turn_start, then turn_done test_done_delay_ms later. The hook compares the nonce; the fold keeps test records only while running and never changes test_state. The job sets done when every tested client's turn_done record arrived within test_done_delay_ms + test_arrival_ms, else failed (those clients get last_reason ready_check), removes the nonce and exports. Test events never update last_seen_ms, first_seen_ms, events_7d or sessions, and never earn. TEST_STATE under a stateHome test override (the stored commands point at the real state dir). While Off: INVALID_STATE.",
       "examples": {
         "valid": [
           {},
@@ -609,8 +617,8 @@
     "ALREADY_ARMED": "pet.start on an armed life; the UI just opens Home",
     "NAME_INVALID": "pet.start / pet.rename name fails normalize_pet_name; UI 'That name is too long.'",
     "NO_TREATS": "treats.give with an empty jar",
-    "PET_NEEDS_CARE": "treats.give while asleep or fainted",
-    "TEST_STATE": "clients.connect / clients.disconnect while the bar runs with a stateHome test override"
+    "PET_NEEDS_CARE": "treats.give while asleep, paused or fainted",
+    "TEST_STATE": "clients.connect / clients.disconnect / clients.test while the bar runs with a stateHome test override"
   },
   "error_codes_reused": {
     "RULES_NOT_ACKNOWLEDGED (spec)": "ACKNOWLEDGEMENT_REQUIRED (existing pet.adopt code)"
@@ -661,10 +669,10 @@
       "migrate": "explicit migration (installer); WP1",
       "hook --state-dir <abs> <client-id>": "always exit 0 silently (O2); WP2",
       "fold --state-dir <abs> [--lock-fd N]": "internal; safe by hand (takes the lock itself without --lock-fd); WP2",
-      "clients-job <job_id>": "internal detached Connect/Disconnect/test job; WP3",
+      "clients-job <job_id>": "internal detached Connect/Disconnect/test job; job_id must match job_id_pattern; WP3",
       "on | off": "wrappers for app.set_enabled; WP1",
       "helpers on|off": "wrapper for app.set_helpers; WP1",
-      "connect [id...|--all] / disconnect <id>": "wrappers for clients.*; wait for the job and print plain words; WP3",
+      "connect [id...|--all] / disconnect <id>": "wrappers for clients.*; wait for the job and print plain words; WP3. --all = every installed supported client that is not connected and has no running job, except codex (the UI's Connect all); Codex only when named: `codepet connect codex`. Ids are the client ids; anything else exits 2 with the usage line. Refused while Off (off_behaviour)",
       "forget-history": "wrapper for agent.forget_history; WP1",
       "doctor [--json]": "plain words, changes nothing; --json stable and never includes config contents; WP3"
     },
@@ -674,5 +682,290 @@
       "the supervisor entry"
     ],
     "wp0_behaviour": "added commands other than hook print 'NOT_IMPLEMENTED: codepet <cmd> is not implemented yet in this v0.3 build' on stderr and exit 1 without touching state; hook exits 0 silently"
+  },
+  "job_id_pattern": "^job-[0-9a-f]{24}$",
+  "job_id_rule": "'job-' + 24 lowercase hex (12 bytes from sys::random_bytes). It names the journal $STATE/jobs/<job_id>.json and appears in the export, so nothing else is ever accepted as a job id (the clients-job subcommand refuses any other argument).",
+  "result_schemas": {
+    "clients.status": {
+      "description": "Exactly five entries, one per supported client, in client order. Every field except name, events_7d and the per-id order is also the export's clients.<id> entry (bar.v2.schema.json $defs/client). events_7d follows agent_vectors.json fold.events_7d. Fixtures: fixtures/clients-status/*.json",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clients"
+      ],
+      "properties": {
+        "clients": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/client_status"
+          }
+        }
+      },
+      "$defs": {
+        "client_status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "installed",
+            "version",
+            "connected",
+            "needs_step",
+            "last_seen_ms",
+            "first_seen_ms",
+            "events_7d",
+            "failed_reason",
+            "job"
+          ],
+          "properties": {
+            "id": {
+              "enum": [
+                "claude-code",
+                "codex",
+                "opencode",
+                "hermes",
+                "grok-cli"
+              ]
+            },
+            "name": {
+              "enum": [
+                "Claude Code",
+                "Codex",
+                "OpenCode",
+                "Hermes",
+                "Grok"
+              ]
+            },
+            "installed": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 64
+            },
+            "connected": {
+              "type": "boolean"
+            },
+            "needs_step": {
+              "enum": [
+                "codex_trust",
+                "codex_hooks_off",
+                null
+              ]
+            },
+            "last_seen_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "first_seen_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "events_7d": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed_reason": {
+              "enum": [
+                "not_installed",
+                "too_old",
+                "blocked",
+                "settings_changed",
+                "ready_check",
+                null
+              ]
+            },
+            "job": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "kind",
+                    "state"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^job-[0-9a-f]{24}$"
+                    },
+                    "kind": {
+                      "enum": [
+                        "connect",
+                        "disconnect",
+                        "test"
+                      ]
+                    },
+                    "state": {
+                      "const": "running"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "clients.connect|clients.disconnect|clients.test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "job_id"
+      ],
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "pattern": "^job-[0-9a-f]{24}$"
+        }
+      }
+    }
+  },
+  "snapshot_v03": {
+    "description": "state.get (and every method that returns the snapshot) in v0.3. Only the v0.3 changes are frozen here; the rest of the v0.2 snapshot is unchanged. The agent, treats and clients blocks have exactly the bar.v2 shape (the same Rust structs serialise both). WP1 fills enabled/count_helpers/treats/lifecycle, WP2 agent, WP3 clients.",
+    "adds": [
+      "enabled",
+      "count_helpers",
+      "agent",
+      "clients",
+      "treats"
+    ],
+    "drops": [
+      "active_task",
+      "recent",
+      "providers",
+      "settings",
+      "decay",
+      "care.ready_to_work",
+      "care.readiness_reasons"
+    ],
+    "frozen_reason_precedence": {
+      "order": [
+        "no_life",
+        "off",
+        "pending",
+        "unarmed",
+        "paused",
+        "task",
+        "sleeping",
+        "none"
+      ],
+      "rule": "the first that applies: no living life -> no_life; meta.enabled = 0 -> off; death_pending -> pending; not armed -> unarmed; pet.pause -> paused; a slot task (legacy-tasks only; never in the default build) -> task; asleep -> sleeping; else none. presence.wanted = enabled and armed and not paused and not death_pending (and no slot task)"
+    },
+    "schema": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "protocol_version",
+        "enabled",
+        "count_helpers",
+        "agent",
+        "clients",
+        "treats",
+        "lifecycle"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 5
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "count_helpers": {
+          "type": "boolean"
+        },
+        "agent": {
+          "$ref": "bar.v2.schema.json#/$defs/agent"
+        },
+        "treats": {
+          "$ref": "bar.v2.schema.json#/$defs/treats"
+        },
+        "clients": {
+          "$ref": "bar.v2.schema.json#/$defs/clients"
+        },
+        "lifecycle": {
+          "type": "object",
+          "required": [
+            "frozen_reason"
+          ],
+          "properties": {
+            "frozen_reason": {
+              "enum": [
+                "no_life",
+                "off",
+                "pending",
+                "unarmed",
+                "paused",
+                "task",
+                "sleeping",
+                "none"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "checked_by": "check_contracts.py builds a snapshot from each bar-v2 fixture's blocks and validates it against this schema"
+  },
+  "off_behaviour": {
+    "rule": "While meta.enabled = 0 a refused method answers INVALID_STATE (message 'CodePet is off') before it changes anything; an allowed method runs normally and settlement discards the Off time (no decay, grace, XP or death). Refusal is checked inside the method's transaction, after receipt replay.",
+    "allowed": [
+      "hello",
+      "state.get",
+      "pet.select",
+      "pet.rename",
+      "pet.events_seen",
+      "pet.memorial",
+      "lifecycle.rules",
+      "app.set_enabled",
+      "app.set_helpers",
+      "agent.forget_history",
+      "clients.status",
+      "clients.disconnect"
+    ],
+    "refused": [
+      "pet.start",
+      "pet.adopt",
+      "pet.care",
+      "pet.sleep",
+      "pet.wake",
+      "pet.pause",
+      "pet.rules",
+      "pet.configure_life",
+      "pet.retire",
+      "treats.give",
+      "clients.connect",
+      "clients.test"
+    ],
+    "why": {
+      "clients.connect|clients.test": "the shim exits on the off flag, so the ready check could only fail",
+      "clients.disconnect": "uninstall disconnects every client and must work while Off",
+      "pet.select|pet.rename": "cosmetic; no time passes",
+      "pet.care|pet.sleep|pet.wake|pet.pause|pet.rules|pet.configure_life|pet.retire|pet.start|pet.adopt|treats.give": "the Off look offers only Turn on; nothing may age, arm, grow or end a life while Off"
+    },
+    "cli": {
+      "connect": "refused: prints 'CodePet is off. Turn it on first: codepet on' and exits 1",
+      "disconnect": "works",
+      "on|off|helpers|forget-history|doctor|state|migrate": "work"
+    }
   }
 }

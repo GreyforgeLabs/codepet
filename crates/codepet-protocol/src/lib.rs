@@ -66,9 +66,10 @@ pub enum ErrorCode {
     NameInvalid,
     /// `treats.give` with an empty jar.
     NoTreats,
-    /// `treats.give` while the pet is asleep or fainted.
+    /// `treats.give` while the pet is asleep, paused or fainted.
     PetNeedsCare,
-    /// `clients.connect` / `clients.disconnect` while the bar runs with a test state home.
+    /// `clients.connect` / `clients.disconnect` / `clients.test` while the bar runs with a test
+    /// state home.
     TestState,
 }
 impl ErrorCode {

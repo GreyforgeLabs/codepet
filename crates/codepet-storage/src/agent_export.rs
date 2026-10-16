@@ -67,12 +67,15 @@ pub struct AppExport {
     pub stale_at_ms: i64,
 }
 
-/// `agent.test`: the ready check (`clients.test`).
+/// `agent.test`: the ready check (`clients.test`). Only the clients job changes it
+/// (`meta.test_state`, `test_at_ms`, `test_client`); the fold only records test events.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestExport {
     /// `running`, `done` or `failed`.
     pub state: String,
     pub at_ms: i64,
+    /// The first tested client in client order: `{app}` of the testing face.
+    pub client: Option<String>,
 }
 
 /// `treats`: the jar of the living life.
@@ -84,12 +87,17 @@ pub struct TreatsExport {
     pub full: bool,
 }
 
-/// `clients`: one entry per client CodePet has a record for, keyed by client id.
+/// `clients`: one entry per `client_hooks` row, keyed by client id. `clients.status` creates
+/// all five rows on its first run, so the map is empty only before Helpers first opens.
 pub type ClientsExport = BTreeMap<String, ClientExport>;
 
 /// One client in `clients`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientExport {
+    /// `clients.status` found the client's binary and config dir (file-only).
+    pub installed: bool,
+    /// The detected version, when `clients.status` could read one.
+    pub version: Option<String>,
     pub connected: bool,
     /// `codex_trust` or `codex_hooks_off`, else `null`.
     pub needs_step: Option<String>,
@@ -106,6 +114,7 @@ pub struct ClientExport {
 /// `clients.<id>.job`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JobExport {
+    /// `job-` + 24 lowercase hex (`protocol.json` `job_id_pattern`).
     pub id: String,
     /// `connect`, `disconnect` or `test`.
     pub kind: String,

@@ -242,37 +242,10 @@
    "$ref": "#/$defs/agent"
   },
   "treats": {
-   "type": "object",
-   "additionalProperties": false,
-   "properties": {
-    "jar": {
-     "type": "integer",
-     "minimum": 0,
-     "maximum": 10
-    },
-    "full": {
-     "type": "boolean"
-    }
-   },
-   "required": [
-    "jar",
-    "full"
-   ]
+   "$ref": "#/$defs/treats"
   },
   "clients": {
-   "type": "object",
-   "propertyNames": {
-    "enum": [
-     "claude-code",
-     "codex",
-     "opencode",
-     "hermes",
-     "grok-cli"
-    ]
-   },
-   "additionalProperties": {
-    "$ref": "#/$defs/client"
-   }
+   "$ref": "#/$defs/clients"
   }
  },
  "$defs": {
@@ -573,16 +546,29 @@
           "running",
           "done",
           "failed"
-         ]
+         ],
+         "description": "running: the clients job started the check (its at_ms); done/failed: the job's verdict (at_ms = verdict time). Only the clients job changes it; the fold only records test events while it is running."
         },
         "at_ms": {
          "type": "integer",
          "minimum": 0
+        },
+        "client": {
+         "enum": [
+          "claude-code",
+          "codex",
+          "opencode",
+          "hermes",
+          "grok-cli",
+          null
+         ],
+         "description": "the first client of the ready check in client order; {app} of the testing face and of 'Open a new {app} window.'"
         }
        },
        "required": [
         "state",
-        "at_ms"
+        "at_ms",
+        "client"
        ]
       }
      ]
@@ -666,6 +652,18 @@
    "type": "object",
    "additionalProperties": false,
    "properties": {
+    "installed": {
+     "type": "boolean",
+     "description": "clients.status saw the client's binary and config dir (file-only). Helpers hides a row that is neither installed nor connected."
+    },
+    "version": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "maxLength": 64,
+     "description": "detected version (file-only source, WP3 documents it per client); null when unknown or not installed"
+    },
     "connected": {
      "type": "boolean"
     },
@@ -711,8 +709,7 @@
        "properties": {
         "id": {
          "type": "string",
-         "minLength": 1,
-         "maxLength": 64
+         "pattern": "^job-[0-9a-f]{24}$"
         },
         "kind": {
          "enum": [
@@ -735,6 +732,8 @@
     }
    },
    "required": [
+    "installed",
+    "version",
     "connected",
     "needs_step",
     "last_seen_ms",
@@ -742,6 +741,40 @@
     "failed_reason",
     "job"
    ]
+  },
+  "treats": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "jar": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 10
+    },
+    "full": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "jar",
+    "full"
+   ]
+  },
+  "clients": {
+   "type": "object",
+   "propertyNames": {
+    "enum": [
+     "claude-code",
+     "codex",
+     "opencode",
+     "hermes",
+     "grok-cli"
+    ]
+   },
+   "additionalProperties": {
+    "$ref": "#/$defs/client"
+   },
+   "description": "One entry per client_hooks row. clients.status creates a row for each of the five supported clients on its first run (rows are never deleted), so the map is empty only before the first Helpers/Connect-card open. Connect/Disconnect jobs and the fold keep their client's row current."
   }
  }
 }

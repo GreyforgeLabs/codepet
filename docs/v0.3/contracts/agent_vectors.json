@@ -1,7 +1,7 @@
 {
  "schema": "codepet.agent_vectors.v1",
- "spec": "SPEC-v0.3 §5.8, §6.4, §8, §9.1",
- "consumers": "Rust codepet-core::agent (WP2) and the generated petstate.js via test_state_machine.mjs / test_bar_model.mjs (WP6); replayed by docs/v0.3/contracts/check_contracts.py",
+ "spec": "SPEC-v0.3 §2, §3.5, §5.8, §5.10, §6.4, §8, §9.1",
+ "consumers": "Rust codepet-core::agent (WP2: normalization, event ids, hmac_keys, interactivity, turn_qualifies, caps, sessions, fold, aggregate) and the generated petstate.js via test_state_machine.mjs / test_bar_model.mjs (WP6: priority) plus the WP5 popup (popup_routing, connect_card, helpers_rows); replayed by docs/v0.3/contracts/check_contracts.py",
  "clients": [
   {
    "id": "claude-code",
@@ -109,12 +109,31 @@
   "rules": [
    "argv client id is authoritative; the payload only passes a per-client schema sanity check",
    "only top-level keys are read (depth 1); nested values are skipped unbuffered",
-   "id fields: strings <= 128 bytes of [A-Za-z0-9._:-], else the event is dropped",
-   "agent_id / subagentType present -> dropped before any write",
-   "unmapped event names or notification types -> dropped",
-   "Grok: prefer hook_event_name (PascalCase) over hookEventName (snake_case); camelCase ids",
-   "error: one of rate_limit|authentication_failed|invalid_request|server_error|max_output_tokens|overloaded|billing_error|unknown, else unknown"
+   "id fields: strings <= 128 bytes of [A-Za-z0-9._:-], else the event is dropped (bad_id)",
+   "agent_id / subagentType present -> dropped before any write (child); this check runs first",
+   "codepet_test present -> the HOOK compares it (constant time) with $STATE/test.nonce (read with O_NOFOLLOW, regular file owned by the user, <= 64 bytes, trailing newline stripped). Equal -> the inbox record carries test:true. Missing nonce file, a different value, or a value that is not 32 lowercase hex -> the event is dropped (test_nonce) and never folded as a real event. Without codepet_test -> test:false. The fold never sees the nonce; it trusts the 0700 inbox",
+   "unmapped event names or notification types -> dropped (unmapped)",
+   "Grok: prefer hook_event_name (PascalCase); when only hookEventName (snake_case) is present it maps through grok_snake_event_names; camelCase ids (sessionId, promptId, toolUseId, notificationType, toolName)",
+   "error: one of rate_limit|authentication_failed|invalid_request|server_error|max_output_tokens|overloaded|billing_error|unknown, else unknown",
+   "synthesized payloads (OpenCode, Hermes; plugin-payload.schema.json): codepet_v must be the integer 1 and event one of the nine kinds, else unmapped. tools: an integer 0..=1000 (not a boolean), anything else is ignored (tools 0) and the event is kept. interactive: a boolean; anything else, or absent, is true. approval_key is read only for hermes, only with event waiting or activity and only without session_id (else bad_id / unmapped); OpenCode's approval_key is never read. completed/failed/interrupted are not on the allow-list: the Hermes plugin maps on_session_end itself and sends the kind"
   ],
+  "grok_snake_event_names": {
+   "session_start": "SessionStart",
+   "user_prompt_submit": "UserPromptSubmit",
+   "pre_tool_use": "PreToolUse",
+   "notification": "Notification",
+   "stop": "Stop",
+   "stop_failure": "StopFailure",
+   "stop_cancelled": "StopCancelled",
+   "session_end": "SessionEnd"
+  },
+  "drop_reasons": [
+   "child",
+   "test_nonce",
+   "unmapped",
+   "bad_id"
+  ],
+  "nonce_context": "each vector's 'nonce' is the content of $STATE/test.nonce when the hook runs (absent key or null = no file)",
   "event_names": {
    "claude-code": {
     "SessionStart": "session_start",
@@ -624,7 +643,8 @@
      "class": null,
      "tools": 4,
      "interactive": true
-    }
+    },
+    "plugin_valid": true
    },
    {
     "client": "opencode",
@@ -635,7 +655,8 @@
     },
     "expect": {
      "drop": "unmapped"
-    }
+    },
+    "plugin_valid": false
    },
    {
     "client": "hermes",
@@ -651,7 +672,8 @@
      "tool": null,
      "class": null,
      "akey": "sk-cli-1"
-    }
+    },
+    "plugin_valid": true
    },
    {
     "client": "hermes",
@@ -666,14 +688,636 @@
      "turn": null,
      "tool": null,
      "class": null
+    },
+    "plugin_valid": true
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Notification",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "notification_type": "elicitation_dialog"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": "elicitation_dialog"
     }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Notification",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "notification_type": "elicitation_url_dialog"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": "elicitation_url_dialog"
+    }
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Notification",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "notification_type": "agent_needs_input"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": "agent_needs_input"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "session_start",
+     "hook_event_name": "SessionStart",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "source": "new"
+    },
+    "expect": {
+     "kind": "session_start",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "notification",
+     "hook_event_name": "Notification",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "notificationType": "idle_prompt"
+    },
+    "expect": {
+     "kind": "idle_prompt",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": "idle_prompt"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "stop",
+     "hook_event_name": "Stop",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "reason": "shutdown"
+    },
+    "expect": {
+     "kind": "session_end",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "stop_failure",
+     "hook_event_name": "StopFailure",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-1",
+     "error": "server_error"
+    },
+    "expect": {
+     "kind": "turn_failed",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-1",
+     "tool": null,
+     "class": "server_error"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "session_end",
+     "hook_event_name": "SessionEnd",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "reason": "exit"
+    },
+    "expect": {
+     "kind": "session_end",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": null,
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "pre_tool_use",
+     "hook_event_name": "PreToolUse",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-1",
+     "toolName": "ask_user_question",
+     "toolUseId": "tu3"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-1",
+     "tool": "tu3",
+     "class": "ask_user"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "stop_failure",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-2",
+     "error": "rate_limit"
+    },
+    "expect": {
+     "kind": "turn_failed",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-2",
+     "tool": null,
+     "class": "rate_limit"
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "user_prompt_submit",
+     "sessionId": "11111111-2222-3333-4444-555555555555",
+     "promptId": "g-3"
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "11111111-2222-3333-4444-555555555555",
+     "turn": "g-3",
+     "tool": null,
+     "class": null
+    }
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hookEventName": "teleport",
+     "sessionId": "11111111-2222-3333-4444-555555555555"
+    },
+    "expect": {
+     "drop": "unmapped"
+    }
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_start",
+     "session_id": "ses_1",
+     "turn_id": "1792-4",
+     "interactive": true
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "ses_1",
+     "turn": "1792-4",
+     "tool": null,
+     "class": null,
+     "tools": 0,
+     "interactive": true,
+     "test": false
+    },
+    "plugin_valid": true
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_start",
+     "session_id": "ses_2",
+     "turn_id": "1792-1",
+     "interactive": false
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "ses_2",
+     "turn": "1792-1",
+     "interactive": false
+    },
+    "plugin_valid": true
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "ses_1",
+     "turn_id": "1792-4",
+     "tools": "4"
+    },
+    "expect": {
+     "kind": "turn_done",
+     "tools": 0,
+     "interactive": true
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "ses_1",
+     "turn_id": "1792-4",
+     "tools": -1
+    },
+    "expect": {
+     "kind": "turn_done",
+     "tools": 0
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "ses_1",
+     "turn_id": "1792-4",
+     "tools": 1001
+    },
+    "expect": {
+     "kind": "turn_done",
+     "tools": 0
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "ses_1",
+     "turn_id": "1792-4",
+     "tools": 1000
+    },
+    "expect": {
+     "kind": "turn_done",
+     "tools": 1000
+    },
+    "plugin_valid": true
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "ses_1",
+     "turn_id": "1792-4",
+     "tools": true
+    },
+    "expect": {
+     "kind": "turn_done",
+     "tools": 0
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_start",
+     "session_id": "ses_1",
+     "interactive": "no"
+    },
+    "expect": {
+     "kind": "turn_start",
+     "interactive": true
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 2,
+     "event": "turn_done",
+     "session_id": "ses_1"
+    },
+    "expect": {
+     "drop": "unmapped"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": "1",
+     "event": "turn_done",
+     "session_id": "ses_1"
+    },
+    "expect": {
+     "drop": "unmapped"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": true,
+     "event": "turn_done",
+     "session_id": "ses_1"
+    },
+    "expect": {
+     "drop": "unmapped"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "event": "turn_done",
+     "session_id": "ses_1"
+    },
+    "expect": {
+     "drop": "unmapped"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "waiting",
+     "session_id": "ses_1",
+     "approval_key": "k1"
+    },
+    "expect": {
+     "kind": "waiting",
+     "session": "ses_1",
+     "akey": null
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "activity",
+     "approval_key": "k1"
+    },
+    "expect": {
+     "drop": "bad_id"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "activity",
+     "approval_key": "sk-cli-1"
+    },
+    "expect": {
+     "kind": "activity",
+     "session": null,
+     "turn": null,
+     "tool": null,
+     "class": null,
+     "akey": "sk-cli-1"
+    },
+    "plugin_valid": true
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "h_1",
+     "turn_id": "h-2",
+     "tools": 3
+    },
+    "expect": {
+     "kind": "turn_done",
+     "session": "h_1",
+     "turn": "h-2",
+     "tools": 3,
+     "akey": null
+    },
+    "plugin_valid": true
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_failed",
+     "session_id": "h_1",
+     "turn_id": "h-2"
+    },
+    "expect": {
+     "kind": "turn_failed",
+     "session": "h_1",
+     "turn": "h-2",
+     "tool": null,
+     "class": null
+    },
+    "plugin_valid": true
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_start",
+     "session_id": "h_1",
+     "turn_id": "h-3",
+     "completed": true,
+     "failed": true
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "h_1",
+     "turn": "h-3"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "approval_key": "sk-cli-1"
+    },
+    "expect": {
+     "drop": "unmapped"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "waiting",
+     "session_id": "h_1",
+     "approval_key": "sk-cli-1"
+    },
+    "expect": {
+     "drop": "bad_id"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "hermes",
+    "payload": {
+     "codepet_v": 1,
+     "event": "waiting"
+    },
+    "expect": {
+     "drop": "bad_id"
+    },
+    "plugin_valid": false
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "UserPromptSubmit",
+     "session_id": "codepet-ready-check",
+     "prompt_id": "codepet-ready-check",
+     "codepet_test": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+    },
+    "expect": {
+     "kind": "turn_start",
+     "session": "codepet-ready-check",
+     "turn": "codepet-ready-check",
+     "test": true
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Stop",
+     "session_id": "codepet-ready-check",
+     "prompt_id": "codepet-ready-check",
+     "codepet_test": "ffffffffffffffffffffffffffffffff"
+    },
+    "expect": {
+     "drop": "test_nonce"
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Stop",
+     "session_id": "codepet-ready-check",
+     "prompt_id": "codepet-ready-check",
+     "codepet_test": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+    },
+    "expect": {
+     "drop": "test_nonce"
+    },
+    "nonce": null
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "Stop",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "codepet_test": "../x"
+    },
+    "expect": {
+     "drop": "test_nonce"
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+   },
+   {
+    "client": "codex",
+    "payload": {
+     "hook_event_name": "Stop",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "codepet_test": "0F1E2D3C4B5A69788796A5B4C3D2E1F0"
+    },
+    "expect": {
+     "drop": "test_nonce"
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+   },
+   {
+    "client": "opencode",
+    "payload": {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "codepet_test": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+    },
+    "expect": {
+     "kind": "turn_done",
+     "session": "codepet-ready-check",
+     "test": true,
+     "tools": 0
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "plugin_valid": true
+   },
+   {
+    "client": "grok-cli",
+    "payload": {
+     "hook_event_name": "Stop",
+     "sessionId": "codepet-ready-check",
+     "promptId": "codepet-ready-check",
+     "reason": "end_turn",
+     "codepet_test": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+    },
+    "expect": {
+     "kind": "turn_done",
+     "test": true
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "Stop",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "prompt_id": "p-9"
+    },
+    "expect": {
+     "kind": "turn_done",
+     "test": false
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+   },
+   {
+    "client": "claude-code",
+    "payload": {
+     "hook_event_name": "PreToolUse",
+     "session_id": "11111111-2222-3333-4444-555555555555",
+     "agent_id": "a1",
+     "codepet_test": "bad"
+    },
+    "expect": {
+     "drop": "child"
+    },
+    "nonce": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
    }
   ]
  },
  "event_ids": {
   "formula": "dig = hex(sha256(bytes read))[..16]; event_id = hex(sha256('codepet-ev1|' + client + '|' + kind + '|' + session + '|' + dig + '|' + floor(at_ms / 3000)))[..32]",
+  "session_field": "the raw session id; for a Hermes approval event (no session_id) the literal '~ak:' + approval_key ('~' never occurs in an id, so it cannot collide)",
   "notes": [
-   "cases 1 and 2 share a 3 s bucket and dedupe; case 3 is the next bucket and does not"
+   "cases 1 and 2 share a 3 s bucket and dedupe; case 3 is the next bucket and does not",
+   "case 5 is a Hermes approval event (session field '~ak:<approval_key>')"
   ],
   "vectors": [
    {
@@ -719,6 +1363,17 @@
      "dig": "576d4ba6655f964c",
      "event_id": "b91438cf2cd1e2e731bf82055f3481ee"
     }
+   },
+   {
+    "client": "hermes",
+    "kind": "waiting",
+    "session": "~ak:sk-cli-1",
+    "payload_utf8": "{\"codepet_v\":1,\"event\":\"waiting\",\"approval_key\":\"sk-cli-1\"}\n",
+    "at_ms": 1792123800000,
+    "expect": {
+     "dig": "469f2c71d653c9a4",
+     "event_id": "aaea423b4dd147e7b9e4b78cde5a63d2"
+    }
    }
   ]
  },
@@ -735,7 +1390,7 @@
    "codex": "nearest 'codex' ancestor (depth <= 4): argv[1] == 'e', or any argv token exactly 'exec' or 'review' -> false",
    "opencode": "the plugin's process.argv has the exact token 'run' or 'serve' after the binary -> false (sent as payload 'interactive')",
    "grok-cli": "session-mode field once WP7 confirms it; until then the nearest 'grok' ancestor (depth <= 4) has an exact token in headless_flags, a token starting with one of headless_prefixes, or the adjacent pair 'agent' 'headless' -> false. 'agent stdio' (IDE/ACP), 'agent serve' and 'agent leader' stay interactive",
-   "hermes": "platform (remembered per session_id) not in hermes_platforms -> dropped by the plugin, never sent; background-review agents per WP7"
+   "hermes": "the plugin decides: platform (remembered per session_id) in hermes_platforms -> sent (the hook and fold treat it as interactive); otherwise, or unknown -> not sent at all. Approval events carry no platform: they are sent only for surface 'cli' or 'transport:*' and are interactive. Consequence (notes.md): Hermes background or gateway work never reaches CodePet, so it can never set helpers_busy. Background-review agents per WP7"
   },
   "grok_headless_flags": [
    "-p",
@@ -974,6 +1629,51 @@
     "client": "opencode",
     "payload_interactive": null,
     "expect": true
+   },
+   {
+    "client": "hermes",
+    "platform": "cli",
+    "expect": true
+   },
+   {
+    "client": "hermes",
+    "platform": "acp",
+    "expect": true
+   },
+   {
+    "client": "hermes",
+    "platform": "telegram",
+    "expect": "not_sent"
+   },
+   {
+    "client": "hermes",
+    "platform": "cron",
+    "expect": "not_sent"
+   },
+   {
+    "client": "hermes",
+    "platform": null,
+    "expect": "not_sent"
+   },
+   {
+    "client": "hermes",
+    "surface": "cli",
+    "expect": true
+   },
+   {
+    "client": "hermes",
+    "surface": "transport:acp",
+    "expect": true
+   },
+   {
+    "client": "hermes",
+    "surface": "smart",
+    "expect": "not_sent"
+   },
+   {
+    "client": "hermes",
+    "surface": "gateway:telegram",
+    "expect": "not_sent"
    }
   ]
  },
@@ -1251,7 +1951,7 @@
    "transitions": {
     "session_start": "state idle (an ended session restarts idle)",
     "turn_start": "a still-open turn closes neutrally (no treat, no finished_seq); open the new turn (tools 0, started at); state working",
-    "activity": "(a) key == open turn: count a new distinct tool; waiting/idle -> working. (b) key == last done turn and at <= last_done_ms + late_tool_ms: count a new distinct tool toward the finished turn; if it earned nothing and was not re-checked, re-run the treat check once (duration = last_done_ms - its start). (c) key == last done turn, at > last_done_ms + late_tool_ms and a tool not seen in that turn: continuation - reopen the turn (same start, its tools + 1), state working. (d) otherwise only last_event_ms",
+    "activity": "(a) a turn is open and (key == open turn, or the event has no turn key): waiting/idle -> working; a tool id not yet counted in that turn counts as a tool. An activity without a tool id (tool null: Hermes clarify/approval replies, OpenCode permission replies, a Claude activity without tool_use_id) never counts as a tool; it only changes the state. (b) key == last done turn, at <= last_done_ms + late_tool_ms and a tool id not counted in that turn: count it toward the finished turn; if that turn earned nothing and was not re-checked, re-run the treat check once (duration = last_done_ms - its start). A tool-less or already-counted late activity is (d) and never spends the re-check. (c) key == last done turn, at > last_done_ms + late_tool_ms and a tool id not counted in that turn: continuation - reopen the turn (same start, its tools + 1), state working. (d) otherwise only last_event_ms, except that a session in state waiting with no open turn returns to idle (the question was answered and nothing known is running)",
     "waiting": "state waiting (approval rows: their own row)",
     "idle_prompt": "state idle; the open turn stays open",
     "turn_done": "closes the open turn with the same key: state idle, finished_seq++ (interactive sessions only), treat check with tools = counted + payload tools. No matching open turn -> only last_event_ms",
@@ -2057,6 +2757,184 @@
     }
    },
    {
+    "name": "keyless_permission_prompts_like_real_claude",
+    "client": "claude-code",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "t1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "waiting",
+      "turn": null,
+      "tool": null,
+      "expect": "waiting",
+      "note": "Claude Notification has no prompt_id"
+     },
+     {
+      "at": 2000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "toolu_1",
+      "expect": "working"
+     },
+     {
+      "at": 3000,
+      "kind": "waiting",
+      "turn": null,
+      "tool": null,
+      "expect": "waiting",
+      "note": "a second prompt in the same turn"
+     },
+     {
+      "at": 4000,
+      "kind": "activity",
+      "turn": "t1",
+      "tool": "toolu_2",
+      "expect": "working"
+     },
+     {
+      "at": 6000,
+      "kind": "turn_done",
+      "turn": "t1",
+      "tool": null,
+      "expect": "idle",
+      "earned": true
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 2
+    }
+   },
+   {
+    "name": "toolless_activity_changes_state_but_is_not_a_tool",
+    "client": "hermes",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "h1",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 1000,
+      "kind": "waiting",
+      "turn": "h1",
+      "tool": null,
+      "expect": "waiting",
+      "note": "clarify pre_tool_call"
+     },
+     {
+      "at": 2000,
+      "kind": "activity",
+      "turn": null,
+      "tool": null,
+      "expect": "working",
+      "note": "clarify answered: keyless, tool-less"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_done",
+      "turn": "h1",
+      "tool": null,
+      "expect": "idle",
+      "note": "0 tools, 5 s: no treat"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
+    "name": "toolless_late_activity_does_not_spend_the_recheck",
+    "client": "codex",
+    "events": [
+     {
+      "at": 0,
+      "kind": "turn_start",
+      "turn": "7",
+      "tool": null,
+      "expect": "working"
+     },
+     {
+      "at": 5000,
+      "kind": "turn_done",
+      "turn": "7",
+      "tool": null,
+      "expect": "idle",
+      "note": "0 tools, 5 s: no treat yet"
+     },
+     {
+      "at": 5100,
+      "kind": "activity",
+      "turn": "7",
+      "tool": null,
+      "expect": "idle",
+      "note": "(d): no tool id"
+     },
+     {
+      "at": 5200,
+      "kind": "activity",
+      "turn": "7",
+      "tool": "call_1",
+      "expect": "idle",
+      "earned": true,
+      "note": "(b): first real late tool"
+     }
+    ],
+    "final": {
+     "treats": 1,
+     "finished_seq": 1,
+     "open_turn": null,
+     "last_done_tools": 1
+    }
+   },
+   {
+    "name": "activity_without_an_open_turn_ends_waiting",
+    "client": "hermes",
+    "events": [
+     {
+      "at": 0,
+      "kind": "session_start",
+      "turn": null,
+      "tool": null,
+      "expect": "idle"
+     },
+     {
+      "at": 1000,
+      "kind": "waiting",
+      "turn": null,
+      "tool": null,
+      "expect": "waiting"
+     },
+     {
+      "at": 2000,
+      "kind": "activity",
+      "turn": null,
+      "tool": null,
+      "expect": "idle",
+      "note": "(d): no open turn; waiting -> idle"
+     }
+    ],
+    "final": {
+     "treats": 0,
+     "finished_seq": 0,
+     "open_turn": null,
+     "last_done_tools": 0
+    }
+   },
+   {
     "name": "full_jar_celebrates_without_a_treat",
     "client": "codex",
     "jar": 10,
@@ -2095,7 +2973,9 @@
   ]
  },
  "fold": {
-  "rule": "outcomes in order: duplicate (dedupe_key exists: unlink, no row change) -> dropped_off (meta.enabled = 0) -> dropped_old (at < now - max_event_age_ms) -> clamp (at > now + future_clamp_ms -> at = now, still folded) -> dropped_child -> test (only test_state/test_at_ms) -> client record (+hello) -> no_life (stop) -> folded",
+  "rule": "outcomes in order: duplicate (dedupe_key exists: unlink, no row change) -> dropped_off (meta.enabled = 0) -> dropped_old (at < now - max_event_age_ms) -> clamp (at > now + future_clamp_ms -> at = now, still folded) -> dropped_child -> test records: outcome test while meta.test_state == 'running', else dropped_test (a late or replayed ready-check record) -> client record (+hello) -> no_life (stop) -> folded",
+  "test_records": "the fold never changes meta.test_state/test_at_ms/test_client: it only keeps the agent_events row (test = 1, outcome test). The clients job owns the check: it sets test_state running (test_at_ms = now, test_client = the first tested client in client order) before writing the nonce and running the stored commands, then waits until every tested client has an agent_events row (client, test = 1, kind turn_done, outcome test, at_ms >= the job start) or test_done_delay_ms + test_arrival_ms passed, and sets done (all arrived) or failed (test_at_ms = now), removes $STATE/test.nonce and exports. Clients without a row get last_outcome failed, last_reason ready_check",
+  "events_7d": "COUNT(*) FROM agent_events WHERE client = ? AND test = 0 AND outcome IN ('folded','no_life') AND at_ms > now - agent_events_keep_ms. Dropped (off, old, child, test) and duplicate deliveries never count",
   "now": 1792123900000,
   "vectors": [
    {
@@ -2111,6 +2991,24 @@
      "outcome": "dropped_off",
      "client_record": false,
      "hello": false
+    }
+   },
+   {
+    "name": "off_drops_test_records_too",
+    "enabled": false,
+    "life": true,
+    "test_state": "running",
+    "event": {
+     "at": 1792123900000,
+     "kind": "turn_done",
+     "turn": "t",
+     "test": true
+    },
+    "expect": {
+     "outcome": "dropped_off",
+     "client_record": false,
+     "hello": false,
+     "test_state": "running"
     }
    },
    {
@@ -2177,9 +3075,10 @@
     }
    },
    {
-    "name": "test_event_only_drives_agent_test",
+    "name": "test_record_while_the_check_runs_is_kept",
     "enabled": true,
     "life": true,
+    "test_state": "running",
     "event": {
      "at": 1792123900000,
      "kind": "turn_done",
@@ -2190,16 +3089,71 @@
      "outcome": "test",
      "client_record": false,
      "hello": false,
+     "test_state": "running"
+    }
+   },
+   {
+    "name": "test_turn_start_while_running_is_kept",
+    "enabled": true,
+    "life": true,
+    "test_state": "running",
+    "event": {
+     "at": 1792123900000,
+     "kind": "turn_start",
+     "turn": "t",
+     "test": true
+    },
+    "expect": {
+     "outcome": "test",
+     "client_record": false,
+     "hello": false,
+     "test_state": "running"
+    }
+   },
+   {
+    "name": "test_record_with_no_check_running_is_dropped",
+    "enabled": true,
+    "life": true,
+    "test_state": null,
+    "event": {
+     "at": 1792123900000,
+     "kind": "turn_done",
+     "turn": "t",
+     "test": true
+    },
+    "expect": {
+     "outcome": "dropped_test",
+     "client_record": false,
+     "hello": false,
+     "test_state": null
+    }
+   },
+   {
+    "name": "test_record_after_the_verdict_is_dropped",
+    "enabled": true,
+    "life": true,
+    "test_state": "done",
+    "event": {
+     "at": 1792123900000,
+     "kind": "turn_done",
+     "turn": "t",
+     "test": true
+    },
+    "expect": {
+     "outcome": "dropped_test",
+     "client_record": false,
+     "hello": false,
      "test_state": "done"
     }
    },
    {
-    "name": "test_turn_start_is_running",
+    "name": "test_record_never_greets_even_before_first_seen",
     "enabled": true,
-    "life": true,
+    "life": false,
+    "test_state": "running",
     "event": {
      "at": 1792123900000,
-     "kind": "turn_start",
+     "kind": "turn_done",
      "turn": "t",
      "test": true
     },
@@ -2241,32 +3195,691 @@
      "hello": false
     }
    }
+  ],
+  "hook_nonce_cases": "nonce matches / wrong / file missing are decided by the hook (normalization vectors with 'nonce'); only a matching record reaches the fold, and even then only while a check is running"
+ },
+ "aggregate": {
+  "function": "Rust agent::pet_state(session rows, meta.count_helpers, now) -> the export's agent.state, agent.apps, agent.stale_at_ms, agent.error_at_ms, agent.error_app and agent.helpers_busy (the seq/finished/hello/test fields come from meta). Pure; computed at every export from committed agent_sessions rows",
+  "row_fields": "client, approval (1 = Hermes approval-key row), interactive, state, state_since_ms, last_event_ms, error_at_ms",
+  "rules": [
+   "a row counts for its app only when interactive = 1 and: state working and now < last_event_ms + stale_working_ms (expiry = that sum); state waiting and now < last_event_ms + stale_waiting_ms; state error and now < error_at_ms + error_recent_ms (expiry = error_at_ms + error_recent_ms). idle and ended rows never count. The edges are half-open: exactly stale_working_ms after the last event the row no longer counts",
+   "Hermes approval rows (approval = 1) are interactive and count like any row of client hermes (waiting only)",
+   "per app: the highest state over its counting rows (waiting > working > error); since_ms = the smallest state_since_ms among its counting rows in that state; stale_at_ms = the largest expiry among them (the app keeps that state until its last such row expires)",
+   "apps: one entry per app with a counting row, sorted by since_ms, then client order",
+   "state: the highest app state, idle when apps is empty",
+   "stale_at_ms: the smallest apps[].stale_at_ms, null when apps is empty. A lower state of another row of the same app reappears at the next export (that row's next event), not by a timer; this is the accepted bound of the no-polling rule",
+   "error_at_ms / error_app: the largest error_at_ms over interactive non-approval rows of any state with now < error_at_ms + error_recent_ms (ties: client order); else both null",
+   "helpers_busy: count_helpers and some row with interactive = 0, state working and now < last_event_ms + stale_working_ms. Non-interactive rows never reach apps, state, error_* or a face",
+   "the aggregate ignores meta.enabled; the shared priority shows Off first"
+  ],
+  "vectors": [
+   {
+    "name": "nothing_counts",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [],
+    "expect": {
+     "state": "idle",
+     "apps": [],
+     "stale_at_ms": null,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "idle_rows_do_not_count",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "idle",
+      "state_since_ms": 1792123895000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "idle",
+     "apps": [],
+     "stale_at_ms": null,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "working_stale_edge_is_half_open",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123200000,
+      "last_event_ms": 1792123300000,
+      "error_at_ms": null
+     },
+     {
+      "client": "grok-cli",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123250000,
+      "last_event_ms": 1792123300001,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "working",
+     "apps": [
+      {
+       "id": "grok-cli",
+       "state": "working",
+       "since_ms": 1792123250000,
+       "stale_at_ms": 1792123900001
+      }
+     ],
+     "stale_at_ms": 1792123900001,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "waiting_stale_edge_is_half_open",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "codex",
+      "approval": 0,
+      "interactive": 1,
+      "state": "waiting",
+      "state_since_ms": 1792122000000,
+      "last_event_ms": 1792122100000,
+      "error_at_ms": null
+     },
+     {
+      "client": "opencode",
+      "approval": 0,
+      "interactive": 1,
+      "state": "waiting",
+      "state_since_ms": 1792122000000,
+      "last_event_ms": 1792122100001,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "waiting",
+     "apps": [
+      {
+       "id": "opencode",
+       "state": "waiting",
+       "since_ms": 1792122000000,
+       "stale_at_ms": 1792123900001
+      }
+     ],
+     "stale_at_ms": 1792123900001,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "error_window_is_two_minutes",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "error",
+      "state_since_ms": 1792123780000,
+      "last_event_ms": 1792123780000,
+      "error_at_ms": 1792123780000
+     },
+     {
+      "client": "hermes",
+      "approval": 0,
+      "interactive": 1,
+      "state": "error",
+      "state_since_ms": 1792123780001,
+      "last_event_ms": 1792123780001,
+      "error_at_ms": 1792123780001
+     }
+    ],
+    "expect": {
+     "state": "error",
+     "apps": [
+      {
+       "id": "hermes",
+       "state": "error",
+       "since_ms": 1792123780001,
+       "stale_at_ms": 1792123900001
+      }
+     ],
+     "stale_at_ms": 1792123900001,
+     "error_at_ms": 1792123780001,
+     "error_app": "hermes",
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "ended_and_non_interactive_rows_are_left_out",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "ended",
+      "state_since_ms": 1792123899000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": null
+     },
+     {
+      "client": "codex",
+      "approval": 0,
+      "interactive": 0,
+      "state": "working",
+      "state_since_ms": 1792123895000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "idle",
+     "apps": [],
+     "stale_at_ms": null,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "helpers_busy_needs_count_helpers",
+    "now": 1792123900000,
+    "count_helpers": true,
+    "sessions": [
+     {
+      "client": "codex",
+      "approval": 0,
+      "interactive": 0,
+      "state": "working",
+      "state_since_ms": 1792123895000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "idle",
+     "apps": [],
+     "stale_at_ms": null,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": true
+    }
+   },
+   {
+    "name": "stale_helper_is_not_busy",
+    "now": 1792123900000,
+    "count_helpers": true,
+    "sessions": [
+     {
+      "client": "codex",
+      "approval": 0,
+      "interactive": 0,
+      "state": "working",
+      "state_since_ms": 1792123200000,
+      "last_event_ms": 1792123300000,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "idle",
+     "apps": [],
+     "stale_at_ms": null,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "waiting_helper_is_not_busy",
+    "now": 1792123900000,
+    "count_helpers": true,
+    "sessions": [
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 0,
+      "state": "waiting",
+      "state_since_ms": 1792123895000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "idle",
+     "apps": [],
+     "stale_at_ms": null,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "hermes_approval_row_makes_hermes_wait",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "hermes",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123840000,
+      "last_event_ms": 1792123870000,
+      "error_at_ms": null
+     },
+     {
+      "client": "hermes",
+      "approval": 1,
+      "interactive": 1,
+      "state": "waiting",
+      "state_since_ms": 1792123895000,
+      "last_event_ms": 1792123895000,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "waiting",
+     "apps": [
+      {
+       "id": "hermes",
+       "state": "waiting",
+       "since_ms": 1792123895000,
+       "stale_at_ms": 1792125695000
+      }
+     ],
+     "stale_at_ms": 1792125695000,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "one_app_several_sessions_waiting_beats_working",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123840000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": null
+     },
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "waiting",
+      "state_since_ms": 1792123880000,
+      "last_event_ms": 1792123880000,
+      "error_at_ms": null
+     },
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "waiting",
+      "state_since_ms": 1792123870000,
+      "last_event_ms": 1792123895000,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "waiting",
+     "apps": [
+      {
+       "id": "claude-code",
+       "state": "waiting",
+       "since_ms": 1792123870000,
+       "stale_at_ms": 1792125695000
+      }
+     ],
+     "stale_at_ms": 1792125695000,
+     "error_at_ms": null,
+     "error_app": null,
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "apps_sorted_by_since_then_client_order",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "grok-cli",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123840000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": null
+     },
+     {
+      "client": "codex",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123840000,
+      "last_event_ms": 1792123898000,
+      "error_at_ms": null
+     },
+     {
+      "client": "opencode",
+      "approval": 0,
+      "interactive": 1,
+      "state": "error",
+      "state_since_ms": 1792123870000,
+      "last_event_ms": 1792123870000,
+      "error_at_ms": 1792123870000
+     },
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123810000,
+      "last_event_ms": 1792123899500,
+      "error_at_ms": null
+     }
+    ],
+    "expect": {
+     "state": "working",
+     "apps": [
+      {
+       "id": "claude-code",
+       "state": "working",
+       "since_ms": 1792123810000,
+       "stale_at_ms": 1792124499500
+      },
+      {
+       "id": "codex",
+       "state": "working",
+       "since_ms": 1792123840000,
+       "stale_at_ms": 1792124498000
+      },
+      {
+       "id": "grok-cli",
+       "state": "working",
+       "since_ms": 1792123840000,
+       "stale_at_ms": 1792124499000
+      },
+      {
+       "id": "opencode",
+       "state": "error",
+       "since_ms": 1792123870000,
+       "stale_at_ms": 1792123990000
+      }
+     ],
+     "stale_at_ms": 1792123990000,
+     "error_at_ms": 1792123870000,
+     "error_app": "opencode",
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "recent_error_stays_exported_after_the_session_moved_on",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "working",
+      "state_since_ms": 1792123899000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": 1792123850000
+     },
+     {
+      "client": "grok-cli",
+      "approval": 0,
+      "interactive": 1,
+      "state": "idle",
+      "state_since_ms": 1792123810000,
+      "last_event_ms": 1792123810000,
+      "error_at_ms": 1792123800000
+     }
+    ],
+    "expect": {
+     "state": "working",
+     "apps": [
+      {
+       "id": "claude-code",
+       "state": "working",
+       "since_ms": 1792123899000,
+       "stale_at_ms": 1792124499000
+      }
+     ],
+     "stale_at_ms": 1792124499000,
+     "error_at_ms": 1792123850000,
+     "error_app": "claude-code",
+     "helpers_busy": false
+    }
+   },
+   {
+    "name": "error_tie_breaks_by_client_order",
+    "now": 1792123900000,
+    "count_helpers": false,
+    "sessions": [
+     {
+      "client": "codex",
+      "approval": 0,
+      "interactive": 1,
+      "state": "error",
+      "state_since_ms": 1792123899000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": 1792123899000
+     },
+     {
+      "client": "claude-code",
+      "approval": 0,
+      "interactive": 1,
+      "state": "error",
+      "state_since_ms": 1792123899000,
+      "last_event_ms": 1792123899000,
+      "error_at_ms": 1792123899000
+     }
+    ],
+    "expect": {
+     "state": "error",
+     "apps": [
+      {
+       "id": "claude-code",
+       "state": "error",
+       "since_ms": 1792123899000,
+       "stale_at_ms": 1792124019000
+      },
+      {
+       "id": "codex",
+       "state": "error",
+       "since_ms": 1792123899000,
+       "stale_at_ms": 1792124019000
+      }
+     ],
+     "stale_at_ms": 1792124019000,
+     "error_at_ms": 1792123899000,
+     "error_app": "claude-code",
+     "helpers_busy": false
+    }
+   }
+  ]
+ },
+ "hmac_keys": {
+  "formula": "key = lowercase hex(HMAC-SHA256(meta.hook_salt, domain + US + client + US + part1 [+ US + part2 ...]))[..32], US = the byte 0x1f. Parts are the raw ids from the inbox record (ids are [A-Za-z0-9._:-], so neither US nor '~' can occur in them)",
+  "domains": {
+   "session": {
+    "domain": "codepet-session-v1",
+    "parts": [
+     "session"
+    ],
+    "column": "agent_sessions.session_key (approval = 0), activity_turns.session_key, agent_events.session_hmac"
+   },
+   "approval": {
+    "domain": "codepet-approval-v1",
+    "parts": [
+     "approval_key"
+    ],
+    "column": "agent_sessions.session_key (approval = 1); its own domain, so it never collides with a session key"
+   },
+   "turn": {
+    "domain": "codepet-turn-v1",
+    "parts": [
+     "session",
+     "turn"
+    ],
+    "column": "open_turn_key, last_done_turn_key, activity_turns.turn_key, agent_events.turn_hmac. A turn_start without a turn key uses turn = '~ev:' + event_id"
+   },
+   "tool": {
+    "domain": "codepet-tool-v1",
+    "parts": [
+     "session",
+     "tool"
+    ],
+    "column": "agent_events.tool_hmac (distinct-tool counting per session_hmac + turn_hmac)"
+   },
+   "dedupe": {
+    "domain": "codepet-dedupe-v1",
+    "parts": [
+     "kind",
+     "session field of the event id",
+     "dig",
+     "floor(at_ms / event_bucket_ms) in decimal"
+    ],
+    "column": "agent_events.dedupe_key"
+   }
+  },
+  "salt_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "vectors": [
+   {
+    "use": "session",
+    "client": "claude-code",
+    "parts": [
+     "11111111-2222-3333-4444-555555555555"
+    ],
+    "expect": "ff0ad2912a048368faeb9f60d29e3656"
+   },
+   {
+    "use": "session",
+    "client": "grok-cli",
+    "parts": [
+     "11111111-2222-3333-4444-555555555555"
+    ],
+    "expect": "c55e4d280b127067e681d2d75dce2232"
+   },
+   {
+    "use": "approval",
+    "client": "hermes",
+    "parts": [
+     "sk-cli-1"
+    ],
+    "expect": "28d55758510b46e993b931e044c91fa5"
+   },
+   {
+    "use": "session",
+    "client": "hermes",
+    "parts": [
+     "sk-cli-1"
+    ],
+    "expect": "6a78caf45c28ccb4101f3eb58a1f3f12"
+   },
+   {
+    "use": "turn",
+    "client": "claude-code",
+    "parts": [
+     "11111111-2222-3333-4444-555555555555",
+     "p-1"
+    ],
+    "expect": "0bce0951379639b6f95f522a137d83f2"
+   },
+   {
+    "use": "turn",
+    "client": "opencode",
+    "parts": [
+     "ses_1",
+     "~ev:4786e01f4e9adc2d7d44da74a1d7be34"
+    ],
+    "expect": "a3aacd4dc332ca5d1e1f7c6e004b0d21"
+   },
+   {
+    "use": "tool",
+    "client": "claude-code",
+    "parts": [
+     "11111111-2222-3333-4444-555555555555",
+     "toolu_01"
+    ],
+    "expect": "9e6ca071d93e0cd7ae6e6b2f08993f37"
+   },
+   {
+    "use": "dedupe",
+    "client": "claude-code",
+    "parts": [
+     "turn_done",
+     "11111111-2222-3333-4444-555555555555",
+     "35e6e00cfb35360a",
+     "597374625"
+    ],
+    "expect": "46479593706809e0a01c6297efd6ca37"
+   }
   ]
  },
  "priority": {
+  "function": "shared_priority(export, now, seen) -> face. Generated into petstate.js as sharedPriority (WP6) and used by the bar cell, Home and the overlay. Not Rust agent::pet_state, which is the aggregate that builds export.agent (see 'aggregate')",
   "order": [
    {
     "row": 1,
     "state": "off",
     "when": "enabled == false",
     "bar": "off",
-    "line": "off.line",
+    "line": "off.line (null without a life)",
     "overlay": "none"
    },
    {
     "row": 1.5,
     "state": "no_pet",
-    "when": "life == null (first run, or after a goodbye/death)",
+    "when": "life == null (first run, or after a goodbye/death; memorial.count does not matter)",
     "bar": "egg",
     "line": null,
     "overlay": "none"
    },
    {
+    "row": 1.6,
+    "state": "welcome",
+    "when": "life.armed == false (the owner's upgraded Ginger before Let's go!)",
+    "bar": "hi (thumb + sparkle)",
+    "line": "picker.welcome",
+    "overlay": "wander"
+   },
+   {
     "row": 2,
-    "state": "fainted|asleep",
-    "when": "life.fainted, else care.sleeping",
-    "bar": "sleep (+bandage)",
-    "line": "mood.fainted|mood.asleep",
+    "state": "fainted|paused|asleep",
+    "when": "life.fainted, else life.paused (pet.pause; no UI sets it in v0.3), else care.sleeping",
+    "bar": "sleep (+bandage when fainted)",
+    "line": "mood.fainted|mood.asleep|mood.asleep",
     "overlay": "sleep"
    },
    {
@@ -2287,18 +3900,18 @@
    },
    {
     "row": 5,
-    "state": "working",
-    "when": "a counting app is working",
+    "state": "working|testing",
+    "when": "a counting app is working; else agent.test.state == 'running' and now < test.at_ms + test_done_delay_ms + test_arrival_ms (the ready check types about 1.5 s)",
     "bar": "working frame",
-    "line": "act.working.one|two|many",
+    "line": "act.working.one|two|many ({app} = test.client while testing)",
     "overlay": "working"
    },
    {
     "row": 6,
     "state": "celebrate",
-    "when": "a new test done, hello or finished_seq inside its window",
+    "when": "grew up (unseen_events), a new test done, hello or finished_seq inside its window",
     "bar": "star",
-    "line": "act.ready|act.hello|act.done*",
+    "line": "grew|act.ready|act.hello|act.done*",
     "overlay": "celebrate"
    },
    {
@@ -2326,6 +3939,15 @@
     "overlay": "wander"
    }
   ],
+  "home_controls": {
+   "off": "Turn on only",
+   "no_pet": "not Home (popup_routing)",
+   "welcome": "not Home (popup_routing)",
+   "fainted": "only the two tiles that revive",
+   "paused": "one big Wake up (pet.pause {paused:false})",
+   "asleep": "one big Wake up (pet.wake)",
+   "other": "4 tiles, 3 round buttons, Treats when treats_visible"
+  },
   "need_levels": {
    "ok": "happy",
    "low": "soon",
@@ -2344,30 +3966,34 @@
   "waiting_app": "the waiting app with the latest since_ms (ties: client order)",
   "celebrate": {
    "candidates_in_order": [
+    "grew",
     "test",
     "hello",
     "finished"
    ],
+   "grew": "unseen_events is not empty (stage journal entries not yet marked seen). No time window and no wake: it stays until Home has shown it, then the popup calls pet.events_seen {life_id, through_seq: the largest seq} (the bar and the overlay never call it). Bubble: star + confetti",
    "test": "agent.test.state == 'done' and test.at_ms > seen.test_at_ms and now < at_ms + celebrate_window_ms",
    "hello": "hello_seq > seen.hello_seq and now < hello_at_ms + celebrate_window_ms",
    "finished": "finished_seq > seen.finished_seq and now >= finished_at_ms + celebrate_grace_ms and now < finished_at_ms + celebrate_window_ms and finished_app is not a counting working app",
    "lines": {
+    "grew": "grew",
     "test": "act.ready",
     "hello": "act.hello",
     "finished": "act.done_full if finished_jar_full, else act.done_treat if finished_treat, else act.done"
    },
    "seen": "the UI records the celebrated seq/at and passes it back as `seen`"
   },
-  "treats_visible": "treats.jar > 0 and life awake (not care.sleeping) and not fainted and enabled",
+  "treats_visible": "enabled and treats.jar > 0 and the life is awake (not care.sleeping), not paused and not fainted",
   "star_badge": "rows 7-9 show the star badge when treats_visible",
-  "wake_at_ms": "null when Off. Otherwise the minimum of these future times (null when none), whatever row wins: stale_at_ms of each counting app; for each unseen celebration candidate whose window is still open, its grace end if still ahead, else its window end; the error frame end and the oops end while ahead",
+  "wake_at_ms": "null when Off, without a life and for welcome. Otherwise the minimum of these future times (null when none), whatever row wins: stale_at_ms of each counting app; the testing end (test.at_ms + test_done_delay_ms + test_arrival_ms) while running and ahead; for each unseen time-windowed celebration candidate whose window is still open, its grace end if still ahead, else its window end; the error frame end and the oops end while ahead",
   "vars": "exactly the placeholders of the line template; {app}/{app2} are client ids (the UI maps them to display names)",
   "bubble": {
    "waiting": "apps: [waiting app]",
    "need_now": "need: <need>",
    "working": "apps: up to 3 working apps",
+   "testing": "apps: [test.client]",
    "fainted": "bandage",
-   "celebrate": "star",
+   "celebrate": "star (+ confetti for grew)",
    "need_soon": "need: <need>",
    "idle": "helpers when helpers_busy, else none"
   },
@@ -2375,6 +4001,27 @@
    {
     "name": "fresh_install_no_pet",
     "fixture": "fresh-no-pet",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "no_pet",
+     "bar": "egg",
+     "line": null,
+     "vars": {},
+     "overlay": "none",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "memorial_is_still_no_pet_on_the_bar",
+    "fixture": "memorial",
     "now": 1792123900000,
     "seen": {
      "finished_seq": 0,
@@ -2417,6 +4064,29 @@
     }
    },
    {
+    "name": "off_hides_treats",
+    "fixture": "off-treats",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "off",
+     "bar": "off",
+     "line": "off.line",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "none",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
     "name": "off_before_any_pet",
     "fixture": "off-no-pet",
     "now": 1792123900000,
@@ -2431,6 +4101,29 @@
      "line": null,
      "vars": {},
      "overlay": "none",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "owner_unarmed_welcome",
+    "fixture": "owner-unarmed-welcome",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "welcome",
+     "bar": "hi",
+     "line": "picker.welcome",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
      "pulse": false,
      "treats_visible": false,
      "bubble": null,
@@ -2594,6 +4287,29 @@
     },
     "expect": {
      "state": "asleep",
+     "bar": "sleep",
+     "line": "mood.asleep",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "sleep",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "paused_looks_asleep_and_hides_treats",
+    "fixture": "paused",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "paused",
      "bar": "sleep",
      "line": "mood.asleep",
      "vars": {
@@ -2771,6 +4487,106 @@
       ]
      },
      "wake_at_ms": 1792123920000
+    }
+   },
+   {
+    "name": "ready_check_types_while_running",
+    "fixture": "test-running",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "testing",
+     "bar": "working",
+     "line": "act.working.one",
+     "vars": {
+      "name": "Ginger",
+      "app": "claude-code"
+     },
+     "overlay": "working",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": {
+      "apps": [
+       "claude-code"
+      ]
+     },
+     "wake_at_ms": 1792123906000
+    }
+   },
+   {
+    "name": "ready_check_running_too_long_stops_typing",
+    "fixture": "test-running",
+    "now": 1792123906000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "none",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "ready_check_failed_shows_no_face",
+    "fixture": "test-failed",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "idle",
+     "bar": "none",
+     "line": "mood.happy",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "wander",
+     "pulse": false,
+     "treats_visible": false,
+     "bubble": null,
+     "wake_at_ms": null
+    }
+   },
+   {
+    "name": "grew_up_celebrates_until_seen",
+    "fixture": "grew-up",
+    "now": 1792123900000,
+    "seen": {
+     "finished_seq": 0,
+     "hello_seq": 0,
+     "test_at_ms": 0
+    },
+    "expect": {
+     "state": "celebrate",
+     "bar": "star",
+     "line": "grew",
+     "vars": {
+      "name": "Ginger"
+     },
+     "overlay": "celebrate",
+     "pulse": false,
+     "treats_visible": true,
+     "bubble": {
+      "star": true,
+      "confetti": true
+     },
+     "wake_at_ms": null
     }
    },
    {
@@ -3107,6 +4923,537 @@
      },
      "wake_at_ms": null
     }
+   }
+  ]
+ },
+ "popup_routing": {
+  "function": "route(export) -> the screen the popup shows when it opens or after any export while open",
+  "rules_in_order": [
+   "enabled == false and life != null -> off_look (Home variant: dimmed sleeping pet, off.line, Turn on)",
+   "enabled == false and life == null -> first_run_off (the picker with the Turn on footer instead of Let's go!; Let's go! is never offered while Off)",
+   "life == null and memorial.count == 0 -> first_run (picker, cat preselected, Let's go!)",
+   "life == null and memorial.count > 0 -> memorial (memorial.line with memorial.latest_name, Meet a new pet -> first_run for this popup session only; UI-local, not stored)",
+   "life.armed == false -> welcome_back (picker preselecting the life's look, name kept, Let's go! = pet.start on that life)",
+   "otherwise -> home"
+  ],
+  "transitions": [
+   "a left click on the Off bar cell calls app.set_enabled {enabled:true} first, then routes (one click turns CodePet on and opens Home)",
+   "the power switch flipped to Off on any screen (Helpers, More, Help, Change, a row sheet) routes to off_look / first_run_off at once; flipped back On, the popup routes again (Home, not the sub-page it was on)",
+   "after a successful pet.start the UI calls clients.status and shows connect_card when connect_card.offered is not empty, else home; closing the popup on the card counts as Not now",
+   "after pet.retire (Say goodbye) the next route is memorial"
+  ],
+  "vectors": [
+   {
+    "fixture": "fresh-no-pet",
+    "expect": "first_run"
+   },
+   {
+    "fixture": "off-no-pet",
+    "expect": "first_run_off"
+   },
+   {
+    "fixture": "off",
+    "expect": "off_look"
+   },
+   {
+    "fixture": "off-treats",
+    "expect": "off_look"
+   },
+   {
+    "fixture": "memorial",
+    "expect": "memorial"
+   },
+   {
+    "fixture": "owner-unarmed-welcome",
+    "expect": "welcome_back"
+   },
+   {
+    "fixture": "goldfish-ginger-owner",
+    "expect": "home"
+   },
+   {
+    "fixture": "idle-happy",
+    "expect": "home"
+   },
+   {
+    "fixture": "paused",
+    "expect": "home"
+   },
+   {
+    "fixture": "fainted",
+    "expect": "home"
+   },
+   {
+    "fixture": "asleep",
+    "expect": "home"
+   },
+   {
+    "fixture": "grew-up",
+    "expect": "home"
+   }
+  ]
+ },
+ "connect_card": {
+  "function": "offered(clients.status result) -> the apps on the first-run Connect card, all pre-ticked",
+  "rule": "every client in client order except codex with installed and not connected and job == null (a client whose last Connect failed is offered again). Empty -> the card is skipped",
+  "vectors": [
+   {
+    "status_fixture": "nothing-installed",
+    "expect": []
+   },
+   {
+    "status_fixture": "owner-first-run",
+    "expect": [
+     "claude-code",
+     "opencode",
+     "hermes",
+     "grok-cli"
+    ]
+   },
+   {
+    "status_fixture": "after-connect",
+    "expect": [
+     "hermes"
+    ]
+   },
+   {
+    "status_fixture": "all-connected",
+    "expect": []
+   }
+  ]
+ },
+ "helpers_rows": {
+  "function": "helper_row(client id, export client record or null, now, tz_offset_min) -> how its Helpers row and row sheet look",
+  "rules_in_order": [
+   "no record, or installed == false and connected == false -> hidden (no row)",
+   "job running: kind connect -> row.connecting; disconnect -> row.disconnecting; test -> row.testing. spinner, no step, no Stop watching",
+   "failed_reason != null -> row.failed + reason.<reason_to_copy>, step btn.retry (clients.connect), Stop watching when connected",
+   "needs_step == codex_hooks_off -> row.codex.off, step btn.showme (the Codex guide's codex.off page), Stop watching when connected",
+   "needs_step == codex_trust -> row.step, step btn.showme (the Codex trust guide codex.step1..5), Stop watching when connected",
+   "connected and first_seen_ms == null -> row.waiting with hint.open shown at once on the list; the sheet adds hint.claude2 for claude-code. Stop watching",
+   "connected -> row.seen.<bucket> of last_seen_ms (first_seen_ms when last_seen_ms is null). Stop watching",
+   "not connected, codex -> row.codex.new, step btn.connect",
+   "not connected -> row.connect, step btn.connect"
+  ],
+  "seen_buckets": {
+   "now": "now - seen < seen_just_now_ms (including a seen time in the future)",
+   "today": "otherwise, the same local calendar day as now",
+   "yesterday": "the local calendar day before now's",
+   "while": "anything older",
+   "local_day": "floor((ms + tz_offset_min * 60000) / 86400000); the UI uses Qt's local date, so DST is the system's",
+   "seen_just_now_ms": 300000
+  },
+  "connect_all": "the ids of visible rows that are not connected, have no running job and are not codex (a failed row counts); the button is hidden when the list is empty",
+  "fixture_vectors": [
+   {
+    "fixture": "clients-mixed",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": true,
+       "row": "row.seen.now",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      },
+      "codex": {
+       "visible": true,
+       "row": "row.step",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": "btn.showme",
+       "stop_watching": true,
+       "spinner": false,
+       "guide": "codex.trust"
+      },
+      "opencode": {
+       "visible": true,
+       "row": "row.connecting",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": false,
+       "spinner": true,
+       "guide": null
+      },
+      "hermes": {
+       "visible": true,
+       "row": "row.failed",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": "reason.too_old",
+       "step": "btn.retry",
+       "stop_watching": false,
+       "spinner": false,
+       "guide": null
+      },
+      "grok-cli": {
+       "visible": true,
+       "row": "row.waiting",
+       "hint": "hint.open",
+       "sheet_hints": [
+        "hint.open"
+       ],
+       "reason": null,
+       "step": null,
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      }
+     },
+     "connect_all": [
+      "hermes"
+     ]
+    }
+   },
+   {
+    "fixture": "clients-codex-hooks-off",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": true,
+       "row": "row.seen.today",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      },
+      "codex": {
+       "visible": true,
+       "row": "row.codex.off",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": "btn.showme",
+       "stop_watching": false,
+       "spinner": false,
+       "guide": "codex.off"
+      },
+      "opencode": {
+       "visible": false
+      },
+      "hermes": {
+       "visible": false
+      },
+      "grok-cli": {
+       "visible": false
+      }
+     },
+     "connect_all": []
+    }
+   },
+   {
+    "fixture": "clients-codex-new",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": false
+      },
+      "codex": {
+       "visible": true,
+       "row": "row.codex.new",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": "btn.connect",
+       "stop_watching": false,
+       "spinner": false,
+       "guide": null
+      },
+      "opencode": {
+       "visible": true,
+       "row": "row.seen.while",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      },
+      "hermes": {
+       "visible": false
+      },
+      "grok-cli": {
+       "visible": false
+      }
+     },
+     "connect_all": []
+    }
+   },
+   {
+    "fixture": "clients-disconnect-running",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": false
+      },
+      "codex": {
+       "visible": false
+      },
+      "opencode": {
+       "visible": false
+      },
+      "hermes": {
+       "visible": true,
+       "row": "row.disconnecting",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": false,
+       "spinner": true,
+       "guide": null
+      },
+      "grok-cli": {
+       "visible": true,
+       "row": "row.testing",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": false,
+       "spinner": true,
+       "guide": null
+      }
+     },
+     "connect_all": []
+    }
+   },
+   {
+    "fixture": "clients-failed-while-connected",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": true,
+       "row": "row.failed",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": "reason.blocked",
+       "step": "btn.retry",
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      },
+      "codex": {
+       "visible": false
+      },
+      "opencode": {
+       "visible": true,
+       "row": "row.seen.yesterday",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      },
+      "hermes": {
+       "visible": false
+      },
+      "grok-cli": {
+       "visible": false
+      }
+     },
+     "connect_all": []
+    }
+   },
+   {
+    "fixture": "hello",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": true,
+       "row": "row.seen.now",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      }
+     },
+     "connect_all": []
+    }
+   },
+   {
+    "fixture": "ready-check-done",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": true,
+       "row": "row.waiting",
+       "hint": "hint.open",
+       "sheet_hints": [
+        "hint.open",
+        "hint.claude2"
+       ],
+       "reason": null,
+       "step": null,
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      }
+     },
+     "connect_all": []
+    }
+   },
+   {
+    "fixture": "test-running",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": true,
+       "row": "row.connecting",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": null,
+       "step": null,
+       "stop_watching": false,
+       "spinner": true,
+       "guide": null
+      }
+     },
+     "connect_all": []
+    }
+   },
+   {
+    "fixture": "test-failed",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "expect": {
+     "rows": {
+      "claude-code": {
+       "visible": true,
+       "row": "row.failed",
+       "hint": null,
+       "sheet_hints": [],
+       "reason": "reason.blocked",
+       "step": "btn.retry",
+       "stop_watching": true,
+       "spinner": false,
+       "guide": null
+      }
+     },
+     "connect_all": []
+    }
+   }
+  ],
+  "bucket_vectors": [
+   {
+    "name": "four_minutes_is_just_now",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792123660000,
+    "first_seen_ms": 1792037500000,
+    "expect": "row.seen.now"
+   },
+   {
+    "name": "five_minutes_is_today",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792123600000,
+    "first_seen_ms": 1792037500000,
+    "expect": "row.seen.today"
+   },
+   {
+    "name": "future_is_just_now",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792123960000,
+    "first_seen_ms": 1792037500000,
+    "expect": "row.seen.now"
+   },
+   {
+    "name": "just_after_midnight_today",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792108800001,
+    "first_seen_ms": 1792037500000,
+    "expect": "row.seen.today"
+   },
+   {
+    "name": "just_before_midnight_yesterday",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792108799999,
+    "first_seen_ms": 1792037500000,
+    "expect": "row.seen.yesterday"
+   },
+   {
+    "name": "start_of_yesterday",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792022400000,
+    "first_seen_ms": 1791951100000,
+    "expect": "row.seen.yesterday"
+   },
+   {
+    "name": "before_yesterday_is_a_while",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792022399999,
+    "first_seen_ms": 1791951100000,
+    "expect": "row.seen.while"
+   },
+   {
+    "name": "eleven_minutes_across_utc_midnight",
+    "now": 1792108860000,
+    "tz_offset_min": 0,
+    "last_seen_ms": 1792108200000,
+    "first_seen_ms": 1792022400000,
+    "expect": "row.seen.yesterday"
+   },
+   {
+    "name": "same_moment_is_today_one_hour_east",
+    "now": 1792108860000,
+    "tz_offset_min": 60,
+    "last_seen_ms": 1792108200000,
+    "first_seen_ms": 1792022400000,
+    "expect": "row.seen.today"
+   },
+   {
+    "name": "west_of_utc_moves_the_day_back",
+    "now": 1792123900000,
+    "tz_offset_min": -300,
+    "last_seen_ms": 1792105200000,
+    "first_seen_ms": 1792037500000,
+    "expect": "row.seen.today"
+   },
+   {
+    "name": "falls_back_to_first_seen",
+    "now": 1792123900000,
+    "tz_offset_min": 0,
+    "last_seen_ms": null,
+    "first_seen_ms": 1792123840000,
+    "expect": "row.seen.now"
    }
   ]
  }

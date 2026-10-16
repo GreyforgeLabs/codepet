@@ -4,8 +4,10 @@
 //! WP0 lands only the declarations every work package shares: client ids, event kinds,
 //! session and app states, and the numeric rules. The constants are mirrored in
 //! `docs/v0.3/contracts/agent_vectors.json` (checked by a test below). WP2 adds the pure
-//! functions (`turn_qualifies`, `caps_allow`, `pet_state`, normalization) and runs the
-//! vectors.
+//! functions and runs their vector sections: normalization, event ids, `hmac_keys`,
+//! interactivity, `turn_qualifies`, `caps_allow`, the session machine, the fold outcomes and
+//! `pet_state` (the `aggregate` section that builds `bar-state.json`'s `agent` block). The
+//! shared face priority is not Rust: it is generated into `petstate.js` (WP6).
 
 /// A supported coding client. Ids match `~/.config/greyforge/agents/registry.json`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

@@ -24,7 +24,13 @@
       "Connect all",
       "This one!",
       "Turn on",
-      "Wake up"
+      "Wake up",
+      "Try again",
+      "Show me",
+      "Meet a new pet",
+      "Say goodbye",
+      "Done",
+      "Turn on Hardcore"
     ],
     "secondary_button_height_px": 48,
     "secondary_actions": [
@@ -32,7 +38,8 @@
       "Keep",
       "Cancel",
       "Close",
-      "Stop watching"
+      "Stop watching",
+      "Stop"
     ],
     "care_tile_height_px": 104,
     "care_tile_icon_px": [
@@ -327,6 +334,162 @@
         }
       ],
       "total_px": 380
+    },
+    "more_6_rows": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "rows 6x64",
+          "px": 384
+        }
+      ],
+      "total_px": 488
+    },
+    "helpers_row_sheet": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "app row (tile 64 + name)",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "status + 2 hint lines 3x24",
+          "px": 72
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "primary next step",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "secondary row (Stop watching, Close)",
+          "px": 48
+        }
+      ],
+      "total_px": 376
+    },
+    "memorial_card": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "greyscale stage art",
+          "px": 160
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "memorial line 2x32",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "primary Meet a new pet",
+          "px": 72
+        }
+      ],
+      "total_px": 416
+    },
+    "goodbye_confirm": {
+      "parts": [
+        {
+          "part": "card padding",
+          "px": 32
+        },
+        {
+          "part": "header",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "pet",
+          "px": 160
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "ask line",
+          "px": 36
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "typed-name field",
+          "px": 56
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "primary Say goodbye (Color.urgent)",
+          "px": 64
+        },
+        {
+          "part": "gap",
+          "px": 8
+        },
+        {
+          "part": "secondary Keep",
+          "px": 48
+        }
+      ],
+      "total_px": 500
     }
   },
   "home_stage_overlays": {
@@ -339,7 +502,8 @@
     "helpers_row_px": 56,
     "helpers_hint_px": 24,
     "more_row_px": 64,
-    "more_max_rows": 6
+    "more_max_rows": 6,
+    "sheet_text_line_px": 24
   },
   "strip": {
     "portrait_px": 80,
@@ -349,6 +513,7 @@
   },
   "notes": [
     "Connect card privacy block is 72 px (3 lines) when the 'apps will remember' line shows; 48 px otherwise.",
-    "The off look reuses Home's frame with fewer controls; first run with no pet shows the same Turn on footer when Off."
+    "The off look reuses Home's frame with fewer controls; first run with no pet shows the same Turn on footer when Off.",
+    "Help and the Codex picture guide are adult pages; they may scroll and have no K13 budget. The Hardcore confirmation inside Help reuses the goodbye_confirm layout."
   ]
 }

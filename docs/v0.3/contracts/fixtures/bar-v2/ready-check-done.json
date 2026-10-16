@@ -99,7 +99,8 @@
   "hello_app": null,
   "test": {
    "state": "done",
-   "at_ms": 1792123898500
+   "at_ms": 1792123898500,
+   "client": "claude-code"
   },
   "error_at_ms": null,
   "error_app": null,
@@ -111,6 +112,8 @@
  },
  "clients": {
   "claude-code": {
+   "installed": true,
+   "version": "2.1.294",
    "connected": true,
    "needs_step": null,
    "last_seen_ms": null,

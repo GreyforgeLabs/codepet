@@ -108,6 +108,8 @@
  },
  "clients": {
   "claude-code": {
+   "installed": true,
+   "version": "2.1.294",
    "connected": true,
    "needs_step": null,
    "last_seen_ms": 1792123895000,

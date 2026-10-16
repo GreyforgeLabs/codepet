@@ -146,9 +146,35 @@
       }
     },
     {
+      "id": "ui",
+      "grid": [
+        2,
+        1
+      ],
+      "ship_px": 256,
+      "ids": [
+        "egg",
+        "pencil"
+      ],
+      "subjects": {
+        "egg": "the placeholder egg of first run (no pet yet), painted like the pets",
+        "pencil": "the edit mark on the name button (never a bare glyph-only control: it sits inside the >= 48 px name button)"
+      },
+      "shown_at_px": {
+        "first_run_egg": [
+          160,
+          160
+        ],
+        "name_button": [
+          24,
+          32
+        ]
+      }
+    },
+    {
       "id": "bar",
       "grid": [
-        4,
+        5,
         2
       ],
       "source_px": 64,
@@ -164,7 +190,9 @@
         "badge_tub",
         "badge_star",
         "badge_bandage",
-        "badge_moon"
+        "badge_moon",
+        "badge_egg",
+        "badge_sparkle"
       ],
       "rule": "drawn separately: thick outlines, no painted detail"
     }
@@ -177,7 +205,9 @@
     "need.wash": "badge_tub",
     "star": "badge_star",
     "fainted": "badge_bandage",
-    "off": "badge_moon"
+    "off": "badge_moon",
+    "no_pet": "badge_egg",
+    "hi": "badge_sparkle"
   },
   "care_icon_set": {
     "values": [
@@ -219,5 +249,63 @@
     },
     "fallback": "plain verb bubble (react.<need>.plain); never careLabels"
   },
-  "fallback": "a sheet that fails visual review twice: the species' own care-animation frame 3 for food/water/play/wash; bar badges fall back to a single accent dot"
+  "fallback": "a sheet that fails visual review twice: the species' own care-animation frame 3 for food/water/play/wash; bar badges fall back to a single accent dot",
+  "bar_cell": {
+    "description": "what the bar cell draws for each shared-priority `bar` value (agent_vectors.json priority)",
+    "off": {
+      "thumb": "pet thumb at 40% opacity, or badge_egg without a life",
+      "badge": "badge_moon"
+    },
+    "egg": {
+      "thumb": "badge_egg",
+      "badge": "badge_sparkle",
+      "text": "bar.hi"
+    },
+    "hi": {
+      "thumb": "pet thumb",
+      "badge": "badge_sparkle",
+      "text": "bar.hi"
+    },
+    "sleep": {
+      "thumb": "the pet's sleep frame",
+      "badge": null
+    },
+    "sleep_bandage": {
+      "thumb": "the pet's sleep frame",
+      "badge": "badge_bandage"
+    },
+    "hand": {
+      "thumb": "pet thumb",
+      "badge": "badge_hand",
+      "pulse": "unless Calm mode"
+    },
+    "need_food": {
+      "thumb": "pet thumb",
+      "badge": "badge_bowl"
+    },
+    "need_water": {
+      "thumb": "pet thumb",
+      "badge": "badge_drop"
+    },
+    "need_play": {
+      "thumb": "pet thumb",
+      "badge": "badge_ball"
+    },
+    "need_wash": {
+      "thumb": "pet thumb",
+      "badge": "badge_tub"
+    },
+    "working": {
+      "thumb": "the pet's working frame (static swap, no timer)",
+      "badge": null
+    },
+    "star": {
+      "thumb": "pet thumb",
+      "badge": "badge_star"
+    },
+    "none": {
+      "thumb": "pet thumb",
+      "badge": null
+    }
+  }
 }

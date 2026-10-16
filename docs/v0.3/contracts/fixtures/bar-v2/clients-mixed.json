@@ -108,6 +108,8 @@
  },
  "clients": {
   "claude-code": {
+   "installed": true,
+   "version": "2.1.294",
    "connected": true,
    "needs_step": null,
    "last_seen_ms": 1792123870000,
@@ -116,6 +118,8 @@
    "job": null
   },
   "grok-cli": {
+   "installed": true,
+   "version": "1.0.52",
    "connected": true,
    "needs_step": null,
    "last_seen_ms": null,
@@ -124,18 +128,22 @@
    "job": null
   },
   "opencode": {
+   "installed": true,
+   "version": "1.19.0",
    "connected": false,
    "needs_step": null,
    "last_seen_ms": null,
    "first_seen_ms": null,
    "failed_reason": null,
    "job": {
-    "id": "job-7f3a",
+    "id": "job-7f3a0c19e2d84b6a5c1e9f02",
     "kind": "connect",
     "state": "running"
    }
   },
   "hermes": {
+   "installed": true,
+   "version": "0.21.3",
    "connected": false,
    "needs_step": null,
    "last_seen_ms": null,
@@ -144,6 +152,8 @@
    "job": null
   },
   "codex": {
+   "installed": true,
+   "version": "0.163.0",
    "connected": true,
    "needs_step": "codex_trust",
    "last_seen_ms": null,

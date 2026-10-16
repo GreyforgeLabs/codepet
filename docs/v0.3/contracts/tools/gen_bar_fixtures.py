@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Writes docs/v0.3/contracts/fixtures/bar-v2/*.json, the shared-priority state fixtures
-(SPEC-v0.3 §9.3). Every fixture is generated at NOW; agent_vectors.json "priority"
+"""Writes docs/v0.3/contracts/fixtures/bar-v2/*.json, the shared-priority, popup-routing and
+Helpers-row state fixtures (SPEC-v0.3 §9.3), and fixtures/clients-status/*.json, the
+clients.status results for the WP5 smokes. Every fixture is generated at NOW; agent_vectors.json "priority"
 vectors evaluate them at NOW plus an offset. Run from anywhere:
     python3 docs/v0.3/contracts/tools/gen_bar_fixtures.py
 """
@@ -81,12 +82,30 @@ def meters_for(d):
     return d
 
 
+VERSIONS = {"claude-code": "2.1.294", "codex": "0.163.0", "opencode": "1.19.0", "hermes": "0.21.3",
+            "grok-cli": "1.0.52"}
+JOB = "job-7f3a0c19e2d84b6a5c1e9f02"  # job ids: "job-" + 24 lowercase hex (protocol.json job_id_pattern)
+
+
+def client(cid, connected=False, needs_step=None, last=None, first=None, failed=None, job=None, installed=True):
+    return {"installed": installed, "version": VERSIONS[cid] if installed else None, "connected": connected,
+            "needs_step": needs_step, "last_seen_ms": last, "first_seen_ms": first, "failed_reason": failed,
+            "job": None if job is None else {"id": JOB, "kind": job, "state": "running"}}
+
+
 F = {}
 F["fresh-no-pet"] = no_pet(base())
+d = no_pet(base()); d["memorial"] = {"count": 1, "latest_name": "Ginger"}; F["memorial"] = d
 d = base(); d["enabled"] = False; d["presence"]["wanted"] = False; F["off"] = d
+d = base(); d["enabled"] = False; d["presence"]["wanted"] = False; d["treats"] = {"jar": 4, "full": False}
+F["off-treats"] = d
 d = no_pet(base()); d["enabled"] = False; F["off-no-pet"] = d
 F["idle-happy"] = base()
 d = base(); d["treats"] = {"jar": 3, "full": False}; F["idle-treats"] = d
+d = base(xp=80); d["life"].update({"stage": 2, "level": 2, "next_stage_xp": 400})
+d["unseen_events"] = [{"seq": 7, "stage": 2}]; d["treats"] = {"jar": 1, "full": False}; F["grew-up"] = d
+d = base(); d["life"]["paused"] = True; d["presence"]["wanted"] = False; d["treats"] = {"jar": 2, "full": False}
+F["paused"] = d
 d = base(); d["needs"] = needs(food="low"); F["need-food-soon"] = meters_for(d)
 d = base(); d["needs"] = needs(water="empty"); F["need-water-now"] = meters_for(d)
 d = base(); d["needs"] = needs(food="critical"); d["life"]["status"] = "critical"
@@ -117,13 +136,17 @@ d = base(); d["agent"].update({"finished_seq": 2, "finished_at_ms": T - 10000, "
                                "finished_jar_full": True}); d["treats"] = {"jar": 10, "full": True}
 F["jar-full"] = d
 d = base(); d["agent"].update({"hello_seq": 1, "hello_at_ms": T - 5000, "hello_app": "claude-code"})
-d["clients"] = {"claude-code": {"connected": True, "needs_step": None, "last_seen_ms": T - 5000,
-                                "first_seen_ms": T - 5000, "failed_reason": None, "job": None}}
+d["clients"] = {"claude-code": client("claude-code", True, last=T - 5000, first=T - 5000)}
 F["hello"] = d
-d = base(); d["agent"]["test"] = {"state": "done", "at_ms": T - 1500}
-d["clients"] = {"claude-code": {"connected": True, "needs_step": None, "last_seen_ms": None, "first_seen_ms": None,
-                                "failed_reason": None, "job": None}}
+d = base(); d["agent"]["test"] = {"state": "running", "at_ms": T - 500, "client": "claude-code"}
+d["clients"] = {"claude-code": client("claude-code", True, job="connect")}
+F["test-running"] = d
+d = base(); d["agent"]["test"] = {"state": "done", "at_ms": T - 1500, "client": "claude-code"}
+d["clients"] = {"claude-code": client("claude-code", True)}
 F["ready-check-done"] = d
+d = base(); d["agent"]["test"] = {"state": "failed", "at_ms": T - 1000, "client": "claude-code"}
+d["clients"] = {"claude-code": client("claude-code", True, failed="ready_check")}
+F["test-failed"] = d
 d = base(); d["agent"].update({"error_at_ms": T - 1000, "error_app": "grok-cli"})
 F["oops"] = with_apps(d, app("grok-cli", "error", T - 1000))
 d = base(); d["agent"]["state"] = "working"
@@ -132,24 +155,85 @@ d["agent"]["stale_at_ms"] = T - 100000
 F["stale-working"] = d
 d = base(); d["agent"]["helpers_busy"] = True
 F["helpers-busy"] = d
+# The owner after the upgrade: Ginger the goldfish, never armed, stored as permadeath.
 d = base(name="Ginger", appearance="goldfish", mode="permadeath", armed=False, xp=0)
+F["owner-unarmed-welcome"] = d
+# The owner after Let's go!: armed in gentle mode, aquatic copy.
+d = base(name="Ginger", appearance="goldfish", mode="gentle", armed=True, xp=0)
 d["needs"] = needs(wash="low"); F["goldfish-ginger-owner"] = meters_for(d)
 d = base(name="Bolt", appearance="robot"); d["life"]["life_id"] = "life-0123456789abcdef01234567"
 d["presence"]["life_id"] = d["life"]["life_id"]; d["needs"] = needs(food="empty"); F["robot-bolt"] = meters_for(d)
 d = base()
 d["clients"] = {
-    "claude-code": {"connected": True, "needs_step": None, "last_seen_ms": T - 30000, "first_seen_ms": T - 86400000,
-                    "failed_reason": None, "job": None},
-    "grok-cli": {"connected": True, "needs_step": None, "last_seen_ms": None, "first_seen_ms": None,
-                 "failed_reason": None, "job": None},
-    "opencode": {"connected": False, "needs_step": None, "last_seen_ms": None, "first_seen_ms": None,
-                 "failed_reason": None, "job": {"id": "job-7f3a", "kind": "connect", "state": "running"}},
-    "hermes": {"connected": False, "needs_step": None, "last_seen_ms": None, "first_seen_ms": None,
-               "failed_reason": "too_old", "job": None},
-    "codex": {"connected": True, "needs_step": "codex_trust", "last_seen_ms": None, "first_seen_ms": None,
-              "failed_reason": None, "job": None},
+    "claude-code": client("claude-code", True, last=T - 30000, first=T - 86400000),
+    "grok-cli": client("grok-cli", True),
+    "opencode": client("opencode", job="connect"),
+    "hermes": client("hermes", failed="too_old"),
+    "codex": client("codex", True, needs_step="codex_trust"),
 }
 F["clients-mixed"] = d
+d = base()
+d["clients"] = {
+    "codex": client("codex", needs_step="codex_hooks_off"),
+    "claude-code": client("claude-code", True, last=T - 3 * 3600000, first=T - 86400000),
+    "grok-cli": client("grok-cli", installed=False),
+}
+F["clients-codex-hooks-off"] = d
+d = base()
+d["clients"] = {
+    "codex": client("codex"),
+    "opencode": client("opencode", True, last=T - 2 * 86400000, first=T - 3 * 86400000),
+    "hermes": client("hermes", installed=False),
+}
+F["clients-codex-new"] = d
+d = base()
+d["clients"] = {
+    "hermes": client("hermes", True, last=T - 60000, first=T - 86400000, job="disconnect"),
+    "grok-cli": client("grok-cli", True, job="test"),
+}
+F["clients-disconnect-running"] = d
+d = base()
+d["clients"] = {
+    "claude-code": client("claude-code", True, last=T - 3600000, first=T - 86400000, failed="blocked"),
+    "opencode": client("opencode", installed=False, connected=True, last=T - 86400000, first=T - 2 * 86400000),
+}
+F["clients-failed-while-connected"] = d
+
+# clients.status results (protocol.json "result_schemas"."clients.status"), for the WP5 smokes.
+NAMES = {"claude-code": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "hermes": "Hermes", "grok-cli": "Grok"}
+ORDER = ["claude-code", "codex", "opencode", "hermes", "grok-cli"]
+
+
+def status(records, events=None):
+    out = []
+    for cid in ORDER:
+        rec = records.get(cid) or client(cid, installed=False)
+        out.append({"id": cid, "name": NAMES[cid], **{k: rec[k] for k in ("installed", "version", "connected",
+                    "needs_step", "last_seen_ms", "first_seen_ms")}, "events_7d": (events or {}).get(cid, 0),
+                    "failed_reason": rec["failed_reason"], "job": rec["job"]})
+    return {"clients": out}
+
+
+S = {}
+S["nothing-installed"] = status({})
+S["owner-first-run"] = status({c: client(c) for c in ORDER})
+S["after-connect"] = status({
+    "claude-code": client("claude-code", True, last=T - 30000, first=T - 600000),
+    "codex": client("codex", True, needs_step="codex_trust"),
+    "opencode": client("opencode", job="connect"),
+    "hermes": client("hermes", failed="too_old"),
+    "grok-cli": client("grok-cli", True),
+}, events={"claude-code": 42})
+S["all-connected"] = status({c: client(c, True, last=T - 60000, first=T - 86400000) for c in ORDER},
+                            events={c: 3 for c in ORDER})
+
+SOUT = OUT.parent / "clients-status"
+SOUT.mkdir(parents=True, exist_ok=True)
+for old in SOUT.glob("*.json"):
+    if old.stem not in S:
+        old.unlink()
+for name, doc in S.items():
+    (SOUT / f"{name}.json").write_text(json.dumps(doc, indent=1) + "\n")
 
 OUT.mkdir(parents=True, exist_ok=True)
 for old in OUT.glob("*.json"):
@@ -159,4 +243,4 @@ for name, doc in F.items():
     text = json.dumps(doc, indent=1) + "\n"
     assert len(text.encode()) <= 16384, name
     (OUT / f"{name}.json").write_text(text)
-print(f"wrote {len(F)} fixtures to {OUT}")
+print(f"wrote {len(F)} bar fixtures to {OUT} and {len(S)} clients.status fixtures to {SOUT}")

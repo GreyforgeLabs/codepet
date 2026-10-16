@@ -3,7 +3,17 @@
 -- migration transaction after `VACUUM INTO codepet.sqlite3.bak-v4-<ms>`.
 --
 -- Additions beyond the spec's column lists are marked "(WP0)" and explained in notes.md.
--- Hash-like keys are 32 lowercase hex characters: HMAC-SHA256(meta.hook_salt, ...)[..16].
+-- Hash-like keys are 32 lowercase hex characters:
+--   hex(HMAC-SHA256(meta.hook_salt, domain || 0x1f || client || 0x1f || part [|| 0x1f || part ...]))[..32]
+-- with one domain per key kind (agent_vectors.json "hmac_keys" has the exact parts and vectors):
+--   codepet-session-v1  (session)            agent_sessions.session_key (approval = 0), activity_turns.session_key,
+--                                            agent_events.session_hmac
+--   codepet-approval-v1 (approval_key)       agent_sessions.session_key (approval = 1)
+--   codepet-turn-v1     (session, turn)      open/last_done turn keys, activity_turns.turn_key, agent_events.turn_hmac
+--   codepet-tool-v1     (session, tool)      agent_events.tool_hmac
+--   codepet-dedupe-v1   (kind, session field, dig, bucket)   agent_events.dedupe_key
+-- The client id is in every input, so two clients sharing a raw session id never collide, and
+-- the domain tag keeps a session key and an approval key with the same raw text apart.
 -- Client ids: claude-code, codex, opencode, hermes, grok-cli.
 
 -- 1. meta additions -------------------------------------------------------------------
@@ -27,8 +37,15 @@ ALTER TABLE meta ADD COLUMN retention_at_ms INTEGER;
 ALTER TABLE meta ADD COLUMN test_state TEXT
   CHECK (test_state IS NULL OR test_state IN ('running','done','failed'));
 ALTER TABLE meta ADD COLUMN test_at_ms INTEGER;
+-- (WP0) agent.test.client: the first tested client in client order. Only the clients job
+-- writes test_state/test_at_ms/test_client; the fold never does (agent_vectors.json fold).
+ALTER TABLE meta ADD COLUMN test_client TEXT
+  CHECK (test_client IS NULL OR test_client IN ('claude-code','codex','opencode','hermes','grok-cli'));
 
 -- 2. agent_events: one row per inbox record seen by the fold (dedupe + audit), 7 days ----
+-- events_7d (clients.status) = COUNT(*) WHERE client = ? AND test = 0
+--   AND outcome IN ('folded','no_life') AND at_ms > now - 7 days.
+-- Dropped rows (off, old, child, test) never count.
 CREATE TABLE agent_events (
   id INTEGER PRIMARY KEY,
   dedupe_key TEXT NOT NULL UNIQUE CHECK (length(dedupe_key) = 32),
@@ -41,8 +58,9 @@ CREATE TABLE agent_events (
     'authentication_failed','invalid_request','server_error','max_output_tokens','overloaded',
     'billing_error','unknown')),
   at_ms INTEGER NOT NULL,
+  -- (WP0) dropped_test: a test record while no ready check is running (late or replayed).
   outcome TEXT NOT NULL CHECK (outcome IN ('folded','dropped_off','dropped_old','dropped_child',
-    'test','no_life')),
+    'test','dropped_test','no_life')),
   -- (WP0) session_hmac: distinct-tool counting per (session, turn) needs it.
   session_hmac TEXT CHECK (session_hmac IS NULL OR length(session_hmac) = 32),
   turn_hmac TEXT CHECK (turn_hmac IS NULL OR length(turn_hmac) = 32),
@@ -128,9 +146,16 @@ BEGIN SELECT RAISE(ABORT, 'xp history is never deleted'); END;
 CREATE TRIGGER activity_xp_immutable BEFORE UPDATE ON activity_xp
 BEGIN SELECT RAISE(ABORT, 'xp rows are immutable'); END;
 
--- 6. client_hooks: one row per client CodePet has touched -----------------------------
+-- 6. client_hooks: one row per supported client ------------------------------------------
+-- clients.status upserts all five rows on every run (file-only detection), so the table is
+-- empty only before the first Helpers/Connect-card open; Connect/Disconnect jobs and the fold
+-- upsert their own client's row. Rows are never deleted. Exports list every row present.
 CREATE TABLE client_hooks (
   client TEXT PRIMARY KEY NOT NULL CHECK (client IN ('claude-code','codex','opencode','hermes','grok-cli')),
+  -- (WP0) written by clients.status: binary + config dir found, the detected version and when.
+  installed INTEGER NOT NULL DEFAULT 0 CHECK (installed IN (0,1)),
+  detected_version TEXT CHECK (detected_version IS NULL OR length(detected_version) <= 64),
+  checked_at_ms INTEGER,
   connected INTEGER NOT NULL DEFAULT 0 CHECK (connected IN (0,1)),
   needs_step TEXT CHECK (needs_step IS NULL OR needs_step IN ('codex_trust','codex_hooks_off')),
   installed_version TEXT CHECK (installed_version IS NULL OR length(installed_version) <= 64),
@@ -143,7 +168,9 @@ CREATE TABLE client_hooks (
   last_reason TEXT CHECK (last_reason IS NULL OR last_reason IN ('not_installed','too_old','blocked',
     'settings_changed','ready_check')),
   -- (WP0) the running job, mirrored into the export as clients.<id>.job.
-  job_id TEXT CHECK (job_id IS NULL OR length(job_id) BETWEEN 1 AND 64),
+  -- job ids are 'job-' + 24 lowercase hex (protocol.json job_id_pattern).
+  job_id TEXT CHECK (job_id IS NULL OR (length(job_id) = 28 AND substr(job_id, 1, 4) = 'job-'
+    AND substr(job_id, 5) NOT GLOB '*[^0-9a-f]*')),
   job_kind TEXT CHECK (job_kind IS NULL OR job_kind IN ('connect','disconnect','test')),
   CHECK ((job_id IS NULL) = (job_kind IS NULL))
 );
@@ -155,6 +182,15 @@ CREATE TABLE client_hooks (
 --       review_ready|recovery_required -> discarded;
 --   * UPDATE preflight_tokens SET status = 'invalidated' WHERE status = 'pending';
 --   * clear life_vitals.death_pending (the spec says pet_care; v4 keeps it in life_vitals)
---     with a journal note; normal settlement re-evaluates the life afterwards;
+--     with a journal note: for a living life with death_pending = 1, INSERT INTO life_events
+--     (life_id, kind, dedup_key, data, at_ms) VALUES (<life>, 'recovered', 'v5_migration',
+--     '{"reason":"v5_migration"}', <migration time>) - a kind the v4 CHECK already allows, so
+--     life_events is not rebuilt; normal settlement re-evaluates the life afterwards;
 --   * zero pet_care.work_sessions, execution_ms, rest_required, starts_since_bathroom;
 --   * lives, journal, memorials and historic tables untouched.
+--
+-- 8. Evolution by treats (WP1, treats.give): the generalized life::record_evolution journals
+--    each crossed stage exactly as v4 does - kind 'evolved', dedup_key 'stage:<n>' (UNIQUE per
+--    life, so a stage is journaled once whatever earned it), data {"from","to","xp","level",
+--    "source":"treat"}, task_id NULL, request_id = the treats.give request id, seen_at_ms NULL
+--    (it appears in the export's unseen_events until pet.events_seen).

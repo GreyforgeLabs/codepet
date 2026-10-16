@@ -144,6 +144,83 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
     `codepet-core::agent` tests `include_str!` it (no copy to drift). WP2 may move it and
     update the two include paths (core test, protocol test reads `protocol.json` likewise).
 
+19. **Hermes non-interactive sessions** (§5.6 "only cli/tui/desktop/acp is forwarded" vs §6.4
+    "non-interactive"). Resolved for §5.6: the plugin drops other or unknown platforms and never
+    sends them, and it never sends `interactive:false`. Hermes background or gateway work
+    therefore never reaches CodePet and can never set `helpers_busy`; approval events (no
+    platform) are sent only for surface `cli` or `transport:*` and count as interactive.
+20. **`clients.status` has no receipt** although §6.2 says every new mutating method takes the
+    request id. It is a file-only re-check whose answer must reflect the files now; a replayed
+    answer would be stale, and the method is idempotent. Every other added method has a
+    receipt (`app.set_enabled`, `app.set_helpers` and `agent.forget_history` gained one).
+21. **`completed`/`failed`/`interrupted` leave the §5.8 allow-list.** The Hermes plugin maps
+    `on_session_end` to `turn_done`/`turn_failed`/`turn_cancelled` itself and sends the kind;
+    the hook never reads those keys. The plugin payload is frozen in
+    `plugin-payload.schema.json`; the hook stays a lenient reader (bad `tools` -> 0, a
+    non-boolean `interactive` -> true, `codepet_v` must be the integer 1).
+22. **Ready check ownership.** §6.4 step 4 lets test events "set test_state"; with several
+    tested clients that would flip `done` -> `failed`. Resolved: the hook compares
+    `codepet_test` with `$STATE/test.nonce` and drops any mismatch or missing nonce
+    (`test_nonce`), so a stale fixture can never fake "{name} saw {app}!". The fold keeps test
+    records only while `meta.test_state = 'running'` (else outcome `dropped_test`, new) and never
+    changes `test_state`. The clients job sets `running` (+ `test_at_ms`, new
+    `meta.test_client`), judges arrivals from `agent_events`, sets `done`/`failed`, removes the
+    nonce and exports. `agent.test.client` feeds the testing face and "Open a new {app} window.".
+23. **Activity without a tool id or turn key.** A tool-less activity (Hermes clarify/approval
+    replies, OpenCode permission replies) never counts as a tool and never spends the late
+    re-check; it still turns `waiting`/`idle` into `working`. A keyless activity belongs to the
+    open turn (Claude's `Notification` has no `prompt_id`, so the "second permission prompt"
+    vector now has a keyless form). With no open turn, an activity ends `waiting` (-> `idle`)
+    instead of leaving the pet waving until the 30-minute stale rule.
+24. **Faces the priority table lacked.** `welcome` (row 1.6: a living unarmed life, i.e. the
+    owner's upgraded Ginger before Let's go!: bar thumb + "Hi!" sparkle, no Home), `paused`
+    (row 2 with asleep: `pet.pause` stays in the protocol, Home shows one Wake up that resumes),
+    `testing` (row 5 when no app works: the ready check types for up to
+    `test_done_delay_ms + test_arrival_ms`) and the `grew` celebration (first candidate of row 6,
+    driven by `unseen_events`, no time window, cleared by the popup's `pet.events_seen`).
+    Treats are hidden while paused, and `treats.give` answers `PET_NEEDS_CARE` then.
+25. **Off and mutating methods** (only `treats.give` was defined). `protocol.json`
+    `off_behaviour` splits every live method: cosmetic and bookkeeping methods,
+    `clients.status` and `clients.disconnect` (uninstall needs it) run; anything that ages, arms,
+    grows or ends a life, plus `clients.connect` and `clients.test` (the shim exits on `off`, so
+    the ready check could only fail), answer `INVALID_STATE`. `codepet connect` says
+    "CodePet is off. Turn it on first: codepet on". The frozen reason `off` comes right after
+    `no_life`.
+26. **Aggregate bound.** One `apps[]` entry per app cannot describe a lower state hidden under a
+    higher one. An entry stays valid until its winning rows expire; a lower state of another
+    session of the same app reappears at that session's next event (the no-polling rule), not
+    by a timer. The `aggregate` vectors pin every other edge (half-open stale windows, the error
+    window, approval rows, ordering, `helpers_busy`).
+27. **Hash inputs.** `session_key` was the PK for both sessions and approval rows, and two
+    clients sharing a raw session id could collide. Every HMAC now has a domain tag and the
+    client id in its input (`agent_vectors.json` `hmac_keys`, vectors with a fixed salt). A
+    Hermes approval event's event-id session field is `~ak:<approval_key>`; a keyless
+    `turn_start` uses turn `~ev:<event_id>` (`~` never occurs in an id).
+28. **Grok payload with only `hookEventName`.** It maps through a snake_case -> PascalCase table
+    instead of being dropped; `hook_event_name` still wins when both are present.
+29. **`client_hooks` rows.** `clients.status` writes `installed`, `detected_version` and
+    `checked_at_ms` (new columns) for all five clients on every run, so `state.get` and the
+    export never detect; the export's client entry gains `installed` and `version`. Rows are
+    never deleted; before the first status the map is empty.
+30. **Journal kinds without a table rebuild.** Clearing `death_pending` writes `recovered`
+    with `dedup_key 'v5_migration'` and `data {"reason":"v5_migration"}`; treat evolution keeps
+    `evolved` / `stage:<n>` with `task_id NULL` and the `treats.give` request id. Both kinds
+    are already allowed by the v4 CHECK.
+31. **`codepet connect --all`** matches the UI's Connect all: installed, unconnected clients
+    without a running job, never Codex (named explicitly: `codepet connect codex`). Job ids are
+    `job-` + 24 lowercase hex (they name `$STATE/jobs/<job_id>.json`); the DDL, the export
+    schema and the job result schema all enforce the pattern.
+32. **Helpers rows the spec did not word.** A running disconnect shows `row.disconnecting`
+    ("Stopping…"), a running test `row.testing` ("Checking…"); "Turned off in Codex" offers
+    Show me on an adult `codex.off*` page; a failure while still connected shows "Couldn't
+    connect" with Try again and Stop watching. Time buckets: "just now" < 5 minutes, then the
+    local calendar day (`helpers_rows`).
+33. **Shim and command bytes** were described in prose only. `shim.sh.template`,
+    `shim-tombstone.sh` and `commands.json` (generated by `tools/gen_commands.py`) freeze the
+    shim, every stored command, the Claude and Grok files, the six Codex groups with their
+    expected `trusted_hash`es, the argv forms and the ready-check payloads. Synchronous
+    handlers omit `async` (Codex hashes it as `false`); Codex `SessionEnd` never carries it.
+
 ## 3. Other WP0 decisions (not contradictions)
 
 - New error codes appended after `NO_ACTIVE_PET` (positions of the v0.2 lists are stable):
@@ -164,9 +241,20 @@ interactivity rule therefore is: `argv[1] == "e"`, or any exact token `exec` or 
 - `strings.json` keys not named by the spec were chosen in WP0: `react.<need>.plain`,
   `err.name_too_long`, `more.*`, `btn.sleep`, `menu.*`, `bar.hi`, `memorial.line`,
   `btn.meet_new`, `codex.title`, `help.*`.
-- The shared-priority function's contract (inputs: the export, `now`, the `seen` seqs;
-  outputs: state, bar, line + vars, overlay, pulse, treats visibility, bubble, `wake_at_ms`)
-  is in `agent_vectors.json` `priority`; `wake_at_ms` is null while Off (K9: zero timers).
+- The shared-priority function (`shared_priority`, `petstate.js` `sharedPriority`; inputs:
+  the export, `now`, the `seen` seqs; outputs: state, bar, line + vars, overlay, pulse, treats
+  visibility, bubble, `wake_at_ms`) is in `agent_vectors.json` `priority`; `wake_at_ms` is null
+  while Off (K9: zero timers). It is distinct from Rust `agent::pet_state`, the aggregate that
+  builds `agent` (`aggregate` section).
+- The popup's screen choice (`popup_routing`), the Connect card's apps (`connect_card`) and the
+  Helpers rows (`helpers_rows`) are contracts for WP5, replayed by the checker.
+- `memories.*` copy is keyed by `life_events.kind`; `mode_changed`, `configured`,
+  `health_changed` and `death_pending` never reach the kid-facing journal. Help bodies
+  (`help.*.body`) hold the adult text, exempt from K1/K2/K8 like the rest of Help.
+- Icons: `egg` and `pencil` on a new `ui` sheet; the bar sheet gains `badge_egg` and
+  `badge_sparkle`; `icons.json` `bar_cell` maps every priority `bar` value to what is drawn.
+- Pixel budgets gained More (488), the Helpers row sheet (376), the memorial card (416) and the
+  goodbye confirmation (500).
 
 ## 4. Not done in WP0 (by design)
 

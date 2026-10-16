@@ -1,0 +1,448 @@
+{
+ "schema": "codepet.commands.v1",
+ "spec": "SPEC-v0.3 §5.1, §5.3-§5.7, §6.2 clients.test",
+ "consumers": "WP2 (shim behaviour, normalizer, ready-check payloads), WP3 (installers, clients job, doctor); checked by check_contracts.py",
+ "reference_paths": {
+  "home": "/home/u",
+  "state_dir": "/home/u/.local/state/codepet",
+  "bin": "/home/u/.local/bin/codepet",
+  "data_dir": "/home/u/.local/share/codepet",
+  "shim": "/home/u/.local/share/codepet/bin/codepet-hook"
+ },
+ "shim": {
+  "path": "<data_dir>/bin/codepet-hook, data_dir = $XDG_DATA_HOME/codepet else $HOME/.local/share/codepet (StatePaths::data_dir)",
+  "template": "shim.sh.template",
+  "placeholders": {
+   "@CODEPET_STATE_DIR@": "the connecting process's resolved absolute state dir (never the hook's environment)",
+   "@CODEPET_BIN@": "std::env::current_exe() of the connecting codepet, or the plugin's binary setting when the bar starts the Connect"
+  },
+  "substitution": "exactly one plain text replacement of each placeholder; nothing else in the file ever changes, whatever the CodePet version",
+  "path_rule": "both values are absolute, contain none of ' (single quote), newline, NUL, and are <= 4096 bytes; otherwise the Connect fails with reason blocked and writes nothing",
+  "mode": "0755, written as temp file in the same dir + fsync + rename",
+  "tombstone": "shim-tombstone.sh, written in place of the shim when uninstall cannot disconnect every client",
+  "reference_sha256": "e636f426bfa0f5f1c26f480d6df855c7bf87e90332cb2bfdd8768cbde1204664",
+  "tombstone_sha256": "58b884c92c852e69aaee84bd62d8589bfa37b0e99283a09c847ad22b7021058d",
+  "doctor": "codepet doctor prints the installed shim's sha256 and checks its S/B against the bar's paths"
+ },
+ "stored_command": {
+  "shell": "<shim> <client-id> >/dev/null 2>&1 || true  (claude-code, codex, grok-cli: the client runs it through a shell)",
+  "argv": "[<shim>, <client-id>]  (opencode, hermes: the plugin spawns it directly)",
+  "literal": "the shim path is written expanded, as a literal absolute path; never $HOME, ~ or ${CLAUDE_PLUGIN_ROOT}"
+ },
+ "serialization": "CodePet-owned JSON files (Claude hooks.json, Grok codepet.json) are written as json with 2-space indent, the key order shown here and one trailing newline (serde_json::to_string_pretty + '\\n'); a rewrite happens only when the bytes differ. Codex groups are appended to the parsed ~/.codex/hooks.json (serde_json preserve_order) with exactly the keys and order shown, and the file is written with to_string_pretty + '\\n'",
+ "clients": {
+  "claude-code": {
+   "transport": "shell",
+   "artifact": "<data_dir>/integrations/claude-code/plugin/hooks/hooks.json (in the codepet-local marketplace; installed with `claude plugin install`, SPEC §5.3)",
+   "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+   "file": {
+    "description": "CodePet: observe only; prints nothing; always exits 0",
+    "hooks": {
+     "SessionStart": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "UserPromptSubmit": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "PreToolUse": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 2,
+         "async": true
+        }
+       ]
+      }
+     ],
+     "Notification": [
+      {
+       "matcher": "permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input",
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      },
+      {
+       "matcher": "idle_prompt",
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "Stop": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "StopFailure": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "SessionEnd": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook claude-code >/dev/null 2>&1 || true",
+         "timeout": 1
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "file_sha256_at_reference_paths": "73c9cb759bd523482a185c4f1fbfeb3ab1bd9684afbc6a452cd34444177679f1",
+   "notes": "PreToolUse is async (Claude does not enforce its timeout, the shim's 0.3 s drain and the hook's alarm(1) bound it). No matcher = all. SessionEnd 1 s"
+  },
+  "codex": {
+   "transport": "shell (Codex runs each handler with $SHELL -lc)",
+   "artifact": "groups appended to ~/.codex/hooks.json (SPEC §5.7 install algorithm)",
+   "command": "/home/u/.local/share/codepet/bin/codepet-hook codex >/dev/null 2>&1 || true",
+   "groups": [
+    {
+     "event": "UserPromptSubmit",
+     "snake_event": "user_prompt_submit",
+     "group": {
+      "hooks": [
+       {
+        "type": "command",
+        "command": "/home/u/.local/share/codepet/bin/codepet-hook codex >/dev/null 2>&1 || true",
+        "timeout": 2
+       }
+      ]
+     },
+     "trusted_hash": "sha256:f53daec38bba52717b662a3b0955d7d11563b5e6ec3eeb5c9fb781c83756e2dd"
+    },
+    {
+     "event": "PermissionRequest",
+     "snake_event": "permission_request",
+     "group": {
+      "hooks": [
+       {
+        "type": "command",
+        "command": "/home/u/.local/share/codepet/bin/codepet-hook codex >/dev/null 2>&1 || true",
+        "timeout": 2,
+        "async": true
+       }
+      ]
+     },
+     "trusted_hash": "sha256:64fe4c50dbdc72f31df05fcff310f26e9f5f27ba2646efcb7a344da3fb0c4f54"
+    },
+    {
+     "event": "PostToolUse",
+     "snake_event": "post_tool_use",
+     "group": {
+      "hooks": [
+       {
+        "type": "command",
+        "command": "/home/u/.local/share/codepet/bin/codepet-hook codex >/dev/null 2>&1 || true",
+        "timeout": 2,
+        "async": true
+       }
+      ]
+     },
+     "trusted_hash": "sha256:367988bbfb463d771bdfb8056bb8c34dae3cbacdb35aa88fac519f448fb21dbc"
+    },
+    {
+     "event": "Stop",
+     "snake_event": "stop",
+     "group": {
+      "hooks": [
+       {
+        "type": "command",
+        "command": "/home/u/.local/share/codepet/bin/codepet-hook codex >/dev/null 2>&1 || true",
+        "timeout": 2
+       }
+      ]
+     },
+     "trusted_hash": "sha256:1349f23ff8c0d5c811490aba9fdd4e439b2b424a07a93bde45c53a46e0a50b27"
+    },
+    {
+     "event": "Interrupt",
+     "snake_event": "interrupt",
+     "group": {
+      "hooks": [
+       {
+        "type": "command",
+        "command": "/home/u/.local/share/codepet/bin/codepet-hook codex >/dev/null 2>&1 || true",
+        "timeout": 2
+       }
+      ]
+     },
+     "trusted_hash": "sha256:305f970be858ea5a575e737bf4ee4ffb518dc9def3bf56f7a0be20d46c56fcde"
+    },
+    {
+     "event": "SessionEnd",
+     "snake_event": "session_end",
+     "group": {
+      "hooks": [
+       {
+        "type": "command",
+        "command": "/home/u/.local/share/codepet/bin/codepet-hook codex >/dev/null 2>&1 || true",
+        "timeout": 2
+       }
+      ]
+     },
+     "trusted_hash": "sha256:8b7e076d71daa87ee5a1772d0ba833efbcd8e6292aa4dfd4d6426aefc0a65935"
+    }
+   ],
+   "trust_hash_formula": "sha256 of compact sorted-key JSON {event_name: <snake>, hooks: [{async, command, timeout (normalized; 2 stays 2), type}]}; no matcher key because CodePet groups have none. async is false when the handler omits it. Reproduces Codex config fingerprint.rs (verified on the owner's four existing entries)",
+   "notes": "PermissionRequest and PostToolUse carry \"async\": true (discovery.rs keeps it; an async handler can never decide an approval). SessionEnd never carries async (Codex would force it synchronous and warn). The trust key is <abs hooks.json path>:<snake_event>:<group index>:0"
+  },
+  "opencode": {
+   "transport": "argv",
+   "artifact": "~/.config/opencode/plugins/codepet.js (header // managed by codepet)",
+   "argv": [
+    "/home/u/.local/share/codepet/bin/codepet-hook",
+    "opencode"
+   ],
+   "payload_schema": "plugin-payload.schema.json"
+  },
+  "hermes": {
+   "transport": "argv",
+   "artifact": "~/.hermes/plugins/codepet/ (plugin.yaml + __init__.py), enabled with `hermes plugins enable codepet`",
+   "argv": [
+    "/home/u/.local/share/codepet/bin/codepet-hook",
+    "hermes"
+   ],
+   "payload_schema": "plugin-payload.schema.json"
+  },
+  "grok-cli": {
+   "transport": "shell (sh -c on Unix per Grok's hook guide; WP3 re-confirms, else the stored form is the bare `<shim> grok-cli`)",
+   "artifact": "~/.grok/hooks/codepet.json (temp name .codepet.json.partial)",
+   "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+   "file": {
+    "hooks": {
+     "SessionStart": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "UserPromptSubmit": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "PreToolUse": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "Notification": [
+      {
+       "matcher": "permission_prompt",
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      },
+      {
+       "matcher": "idle_prompt",
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "Stop": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "StopFailure": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "StopCancelled": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ],
+     "SessionEnd": [
+      {
+       "hooks": [
+        {
+         "type": "command",
+         "command": "/home/u/.local/share/codepet/bin/codepet-hook grok-cli >/dev/null 2>&1 || true",
+         "timeout": 2
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "file_sha256_at_reference_paths": "8aaa096b6a86f91927388ca7fba09e8f7766f4c39e8a669b2517b2442afbb74f",
+   "notes": "no args and no async (Grok skips or ignores them); timeouts are seconds"
+  }
+ },
+ "ready_check": {
+  "rule": "clients.test runs, per tested client, its stored command (shell clients: /bin/sh -c '<command>'; argv clients: the argv) with a minimal environment (PATH, HOME; never GROK_HOOK_EVENT or CLAUDE_CODE_ENTRYPOINT), stdin = the payload line with @CODEPET_TEST_NONCE@ replaced by the nonce, plus a newline: first payloads[0] (turn_start), then payloads[1] (turn_done) test_done_delay_ms later",
+  "payloads": {
+   "claude-code": [
+    {
+     "hook_event_name": "UserPromptSubmit",
+     "session_id": "codepet-ready-check",
+     "prompt_id": "codepet-ready-check",
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+     "hook_event_name": "Stop",
+     "session_id": "codepet-ready-check",
+     "prompt_id": "codepet-ready-check",
+     "stop_hook_active": false,
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+   ],
+   "codex": [
+    {
+     "hook_event_name": "UserPromptSubmit",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+     "hook_event_name": "Stop",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+   ],
+   "opencode": [
+    {
+     "codepet_v": 1,
+     "event": "turn_start",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "interactive": true,
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "tools": 0,
+     "interactive": true,
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+   ],
+   "hermes": [
+    {
+     "codepet_v": 1,
+     "event": "turn_start",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "interactive": true,
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+     "codepet_v": 1,
+     "event": "turn_done",
+     "session_id": "codepet-ready-check",
+     "turn_id": "codepet-ready-check",
+     "tools": 0,
+     "interactive": true,
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+   ],
+   "grok-cli": [
+    {
+     "hookEventName": "user_prompt_submit",
+     "hook_event_name": "UserPromptSubmit",
+     "sessionId": "codepet-ready-check",
+     "promptId": "codepet-ready-check",
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    },
+    {
+     "hookEventName": "stop",
+     "hook_event_name": "Stop",
+     "sessionId": "codepet-ready-check",
+     "promptId": "codepet-ready-check",
+     "reason": "end_turn",
+     "codepet_test": "@CODEPET_TEST_NONCE@"
+    }
+   ]
+  }
+ }
+}

@@ -9,10 +9,14 @@ Standard library only. Checks:
   * icons.json: unique ids, careIconSet for all 15 species against the pet registry;
   * schema-v5.sql: applies on a stub v4 schema and its history triggers fire;
   * bar.v2.schema.json: every fixture validates (a small draft 2020-12 subset);
-  * protocol.json: valid param examples match their schemas;
+  * protocol.json: valid param examples match their schemas; result schemas against
+    fixtures/clients-status; the v0.3 snapshot additions; the Off table; receipts; errors;
   * agent_vectors.json: replayed through an independent reference model (normalization,
-    event ids, interactivity, turn_qualifies, caps, sessions, fold outcomes, shared
-    priority over the fixtures), and every line key / placeholder exists in strings.json.
+    event ids, HMAC keys, interactivity, turn_qualifies, caps, sessions, fold outcomes, the
+    agent::pet_state aggregate, the shared priority, popup routing, the Connect card and the
+    Helpers rows over the fixtures), and every line key / placeholder exists in strings.json;
+  * commands.json, shim.sh.template, shim-tombstone.sh, plugin-payload.schema.json: hashes,
+    Codex trust hashes, ready-check payloads, plugin payloads, and a shim smoke under sh.
 
 Run: python3 docs/v0.3/contracts/check_contracts.py   (exit 1 on any failure)
 The reference model is a test oracle for the contract, not product code.
@@ -20,10 +24,14 @@ The reference model is a test oracle for the contract, not product code.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
+import shutil
 import sqlite3
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -58,6 +66,9 @@ def validate(v, s, root, path="$") -> list[str]:
     errs: list[str] = []
     if "$ref" in s:
         ref = s["$ref"]
+        if ref.startswith("bar.v2.schema.json#/$defs/"):
+            bar = load("bar.v2.schema.json")
+            return validate(v, bar["$defs"][ref.split("/")[-1]], bar, path)
         assert ref.startswith("#/$defs/"), ref
         return validate(v, root["$defs"][ref[len("#/$defs/"):]], root, path)
     if "oneOf" in s:
@@ -67,7 +78,7 @@ def validate(v, s, root, path="$") -> list[str]:
         return errs
     if "type" in s and not _type_ok(v, s["type"]):
         return [f"{path}: expected {s['type']}, got {type(v).__name__}"]
-    if "const" in s and v != s["const"]:
+    if "const" in s and (v != s["const"] or type(v) is not type(s["const"])):
         errs.append(f"{path}: expected const {s['const']!r}")
     if "enum" in s and v not in s["enum"]:
         errs.append(f"{path}: {v!r} not in enum")
@@ -184,7 +195,11 @@ def check_strings(strings: dict) -> None:
         fail(f"strings: K8 only {short}/{len(kid_lengths)} kid lines have <= 6 words")
     required = ["mood.happy", "mood.fainted", "mood.asleep", "off.line", "btn.turn_on", "btn.go", "btn.connect",
                 "btn.notnow", "btn.connect_all", "header.on", "header.off", "react.treat", "treats.full",
-                "act.ready", "act.hello", "act.oops", "act.waiting", "codex.step5", "reason.blocked"]
+                "act.ready", "act.hello", "act.oops", "act.waiting", "codex.step5", "reason.blocked", "btn.cancel",
+                "goodbye.ask", "goodbye.type", "btn.goodbye", "memories.title", "memories.empty", "picker.welcome",
+                "row.disconnecting", "row.testing", "codex.off1", "codex.off2", "help.rules.body", "help.apps.body",
+                "help.privacy.body", "help.hardcore.body", "help.helpers.body", "help.forget.body", "grew",
+                "when.now", "when.today", "when.yesterday", "when.while", "bar.hi"]
     for k in required:
         if k not in strings:
             fail(f"strings: missing {k}")
@@ -227,9 +242,25 @@ def check_icons(icons: dict, vectors: dict) -> None:
                                          "aquatic" if sp.get("habitat") == "aquatic" else "floor")
         if resolved.get(sid) != want:
             fail(f"icons: careIconSet {sid} = {resolved.get(sid)} expected {want}")
-    for need in ("need.food", "need.water", "need.play", "need.wash"):
-        if icons["bar_badges"][need] not in next(s for s in icons["sheets"] if s["id"] == "bar")["ids"]:
-            fail(f"icons: bar badge for {need} missing")
+    bar_ids = next(s for s in icons["sheets"] if s["id"] == "bar")["ids"]
+    for what, badge in icons["bar_badges"].items():
+        if badge not in bar_ids:
+            fail(f"icons: bar badge {badge} for {what} is not on the bar sheet")
+    all_ids = {i for sh in icons["sheets"] for i in sh["ids"]}
+    for need in ("egg", "pencil"):
+        if need not in all_ids:
+            fail(f"icons: {need} missing")
+    cell = icons["bar_cell"]
+    bars = {v["expect"]["bar"] for v in vectors["priority"]["vectors"]}
+    for b in sorted(bars - set(cell)):
+        fail(f"icons: bar_cell has no entry for priority bar value {b!r}")
+    for name, spec in cell.items():
+        if name == "description":
+            continue
+        for k in ("thumb", "badge"):
+            val = spec.get(k)
+            if isinstance(val, str) and val.startswith("badge_") and val not in bar_ids:
+                fail(f"icons: bar_cell {name}.{k} names unknown badge {val}")
 
 
 # ------------------------------------------------------------------ DDL
@@ -284,17 +315,40 @@ def check_ddl() -> None:
         fail("ddl: xp rows deletable")
     except sqlite3.Error:
         pass
+    db.execute("INSERT INTO client_hooks (client) VALUES ('hermes')")
+    if db.execute("SELECT installed, detected_version, checked_at_ms, connected FROM client_hooks").fetchone() != (0, None, None, 0):
+        fail("ddl: client_hooks defaults")
+    db.execute("UPDATE client_hooks SET job_id = 'job-7f3a0c19e2d84b6a5c1e9f02', job_kind = 'connect'")
+    for bad in ("job-7f3a", "job-7F3A0C19E2D84B6A5C1E9F02", "../7f3a0c19e2d84b6a5c1e9f0", "job-7f3a0c19e2d84b6a5c1e9f0/"):
+        try:
+            db.execute("UPDATE client_hooks SET job_id = ?", (bad,))
+            fail(f"ddl: accepted job id {bad!r}")
+        except sqlite3.Error:
+            pass
+    db.execute("INSERT INTO agent_events (dedupe_key, client, kind, at_ms, outcome, interactive, test) "
+               f"VALUES ('{'b' * 32}', 'codex', 'turn_done', 1, 'dropped_test', 1, 1)")
+    db.execute("UPDATE meta SET test_state = 'running', test_client = 'codex', test_at_ms = 1")
 
 
 # ------------------------------------------------------------------ reference model
 ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+NONCE_RE = re.compile(r"^[0-9a-f]{32}$")
 ERRORS = {"rate_limit", "authentication_failed", "invalid_request", "server_error", "max_output_tokens",
           "overloaded", "billing_error", "unknown"}
+GROK_SNAKE = {"session_start": "SessionStart", "user_prompt_submit": "UserPromptSubmit", "pre_tool_use": "PreToolUse",
+              "notification": "Notification", "stop": "Stop", "stop_failure": "StopFailure",
+              "stop_cancelled": "StopCancelled", "session_end": "SessionEnd"}
 
 
-def normalize(client: str, p: dict, kinds: list[str]) -> dict:
+def normalize(client: str, p: dict, kinds: list[str], nonce=None) -> dict:
     if "agent_id" in p or "subagentType" in p:
         return {"drop": "child"}
+    test = False
+    if "codepet_test" in p:
+        t = p["codepet_test"]
+        if not isinstance(t, str) or not NONCE_RE.match(t) or nonce is None or t != nonce:
+            return {"drop": "test_nonce"}
+        test = True
 
     def ident(*keys):
         for k in keys:
@@ -308,18 +362,30 @@ def normalize(client: str, p: dict, kinds: list[str]) -> dict:
     try:
         if client in ("opencode", "hermes"):
             kind = p.get("event")
-            if p.get("codepet_v") != 1 or kind not in kinds:
+            v = p.get("codepet_v")
+            if type(v) is not int or v != 1 or kind not in kinds:
                 return {"drop": "unmapped"}
-            out = {"kind": kind, "session": ident("session_id"), "turn": ident("turn_id"), "tool": None,
-                   "class": None, "akey": ident("approval_key")}
-            if out["session"] is None and out["akey"] is None:
+            session, turn = ident("session_id"), ident("turn_id")
+            akey = ident("approval_key") if client == "hermes" else None
+            if akey is not None:
+                if session is not None:
+                    return {"drop": "bad_id"}
+                if kind not in ("waiting", "activity"):
+                    return {"drop": "unmapped"}
+            elif session is None:
                 return {"drop": "bad_id"}
-            if isinstance(p.get("tools"), int):
-                out["tools"] = p["tools"]
-            if isinstance(p.get("interactive"), bool):
-                out["interactive"] = p["interactive"]
-            return out
-        name = p.get("hook_event_name") or p.get("hookEventName")
+            tools = p.get("tools", 0)
+            if type(tools) is not int or not 0 <= tools <= 1000:
+                tools = 0
+            inter = p.get("interactive", True)
+            return {"kind": kind, "session": session, "turn": turn, "tool": None, "class": None, "akey": akey,
+                    "tools": tools, "interactive": inter if isinstance(inter, bool) else True, "test": test}
+        if client == "grok-cli":
+            name = p.get("hook_event_name")
+            if name is None:
+                name = GROK_SNAKE.get(p.get("hookEventName"))
+        else:
+            name = p.get("hook_event_name")
         session = ident("session_id", "sessionId")
         turn = ident("prompt_id", "promptId", "turn_id")
         tool = ident("tool_use_id", "toolUseId")
@@ -329,7 +395,7 @@ def normalize(client: str, p: dict, kinds: list[str]) -> dict:
         return {"drop": "bad_id"}
     note = p.get("notification_type", p.get("notificationType"))
     tool_name = p.get("tool_name", p.get("toolName"))
-    base = {"session": session, "turn": turn, "tool": None, "class": None}
+    base = {"session": session, "turn": turn, "tool": None, "class": None, "test": test}
 
     def out(kind, **kw):
         d = dict(base, kind=kind)
@@ -396,9 +462,14 @@ def normalize(client: str, p: dict, kinds: list[str]) -> dict:
     return {"drop": "unmapped"}
 
 
-def interactive(v: dict, rules: dict) -> bool:
+def interactive(v: dict, rules: dict):
     c = v["client"]
     argv = v.get("ancestor_argv")
+    if c == "hermes":
+        if "surface" in v:
+            sf = v["surface"]
+            return True if sf == "cli" or (isinstance(sf, str) and sf.startswith("transport:")) else "not_sent"
+        return True if v.get("platform") in rules["hermes_platforms"] else "not_sent"
     if c == "opencode":
         return v.get("payload_interactive") is not False
     if c == "claude-code":
@@ -480,22 +551,24 @@ class World:
             s["open"] = {"key": key, "start": at, "tools": set(), "extra": 0}
             s["state"] = "working"
         elif kind == "activity":
-            if o and key == o["key"]:
+            new_late_tool = bool(d and tool and key == d["key"] and tool not in d["tools"])
+            if o and (key == o["key"] or key is None):
                 if tool:
                     o["tools"].add(tool)
                 if s["state"] in ("waiting", "idle"):
                     s["state"] = "working"
-            elif d and key == d["key"] and at <= d["at"] + late:
-                if tool and tool not in d["tools"]:
-                    d["tools"].add(tool)
+            elif new_late_tool and at <= d["at"] + late:
+                d["tools"].add(tool)
                 if not d["earned"] and not d["rechecked"]:
                     d["rechecked"] = True
                     n = len(d["tools"]) + d["extra"]
                     if self.treat_check(sid, d["key"], n, d["at"] - d["start"], inter, False, d["at"]):
                         d["earned"] = earned = True
-            elif d and key == d["key"] and at > d["at"] + late and tool and tool not in d["tools"]:
+            elif new_late_tool:
                 s["open"] = {"key": key, "start": d["start"], "tools": set(d["tools"]) | {tool}, "extra": d["extra"]}
                 s["state"] = "working"
+            elif o is None and s["state"] == "waiting":
+                s["state"] = "idle"
         elif kind == "waiting":
             s["state"] = "waiting"
         elif kind == "idle_prompt":
@@ -533,7 +606,6 @@ def check_sessions(V: dict) -> None:
         w = World(C, jar=vec.get("jar", 0))
         sid = vec.get("session", "s1")
         inter = vec.get("interactive", True)
-        before = 0
         for i, e in enumerate(vec["events"]):
             got = w.apply(sid, inter, e)
             st = w.sessions.get(sid, {"state": "idle"})["state"]
@@ -544,7 +616,6 @@ def check_sessions(V: dict) -> None:
                 fail(f"{where}: earned {got} != {bool(e.get('earned'))}")
             if "expect_approval" in e and w.approvals.get(e["akey"]) != e["expect_approval"]:
                 fail(f"{where}: approval row {w.approvals.get(e['akey'])} != {e['expect_approval']}")
-            before += got
         f = vec["final"]
         s = w.sessions.get(sid, {"open": None, "done": None, "error_at": None})
         open_key = s["open"]["key"] if s["open"] else None
@@ -569,7 +640,7 @@ def check_fold(V: dict) -> None:
         e = vec["event"]
         at = e["at"]
         hello = record = False
-        test_state = None
+        test_state = vec.get("test_state")
         if not vec["enabled"]:
             outcome = "dropped_off"
         elif at < now - C["max_event_age_ms"]:
@@ -578,8 +649,7 @@ def check_fold(V: dict) -> None:
             if at > now + C["future_clamp_ms"]:
                 at = now
             if e.get("test"):
-                outcome = "test"
-                test_state = "running" if e["kind"] == "turn_start" else "done"
+                outcome = "test" if test_state == "running" else "dropped_test"
             else:
                 record = True
                 hello = not vec.get("first_seen", False)
@@ -596,9 +666,70 @@ def check_fold(V: dict) -> None:
 
 
 ORDER = ["claude-code", "codex", "opencode", "hermes", "grok-cli"]
+RANK = {"error": 1, "working": 2, "waiting": 3}
 
 
-def pet_state(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
+def pet_state(rows: list, count_helpers: bool, now: int, C: dict) -> dict:
+    """Reference for Rust agent::pet_state (the aggregate behind export.agent)."""
+    def expiry(r):
+        if r["state"] == "working":
+            return r["last_event_ms"] + C["stale_working_ms"]
+        if r["state"] == "waiting":
+            return r["last_event_ms"] + C["stale_waiting_ms"]
+        if r["state"] == "error" and r["error_at_ms"] is not None:
+            return r["error_at_ms"] + C["error_recent_ms"]
+        return None
+
+    per_app: dict[str, list] = {}
+    for r in rows:
+        x = expiry(r)
+        if r["interactive"] == 1 and x is not None and now < x:
+            per_app.setdefault(r["client"], []).append((r, x))
+    apps = []
+    for cid, rs in per_app.items():
+        top = max(RANK[r["state"]] for r, _ in rs)
+        win = [(r, x) for r, x in rs if RANK[r["state"]] == top]
+        apps.append({"id": cid, "state": win[0][0]["state"], "since_ms": min(r["state_since_ms"] for r, _ in win),
+                     "stale_at_ms": max(x for _, x in win)})
+    apps.sort(key=lambda a: (a["since_ms"], ORDER.index(a["id"])))
+    errs = [r for r in rows if r["interactive"] == 1 and r["approval"] == 0 and r["error_at_ms"] is not None
+            and now < r["error_at_ms"] + C["error_recent_ms"]]
+    errs.sort(key=lambda r: (-r["error_at_ms"], ORDER.index(r["client"])))
+    helpers = count_helpers and any(r["interactive"] == 0 and r["state"] == "working"
+                                    and now < r["last_event_ms"] + C["stale_working_ms"] for r in rows)
+    return {"state": max((a["state"] for a in apps), key=RANK.get, default="idle"), "apps": apps,
+            "stale_at_ms": min((a["stale_at_ms"] for a in apps), default=None),
+            "error_at_ms": errs[0]["error_at_ms"] if errs else None, "error_app": errs[0]["client"] if errs else None,
+            "helpers_busy": bool(helpers)}
+
+
+def check_aggregate(V: dict, bar_schema: dict) -> None:
+    C = V["constants"]
+    for vec in V["aggregate"]["vectors"]:
+        got = pet_state(vec["sessions"], vec["count_helpers"], vec["now"], C)
+        if got != vec["expect"]:
+            fail(f"aggregate: {vec['name']} = {got}, expected {vec['expect']}")
+        for i, a in enumerate(vec["expect"]["apps"]):
+            for e in validate(a, bar_schema["$defs"]["app"], bar_schema, f"aggregate {vec['name']} apps[{i}]"):
+                fail(e)
+
+
+def check_hmac(V: dict) -> None:
+    H = V["hmac_keys"]
+    salt = bytes.fromhex(H["salt_hex"])
+    for vec in H["vectors"]:
+        dom = H["domains"][vec["use"]]["domain"]
+        msg = "\x1f".join([dom, vec["client"], *vec["parts"]]).encode()
+        got = hmac.new(salt, msg, hashlib.sha256).hexdigest()[:32]
+        if got != vec["expect"]:
+            fail(f"hmac_keys: {vec['use']} {vec['client']} {vec['parts']}")
+    keys = [v["expect"] for v in H["vectors"]]
+    if len(set(keys)) != len(keys):
+        fail("hmac_keys: two different inputs share a key")
+
+
+def shared_priority(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
+    """Reference for petstate.js sharedPriority (one order for the bar, Home and the overlay)."""
     life = doc["life"]
     res = {"state": None, "bar": None, "line": None, "vars": {}, "overlay": "none", "pulse": False,
            "treats_visible": False, "bubble": None, "wake_at_ms": None}
@@ -610,6 +741,9 @@ def pet_state(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
         res.update(state="no_pet", bar="egg")
         return res
     name = life["name"]
+    if not life["armed"]:
+        res.update(state="welcome", bar="hi", line="picker.welcome", vars={"name": name}, overlay="wander")
+        return res
     ag = doc["agent"]
     counting = [a for a in ag["apps"] if a["stale_at_ms"] > now]
     working = [a["id"] for a in counting if a["state"] == "working"]
@@ -617,12 +751,20 @@ def pet_state(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
                      key=lambda a: (-a["since_ms"], ORDER.index(a["id"])))
     jar = doc["treats"]["jar"]
     sleeping = doc["care"]["sleeping"]
-    tv = jar > 0 and not life["fainted"] and not sleeping
+    tv = jar > 0 and not life["fainted"] and not life["paused"] and not sleeping
     res["treats_visible"] = tv
     wakes = [a["stale_at_ms"] for a in counting]
     W, G = C["celebrate_window_ms"], C["celebrate_grace_ms"]
-    cands = []
     t = ag["test"]
+    testing = False
+    if t and t["state"] == "running":
+        end = t["at_ms"] + C["test_done_delay_ms"] + C["test_arrival_ms"]
+        if now < end:
+            testing = True
+            wakes.append(end)
+    cands = []
+    if doc["unseen_events"]:
+        cands.append(("grew", "grew", {"name": name}))
     if t and t["state"] == "done" and t["at_ms"] > seen["test_at_ms"] and now < t["at_ms"] + W:
         wakes.append(t["at_ms"] + W)
         cands.append(("test", "act.ready", {"name": name}))
@@ -663,6 +805,8 @@ def pet_state(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
     if life["fainted"]:
         res.update(state="fainted", bar="sleep_bandage", line="mood.fainted", vars={"name": name},
                    overlay="sleep", bubble={"bandage": True})
+    elif life["paused"]:
+        res.update(state="paused", bar="sleep", line="mood.asleep", vars={"name": name}, overlay="sleep")
     elif sleeping:
         res.update(state="asleep", bar="sleep", line="mood.asleep", vars={"name": name}, overlay="sleep")
     elif waiting:
@@ -681,10 +825,13 @@ def pet_state(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
             line, vars_ = "act.working.many", {"name": name}
         res.update(state="working", bar="working", line=line, vars=vars_, overlay="working",
                    bubble={"apps": working[:3]})
+    elif testing:
+        res.update(state="testing", bar="working", line="act.working.one", vars={"name": name, "app": t["client"]},
+                   overlay="working", bubble={"apps": [t["client"]]})
     elif cands:
-        _, line, vars_ = cands[0]
+        kind, line, vars_ = cands[0]
         res.update(state="celebrate", bar="star", line=line, vars=vars_, overlay="celebrate",
-                   bubble={"star": True})
+                   bubble={"star": True, "confetti": True} if kind == "grew" else {"star": True})
     elif oops:
         res.update(state="oops", bar=star, line="act.oops", vars={"app": ag["error_app"]},
                    overlay="error" if now < ea + C["error_frame_ms"] else "idle")
@@ -698,17 +845,106 @@ def pet_state(doc: dict, now: int, seen: dict, P: dict, C: dict) -> dict:
     return res
 
 
-def check_priority(V: dict, strings: dict, schema: dict) -> None:
+def route(doc: dict) -> str:
+    life = doc["life"]
+    if not doc["enabled"]:
+        return "off_look" if life else "first_run_off"
+    if life is None:
+        return "memorial" if doc["memorial"]["count"] > 0 else "first_run"
+    return "welcome_back" if not life["armed"] else "home"
+
+
+REASON = {"too_old": "reason.too_old", "not_installed": "reason.not_installed", "blocked": "reason.blocked",
+          "settings_changed": "reason.blocked", "ready_check": "reason.blocked"}
+
+
+def bucket(seen: int, now: int, tz: int, just_now: int) -> str:
+    if now - seen < just_now:
+        return "row.seen.now"
+    day = lambda ms: (ms + tz * 60000) // 86400000  # noqa: E731
+    if day(seen) == day(now):
+        return "row.seen.today"
+    if day(seen) == day(now) - 1:
+        return "row.seen.yesterday"
+    return "row.seen.while"
+
+
+def helper_row(cid: str, rec, now: int, tz: int, just_now: int) -> dict:
+    if rec is None or (not rec["installed"] and not rec["connected"]):
+        return {"visible": False}
+    r = {"visible": True, "row": None, "hint": None, "sheet_hints": [], "reason": None, "step": None,
+         "stop_watching": False, "spinner": False, "guide": None}
+    job = rec["job"]
+    if job:
+        r.update(row={"connect": "row.connecting", "disconnect": "row.disconnecting", "test": "row.testing"}[job["kind"]],
+                 spinner=True)
+    elif rec["failed_reason"]:
+        r.update(row="row.failed", reason=REASON[rec["failed_reason"]], step="btn.retry", stop_watching=rec["connected"])
+    elif rec["needs_step"] == "codex_hooks_off":
+        r.update(row="row.codex.off", step="btn.showme", guide="codex.off", stop_watching=rec["connected"])
+    elif rec["needs_step"] == "codex_trust":
+        r.update(row="row.step", step="btn.showme", guide="codex.trust", stop_watching=rec["connected"])
+    elif rec["connected"] and rec["first_seen_ms"] is None:
+        hints = ["hint.open"] + (["hint.claude2"] if cid == "claude-code" else [])
+        r.update(row="row.waiting", hint="hint.open", sheet_hints=hints, stop_watching=True)
+    elif rec["connected"]:
+        seen = rec["last_seen_ms"] if rec["last_seen_ms"] is not None else rec["first_seen_ms"]
+        r.update(row=bucket(seen, now, tz, just_now), stop_watching=True)
+    elif cid == "codex":
+        r.update(row="row.codex.new", step="btn.connect")
+    else:
+        r.update(row="row.connect", step="btn.connect")
+    return r
+
+
+def connect_all(clients: dict) -> list:
+    return [c for c in ORDER if c in clients and c != "codex" and clients[c]["installed"]
+            and not clients[c]["connected"] and clients[c]["job"] is None]
+
+
+def check_ui_vectors(V: dict, strings: dict, fixtures: dict, used: set) -> None:
+    for vec in V["popup_routing"]["vectors"]:
+        used.add(vec["fixture"])
+        got = route(fixtures[vec["fixture"]])
+        if got != vec["expect"]:
+            fail(f"popup_routing: {vec['fixture']} -> {got}, expected {vec['expect']}")
+    H = V["helpers_rows"]
+    just_now = H["seen_buckets"]["seen_just_now_ms"]
+    for vec in H["fixture_vectors"]:
+        used.add(vec["fixture"])
+        clients = fixtures[vec["fixture"]]["clients"]
+        for cid, want in vec["expect"]["rows"].items():
+            got = helper_row(cid, clients.get(cid), vec["now"], vec["tz_offset_min"], just_now)
+            if got != want:
+                fail(f"helpers_rows: {vec['fixture']} {cid} = {got}, expected {want}")
+            for k in ("row", "hint", "reason", "step"):
+                if want.get(k) and want[k] not in strings:
+                    fail(f"helpers_rows: {vec['fixture']} {cid} {k} {want[k]} not in strings.json")
+        if connect_all(clients) != vec["expect"]["connect_all"]:
+            fail(f"helpers_rows: {vec['fixture']} connect_all {connect_all(clients)}")
+    for vec in H["bucket_vectors"]:
+        rec = {"installed": True, "connected": True, "needs_step": None, "failed_reason": None, "job": None,
+               "last_seen_ms": vec["last_seen_ms"], "first_seen_ms": vec["first_seen_ms"]}
+        got = helper_row("grok-cli", rec, vec["now"], vec["tz_offset_min"], just_now)["row"]
+        if got != vec["expect"]:
+            fail(f"helpers_rows: bucket {vec['name']} = {got}, expected {vec['expect']}")
+    status_dir = HERE / "fixtures/clients-status"
+    for vec in V["connect_card"]["vectors"]:
+        doc = json.loads((status_dir / f"{vec['status_fixture']}.json").read_text())
+        clients = {c["id"]: c for c in doc["clients"]}
+        if connect_all(clients) != vec["expect"]:
+            fail(f"connect_card: {vec['status_fixture']} offers {connect_all(clients)}, expected {vec['expect']}")
+
+
+def check_priority(V: dict, strings: dict, schema: dict, fixtures: dict, used: set) -> None:
     P, C = V["priority"], V["constants"]
-    fixtures = {p.stem: json.loads(p.read_text()) for p in (HERE / "fixtures/bar-v2").glob("*.json")}
-    used = set()
     for vec in P["vectors"]:
         doc = fixtures.get(vec["fixture"])
         if doc is None:
             fail(f"priority: {vec['name']} names missing fixture {vec['fixture']}")
             continue
         used.add(vec["fixture"])
-        got = pet_state(doc, vec["now"], vec["seen"], P, C)
+        got = shared_priority(doc, vec["now"], vec["seen"], P, C)
         for k, v in vec["expect"].items():
             if got.get(k) != v:
                 fail(f"priority: {vec['name']} {k} = {got.get(k)!r}, expected {v!r}")
@@ -724,19 +960,26 @@ def check_priority(V: dict, strings: dict, schema: dict) -> None:
             fail(f"fixture {name}: {e}")
         if len((HERE / "fixtures/bar-v2" / f"{name}.json").read_bytes()) > 16384:
             fail(f"fixture {name}: over 16 KiB")
-    unused = set(fixtures) - used - {"clients-mixed"}
-    if unused:
-        fail(f"priority: fixtures without a vector: {sorted(unused)}")
+        ag = doc["agent"]
+        # The export is internally consistent with the aggregate's rules.
+        if ag["apps"]:
+            want = max((a["state"] for a in ag["apps"]), key=RANK.get)
+            if ag["state"] != want or ag["stale_at_ms"] != min(a["stale_at_ms"] for a in ag["apps"]):
+                fail(f"fixture {name}: agent.state/stale_at_ms disagree with apps")
+        if doc["treats"]["full"] != (doc["treats"]["jar"] >= C["jar_max"]):
+            fail(f"fixture {name}: treats.full disagrees with jar")
 
 
 def check_vectors(V: dict, strings: dict, schema: dict) -> None:
     C = V["constants"]
     kinds = V["kinds"]
     for vec in V["normalization"]["vectors"]:
-        got = normalize(vec["client"], vec["payload"], kinds)
+        got = normalize(vec["client"], vec["payload"], kinds, vec.get("nonce"))
         for k, v in vec["expect"].items():
             if got.get(k) != v:
                 fail(f"normalization: {vec['client']} {json.dumps(vec['payload'])[:60]} {k} = {got.get(k)!r}, expected {v!r}")
+        if "drop" in got and got["drop"] not in V["normalization"]["drop_reasons"]:
+            fail(f"normalization: unknown drop reason {got['drop']}")
     for vec in V["event_ids"]["vectors"]:
         body = vec["payload_utf8"].encode()
         dig = hashlib.sha256(body).hexdigest()[:16]
@@ -758,24 +1001,236 @@ def check_vectors(V: dict, strings: dict, schema: dict) -> None:
             fail(f"caps: {vec['name']} = {got}, expected {vec['expect']}")
     check_sessions(V)
     check_fold(V)
-    check_priority(V, strings, schema)
+    check_aggregate(V, schema)
+    check_hmac(V)
+    fixtures = {p.stem: json.loads(p.read_text()) for p in (HERE / "fixtures/bar-v2").glob("*.json")}
+    used: set[str] = set()
+    check_priority(V, strings, schema, fixtures, used)
+    check_ui_vectors(V, strings, fixtures, used)
+    unused = set(fixtures) - used
+    if unused:
+        fail(f"vectors: bar fixtures no vector uses: {sorted(unused)}")
     if [c["id"] for c in V["clients"]] != ORDER:
         fail("vectors: client order")
 
 
-def check_protocol(proto: dict) -> None:
+def check_commands(V: dict) -> None:
+    cmd = load("commands.json")
+    ref = cmd["reference_paths"]
+    shim_t = (HERE / "shim.sh.template").read_text()
+    tomb = (HERE / "shim-tombstone.sh").read_bytes()
+    if shim_t.count("@CODEPET_STATE_DIR@") != 1 or shim_t.count("@CODEPET_BIN@") != 1:
+        fail("commands: the shim template needs each placeholder exactly once")
+    shim_ref = shim_t.replace("@CODEPET_STATE_DIR@", ref["state_dir"]).replace("@CODEPET_BIN@", ref["bin"])
+    if hashlib.sha256(shim_ref.encode()).hexdigest() != cmd["shim"]["reference_sha256"]:
+        fail("commands: shim reference_sha256")
+    if hashlib.sha256(tomb).hexdigest() != cmd["shim"]["tombstone_sha256"]:
+        fail("commands: tombstone_sha256")
+    if "# managed by codepet" not in shim_t or b"# managed by codepet: tombstone" not in tomb:
+        fail("commands: shim/tombstone marker")
+    for cid in ("claude-code", "codex", "grok-cli"):
+        c = cmd["clients"][cid]
+        want = f"{ref['shim']} {cid} >/dev/null 2>&1 || true"
+        if c["command"] != want:
+            fail(f"commands: {cid} command")
+        handlers = []
+        if "file" in c:
+            raw = (json.dumps(c["file"], indent=2, ensure_ascii=False) + "\n").encode()
+            if hashlib.sha256(raw).hexdigest() != c["file_sha256_at_reference_paths"]:
+                fail(f"commands: {cid} file sha256")
+            for groups in c["file"]["hooks"].values():
+                for g in groups:
+                    handlers += g["hooks"]
+            events = set(c["file"]["hooks"])
+            mapped = set(V["normalization"]["event_names"][cid])
+            if events - mapped:
+                fail(f"commands: {cid} registers events the normalizer drops: {sorted(events - mapped)}")
+        else:
+            for g in c["groups"]:
+                handlers += g["group"]["hooks"]
+                h = g["group"]["hooks"][0]
+                trust = {"event_name": g["snake_event"], "hooks": [{"async": h.get("async", False),
+                         "command": h["command"], "timeout": h["timeout"], "type": h["type"]}]}
+                canon = json.dumps(trust, sort_keys=True, separators=(",", ":")).encode()
+                if "sha256:" + hashlib.sha256(canon).hexdigest() != g["trusted_hash"]:
+                    fail(f"commands: codex {g['event']} trusted_hash")
+                if g["event"] == "SessionEnd" and "async" in h:
+                    fail("commands: codex SessionEnd must not carry async")
+                if "matcher" in g["group"]:
+                    fail("commands: codex groups carry no matcher")
+            if [g["event"] for g in c["groups"]] != list(V["normalization"]["event_names"]["codex"]):
+                fail("commands: codex groups differ from the normalizer's events")
+        for h in handlers:
+            if h["command"] != want or h["type"] != "command" or not isinstance(h["timeout"], int):
+                fail(f"commands: {cid} handler {h}")
+            if cid == "grok-cli" and ("async" in h or "args" in h):
+                fail("commands: grok handlers carry no async/args")
+    for cid in ("opencode", "hermes"):
+        if cmd["clients"][cid]["argv"] != [ref["shim"], cid]:
+            fail(f"commands: {cid} argv")
+    nonce = "0123456789abcdef0123456789abcdef"
+    plugin_schema = load("plugin-payload.schema.json")
+    for cid, (start, done) in cmd["ready_check"]["payloads"].items():
+        for payload, kind in ((start, "turn_start"), (done, "turn_done")):
+            p = json.loads(json.dumps(payload).replace("@CODEPET_TEST_NONCE@", nonce))
+            got = normalize(cid, p, V["kinds"], nonce)
+            if got.get("kind") != kind or got.get("test") is not True:
+                fail(f"commands: {cid} ready-check {kind} normalizes to {got}")
+            if len(json.dumps(p).encode()) + 1 > 512:
+                fail(f"commands: {cid} ready-check payload over 512 bytes")
+            if cid in ("opencode", "hermes"):
+                for e in validate(p, plugin_schema, plugin_schema) + plugin_rules(cid, p):
+                    fail(f"commands: {cid} ready-check payload: {e}")
+    for vec in V["normalization"]["vectors"]:
+        if vec["client"] in ("opencode", "hermes"):
+            errs = validate(vec["payload"], plugin_schema, plugin_schema) + plugin_rules(vec["client"], vec["payload"])
+            if (not errs) != vec["plugin_valid"]:
+                fail(f"plugin payload: {vec['client']} {vec['payload']} schema-valid={not errs}, plugin_valid={vec['plugin_valid']}")
+    smoke_shim(shim_t)
+
+
+def plugin_rules(client: str, p: dict) -> list[str]:
+    """The plugin-payload.schema.json description rules a JSON Schema subset cannot say."""
+    errs = []
+    if ("session_id" in p) == ("approval_key" in p):
+        errs.append("exactly one of session_id or approval_key")
+    if "approval_key" in p and (client != "hermes" or p.get("event") not in ("waiting", "activity")):
+        errs.append("approval_key only from hermes with event waiting or activity")
+    return errs
+
+
+def smoke_shim(template: str) -> None:
+    """Runs the shim under sh in a throwaway dir: it prints nothing, always exits 0, and calls
+    the binary only when it should."""
+    sh = shutil.which("sh")
+    timeout_bin = shutil.which("timeout")
+    if not sh or not timeout_bin:
+        print("note: sh or timeout missing; shim smoke skipped")
+        return
+    with tempfile.TemporaryDirectory(prefix="codepet-shim-") as tmp:
+        t = Path(tmp)
+        state, binp, log = t / "state", t / "codepet", t / "calls"
+        (state / "inbox").mkdir(parents=True)
+        (state / "clients").mkdir()
+        binp.write_text(f"#!/bin/sh\necho \"$@\" >> '{log}'\ncat >/dev/null\necho noise\necho noise >&2\nexit 3\n")
+        binp.chmod(0o755)
+        shim = t / "codepet-hook"
+        shim.write_text(template.replace("@CODEPET_STATE_DIR@", str(state)).replace("@CODEPET_BIN@", str(binp)))
+        shim.chmod(0o755)
+
+        def run(client, env=None):
+            e = {"PATH": "/usr/bin:/bin"}
+            e.update(env or {})
+            r = subprocess.run([str(shim), client], input=b'{"x":1}\n', capture_output=True, env=e, timeout=5)
+            if r.returncode != 0 or r.stdout or r.stderr:
+                fail(f"shim smoke: {client} {env} -> rc {r.returncode} out {r.stdout!r} err {r.stderr!r}")
+            calls = log.read_text().splitlines() if log.exists() else []
+            if log.exists():
+                log.unlink()
+            return calls
+
+        if run("codex") != [f"hook --state-dir {state} codex"]:
+            fail("shim smoke: a normal event must call `codepet hook --state-dir S codex`")
+        (state / "off").touch()
+        if run("codex"):
+            fail("shim smoke: the off flag must stop before the binary")
+        (state / "off").unlink()
+        (state / "clients" / "hermes.disconnected").touch()
+        if run("hermes"):
+            fail("shim smoke: a disconnected client must stop before the binary")
+        if run("claude-code", {"GROK_HOOK_EVENT": "Stop"}):
+            fail("shim smoke: a Claude-format hook inside Grok must stop in the shim")
+        if run("claude-code", {"CLAUDE_CODE_ENTRYPOINT": "sdk-cli"}):
+            fail("shim smoke: headless Claude without the helpers flag must stop in the shim")
+        (state / "helpers").touch()
+        if len(run("claude-code", {"CLAUDE_CODE_ENTRYPOINT": "sdk-cli"})) != 1:
+            fail("shim smoke: headless Claude with the helpers flag must reach the binary")
+        if len(run("grok-cli", {"GROK_HOOK_EVENT": "Stop"})) != 1:
+            fail("shim smoke: GROK_HOOK_EVENT only stops the claude-code id")
+        (state / "inbox").rmdir()
+        if run("codex"):
+            fail("shim smoke: no inbox dir must stop before the binary")
+        (state / "inbox").mkdir()
+        binp.unlink()
+        run("codex")
+        tomb = t / "tomb"
+        tomb.write_bytes((HERE / "shim-tombstone.sh").read_bytes())
+        tomb.chmod(0o755)
+        r = subprocess.run([str(tomb), "codex"], input=b"x" * 100000, capture_output=True, timeout=5)
+        if r.returncode != 0 or r.stdout or r.stderr:
+            fail("shim smoke: the tombstone must exit 0 silently")
+
+
+def check_protocol(proto: dict, bar: dict) -> None:
     for m in proto["added"]:
         for ex in m["examples"]["valid"]:
             for e in validate(ex, m["params"], m["params"]):
                 fail(f"protocol: {m['method']} valid example {ex}: {e}")
+        for ex in m["examples"]["invalid"]:
+            if not validate(ex, m["params"], m["params"]) and m["method"] not in ("pet.start", "pet.rename"):
+                fail(f"protocol: {m['method']} invalid example {ex} passes its schema")
+        if m["receipt"] is not True and "receipt_note" not in m:
+            fail(f"protocol: {m['method']} has no receipt and no recorded reason")
+        if len(set(m["errors"])) != len(m["errors"]):
+            fail(f"protocol: {m['method']} lists an error twice")
     names = [m["method"] for m in proto["added"]]
     if len(set(names) | set(proto["kept"]) | set(proto["removed"])) != len(names) + len(proto["kept"]) + len(proto["removed"]):
         fail("protocol: method lists overlap")
+    off = proto["off_behaviour"]
+    live = set(proto["kept"]) | set(names)
+    if set(off["allowed"]) & set(off["refused"]) or set(off["allowed"]) | set(off["refused"]) != live:
+        fail("protocol: off_behaviour must split every kept and added method into allowed or refused")
+    for m in proto["added"]:
+        refused = m["method"] in off["refused"]
+        if refused != ("INVALID_STATE" in m["errors"]):
+            fail(f"protocol: {m['method']} INVALID_STATE in errors must match off_behaviour")
+        if ("NOT_FOUND" in m["semantics"]) and "NOT_FOUND" not in m["errors"]:
+            fail(f"protocol: {m['method']} semantics name NOT_FOUND but errors do not")
+        if "BUSY" in m["semantics"] and "BUSY" not in m["errors"]:
+            fail(f"protocol: {m['method']} semantics name BUSY but errors do not")
+        if "TEST_STATE" in m["semantics"] and "TEST_STATE" not in m["errors"]:
+            fail(f"protocol: {m['method']} semantics name TEST_STATE but errors do not")
+    pat = proto["job_id_pattern"]
+    if bar["$defs"]["client"]["properties"]["job"]["oneOf"][1]["properties"]["id"]["pattern"] != pat:
+        fail("protocol: job_id_pattern differs from bar.v2 clients.<id>.job.id")
+    rs = proto["result_schemas"]["clients.status"]
+    names_by_id = {"claude-code": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "hermes": "Hermes",
+                   "grok-cli": "Grok"}
+    status = sorted((HERE / "fixtures/clients-status").glob("*.json"))
+    if not status:
+        fail("protocol: no fixtures/clients-status")
+    for p in status:
+        doc = json.loads(p.read_text())
+        for e in validate(doc, rs, rs):
+            fail(f"clients-status {p.stem}: {e}")
+        if [c["id"] for c in doc["clients"]] != ORDER or any(c["name"] != names_by_id[c["id"]] for c in doc["clients"]):
+            fail(f"clients-status {p.stem}: order or names")
+        for c in doc["clients"]:
+            entry = {k: v for k, v in c.items() if k not in ("id", "name", "events_7d")}
+            for e in validate(entry, bar["$defs"]["client"], bar, f"clients-status {p.stem} {c['id']}"):
+                fail(e)
+    jr = proto["result_schemas"]["clients.connect|clients.disconnect|clients.test"]
+    if validate({"job_id": "job-7f3a0c19e2d84b6a5c1e9f02"}, jr, jr) or not validate({"job_id": "job-1"}, jr, jr):
+        fail("protocol: job result schema")
+    snap = proto["snapshot_v03"]
+    for p in sorted((HERE / "fixtures/bar-v2").glob("*.json")):
+        d = json.loads(p.read_text())
+        life = d["life"]
+        frozen = ("no_life" if life is None else "off" if not d["enabled"] else
+                  "unarmed" if not life["armed"] else "paused" if life["paused"] else
+                  "sleeping" if d["care"]["sleeping"] else "none")
+        example = {"schema_version": 5, "protocol_version": 1, "enabled": d["enabled"], "count_helpers": False,
+                   "agent": d["agent"], "treats": d["treats"], "clients": d["clients"],
+                   "lifecycle": {"frozen_reason": frozen}}
+        for e in validate(example, snap["schema"], snap["schema"]):
+            fail(f"snapshot_v03 from {p.stem}: {e}")
+    if snap["frozen_reason_precedence"]["order"][:2] != ["no_life", "off"]:
+        fail("protocol: off must be the first frozen reason of a living life")
 
 
 def main() -> int:
     files = ["strings.json", "icons.json", "pixel-budgets.json", "protocol.json", "agent_vectors.json",
-             "bar.v2.schema.json"]
+             "bar.v2.schema.json", "commands.json", "plugin-payload.schema.json"]
     docs = {}
     for f in files:
         try:
@@ -789,8 +1244,9 @@ def main() -> int:
     check_budgets(docs["pixel-budgets.json"])
     check_icons(docs["icons.json"], docs["agent_vectors.json"])
     check_ddl()
-    check_protocol(docs["protocol.json"])
+    check_protocol(docs["protocol.json"], docs["bar.v2.schema.json"])
     check_vectors(docs["agent_vectors.json"], docs["strings.json"], docs["bar.v2.schema.json"])
+    check_commands(docs["agent_vectors.json"])
     try:  # Cross-check the subset validator with the real one when it happens to be installed.
         import jsonschema  # type: ignore
         schema = docs["bar.v2.schema.json"]
@@ -799,6 +1255,9 @@ def main() -> int:
         for m in docs["protocol.json"]["added"]:
             for ex in m["examples"]["valid"]:
                 jsonschema.validate(ex, m["params"])
+        rs = docs["protocol.json"]["result_schemas"]["clients.status"]
+        for p in sorted((HERE / "fixtures/clients-status").glob("*.json")):
+            jsonschema.validate(json.loads(p.read_text()), rs)
     except ImportError:
         pass
     except Exception as e:  # noqa: BLE001 - report any jsonschema failure as a check failure
@@ -808,10 +1267,14 @@ def main() -> int:
         print(f"FAIL: {len(FAILS)} contract problem(s)")
         return 1
     V = docs["agent_vectors.json"]
-    n = sum(len(V[k]["vectors"]) for k in ("normalization", "event_ids", "interactivity", "turn_qualifies",
-                                             "caps", "sessions", "fold", "priority"))
+    n = sum(len(V[k]["vectors"]) for k in ("normalization", "event_ids", "hmac_keys", "interactivity",
+                                             "turn_qualifies", "caps", "sessions", "fold", "aggregate", "priority",
+                                             "popup_routing", "connect_card"))
+    n += len(V["helpers_rows"]["fixture_vectors"]) + len(V["helpers_rows"]["bucket_vectors"])
     print(f"OK: {len(docs['strings.json'])} strings, {n} agent vectors, "
-          f"{len(list((HERE / 'fixtures/bar-v2').glob('*.json')))} bar fixtures, schema v5 DDL")
+          f"{len(list((HERE / 'fixtures/bar-v2').glob('*.json')))} bar fixtures, "
+          f"{len(list((HERE / 'fixtures/clients-status').glob('*.json')))} clients.status fixtures, "
+          "schema v5 DDL, commands + shim smoke")
     return 0
 
 

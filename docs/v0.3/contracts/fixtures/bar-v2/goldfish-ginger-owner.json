@@ -15,8 +15,8 @@
   "xp": 0,
   "next_stage_xp": 80,
   "status": "healthy",
-  "mode": "permadeath",
-  "armed": false,
+  "mode": "gentle",
+  "armed": true,
   "pace": "steady",
   "paused": false,
   "fainted": false,
@@ -74,7 +74,7 @@
  },
  "task": null,
  "presence": {
-  "wanted": false,
+  "wanted": true,
   "life_id": "life-30b6f1816d7b922ab5befc25",
   "tick_ms": 60000,
   "idle_timeout_s": 180
