@@ -106,7 +106,9 @@ pub fn run() -> i32 {
 /// `codepet state`: the `state.get` result, or a typed failure. A successful snapshot
 /// (which may have settled presence, a nap or a due end) republishes `bar-state.json`.
 pub fn state_get() -> Result<Value, Failure> {
-    let store = open()?;
+    let mut store = open()?;
+    // v0.3 (§6.3): first fold at most one waiting inbox batch, unless a fold runs.
+    crate::fold::drain_once(&mut store);
     let value = serde_json::to_value(store.snapshot()?)?;
     publish_bar_state(&store);
     Ok(value)
@@ -200,6 +202,8 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
         }
         Method::StateGet => {
             let _: EmptyParams = parse_params(p)?;
+            // v0.3 (§8 rule 1): opening the popup drains the inbox (one batch).
+            crate::fold::drain_once(ctx.store()?);
             encode(serde_json::to_value(ctx.store()?.snapshot()?))
         }
         Method::ProvidersInspect => {
