@@ -24,6 +24,16 @@ Window {
         ctl: ctl
         width: implicitWidth
     }
+    // A second popup that a step closes (destroys) while its request is in flight, as the
+    // shell's Loader does on an outside click.
+    readonly property var fakeCtl: ctl
+    Loader {
+        id: shortLived
+        active: false
+        sourceComponent: Component {
+            PopupApp { ctl: win.fakeCtl; width: implicitWidth }
+        }
+    }
 
     function load(name) {
         ctl.now = 1792123900000
@@ -74,7 +84,66 @@ Window {
             kit.check(line && line.text === "Ginger is ready!", "ready check done: " + (line ? line.text : "none"))
             kit.check(kit.texts(app).some(function (t) { return t.text === "Open a new Claude Code window." }), "ready: the open-a-window hint")
             kit.check(win.shown("cp.connectDone") && !win.shown("cp.connectRetry"), "ready: Done, no Try again")
+            kit.check(win.shown("cp.connectWaiting.claude-code") && win.find("cp.connectWaiting.claude-code").text === "… Waiting for Claude Code",
+                      "ready: the row waits for the app's first event")
             kit.all(app, "connect ready @16")
+        },
+        function () {
+            var doc = kit.fixture("ready-check-done")
+            doc.clients["claude-code"].first_seen_ms = doc.generated_at_ms
+            ctl.barState = doc
+        },
+        function () { kit.check(!win.shown("cp.connectWaiting.claude-code"), "seen: no more waiting line") },
+        // ---- a refused Connect (BUSY) fails its rows at once, with Try again
+        function () {
+            win.load("idle-happy")
+            ctl.responses = { "clients.connect": { ok: false, error: { code: "BUSY" } } }
+            app.go("connect", { offered: ["claude-code", "grok-cli"] })
+        },
+        function () {
+            var doc = kit.fixture("idle-happy")
+            doc.clients = kit.fixture("clients-mixed").clients
+            doc.clients["claude-code"].connected = false
+            doc.clients["grok-cli"].connected = false
+            ctl.barState = doc
+            win.find("cp.connect").tapped()
+        },
+        function () {
+            kit.check(win.shown("cp.connectRetry") && !win.shown("cp.connectDone"), "refused: Try again, no Done")
+            kit.check(win.find("cp.connectReason.grok-cli").visible && win.find("cp.connectReason.grok-cli").text === "Oops! Please try again.",
+                      "refused: the row says so")
+            kit.all(app, "connect refused @16")
+            ctl.responses = {}
+            var before = ctl.count("clients.connect")
+            win.find("cp.connectRetry").tapped()
+            kit.check(ctl.count("clients.connect") === before + 1, "Try again sends Connect again")
+        },
+        function () { kit.check(!win.shown("cp.connectRetry"), "after Try again the rows wait (no stale refusal)") },
+        // ---- a row that had failed before Connect does not read failed again until its new
+        // job has run (the export shows the job, then the result)
+        function () {
+            win.load("idle-happy")
+            var doc = kit.fixture("idle-happy")
+            doc.clients = kit.fixture("clients-mixed").clients
+            ctl.barState = doc
+            kit.check(doc.clients.hermes.failed_reason === "too_old", "clients-mixed: Hermes failed before")
+            app.go("connect", { offered: ["hermes"] })
+        },
+        function () { win.find("cp.connect").tapped() },
+        function () {
+            kit.check(!win.shown("cp.connectRetry") && !win.find("cp.connectReason.hermes").visible, "right after Connect the old failure is not shown")
+            var doc = JSON.parse(JSON.stringify(ctl.barState))
+            doc.clients.hermes.job = { id: "job-0123456789abcdef01234567", kind: "connect", state: "running" }
+            ctl.barState = doc
+        },
+        function () {
+            var doc = JSON.parse(JSON.stringify(ctl.barState))
+            doc.clients.hermes.job = null
+            ctl.barState = doc
+        },
+        function () {
+            kit.check(win.shown("cp.connectRetry") && win.find("cp.connectReason.hermes").text === "Hermes is too old.",
+                      "after its job the same failure is the new result: Try again")
         },
         function () { win.load("test-failed"); app.go("connect", { offered: ["claude-code"] }) },
         function () { var card = win.picker(); card.sentIds = ["claude-code"]; card.sent = true },
@@ -145,9 +214,45 @@ Window {
         function () { kit.check(app.screen === "home", "nothing installed: no Connect card (" + app.screen + ")") },
         function () { app.go("connect", { offered: ["grok-cli"] }) },
         function () { var before = ctl.calls.length; win.find("cp.notNow").tapped(); kit.check(ctl.calls.length === before && app.screen === "home", "Not now changes nothing and goes Home") },
-        function () { win.load("fresh-no-pet"); ctl.responses = { "pet.start": { ok: false, error: { code: "ALREADY_ARMED" } }, "clients.status": kit.status("all-connected") } },
+        function () {
+            win.load("fresh-no-pet")
+            ctl.calls = []
+            ctl.launches = []
+            ctl.responses = { "pet.start": { ok: false, error: { code: "ALREADY_ARMED" } }, "clients.status": kit.status("owner-first-run") }
+        },
         function () { win.find("cp.go").tapped(); return 60 },
-        function () { kit.check(app.screen === "first_run" && app.page === "", "ALREADY_ARMED: no error, routes by the export (" + app.screen + ")") ; ctl.responses = {} },
+        function () {
+            kit.check(app.screen === "first_run" && app.page === "", "ALREADY_ARMED: no error, routes by the export (" + app.screen + ")")
+            kit.check(ctl.count("clients.status") === 0 && ctl.launches.length === 0, "ALREADY_ARMED: just Home, no Connect card and no launch " + JSON.stringify(ctl.methods()))
+            ctl.responses = {}
+        },
+        // ---- the popup closes while pet.start is in flight: the answer reaches no destroyed
+        // screen, and the desktop pet still comes on (the widget's own follow-up)
+        function () {
+            ctl.calls = []
+            ctl.launches = []
+            ctl.settings = []
+            ctl.cfg = { label: "name", presence: true, overlayOnLoad: false, calm: false }
+            ctl.responses = { "clients.status": kit.status("owner-first-run") }
+            ctl.hold = true
+            shortLived.active = true
+        },
+        function () {
+            kit.find(shortLived.item, "cp.go").tapped()
+            kit.check(ctl.count("pet.start") === 1, "Let's go! sent from the short-lived popup")
+            shortLived.active = false
+        },
+        function () {
+            ctl.hold = false
+            ctl.release()
+            kit.check(ctl.launches.indexOf("show") >= 0 && ctl.settings.some(function (x) { return x.key === "overlayOnLoad" && x.value === true }),
+                      "closed popup: the desktop pet still comes on")
+            return 60
+        },
+        function () {
+            kit.check(ctl.count("clients.status") === 0, "closed popup: its follow-up (clients.status) is not sent")
+            ctl.responses = {}
+        },
         // ---- a typed name sticks across species changes and goes into pet.start
         function () { win.load("fresh-no-pet") },
         function () { win.find("cp.pickerName").Accessible.pressAction() },

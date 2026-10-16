@@ -183,23 +183,34 @@ BarWidget {
     property bool startupDone: false
 
     // Every popup request goes through here: the allow-list, the queue, and a snapshot
-    // kept when the answer is one. A care or treat press retried soon after an unconfirmed
-    // answer reuses its request id, so the backend applies it at most once.
-    property var careRetry: null
+    // kept when the answer is one. Each care or treat press gets its own request id; a press
+    // repeated soon after an unconfirmed answer reuses that press's id, so the backend
+    // applies it at most once (CodePetBar.retryClaim). The widget's own follow-ups
+    // (responseEffects: the desktop pet after Let's go! or Turn on) run here, so they happen
+    // even when the popup closed while the request was in flight.
+    property var careRetry: ({})
     property int careSeq: 0
     function request(method, params, callback) {
         var key = undefined
         if (Model.RETRY_METHODS.indexOf(method) >= 0) {
             root.careSeq += 1
-            root.careRetry = Model.retryKey(root.careRetry, method + JSON.stringify(params || {}), Date.now(), root.careSeq)
-            key = root.careRetry.key
+            var claim = Model.retryClaim(root.careRetry, method + JSON.stringify(params || {}), Date.now(), root.careSeq)
+            root.careRetry = claim.book
+            key = claim.key
         }
         return rpc.request(method, params, function (resp) {
-            if (key !== undefined) root.careRetry = Model.retryAfterResponse(root.careRetry, resp, Date.now())
+            if (key !== undefined) root.careRetry = Model.retryRelease(root.careRetry, key, resp, Date.now())
             if (resp && resp.ok && resp.result && typeof resp.result === "object" && resp.result.count_helpers !== undefined)
                 root.snapshot = resp.result
+            root.applyEffects(Model.responseEffects(method, params, resp, root.cfg))
             if (callback) callback(resp)
         }, key)
+    }
+    function applyEffects(effects) {
+        for (var i = 0; i < effects.length; i++) {
+            if (effects[i].setting !== undefined) root.setSetting(effects[i].setting, effects[i].value)
+            if (effects[i].launch !== undefined) root.launch(effects[i].launch)
+        }
     }
 
     // The leader's one startup read: settles presence, exports bar-state.json and creates
@@ -248,12 +259,13 @@ BarWidget {
     readonly property bool popupVisible: root.menu
     // Omarchy's bar-widget panel contract: `omarchy-shell shell summon|hide|toggle
     // greyforge.codepet` calls open() / close() and reads `opened` on the focused bar's
-    // widget. The desktop pet opens Home this way (notes.md §7 WP6 item 1).
+    // widget. The desktop pet opens Home this way (notes.md §7 WP6 item 1). A summon never
+    // switches CodePet on: while Off it opens the Off look, where Turn on is one tap (only a
+    // real click on the cell turns it on and opens Home, triggerPress; notes.md §8 item 2).
     readonly property bool opened: root.menu
     function open() {
         if (root.menu && root.popupMode === "popup") return
-        if (!root.isOn) root.turnOnAndOpen()
-        else root.openHome()
+        root.openHome()
     }
 
     function close() {

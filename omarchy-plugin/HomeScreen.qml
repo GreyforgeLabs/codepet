@@ -45,12 +45,22 @@ Item {
         else home.app.request("pet.wake", {}, function (r) { if (!r.ok) home.app.failed(r) })
     }
 
-    // The treat jar wiggles once when it is full and a new piece of work just finished.
-    property int seenFinished: doc && doc.agent ? doc.agent.finished_seq : 0
+    // The treat jar wiggles once when it is full and a new piece of work just finished: when
+    // the turn finishes while Home is open, or when Home opens on that turn's unseen
+    // celebration ("The treat jar is full!", act.done_full). `seenFinished` is a plain
+    // value, set once here and then by the handler, never a binding (a binding could update
+    // before the handler runs and hide the change).
+    property int seenFinished: 0
+    readonly property bool jarWiggling: jarWiggle.running
     readonly property int finishedSeq: doc && doc.agent ? doc.agent.finished_seq : 0
+    readonly property bool jarFull: !!(doc && doc.treats && doc.treats.full)
     onFinishedSeqChanged: {
-        if (home.finishedSeq > home.seenFinished && home.doc && home.doc.treats.full) jarWiggle.restart()
+        if (home.finishedSeq > home.seenFinished && home.jarFull) jarWiggle.restart()
         home.seenFinished = home.finishedSeq
+    }
+    Component.onCompleted: {
+        home.seenFinished = home.finishedSeq
+        if (home.jarFull && home.face && home.face.line === "act.done_full") jarWiggle.restart()
     }
 
     Column {
@@ -180,7 +190,7 @@ Item {
             height: home.t.u(36)
             verticalAlignment: Text.AlignVCenter
             horizontalAlignment: Text.AlignHCenter
-            text: home.doc && home.doc.treats.full && home.face && home.face.state === "idle"
+            text: home.jarFull && home.face && home.face.state === "idle"
                 ? home.app.s("treats.full") : Model.faceLine(Strings.STRINGS, home.app.reg, home.doc, home.face)
             textFormat: Text.PlainText
             font.family: home.t.family

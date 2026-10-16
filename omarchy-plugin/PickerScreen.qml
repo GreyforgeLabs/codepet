@@ -80,7 +80,7 @@ Item {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "‹"
-                accessibleName: "‹"
+                accessibleName: picker.app.s("picker.prev")
                 onTapped: picker.scrollBy(-3)
             }
             ListView {
@@ -153,7 +153,7 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "›"
-                accessibleName: "›"
+                accessibleName: picker.app.s("picker.more")
                 onTapped: picker.scrollBy(3)
             }
         }

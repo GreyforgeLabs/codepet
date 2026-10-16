@@ -5,7 +5,11 @@ import "CodePetBar.js" as Model
 // The Connect card after Let's go! (SPEC-v0.3 §3.4): the detected apps, pre-ticked (never
 // Codex), the privacy lines, Connect and Not now. After Connect each row spins and turns
 // into a tick or "Couldn't connect"; the ready check then makes the pet type and celebrate:
-// "{name} is ready!" / "Open a new {app} window." Closing the popup counts as Not now.
+// "{name} is ready!" / "Open a new {app} window." A connected row reads "… Waiting for {app}"
+// until the app's first real event. A Connect the backend refused (BUSY, INVALID_STATE,
+// TEST_STATE, a transport error) fails its rows at once, with Try again; a failure a row
+// already had before Connect is not shown again as the new result (connectRowView).
+// Closing the popup counts as Not now.
 Item {
     id: card
     required property var app
@@ -15,14 +19,34 @@ Item {
     property var unticked: ({})
     property bool sent: false
     property var sentIds: []
+    // What Connect noted per sent id (CodePetBar.connectRowView).
+    property bool refused: false
+    property real sentAt: 0
+    property var reasonAtSend: ({})
+    property var sawJob: ({})
+    function markOf(id) {
+        return { refused: card.refused, reason: card.reasonAtSend[id], sawJob: card.sawJob[id] === true, at: card.sentAt }
+    }
+    function rowView(id) { return Model.connectRowView(card.clients[id], card.markOf(id), card.app.now) }
+    // A job seen in the export for a sent row: its result is the new one.
+    onClientsChanged: {
+        if (!card.sent) return
+        var seen = {}
+        for (var k in card.sawJob) seen[k] = card.sawJob[k]
+        for (var i = 0; i < card.sentIds.length; i++) {
+            var rec = card.clients[card.sentIds[i]]
+            if (rec && rec.job) seen[card.sentIds[i]] = true
+        }
+        card.sawJob = seen
+    }
 
     readonly property var ticked: card.offered.filter(function (id) { return card.unticked[id] !== true })
     readonly property var shownIds: card.sent ? card.sentIds : card.offered
     readonly property bool remembers: card.ticked.indexOf("claude-code") >= 0 || card.ticked.indexOf("hermes") >= 0
-    readonly property var rowStates: card.shownIds.map(function (id) { return Model.connectRowState(card.clients[id]) })
+    readonly property var rowStates: card.shownIds.map(function (id) { return card.rowView(id) })
     readonly property bool anyFailed: card.sent && card.rowStates.indexOf("failed") >= 0
     readonly property bool anyBusy: card.sent && card.rowStates.indexOf("busy") >= 0
-    readonly property var connectedIds: card.sentIds.filter(function (id) { return Model.connectRowState(card.clients[id]) === "done" })
+    readonly property var connectedIds: card.sentIds.filter(function (id) { return card.rowView(id) === "done" })
     readonly property bool ready: card.sent && card.app.doc && card.app.doc.agent && card.app.doc.agent.test
         && card.app.doc.agent.test.state === "done" && card.connectedIds.length > 0
     readonly property bool typing: card.sent && card.app.face && card.app.face.state === "testing"
@@ -39,14 +63,23 @@ Item {
     }
     function connect(ids) {
         if (ids.length === 0) { card.app.home(); return }
+        var reasons = {}
+        for (var i = 0; i < ids.length; i++) {
+            var rec = card.clients[ids[i]]
+            reasons[ids[i]] = rec && rec.failed_reason ? rec.failed_reason : null
+        }
+        card.reasonAtSend = reasons
+        card.sawJob = ({})
+        card.refused = false
+        card.sentAt = card.app.now
         card.sentIds = ids
         card.sent = true
         card.app.request("clients.connect", { clients: ids }, function (resp) {
-            if (!resp.ok) card.app.failed(resp)
+            if (!resp.ok) card.refused = true
         })
     }
     function retry() {
-        var failedIds = card.sentIds.filter(function (id) { return Model.connectRowState(card.clients[id]) === "failed" })
+        var failedIds = card.sentIds.filter(function (id) { return card.rowView(id) === "failed" })
         card.connect(failedIds.length ? failedIds : card.sentIds)
     }
 
@@ -119,7 +152,9 @@ Item {
                 id: row
                 required property string modelData
                 required property int index
-                readonly property string rowState: card.sent ? Model.connectRowState(card.clients[row.modelData]) : ""
+                readonly property string rowState: card.sent ? card.rowStates[row.index] || "" : ""
+                readonly property var rec: card.clients[row.modelData] || ({})
+                readonly property bool waiting: row.rowState === "done" && (row.rec.first_seen_ms === null || row.rec.first_seen_ms === undefined)
                 readonly property bool on: card.unticked[modelData] !== true
                 width: column.width
                 height: card.t.u(56)
@@ -162,14 +197,26 @@ Item {
                             elide: Text.ElideRight
                         }
                         Text {
+                            objectName: "cp.connectReason." + row.modelData
                             width: parent.width
                             visible: row.rowState === "failed"
-                            text: card.app.s(Model.REASON_COPY[(card.clients[row.modelData] || {}).failed_reason] || "reason.blocked",
-                                { app: row.modelData })
+                            text: card.refused ? card.app.s("err.generic")
+                                : card.app.s(Model.REASON_COPY[row.rec.failed_reason] || "reason.blocked", { app: row.modelData })
                             textFormat: Text.PlainText
                             font.family: card.t.family
                             font.pixelSize: card.t.fontBody
                             color: card.t.urgent
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            objectName: "cp.connectWaiting." + row.modelData
+                            width: parent.width
+                            visible: row.waiting
+                            text: card.app.s("row.waiting", { app: row.modelData })
+                            textFormat: Text.PlainText
+                            font.family: card.t.family
+                            font.pixelSize: card.t.fontBody
+                            color: card.t.text
                             elide: Text.ElideRight
                         }
                     }

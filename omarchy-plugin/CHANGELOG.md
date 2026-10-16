@@ -21,6 +21,11 @@ The "a 5-year-old can use it" popup (SPEC-v0.3 §3).
   pulses. No tooltips, no middle click; the right click opens a small menu. The desktop pet
   opens Home through the IPC target `greyforge.codepet` (`openHome`).
 - Every word comes from strings.json; sizes follow the font base size.
+- A failed tap says so on whatever screen is open, and the Connect card shows a refused
+  Connect as a failed row with Try again. Quick repeated taps of one tile all count.
+- Closing the popup while a request runs is safe: the desktop pet still comes on after
+  Let's go!, and later taps are never stuck behind it. Summoning the popup while Off shows
+  the Off look; only a click on the bar cell (or Turn on) switches CodePet on.
 - Removed: the v0.2 card (meters, readiness, simulation tasks, Refresh, the sleep countdown).
 
 ## 0.2.1

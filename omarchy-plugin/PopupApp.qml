@@ -98,42 +98,52 @@ Item {
 
     // ---------------------------------------------------------------- requests
 
-    property string notice: ""
+    // The popup can close (its Loader destroys it) while a request is in flight: an answer
+    // that arrives after that is dropped here, since every callback reaches into the popup.
+    // The widget's own follow-ups (the desktop pet after Let's go! or Turn on) do not depend
+    // on it (BarWidget.request, CodePetBar.responseEffects). `lifetime` is a plain JS object the
+    // callbacks capture, so the check works after the popup's items are gone.
+    property var lifetime: ({ alive: true })
+    Component.onDestruction: popupRoot.lifetime.alive = false
     function request(method, params, callback) {
         if (!popupRoot.ctl) return false
+        var lifetime = popupRoot.lifetime
         return popupRoot.ctl.request(method, params, function (resp) {
+            if (!lifetime.alive) return
             if (callback) callback(resp || { ok: false, error: { code: "CLIENT_ERROR" } })
         })
     }
+    // A failed request says so where the kid is: Home's word bubble, or the notice over any
+    // other screen (and the menu).
+    property string notice: ""
     function failed(resp) {
         var code = resp && resp.error ? String(resp.error.code || "") : ""
-        if (code === "NAME_INVALID") popupRoot.say(popupRoot.s("err.name_too_long"), "")
-        else popupRoot.say(popupRoot.s("err.generic"), "")
+        popupRoot.say(popupRoot.s(code === "NAME_INVALID" ? "err.name_too_long" : "err.generic"), "")
+        popupRoot.notice = popupRoot.bubbleText
     }
 
+    // On shows the desktop pet when its switch is on (the widget does that, responseEffects).
     function setPower(on) {
         popupRoot.request("app.set_enabled", { enabled: on }, function (resp) {
             if (!resp.ok) { popupRoot.failed(resp); return }
             popupRoot.home()
-            if (on && popupRoot.cfg.overlayOnLoad === true) popupRoot.ctl.launch("show")
         })
     }
 
     // Let's go!: pet.start (adopt, or arm the living unarmed life), the desktop pet comes
-    // on, then the Connect card when an app was found (SPEC-v0.3 §2.1).
+    // on (the widget does that once pet.start succeeds), then the Connect card when an app
+    // was found (SPEC-v0.3 §2.1). ALREADY_ARMED: just Home (§6.2 pet.start).
     function start(species, typedName) {
         var params = { species: species, mode: "gentle", acknowledge_rules: true }
         if (popupRoot.life) params.life_id = popupRoot.life.life_id
         var name = Model.cleanName(typedName)
         if (name !== "") params.name = name
         popupRoot.request("pet.start", params, function (resp) {
-            if (!resp.ok && !(resp.error && resp.error.code === "ALREADY_ARMED")) { popupRoot.failed(resp); return }
+            var armed = !resp.ok && resp.error && resp.error.code === "ALREADY_ARMED"
+            if (!resp.ok && !armed) { popupRoot.failed(resp); return }
             popupRoot.meetNew = false
             popupRoot.home()
-            if (resp.ok) {
-                popupRoot.ctl.setSetting("overlayOnLoad", true)
-                popupRoot.ctl.launch("show")
-            }
+            if (armed) return
             popupRoot.request("clients.status", {}, function (st) {
                 var offered = st.ok ? Model.connectOffered(st.result) : []
                 if (offered.length > 0) popupRoot.go("connect", { offered: offered })
@@ -196,11 +206,13 @@ Item {
         repeat: false
         onTriggered: {
             popupRoot.bubbleText = ""
+            popupRoot.notice = ""
             popupRoot.actionState = ""
         }
     }
     function say(text, action) {
         popupRoot.bubbleText = text
+        popupRoot.notice = ""
         if (action !== undefined && action !== "") {
             popupRoot.actionState = action
             popupRoot.actionStartMs = popupRoot.clockMs
@@ -280,6 +292,22 @@ Item {
                 sourceComponent: editorComponent
             }
         }
+    }
+
+    // A failed request's words over any screen but Home and the Off look (they show it in
+    // the pet's word bubble). It covers the top of the screen for a moment and takes no
+    // room, so every screen keeps its K13 budget.
+    SpeechBubble {
+        id: noticeBubble
+        objectName: "cp.notice"
+        t: theme
+        text: popupRoot.notice
+        visible: popupRoot.notice !== "" && popupRoot.screen !== "home" && popupRoot.screen !== "off_look"
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: popupRoot.mode === "menu" ? 0 : header.height + theme.u(8)
+        z: 10
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: popupRoot.notice
     }
 
     // A screen with its own inner pages (Helpers) walks back through them first: it answers

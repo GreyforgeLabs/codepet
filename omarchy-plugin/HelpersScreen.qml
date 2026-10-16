@@ -95,13 +95,17 @@ Item {
                         icon: Model.APP_ICONS[rowItem.modelData.id] || ""
                         size: helpers.t.u(40)
                     }
+                    // The app's name over its state, both at title size across the whole row:
+                    // "… Waiting for Claude Code" needs the width (a monospace theme font
+                    // fits about 19 characters beside a name column, notes.md §8 item 15).
                     Text {
                         id: rowName
                         anchors.left: rowIcon.right
                         anchors.leftMargin: helpers.t.u(10)
-                        y: helpers.t.u(8)
-                        height: helpers.t.u(40)
-                        width: helpers.t.u(150)
+                        anchors.right: rowSpinner.visible ? rowSpinner.left : parent.right
+                        anchors.rightMargin: helpers.t.u(8)
+                        y: helpers.t.u(4)
+                        height: helpers.t.u(24)
                         verticalAlignment: Text.AlignVCenter
                         text: Model.appName(rowItem.modelData.id)
                         textFormat: Text.PlainText
@@ -111,38 +115,37 @@ Item {
                         color: helpers.t.text
                         elide: Text.ElideRight
                     }
-                    Row {
-                        anchors.left: rowName.right
+                    Text {
+                        objectName: "cp.helperState." + rowItem.modelData.id
+                        anchors.left: rowName.left
+                        anchors.right: rowName.right
+                        y: helpers.t.u(28)
+                        height: helpers.t.u(24)
+                        verticalAlignment: Text.AlignVCenter
+                        text: helpers.rowText(rowItem.modelData)
+                        textFormat: Text.PlainText
+                        font.family: helpers.t.family
+                        font.pixelSize: helpers.t.fontTitle
+                        color: rowItem.modelData.row === "row.failed" ? helpers.t.urgent : helpers.t.text
+                        elide: Text.ElideRight
+                    }
+                    Spinner {
+                        id: rowSpinner
+                        visible: rowItem.modelData.spinner === true
                         anchors.right: parent.right
                         anchors.rightMargin: helpers.t.u(8)
-                        y: helpers.t.u(8)
-                        height: helpers.t.u(40)
-                        spacing: helpers.t.u(6)
-                        Spinner {
-                            visible: rowItem.modelData.spinner === true
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: helpers.t.u(28)
-                            height: width
-                            t: helpers.t
-                            calm: helpers.app.calm
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - (rowItem.modelData.spinner ? helpers.t.u(34) : 0)
-                            text: helpers.rowText(rowItem.modelData)
-                            textFormat: Text.PlainText
-                            font.family: helpers.t.family
-                            font.pixelSize: helpers.t.fontTitle
-                            color: rowItem.modelData.row === "row.failed" ? helpers.t.urgent : helpers.t.text
-                            elide: Text.ElideRight
-                        }
+                        y: helpers.t.u(14)
+                        width: helpers.t.u(28)
+                        height: width
+                        t: helpers.t
+                        calm: helpers.app.calm
                     }
                     Text {
                         visible: !!(rowItem.modelData.hint || rowItem.modelData.reason)
                         anchors.left: rowName.left
                         anchors.right: parent.right
                         anchors.rightMargin: helpers.t.u(8)
-                        y: helpers.t.u(50)
+                        y: helpers.t.u(54)
                         height: helpers.t.u(24)
                         verticalAlignment: Text.AlignVCenter
                         text: helpers.lineText(rowItem.modelData.hint || rowItem.modelData.reason || "", rowItem.modelData.id)

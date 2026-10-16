@@ -218,22 +218,61 @@ var RETRY_METHODS = ["pet.care", "treats.give"]
 // replay the old receipt (no new care applied). The overlay uses the same window.
 var RETRY_WINDOW_MS = 120000
 
-// One retry key per press: the same press retried soon after an unconfirmed response (same
-// signature, within RETRY_WINDOW_MS) reuses its key, so the backend applies it at most
-// once. Anything else gets a fresh key.
-function retryKey(prev, signature, now, seq) {
-    if (isObject(prev) && prev.key && prev.signature === signature
-            && isNum(prev.expiresAt) && isNum(now) && now <= prev.expiresAt)
-        return prev
-    return { key: "bar-" + Math.max(0, Math.floor(now)).toString(36) + "-" + Math.max(0, Math.floor(seq)),
-             signature: signature, expiresAt: (isNum(now) ? now : 0) + RETRY_WINDOW_MS }
+// Retry keys, one per press (SPEC-v0.3 K5: a care tap is never dropped, and never counted
+// twice). `book` maps a request id to { signature, expiresAt, pending }. A press reuses a key
+// only from a record whose answer came back unconfirmed (failure, timeout, lost response;
+// the backend stores no receipt for a failure), for the same method and params, inside
+// RETRY_WINDOW_MS. A press made while an identical one is still queued or in flight gets a
+// fresh key, so both are applied.
+var RETRY_BOOK_MAX = 16
+function retryClaim(book, signature, now, seq) {
+    var next = {}
+    var reuse = null
+    var keys = isObject(book) ? Object.keys(book) : []
+    for (var i = 0; i < keys.length; i++) {
+        var e = book[keys[i]]
+        if (!isObject(e)) continue
+        if (!e.pending && !(isNum(e.expiresAt) && isNum(now) && now <= e.expiresAt)) continue
+        next[keys[i]] = { signature: e.signature, expiresAt: e.expiresAt, pending: e.pending === true }
+        if (reuse === null && !e.pending && e.signature === signature) reuse = keys[i]
+    }
+    var key = reuse
+    if (key === null) {
+        key = "bar-" + Math.max(0, Math.floor(isNum(now) ? now : 0)).toString(36) + "-" + Math.max(0, Math.floor(seq))
+        next[key] = { signature: signature, expiresAt: (isNum(now) ? now : 0) + RETRY_WINDOW_MS, pending: true }
+    } else {
+        next[key].pending = true
+    }
+    // Bounded: the oldest settled records go first.
+    var settled = Object.keys(next).filter(function (k) { return !next[k].pending })
+    var size = Object.keys(next).length
+    for (var j = 0; size > RETRY_BOOK_MAX && j < settled.length; j++) { delete next[settled[j]]; size-- }
+    return { book: next, key: key }
 }
 
-// The key to keep after a response: none after a confirmed one; after an unconfirmed one
-// (failure, timeout, lost response), the same key for RETRY_WINDOW_MS from now.
-function retryAfterResponse(prev, resp, now) {
-    if (!isObject(prev) || !prev.key || !isObject(resp) || resp.ok === true || !isNum(now)) return null
-    return { key: prev.key, signature: prev.signature, expiresAt: now + RETRY_WINDOW_MS }
+// After the answer to the request sent under `key`: a confirmed press forgets its key; an
+// unconfirmed one keeps it for RETRY_WINDOW_MS from now, for that press's own signature.
+function retryRelease(book, key, resp, now) {
+    var next = {}
+    var keys = isObject(book) ? Object.keys(book) : []
+    for (var i = 0; i < keys.length; i++) if (isObject(book[keys[i]])) next[keys[i]] = book[keys[i]]
+    var e = next[key]
+    if (!isObject(e)) return next
+    if (isObject(resp) && resp.ok === true) delete next[key]
+    else next[key] = { signature: e.signature, expiresAt: (isNum(now) ? now : 0) + RETRY_WINDOW_MS, pending: false }
+    return next
+}
+
+// What the bar widget itself does after an answer, whether or not the popup is still open
+// (it may have closed while the request was in flight): Let's go! (pet.start) turns the
+// desktop pet on and shows it; turning CodePet on shows it when its switch is on (notes.md
+// §8 item 7). Each effect is { setting, value } or { launch }.
+function responseEffects(method, params, resp, cfg) {
+    if (!isObject(resp) || resp.ok !== true) return []
+    if (method === "pet.start") return [{ setting: "overlayOnLoad", value: true }, { launch: "show" }]
+    if (method === "app.set_enabled" && isObject(params) && params.enabled === true && isObject(cfg) && cfg.overlayOnLoad === true)
+        return [{ launch: "show" }]
+    return []
 }
 
 // ---------------------------------------------------------------- registry + art
@@ -489,10 +528,10 @@ function stars(life) {
 
 // The client-side name check before pet.start / pet.rename (core normalize_pet_name:
 // trimmed, 1..=24 characters, <= 96 bytes, no control characters). "" when fine, else
-// the strings.json key to show.
+// the strings.json key to show: an empty name asks for one ("Type a name").
 function nameProblem(name) {
     var s = String(name === undefined || name === null ? "" : name).replace(/^\s+|\s+$/g, "")
-    if (s.length === 0) return "err.name_too_long"
+    if (s.length === 0) return "name.type"
     if (/[\u0000-\u001f\u007f]/.test(s)) return "err.name_too_long"
     var chars = 0
     for (var i = 0; i < s.length; i++) {
@@ -594,6 +633,25 @@ function connectRowState(rec) {
     if (rec.failed_reason) return "failed"
     if (rec.connected === true) return "done"
     return "pending"
+}
+
+// How long after Connect a failure the row already had is taken for the old one, while the
+// export has not yet shown the new job.
+var CONNECT_GRACE_MS = 10000
+
+// The row state as the card shows it. `mark` is what the card noted when it sent Connect:
+// { refused: the request itself failed (BUSY, INVALID_STATE, TEST_STATE, a transport
+// error: no job will come, the row fails at once), reason: the failed_reason the row had
+// then, sawJob: the export has shown a job for it since, at: the send time }. A failure
+// still equal to the one from before is the old one: pending, not failed, until a job was
+// seen, the reason changed or CONNECT_GRACE_MS passed.
+function connectRowView(rec, mark, now) {
+    if (isObject(mark) && mark.refused === true) return "failed"
+    var st = connectRowState(rec)
+    if (st !== "failed" || !isObject(mark) || mark.sawJob === true) return st
+    if (mark.reason !== undefined && mark.reason === rec.failed_reason && isNum(mark.at) && isNum(now)
+            && now - mark.at < CONNECT_GRACE_MS) return "pending"
+    return st
 }
 
 // ---------------------------------------------------------------- bar cell

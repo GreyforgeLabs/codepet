@@ -26,10 +26,26 @@ Window {
     }
 
     readonly property var fixtures: ["clients-mixed", "clients-codex-hooks-off", "clients-codex-new", "clients-disconnect-running",
-        "clients-failed-while-connected", "idle-happy"]
+        "clients-failed-while-connected", "idle-happy", "all-waiting", "all-waiting-codex-off", "all-connecting"]
+    // Built from clients-mixed: every app installed and connected but not yet seen (the
+    // longest row texts, "… Waiting for Claude Code"), with Codex's hooks turned off, and
+    // every app connecting (a spinner beside each state).
+    function synthetic(name) {
+        var doc = kit.fixture("clients-mixed")
+        var base = doc.clients["claude-code"]
+        for (var i = 0; i < Model.CLIENTS.length; i++) {
+            var c = JSON.parse(JSON.stringify(base))
+            c.installed = true; c.connected = true; c.first_seen_ms = null; c.last_seen_ms = null
+            c.failed_reason = null; c.needs_step = null; c.job = null
+            if (name === "all-connecting") c.job = { id: "job-0123456789abcdef01234567", kind: "connect", state: "running" }
+            doc.clients[Model.CLIENTS[i]] = c
+        }
+        if (name === "all-waiting-codex-off") doc.clients.codex.needs_step = "codex_hooks_off"
+        return doc
+    }
     function load(name, doc) {
         ctl.now = 1792123900000
-        ctl.barState = doc || kit.fixture(name)
+        ctl.barState = doc || (name.indexOf("all-") === 0 ? win.synthetic(name) : kit.fixture(name))
         app.home()
         app.go("helpers", {})
     }

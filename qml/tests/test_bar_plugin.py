@@ -236,11 +236,17 @@ class SourceContract(unittest.TestCase):
                 self.assertIn(method, allow, f"{name} sends {method}")
             self.assertNotRegex(text, r"\"task\.", f"{name} mentions a task method")
         rpc = self.qml["BarRpc.qml"]
-        req = function_bodies(rpc)["request"]
-        self.assertLess(req.index("Model.allowedMethod(method)"), req.index("createObject"),
+        funcs = function_bodies(rpc)
+        req = funcs["request"]
+        self.assertLess(req.index("Model.allowedMethod(method)"), req.index("rpc.begin("),
                         "allowlist is checked before any process exists")
         self.assertLess(req.index("Model.allowedMethod(method)"), req.index("rpc.pending"),
                         "a refused method is never queued")
+        self.assertIn("createObject", funcs["begin"])
+        # Only request() and the queue reach begin(): every started request passed the allowlist.
+        callers = [fn for fn, body in funcs.items() if "rpc.begin(" in body]
+        self.assertEqual(sorted(callers), ["request", "startNext"])
+        self.assertIn("rpc.pending[0]", funcs["startNext"])
         self.assertIn("readonly property int maxPending: 8", rpc)
         self.assertIn("readonly property int maxFrameBytes: 65536", rpc)
 
@@ -285,13 +291,46 @@ class SourceContract(unittest.TestCase):
         # `omarchy-shell shell summon|hide|toggle greyforge.codepet` (Bar.qml summonBarWidget)
         # calls open() / close() and reads `opened`; open() keeps the Off cell rule.
         self.assertIn("readonly property bool opened: root.menu", bw)
+        # A summon or an IPC call never switches CodePet on: while Off it shows the Off look
+        # (Turn on is one tap there); only a real click on the cell turns it on.
         opener = function_bodies(bw)["open"]
-        self.assertIn("if (!root.isOn) root.turnOnAndOpen()", opener)
+        self.assertIn("root.openHome()", opener)
+        self.assertNotIn("turnOnAndOpen", opener)
+        self.assertNotIn("set_enabled", opener)
+        callers = sorted(fn for fn, body in function_bodies(bw).items() if "turnOnAndOpen()" in body)
+        self.assertEqual(callers, ["triggerPress"])
         bar_qml = OMARCHY_SHELL / "plugins" / "bar" / "Bar.qml"
         if bar_qml.is_file():
             text = bar_qml.read_text()
             self.assertIn("item.open()", text, "the Omarchy summon contract changed")
             self.assertIn("item.opened === true", text)
+
+    def test_a_throwing_callback_never_stalls_the_transport(self):
+        rpc = function_bodies(self.qml["BarRpc.qml"])
+        self.assertIn("try {", rpc["deliver"])
+        self.assertIn("catch (e)", rpc["deliver"])
+        fin = rpc["finish"]
+        # The next request is scheduled before any caller code runs.
+        self.assertLess(fin.index("Qt.callLater(rpc.startNext)"), fin.index("rpc.deliver(job.callback, resp)"))
+        self.assertNotIn("job.callback(resp)", fin)
+        # A timed-out or refused child is signalled (and the watchdog re-armed) before the
+        # caller hears about it.
+        dog = blocks(self.qml["BarRpc.qml"], "Timer {")[0]
+        self.assertLess(dog.index("job.signal(15)"), dog.index("job.answer("))
+        self.assertLess(dog.index("rpcWatchdog.restart()"), dog.index("job.answer("))
+        rej = rpc["reject"]
+        self.assertLess(rej.index("signal(15)"), rej.index("answer("))
+        # Strictly oldest first: a request waits behind any queued one.
+        self.assertIn("rpc.busy || rpc.pending.length > 0", rpc["request"])
+        # The popup drops answers that arrive after it closed; the widget's own follow-ups
+        # (the desktop pet) do not live in the popup.
+        app = self.qml["PopupApp.qml"]
+        self.assertIn("if (!lifetime.alive) return", function_bodies(app)["request"])
+        self.assertIn("Component.onDestruction: popupRoot.lifetime.alive = false", app)
+        for name in ("PopupApp.qml",):
+            self.assertNotIn('launch("show")', self.qml[name], name)
+            self.assertNotIn('setSetting("overlayOnLoad", true)', self.qml[name], name)
+        self.assertIn("Model.responseEffects(method, params, resp, root.cfg)", function_bodies(self.qml["BarWidget.qml"])["request"])
 
     def test_desktop_pet_switch_follows_the_overlay_contract(self):
         # On shows the pet; off writes the setting only (the overlay exits by itself).
@@ -480,7 +519,8 @@ class Staging(unittest.TestCase):
 FAKE_CODEPET = r'''#!{python} -I
 # Test-only stand-in for `codepet rpc`: logs the request and the state home it saw,
 # applies On/Off and care to bar-state.json (as the real CLI exports) and answers ok.
-import json, os, sys
+# $HOME/slow.json {{"<method>" or "<method>:<action>": seconds}} delays an answer.
+import json, os, sys, time
 home = os.environ["HOME"]
 state_home = os.environ.get("XDG_STATE_HOME", "")
 req = json.loads(sys.stdin.readline())
@@ -488,6 +528,13 @@ with open(os.path.join(home, "rpc.log"), "a") as log:
     log.write(json.dumps({{"method": req["method"], "id": req["id"], "params": req["params"],
                           "argv": sys.argv[1:], "state_home": state_home,
                           "test_state": os.environ.get("CODEPET_TEST_STATE")}}) + "\n")
+try:
+    slow = json.load(open(os.path.join(home, "slow.json")))
+except Exception:
+    slow = {{}}
+delay = slow.get(req["method"] + ":" + str(req["params"].get("action", "")), slow.get(req["method"], 0))
+if delay:
+    time.sleep(delay)
 sdir = os.path.join(state_home or os.path.join(home, ".local/state"), "codepet")
 path = os.path.join(sdir, "bar-state.json")
 try:
@@ -507,6 +554,8 @@ if doc is not None:
                        "appearance": req["params"]["species"], "stage": 1, "level": 1, "xp": 0, "next_stage_xp": 80,
                        "status": "healthy", "mode": req["params"]["mode"], "armed": True, "pace": "steady",
                        "paused": False, "fainted": False, "death_pending": False}}
+    if req["method"] == "pet.events_seen":
+        doc["unseen_events"] = []
     doc["state_version"] += 1
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
@@ -603,6 +652,7 @@ ShellRoot {
         return { leader: w.leader, face: w.face, cell: w.cell, version: w.barState ? w.barState.state_version : -1,
                  menu: w.menu, mode: w.popupMode, busy: w.rpcBusy, notInstalled: w.rpcNotInstalled, isOn: w.isOn,
                  testState: w.paths.testState, stateDir: w.paths.stateDir, stateMissing: w.stateMissing, cfg: w.cfg,
+                 notice: a ? a.notice : "",
                  timers: timers, running: all, screen: a ? a.screen : "", label: w.labelText, seen: w.seen,
                  badgeScale: w.cell.pulse }
     }
@@ -617,6 +667,18 @@ ShellRoot {
         function tap(name: string): void { var o = kit.find(shell.app(), name); if (o) o.tapped() }
         function toggle(name: string, on: bool): void { var o = kit.find(shell.app(), name); if (o) o.toggled(on) }
         function setting(key: string, on: bool): void { w1.setSetting(key, on) }
+        // Two requests on the transport, the first with a handler that throws.
+        function throwing(): void {
+            for (var i = 0; i < w1.data.length; i++)
+                if (w1.data[i].objectName === "codepetBar.rpc") {
+                    w1.data[i].request("app.set_helpers", { enabled: true }, function (r) { throw new Error("boom") })
+                    w1.data[i].request("app.set_helpers", { enabled: false }, null)
+                }
+        }
+        function rpcTimeout(ms: int): void {
+            for (var i = 0; i < w1.data.length; i++)
+                if (w1.data[i].objectName === "codepetBar.rpc") w1.data[i].responseTimeoutMs = ms
+        }
         function launch(verb: string): void { w1.launch(verb) }
         function refuse(): string {
             var got = ""
@@ -652,6 +714,18 @@ def fixture(name, **over):
         return v
     doc = shift(doc)
     doc.update(over)
+    return doc
+
+
+def all_waiting(version):
+    """clients-mixed with every app installed and connected but not yet seen (the longest
+    Helpers row texts, "… Waiting for Claude Code") and Codex's hooks turned off."""
+    doc = fixture("clients-mixed", state_version=version)
+    base = doc["clients"]["claude-code"]
+    for cid in ("claude-code", "codex", "opencode", "hermes", "grok-cli"):
+        doc["clients"][cid] = dict(base, installed=True, connected=True, first_seen_ms=None, last_seen_ms=None,
+                                   failed_reason=None, needs_step=None, job=None)
+    doc["clients"]["codex"]["needs_step"] = "codex_hooks_off"
     return doc
 
 
@@ -900,19 +974,147 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.harness("close")
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["running"] == []), self.dump()["w1"]["running"])
 
+    def test_a_summon_while_off_shows_the_off_look_and_never_turns_on(self):
+        self.start(state=fixture("off", state_version=7))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] == 8))
+        self.assertEqual(self.harness("summon"), "true")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "off_look"), self.dump()["w1"])
+        self.harness("close")
+        self.call("greyforge.codepet", "openHome")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "off_look"), self.dump()["w1"])
+        self.harness("close")
+        self.call("greyforge.codepet", "toggle")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "off_look"), self.dump()["w1"])
+        time.sleep(1)
+        self.assertFalse(any(e["method"] == "app.set_enabled" for e in self.rpc_log()), self.rpc_log())
+        self.assertFalse(self.dump()["w1"]["isOn"])
+        self.assertEqual(self.launch_log(), [])
+        # Turn on is one tap on the Off look.
+        self.harness("tap", "cp.turnOn")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["isOn"] and self.dump()["w1"]["screen"] == "home"), self.dump()["w1"])
+        self.harness("close")
+
+    def test_the_popup_closing_while_lets_go_is_in_flight(self):
+        """The kid taps Let's go! and clicks outside before pet.start answers: the answer
+        reaches no destroyed screen (no TypeError, checked by stop()), the desktop pet still
+        comes on, the queue keeps moving and the next click is answered."""
+        self.start(state=fixture("fresh-no-pet", state_version=3))
+        (self.home / "clients-status.json").write_text(
+            (CONTRACTS / "fixtures/clients-status/owner-first-run.json").read_text())
+        (self.home / "slow.json").write_text(json.dumps({"pet.start": 1.5}))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 4))
+        self.harness("press", "1")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "first_run"))
+        self.harness("tap", "cp.go")
+        self.assertTrue(self.wait_for(lambda: any(e["method"] == "pet.start" for e in self.rpc_log())))
+        self.harness("close")
+        self.assertFalse(self.dump()["w1"]["menu"])
+        self.assertTrue(self.wait_for(lambda: any(e["argv"] == ["show"] for e in self.launch_log()), 10),
+                        "the desktop pet comes on although the popup closed")
+        self.assertEqual(self.dump()["settingsWrites"][-1]["entry"]["overlayOnLoad"], True)
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"], 5))
+        time.sleep(0.5)
+        self.assertFalse(any(e["method"] == "clients.status" for e in self.rpc_log()),
+                         "the closed popup's follow-up is not sent")
+        # The queue still moves: the next click opens Home with its state.get answered.
+        n = len(self.rpc_log())
+        self.harness("press", "1")
+        self.assertTrue(self.wait_for(lambda: len(self.rpc_log()) > n and self.rpc_log()[n]["method"] == "state.get"))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]), self.dump()["w1"])
+        self.harness("close")
+
+    def test_a_timeout_with_the_popup_closed_frees_the_slot_and_keeps_order(self):
+        """A care tap times out after the popup closed: the child is ended, the slot frees,
+        the presses queued behind it run in order, and two quick taps of one tile are two
+        requests (two ids), never one replayed receipt."""
+        self.start(state=fixture("idle-happy", state_version=7))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 8))
+        self.harness("rpcTimeout", "1500")
+        (self.home / "slow.json").write_text(json.dumps({"pet.care:food": 30}))
+        self.harness("press", "1")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]))
+        self.harness("tap", "cp.tile.food")
+        self.harness("tap", "cp.tile.water")
+        self.harness("tap", "cp.tile.water")
+        self.harness("close")
+        t0 = time.monotonic()
+        self.assertTrue(self.wait_for(lambda: sum(e["params"].get("action") == "water" for e in self.rpc_log()) == 2, 15),
+                        self.rpc_log())
+        self.assertGreater(time.monotonic() - t0, 0.5, "the water presses waited for the food press")
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"], 10), "the slot frees after the timeout")
+        care = [e for e in self.rpc_log() if e["method"] == "pet.care"]
+        self.assertEqual([e["params"]["action"] for e in care], ["food", "water", "water"], "oldest first")
+        self.assertEqual(len({e["id"] for e in care}), 3, "every press has its own request id")
+        # The timed-out child was ended (python's sleep dies on SIGTERM well before 30 s).
+        self.assertLess(time.monotonic() - t0, 15)
+
+    def test_a_throwing_handler_is_logged_and_the_queue_moves_on(self):
+        self.start(state=fixture("idle-happy", state_version=7))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 8 and not self.dump()["w1"]["busy"]))
+        self.harness("throwing")
+        self.assertTrue(self.wait_for(lambda: sum(e["method"] == "app.set_helpers" for e in self.rpc_log()) == 2, 10), self.rpc_log())
+        self.assertEqual([e["params"]["enabled"] for e in self.rpc_log() if e["method"] == "app.set_helpers"], [True, False])
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"], 5))
+        self.assertTrue(self.wait_for(lambda: "a response handler failed: Error: boom" in self.output(), 5), self.output())
+
+    def test_closing_after_a_celebration_marks_it_seen_once(self):
+        """noteShown: closing the popup on a growth sends one pet.events_seen; closing on a
+        finished turn advances `seen` so the star stops replaying."""
+        doc = fixture("grew-up", state_version=7)
+        self.start(state=doc)
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 8))
+        self.assertEqual(self.dump()["w1"]["face"]["line"], "grew")
+        self.harness("press", "1")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]))
+        self.harness("close")
+        self.assertTrue(self.wait_for(lambda: any(e["method"] == "pet.events_seen" for e in self.rpc_log())))
+        seen = [e for e in self.rpc_log() if e["method"] == "pet.events_seen"]
+        self.assertEqual([e["params"] for e in seen], [{"life_id": doc["life"]["life_id"], "through_seq": 7}])
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["face"]["line"] != "grew" and not self.dump()["w1"]["busy"]))
+        self.harness("press", "1")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]))
+        self.harness("close")
+        time.sleep(1)
+        self.assertEqual(sum(e["method"] == "pet.events_seen" for e in self.rpc_log()), 1, "acknowledged once")
+
+        done = fixture("finished-treat", state_version=50)
+        done["agent"]["finished_at_ms"] = int(time.time() * 1000) - 10000
+        self.write_state(done)
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 50))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["face"]["state"] == "celebrate"), self.dump()["w1"]["face"])
+        self.assertEqual(self.dump()["w1"]["seen"]["finished_seq"], 0)
+        self.harness("press", "1")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home"))
+        self.harness("close")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["seen"]["finished_seq"] == 5), self.dump()["w1"]["seen"])
+        self.assertNotEqual(self.dump()["w1"]["face"]["state"], "celebrate", "the star stops replaying")
+        time.sleep(0.5)
+        self.assertEqual(sum(e["method"] == "pet.events_seen" for e in self.rpc_log()), 1, "a finished turn sends nothing")
+
+    def test_a_failed_power_switch_in_the_menu_says_so(self):
+        """A failure off Home is shown where the kid is: the right-click menu's switch."""
+        self.start(installed=False, state=fixture("off", state_version=7))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["notInstalled"], 10), self.output())
+        self.harness("press", "2")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "menu"))
+        self.harness("toggle", "cp.menu.power", "true")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["notice"] == "Oops! Please try again."), self.dump()["w1"])
+        self.harness("close")
+
     def test_kid_sizes_and_fit_under_the_real_omarchy_theme(self):
         """K3/K6/K13 and the kid copy at font base sizes 12, 16 and 20, real Style and Color."""
         self.start(state=fixture("idle-treats", state_version=7), base_size=12)
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 8))
         cases = [("idle-treats", ""), ("need-food-critical", ""), ("fainted", ""), ("asleep", ""), ("off", ""),
                  ("working-two", ""), ("fresh-no-pet", ""), ("owner-unarmed-welcome", ""), ("memorial", ""),
-                 ("clients-mixed", "helpers"), ("idle-happy", "more"), ("idle-happy", "change")]
+                 ("clients-mixed", "helpers"), ("all-waiting-codex-off", "helpers"), ("idle-happy", "more"),
+                 ("idle-happy", "change")]
         version = 100
         for size in (12, 16, 20):
             self.base(size)
             for name, page in cases:
                 version += 1
-                self.write_state(fixture(name, state_version=version))
+                self.write_state(all_waiting(version) if name == "all-waiting-codex-off" else fixture(name, state_version=version))
                 self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= version, 10))
                 if page:
                     self.harness("page", page)

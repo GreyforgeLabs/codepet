@@ -306,7 +306,7 @@ test('names: 24 characters and 96 bytes, trimmed, no control characters', () => 
     assert.equal(M.nameProblem('x'.repeat(25)), 'err.name_too_long');
     assert.equal(M.nameProblem('😺'.repeat(24)), '', '24 emoji are 96 bytes');
     assert.equal(M.nameProblem('😺'.repeat(32)), 'err.name_too_long', '32 emoji, 128 bytes');
-    assert.equal(M.nameProblem('   '), 'err.name_too_long');
+    assert.equal(M.nameProblem('   '), 'name.type', 'an empty name asks for one');
     assert.equal(M.nameProblem('a\u0007b'), 'err.name_too_long');
     assert.ok(STRINGS['err.name_too_long']);
     assert.equal(M.cleanName('  Pip '), 'Pip');
@@ -376,18 +376,83 @@ test('seenAfter advances only past the celebration the face shows', () => {
     assert.deepEqual(plain(M.seenAfter({}, doc, { state: 'idle' })), { finished_seq: 0, hello_seq: 0, test_at_ms: 0 });
 });
 
-test('a care or treat press reuses its key only while unconfirmed and inside the window', () => {
-    const sig = 'pet.care{"action":"water"}';
-    const a = M.retryKey(null, sig, 1000, 1);
-    assert.match(a.key, /^bar-[a-z0-9]+-1$/);
-    assert.equal(M.retryKey(a, sig, 1000 + M.RETRY_WINDOW_MS, 2).key, a.key, 'same press, inside the window');
-    assert.notEqual(M.retryKey(a, sig, 1001 + M.RETRY_WINDOW_MS, 2).key, a.key, 'after the window it is a new press');
-    assert.notEqual(M.retryKey(a, 'pet.care{"action":"food"}', 1000, 2).key, a.key, 'another action');
-    assert.equal(M.retryAfterResponse(a, { ok: true }, 5000), null, 'confirmed: forget the key');
-    const kept = M.retryAfterResponse(a, { ok: false, error: { code: 'CLIENT_TIMEOUT' } }, 5000);
-    assert.equal(kept.key, a.key);
-    assert.equal(kept.expiresAt, 5000 + M.RETRY_WINDOW_MS);
+test('each care or treat press gets its own key; only an unconfirmed one is reused', () => {
+    const food = 'pet.care{"action":"food"}';
+    const water = 'pet.care{"action":"water"}';
+    // Two presses before any answer: two keys (both applied), never one replayed receipt.
+    let c1 = M.retryClaim({}, food, 1000, 1);
+    let c2 = M.retryClaim(c1.book, food, 1001, 2);
+    assert.match(c1.key, /^bar-[a-z0-9]+-1$/);
+    assert.notEqual(c2.key, c1.key, 'a press while the same press is in flight gets a fresh key');
+    let c3 = M.retryClaim(c2.book, food, 1002, 3);
+    assert.equal(new Set([c1.key, c2.key, c3.key]).size, 3, 'three quick presses, three keys');
+    // A confirmed answer forgets its key; a later press is new.
+    let book = M.retryRelease(c3.book, c1.key, { ok: true }, 2000);
+    assert.equal(book[c1.key], undefined);
+    // Food times out, then Water is pressed and answers: Food's record keeps Food's key and
+    // signature (Water's answer never overwrites it).
+    let f = M.retryClaim({}, food, 1000, 10);
+    let w = M.retryClaim(f.book, water, 1100, 11);
+    book = M.retryRelease(w.book, f.key, { ok: false, error: { code: 'CLIENT_TIMEOUT' } }, 5000);
+    book = M.retryRelease(book, w.key, { ok: true }, 5100);
+    assert.deepEqual(plain(book[f.key]), { signature: food, expiresAt: 5000 + M.RETRY_WINDOW_MS, pending: false });
+    assert.equal(book[w.key], undefined);
+    // Food pressed again inside the window: Food's own key, applied at most once.
+    const again = M.retryClaim(book, food, 6000, 12);
+    assert.equal(again.key, f.key, 'the unconfirmed press is retried under its own key');
+    assert.equal(again.book[f.key].pending, true);
+    // ... and a press of the same tile while that retry is in flight is a new press.
+    assert.notEqual(M.retryClaim(again.book, food, 6001, 13).key, f.key);
+    // Water now is a new press; after the window Food is a new press too.
+    assert.notEqual(M.retryClaim(book, water, 6000, 14).key, w.key);
+    assert.notEqual(M.retryClaim(book, food, 5001 + M.RETRY_WINDOW_MS, 15).key, f.key, 'after the window it is a new press');
+    assert.equal(M.retryClaim(book, food, 5000 + M.RETRY_WINDOW_MS, 16).key, f.key, 'inside the window (inclusive)');
+    // A release for an unknown key changes nothing; the book stays bounded.
+    assert.deepEqual(plain(M.retryRelease(book, 'bar-x-1', { ok: false }, 1)), plain(book));
+    let big = {};
+    for (let i = 0; i < 40; i++) {
+        const c = M.retryClaim(big, 'treats.give{}', 100 + i, 100 + i);
+        big = M.retryRelease(c.book, c.key, { ok: false }, 100 + i);
+    }
+    assert.ok(Object.keys(big).length <= M.RETRY_BOOK_MAX, 'bounded: ' + Object.keys(big).length);
     assert.deepEqual(plain(M.RETRY_METHODS), ['pet.care', 'treats.give']);
+});
+
+test('the widget follows up Let\'s go! and Turn on itself (desktop pet)', () => {
+    const ok = { ok: true, result: {} };
+    assert.deepEqual(plain(M.responseEffects('pet.start', {}, ok, { overlayOnLoad: false })),
+        [{ setting: 'overlayOnLoad', value: true }, { launch: 'show' }]);
+    assert.deepEqual(plain(M.responseEffects('pet.start', {}, { ok: false, error: { code: 'ALREADY_ARMED' } }, {})), []);
+    assert.deepEqual(plain(M.responseEffects('app.set_enabled', { enabled: true }, ok, { overlayOnLoad: true })), [{ launch: 'show' }]);
+    assert.deepEqual(plain(M.responseEffects('app.set_enabled', { enabled: true }, ok, { overlayOnLoad: false })), []);
+    assert.deepEqual(plain(M.responseEffects('app.set_enabled', { enabled: false }, ok, { overlayOnLoad: true })), []);
+    assert.deepEqual(plain(M.responseEffects('pet.care', { action: 'food' }, ok, { overlayOnLoad: true })), []);
+});
+
+test('the Connect card row after Connect: refused, stale and new failures', () => {
+    const failed = { connected: false, failed_reason: 'too_old', job: null };
+    const running = { connected: false, failed_reason: 'too_old', job: { id: 'job-0123456789abcdef01234567', kind: 'connect', state: 'running' } };
+    assert.equal(M.connectRowView(failed, { refused: true }, 0), 'failed', 'a refused Connect fails its rows at once');
+    assert.equal(M.connectRowView({ connected: true, failed_reason: null, job: null }, { refused: true }, 0), 'failed');
+    const mark = { refused: false, reason: 'too_old', sawJob: false, at: 1000 };
+    assert.equal(M.connectRowView(failed, mark, 1500), 'pending', 'the failure from before Connect is not the result');
+    assert.equal(M.connectRowView(running, mark, 1500), 'busy');
+    assert.equal(M.connectRowView(failed, Object.assign({}, mark, { sawJob: true }), 1500), 'failed', 'after its job: the result');
+    assert.equal(M.connectRowView({ connected: false, failed_reason: 'blocked', job: null }, mark, 1500), 'failed', 'a new reason');
+    assert.equal(M.connectRowView(failed, mark, 1000 + M.CONNECT_GRACE_MS), 'failed', 'after the grace time');
+    assert.equal(M.connectRowView(failed, Object.assign({}, mark, { reason: null }), 1500), 'failed', 'no failure before');
+    assert.equal(M.connectRowView({ connected: true, failed_reason: null, job: null }, mark, 1500), 'done');
+    assert.equal(M.connectRowView(failed, null, 0), 'failed', 'no mark: the plain state');
+});
+
+test('the name check asks for a name when there is none', () => {
+    assert.equal(M.nameProblem(''), 'name.type');
+    assert.equal(M.nameProblem('   '), 'name.type');
+    assert.equal(M.nameProblem(null), 'name.type');
+    assert.equal(M.nameProblem('Pip'), '');
+    assert.equal(M.nameProblem('x'.repeat(25)), 'err.name_too_long');
+    assert.equal(M.nameProblem('a\u0007b'), 'err.name_too_long');
+    assert.equal(S['name.type'], 'Type a name');
 });
 
 test('maxUnseenSeq and whenKey', () => {

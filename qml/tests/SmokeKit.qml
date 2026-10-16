@@ -212,6 +212,16 @@ Item {
                          label + ": status line on one line (" + line.text + ")")
     }
 
+    // No visible kid-facing text is cut off: an elided or line-capped Text reports
+    // `truncated` when what it renders is shorter than its text (adult pages exempt).
+    function notCut(root, label) {
+        var bad = []
+        var all = kit.texts(root)
+        for (var i = 0; i < all.length; i++)
+            if (!all[i].adult && all[i].item.truncated === true) bad.push(all[i].text)
+        return kit.check(bad.length === 0, label + ": no kid text cut off" + (bad.length ? " " + JSON.stringify(bad) : ""))
+    }
+
     // ---------------------------------------------------------------- sequencing
 
     // Runs steps one after another; a step may return the ms to wait before the next one
@@ -257,6 +267,7 @@ Item {
 
     function all(app, label) {
         kit.kidCopy(app, label)
+        kit.notCut(app, label)
         kit.sizes(app, label)
         kit.fits(app, label)
     }

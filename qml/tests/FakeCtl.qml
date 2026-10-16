@@ -4,7 +4,8 @@ import "../../omarchy-plugin/petstate.js" as PetState
 
 // Test-only controller for the bar plugin's PopupApp (the role BarWidget plays in the
 // shell): it serves a bar-v2 fixture, records requests and answers them from `responses`
-// on the next event-loop turn (or holds them while `hold` is set).
+// on the next event-loop turn (or holds them while `hold` is set). Like BarWidget.request it
+// applies the widget's own follow-ups (CodePetBar.responseEffects) before the callback.
 QtObject {
     id: ctl
     property var barState: null
@@ -50,14 +51,23 @@ QtObject {
         }
         ctl.calls = ctl.calls.concat([{ method: method, params: params }])
         var resp = ctl.answer(method, params)
-        if (ctl.hold) { ctl.held = ctl.held.concat([{ resp: resp, callback: callback }]); return true }
-        Qt.callLater(function () { if (callback) callback(resp) })
+        var job = { method: method, params: params, resp: resp, callback: callback }
+        if (ctl.hold) { ctl.held = ctl.held.concat([job]); return true }
+        Qt.callLater(function () { ctl.deliver(job) })
         return true
+    }
+    function deliver(job) {
+        var fx = Model.responseEffects(job.method, job.params, job.resp, ctl.cfg)
+        for (var i = 0; i < fx.length; i++) {
+            if (fx[i].setting !== undefined) ctl.setSetting(fx[i].setting, fx[i].value)
+            if (fx[i].launch !== undefined) ctl.launch(fx[i].launch)
+        }
+        if (job.callback) job.callback(job.resp)
     }
     function release() {
         var h = ctl.held
         ctl.held = []
-        for (var i = 0; i < h.length; i++) if (h[i].callback) h[i].callback(h[i].resp)
+        for (var i = 0; i < h.length; i++) ctl.deliver(h[i])
     }
     function setSetting(key, value) {
         ctl.settings = ctl.settings.concat([{ key: key, value: value }])

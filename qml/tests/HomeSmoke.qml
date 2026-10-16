@@ -171,6 +171,48 @@ Window {
         },
         function () { win.load("jar-full") },
         function () { kit.check(kit.find(app, "cp.treats").visible, "a full jar still offers Treats") },
+        // ---- the full jar wiggles and says so (K5): Home opening on the unseen finished turn,
+        // a turn finishing while Home is open, and the idle status line.
+        function () { win.load("idle-happy"); app.go("more", {}) },
+        function () {
+            ctl.seen = { finished_seq: 0, hello_seq: 0, test_at_ms: 0 }
+            ctl.barState = kit.fixture("jar-full")
+            kit.check(ctl.face.line === "act.done_full", "jar-full: the finished turn is unseen (" + ctl.face.line + ")")
+            app.home()
+        },
+        function () {
+            kit.check(kit.find(app, "cp.body").item.jarWiggling === true, "Home opening on a finished turn with a full jar wiggles the jar")
+            kit.check(text("cp.statusLine") === "All done! The jar is full!", "and says so: " + text("cp.statusLine"))
+            return 700
+        },
+        function () {
+            ctl.seen = { finished_seq: 2, hello_seq: 0, test_at_ms: 0 }
+            kit.check(ctl.face.state === "idle", "seen: idle (" + ctl.face.state + ")")
+            kit.check(text("cp.statusLine") === "The treat jar is full!", "idle with a full jar: the treats.full line (" + text("cp.statusLine") + ")")
+            kit.check(kit.find(app, "cp.body").item.jarWiggling === false, "the wiggle is over")
+            var doc = kit.fixture("jar-full")
+            doc.agent.finished_seq = 3
+            doc.agent.finished_at_ms = ctl.now - 10000
+            ctl.barState = doc
+        },
+        function () {
+            kit.check(kit.find(app, "cp.body").item.jarWiggling === true, "a turn finishing while Home is open wiggles the full jar")
+            return 700
+        },
+        function () {
+            var doc = kit.fixture("idle-treats")
+            ctl.seen = { finished_seq: 99, hello_seq: 0, test_at_ms: 0 }
+            ctl.barState = doc
+        },
+        function () {
+            var doc = kit.fixture("idle-treats")
+            doc.agent.finished_seq = 100
+            ctl.barState = doc
+        },
+        function () {
+            kit.check(kit.find(app, "cp.body").item.jarWiggling === false, "a jar that is not full does not wiggle")
+            kit.check(text("cp.statusLine") !== "The treat jar is full!", "nor says it is full")
+        },
         // ---- Wake up (asleep -> pet.wake, paused -> pet.pause false).
         function () { win.load("asleep") },
         function () { kit.find(app, "cp.wake").tapped() },
@@ -200,6 +242,22 @@ Window {
         },
         function () { kit.check(app.screen === "change", "Change opens"); app.home(); kit.find(app, "cp.round.more").tapped() },
         function () { kit.check(app.screen === "more", "More opens"); app.home() },
+        // ---- a failure away from Home is shown where the kid is (the notice over the screen).
+        function () { ctl.responses = { "pet.sleep": { ok: false, error: { code: "INVALID_STATE" } } }; app.go("more", {}) },
+        function () { kit.find(app, "cp.more.bedtime").tapped() },
+        function () {
+            var n = kit.find(app, "cp.notice")
+            kit.check(app.screen === "more" && n && kit.shown(n, app) && n.text === "Oops! Please try again.",
+                      "a failed Bedtime says so on More: " + (n ? n.visible + " " + n.text : "none"))
+            kit.kidCopy(app, "notice on More")
+            kit.fits(app, "notice on More")
+            ctl.responses = {}
+            app.home()
+        },
+        function () {
+            var n = kit.find(app, "cp.notice")
+            kit.check(!n.visible && app.bubbleText === "Oops! Please try again.", "on Home the word bubble says it instead")
+        },
         // ---- rename through the name button.
         function () { kit.find(app, "cp.nameButton").Accessible.pressAction() },
         function () {
@@ -209,6 +267,10 @@ Window {
         },
         function () {
             kit.check(app.editing && text("cp.nameError") === "That name is too long.", "a long name is refused: " + text("cp.nameError"))
+            app.finishEdit("   ")
+        },
+        function () {
+            kit.check(app.editing && text("cp.nameError") === "Type a name", "an empty name asks for one: " + text("cp.nameError"))
             app.finishEdit("  Pip ")
         },
         function () {
