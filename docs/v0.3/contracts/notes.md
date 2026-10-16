@@ -388,7 +388,15 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
    it cannot read fails the Connect as `blocked` before the CLI runs. In 0.21.3
    `agent_loop_stopped` carries `session_key` and `platform` but no `session_id`
    (`tui_gateway/session_lifecycle.py`), so the plugin drops it and the stale rule covers
-   the turn. The plugin is about 140 lines (the SPEC aimed for under 100).
+   the turn. The plugin is about 140 lines (the SPEC aimed for under 100) and declares its
+   nine hooks in `provides_hooks`. Offline gate (`tools/integrations/hermes-offline-gate.sh`,
+   network namespace, throwaway `HERMES_HOME`, capture
+   `crates/codepet-cli/tests/fixtures/hermes-cli-gate-0.21.3.txt`): `plugins validate`
+   passes, `plugins doctor codepet` reports "runtime discovery, manifest parsing, import,
+   and registration passed" with 9 hooks, and `enable`/`disable` rewrite `config.yaml`
+   (lists re-indented and sorted, `disabled: []`, a new top-level `_config_version` and
+   appended comment blocks), which the key check accepts. A read-only probe parsed the
+   owner's real `config.yaml` with the reader (only the result was printed).
 7. **Codex.** A CodePet group is one whose every handler runs `*/codepet-hook codex`. The
    tombstone is the group left byte-identical (still trusted, so Codex shows no review
    prompt; the `disconnected` flag makes the shim exit); a later pass removes it once it is
@@ -399,7 +407,8 @@ what WP3 had to decide; where they differ from the SPEC text, they win.
    and fails `blocked`. A CodePet line with `enabled = false` in `/hooks` reports
    `needs_step: codex_hooks_off` ("! Turned off in Codex"), like `[features] hooks = false`.
    `codepet doctor` warns when other hooks follow CodePet lines (Stop watching would leave
-   them as tombstones).
+   them as tombstones). A read-only probe recomputed the fingerprints of the owner's four
+   existing trust entries from the real `hooks.json`/`config.toml`: 4 of 4 match.
 8. **Shim path.** Stored commands carry the literal shim path, so it must be usable in a
    shell and a JSON string unquoted: `[A-Za-z0-9._/+:@,=-]` only, else Connect fails
    `blocked` (`commands.json` `path_rule` still governs `S` and `B` inside the shim).

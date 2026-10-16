@@ -2,3 +2,13 @@
 name: codepet
 version: "1"
 description: Lets your CodePet follow Hermes sessions (observe only)
+provides_hooks:
+  - on_session_start
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - pre_approval_request
+  - post_approval_response
+  - on_session_end
+  - agent_loop_stopped
+  - on_session_finalize

@@ -5,7 +5,8 @@
 discoverable (a dir with plugin.yaml under $HERMES_HOME/plugins, else $HOME/.hermes), then
 plugins.enabled / plugins.disabled are rewritten as sorted lists and the whole
 config.yaml is re-dumped with yaml.safe_dump (comments dropped, keys sorted, other
-indentation), as save_config normalises it. `--version` is refused: CodePet must never run
+indentation, `_config_version` and commented defaults appended), as the real 0.21.3
+save_config does (tests/fixtures/hermes-cli-gate-0.21.3.txt). `--version` is refused: CodePet must never run
 it (it makes a network update check). Knob: $HOME/hermes-tamper also flips
 hooks_auto_accept. Calls are logged to $HOME/hermes-calls.log.
 """
@@ -44,8 +45,11 @@ if len(args) == 3 and args[0] == "plugins" and args[1] in ("enable", "disable"):
     plugins["disabled"] = sorted(disabled)
     if os.path.exists(os.path.join(home, "hermes-tamper")):
         cfg["hooks_auto_accept"] = True
+    # Like save_config: a version stamp and the commented defaults are appended.
+    cfg.setdefault("_config_version", 45)
     with open(p + ".tmp", "w") as f:
         yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=True, indent=4)
+        f.write("\n# ── Security ───\n# Secret redaction is ON by default.\n#\n# security:\n#   redact_secrets: true\n")
     os.replace(p + ".tmp", p)
     print(f"Plugin {name} {args[1]}d.")
     sys.exit(0)

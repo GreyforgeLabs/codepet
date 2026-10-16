@@ -918,6 +918,37 @@ mod tests {
         assert_eq!(stop[0], want);
     }
 
+    /// Manual probe (ignored): `CODEPET_CODEX_PROBE=<codex dir> cargo test codex_probe --
+    /// --ignored` reads `hooks.json` and `config.toml` in memory and prints only how many
+    /// `[hooks.state]` entries for that file match the recomputed fingerprint (never any
+    /// content). It checks the hash formula against real trust entries.
+    #[test]
+    #[ignore]
+    fn codex_probe() {
+        let Some(dir) = std::env::var_os("CODEPET_CODEX_PROBE") else {
+            return;
+        };
+        let dir = PathBuf::from(dir);
+        let path = dir.join("hooks.json");
+        let tree = read_tree(&path).unwrap().unwrap().1;
+        let cfg = tomlish::read(&fs::read_to_string(dir.join("config.toml")).unwrap());
+        let prefixes = key_prefixes(&path);
+        let (mut total, mut matched) = (0, 0);
+        for t in &cfg.trust {
+            if let Some((ev, g, h)) = parse_key(&t.key, &prefixes) {
+                total += 1;
+                if hash_at(&tree, ev, g, h).is_some() && hash_at(&tree, ev, g, h) == t.trusted_hash
+                {
+                    matched += 1;
+                }
+            }
+        }
+        println!(
+            "codex_probe: hooks_off={} entries_for_this_file={total} matching={matched}",
+            cfg.hooks_off
+        );
+    }
+
     #[test]
     fn an_unparsable_file_is_never_touched() {
         let t = tempfile::tempdir().unwrap();

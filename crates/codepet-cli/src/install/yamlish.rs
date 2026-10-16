@@ -568,6 +568,23 @@ quoted: \"a\\nb\"
         assert_eq!(parse(a).unwrap(), parse(b).unwrap());
     }
 
+    /// Manual probe (ignored): `CODEPET_YAML_PROBE=<file> cargo test yaml_probe -- --ignored`
+    /// parses a real config in memory and prints only whether it parsed and how many
+    /// top-level keys it has (never any content).
+    #[test]
+    #[ignore]
+    fn yaml_probe() {
+        let Some(p) = std::env::var_os("CODEPET_YAML_PROBE") else {
+            return;
+        };
+        let text = std::fs::read_to_string(p).unwrap();
+        match parse(&text) {
+            Ok(Y::Map(kv)) => println!("yaml_probe: parsed, {} top-level keys", kv.len()),
+            Ok(_) => println!("yaml_probe: parsed, not a mapping"),
+            Err(_) => println!("yaml_probe: NOT parsed"),
+        }
+    }
+
     #[test]
     fn refuses_what_it_cannot_read() {
         for bad in [

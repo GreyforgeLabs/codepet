@@ -246,6 +246,20 @@ mod tests {
         yamlish::parse(t).unwrap()
     }
 
+    /// The real Hermes 0.21.3 CLI's rewrite (tools/integrations/hermes-offline-gate.sh,
+    /// `tests/fixtures/hermes-cli-gate-0.21.3.txt`): comments dropped, lists re-indented and
+    /// sorted, `disabled: []`, `_config_version` and trailing comment blocks added.
+    #[test]
+    fn key_check_accepts_the_real_cli_rewrite() {
+        let before = y("# throwaway\nmodel:\n  default: m1\nplugins:\n  enabled:\n  - other\nhooks:\n  pre_tool_call:\n  - command: echo hi\n");
+        let tail = "_config_version: 45\n\n# ── Security ───\n# Secret redaction is ON by default.\n#\n# security:\n#   redact_secrets: true\n";
+        let enabled = y(&format!("model:\n  default: m1\nplugins:\n  enabled:\n    - codepet\n    - other\n  disabled: []\nhooks:\n  pre_tool_call:\n    - command: echo hi\n{tail}"));
+        let disabled = y(&format!("model:\n  default: m1\nplugins:\n  enabled:\n    - other\n  disabled:\n    - codepet\nhooks:\n  pre_tool_call:\n    - command: echo hi\n{tail}"));
+        assert!(config_unchanged(&before, &enabled, true));
+        assert!(enabled_in(&enabled) && !enabled_in(&disabled));
+        assert!(config_unchanged(&enabled, &disabled, false));
+    }
+
     #[test]
     fn key_check_allows_only_the_codepet_move() {
         let before = y("model: x\nplugins:\n  enabled: [herdr-agent-state]\n  disabled: [codepet, old]\nhooks:\n  a: 1\n");
