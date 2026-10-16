@@ -41,9 +41,46 @@ fn status_on_an_empty_home_lists_five_clients_and_runs_nothing() {
         let keys: Vec<&String> = c.as_object().unwrap().keys().collect();
         assert_eq!(keys.len(), 11, "{c}");
     }
-    // The export now carries one record per client.
+    // The export now carries one record per client, shaped like bar.v2.schema.json's
+    // client entry; the status entry adds name and events_7d (protocol.json).
     let bar = h.bar();
     assert_eq!(bar["clients"].as_object().unwrap().len(), 5);
+    let schema: Value = serde_json::from_str(include_str!(
+        "../../../docs/v0.3/contracts/bar.v2.schema.json"
+    ))
+    .unwrap();
+    let mut want: Vec<&str> = schema["$defs"]["client"]["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    want.sort();
+    for (id, entry) in bar["clients"].as_object().unwrap() {
+        let mut got: Vec<&str> = entry
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        got.sort();
+        assert_eq!(got, want, "{id}");
+    }
+    let protocol: Value =
+        serde_json::from_str(include_str!("../../../docs/v0.3/contracts/protocol.json")).unwrap();
+    let mut want: Vec<&str> = protocol["result_schemas"]["clients.status"]["$defs"]
+        ["client_status"]["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    want.sort();
+    for c in list {
+        let mut got: Vec<&str> = c.as_object().unwrap().keys().map(String::as_str).collect();
+        got.sort();
+        assert_eq!(got, want);
+    }
     assert!(!h.data_dir().exists(), "status writes no client artifact");
 }
 

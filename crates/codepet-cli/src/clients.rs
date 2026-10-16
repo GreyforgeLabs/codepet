@@ -122,8 +122,20 @@ pub fn start(
     let ctx = context(store)?;
     let job_id = clients_job::new_job_id()
         .map_err(|_| Failure::new(ErrorCode::Internal, "no random job id"))?;
+    // The journal exists before the database marks the job running, so a concurrent
+    // recovery never clears a job that is about to start (a fresh journal without a pid
+    // counts as starting).
+    let guess: Vec<ClientId> = match &target {
+        JobTarget::Named(list) => list.clone(),
+        JobTarget::Connected(_) => Vec::new(),
+    };
+    clients_job::create_journal(&ctx.paths, &job_id, kind, &guess, &ctx.bin)
+        .map_err(|_| Failure::new(ErrorCode::Internal, "could not write the job journal"))?;
+    let drop_journal = || {
+        let _ = install::remove_file(&ctx.paths.job_path(&job_id));
+    };
     let refuses_off = kind != "disconnect";
-    let (job_id, clients, replayed) = store.start_clients_job(
+    let started = store.start_clients_job(
         request_id,
         method,
         &canonical,
@@ -131,17 +143,32 @@ pub fn start(
         kind,
         &target,
         &job_id,
-    )?;
-    if !replayed {
-        let started = clients_job::create_journal(&ctx.paths, &job_id, kind, &clients, &ctx.bin)
-            .and_then(|()| clients_job::spawn(&job_id));
-        if started.is_err() {
-            let _ = store.finish_clients_job(&job_id);
-            return Err(Failure::new(
-                ErrorCode::Internal,
-                "could not start the clients job",
-            ));
+    );
+    let (running_id, clients, replayed) = match started {
+        Ok(v) => v,
+        Err(e) => {
+            drop_journal();
+            return Err(e.into());
         }
+    };
+    if replayed {
+        // The receipt names an earlier job; this one never starts.
+        drop_journal();
+        return Ok(json!({ "job_id": running_id }));
+    }
+    let spawned = (if clients == guess {
+        Ok(())
+    } else {
+        clients_job::create_journal(&ctx.paths, &job_id, kind, &clients, &ctx.bin)
+    })
+    .and_then(|()| clients_job::spawn(&job_id));
+    if spawned.is_err() {
+        let _ = store.finish_clients_job(&job_id);
+        drop_journal();
+        return Err(Failure::new(
+            ErrorCode::Internal,
+            "could not start the clients job",
+        ));
     }
     Ok(json!({ "job_id": job_id }))
 }
