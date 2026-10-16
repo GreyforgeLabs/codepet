@@ -1,20 +1,30 @@
 .pragma library
 
-// Pure helpers for the overlay's passive `bar-state.json` input (docs/omarchy-plugin.md, docs/lifecycle.md).
-// No Quickshell, no I/O, no RPC: BarStateWatcher.qml reads the file, HostAdapter.qml
-// merges the parsed subset into its presentation snapshot. Node-tested by
-// qml/tests/test_quickshell_host.py.
+// Pure helpers for the overlay's passive `bar-state.json` input (SPEC-v0.3 §8,
+// docs/omarchy-plugin.md). No Quickshell, no I/O, no RPC: BarStateWatcher.qml reads the
+// file and the overlay draws straight from the parsed document (petstate.js decides the
+// face). Node-tested by qml/tests/test_quickshell_host.py.
 //
-// The file is a bar-safe subset written by `Store::export_bar_state()` under the
-// database lock, so `state_version` only grows **within one database** (`db_id`). A
-// restored, recreated or swapped database starts a new order: a file or snapshot with
-// another `db_id` is never compared by version. Anything malformed is ignored as a
-// whole (fail closed): the overlay keeps its last authoritative snapshot.
+// The file is written by Rust under the database lock (temp + rename), so
+// `state_version` only grows **within one database** (`db_id`). A restored, recreated or
+// swapped database starts a new order (BarStateWatcher.qml). Anything malformed is
+// ignored as a whole (fail closed): the overlay keeps the last valid document.
+//
+// Readers accept codepet.bar.v1 and codepet.bar.v2 for one release (SPEC-v0.3 §8). A v2
+// document must carry the v0.3 blocks (`enabled`, `agent`, `treats`, `clients`); a v1
+// document may carry them too (the v0.3.0 writer keeps the v1 label until both readers
+// accept v2) and is validated the same way when it does.
 
-var SCHEMA = "codepet.bar.v1"
+var SCHEMAS = ["codepet.bar.v1", "codepet.bar.v2"]
+var CLIENT_IDS = ["claude-code", "codex", "opencode", "hermes", "grok-cli"]
+var APP_STATES = ["working", "waiting", "error"]
+var AGENT_STATES = ["idle", "error", "working", "waiting"]
+var TEST_STATES = ["running", "done", "failed"]
+var MAX_APPS = 5
+var JAR_MAX = 10
 var MAX_BYTES = 16384
 var METERS = ["hunger", "thirst", "mental_health", "hygiene"]
-var CARE_BOOLS = ["sleeping", "sleep_due", "bathroom_due", "ready_to_work"]
+var CARE_BOOLS = ["sleeping", "sleep_due", "bathroom_due"]
 // Enumerated values (life status, need state, task state, mode, pace) are owned by
 // the Rust side; the overlay only checks their token shape so a new value never
 // blinds the pet, and renders unknown values through the shared fallbacks.
@@ -122,7 +132,10 @@ function validCare(c) {
     if (c.sleep_started_at_ms !== null && c.sleep_started_at_ms !== undefined
             && !isMs(c.sleep_started_at_ms))
         return false
-    var r = c.readiness_reasons
+    // v0.3.0 compatibility values (always false / []), dropped in v0.3.1: optional here.
+    if (c.ready_to_work !== undefined && typeof c.ready_to_work !== "boolean")
+        return false
+    var r = c.readiness_reasons === undefined ? [] : c.readiness_reasons
     if (!Array.isArray(r) || r.length > MAX_REASONS)
         return false
     for (var j = 0; j < r.length; j++) {
@@ -169,6 +182,70 @@ function validEvents(ev) {
     return true
 }
 
+function isMsOrNull(v) {
+    return v === null || isCount(v)
+}
+
+function isClientOrNull(v) {
+    return v === null || CLIENT_IDS.indexOf(v) >= 0
+}
+
+function validApp(a) {
+    return isObject(a) && CLIENT_IDS.indexOf(a.id) >= 0 && APP_STATES.indexOf(a.state) >= 0
+           && isCount(a.since_ms) && isCount(a.stale_at_ms)
+}
+
+function validTest(t) {
+    return t === null || (isObject(t) && TEST_STATES.indexOf(t.state) >= 0 && isCount(t.at_ms)
+                          && isClientOrNull(t.client))
+}
+
+// The v0.3 `agent` block (bar.v2.schema.json $defs/agent), bounded.
+function validAgent(a) {
+    if (!isObject(a) || AGENT_STATES.indexOf(a.state) < 0 || !Array.isArray(a.apps) || a.apps.length > MAX_APPS)
+        return false
+    for (var i = 0; i < a.apps.length; i++) {
+        if (!validApp(a.apps[i]))
+            return false
+    }
+    return isMsOrNull(a.stale_at_ms) && isCount(a.finished_seq) && isMsOrNull(a.finished_at_ms)
+           && isClientOrNull(a.finished_app) && typeof a.finished_treat === "boolean"
+           && typeof a.finished_jar_full === "boolean" && isCount(a.hello_seq)
+           && isMsOrNull(a.hello_at_ms) && isClientOrNull(a.hello_app) && validTest(a.test)
+           && isMsOrNull(a.error_at_ms) && isClientOrNull(a.error_app) && typeof a.helpers_busy === "boolean"
+}
+
+function validTreats(t) {
+    return isObject(t) && isCount(t.jar) && t.jar <= JAR_MAX && typeof t.full === "boolean"
+}
+
+// Only the shape the overlay relies on: an object keyed by client ids (WP5 reads the rest).
+function validClients(c) {
+    if (!isObject(c))
+        return false
+    for (var k in c) {
+        if (CLIENT_IDS.indexOf(k) < 0 || !isObject(c[k]))
+            return false
+    }
+    return true
+}
+
+// True when the v0.3 blocks are present and valid (required for v2), or all absent (v1).
+function validV03(s) {
+    var keys = ["enabled", "agent", "treats", "clients"]
+    var present = 0
+    for (var i = 0; i < keys.length; i++) {
+        if (s[keys[i]] !== undefined)
+            present += 1
+    }
+    if (present === 0)
+        return s.schema === "codepet.bar.v1"
+    if (present !== keys.length)
+        return false
+    return typeof s.enabled === "boolean" && validAgent(s.agent) && validTreats(s.treats)
+           && validClients(s.clients)
+}
+
 function validMemorial(m) {
     if (m === undefined)
         return true
@@ -187,7 +264,7 @@ function parse(text) {
     } catch (e) {
         return null
     }
-    if (!isObject(s) || s.schema !== SCHEMA || !isCount(s.state_version))
+    if (!isObject(s) || SCHEMAS.indexOf(s.schema) < 0 || !isCount(s.state_version))
         return null
     if (s.db_id !== undefined && !(typeof s.db_id === "string" && DB_ID.test(s.db_id)))
         return null
@@ -197,13 +274,9 @@ function parse(text) {
         return null
     if (s.critical !== undefined && s.critical !== null && !isObject(s.critical))
         return null
+    if (!validV03(s))
+        return null
     return s
-}
-
-// True when both carry a `db_id` and the two differ: their versions are unrelated.
-function otherDatabase(a, b) {
-    return isObject(a) && isObject(b) && typeof a.db_id === "string" && typeof b.db_id === "string"
-           && a.db_id !== b.db_id
 }
 
 // True when two parsed files name the same database (an unnamed file, from before
@@ -212,148 +285,4 @@ function sameFileDatabase(a, b) {
     var x = isObject(a) && typeof a.db_id === "string" ? a.db_id : ""
     var y = isObject(b) && typeof b.db_id === "string" ? b.db_id : ""
     return x === y
-}
-
-// True when `bar` carries a strictly newer committed state than `snap` of the same
-// database. Without a numeric `state_version` on both sides, or across databases, the
-// order is unknown, and the authoritative snapshot wins (fail closed: the passive file
-// never overrides it).
-function isNewer(snap, bar) {
-    if (!bar || !isCount(bar.state_version) || !snap || !isCount(snap.state_version))
-        return false
-    if (otherDatabase(snap, bar))
-        return false
-    return bar.state_version > snap.state_version
-}
-
-// True when a freshly read file belongs to another database than `snap` (restored,
-// recreated or swapped). The file is the newest observation of the current database
-// (the store rewrites it on every command), so the host replaces the bar-safe subset
-// with it instead of keeping the other database's pet on screen.
-function replacesDatabase(snap, bar) {
-    return !!bar && isCount(bar.state_version) && otherDatabase(snap, bar)
-}
-
-function copy(o) {
-    var out = {}
-    if (isObject(o)) {
-        for (var k in o)
-            out[k] = o[k]
-    }
-    return out
-}
-
-// Merges the passive subset of a newer `bar-state.json` into a copy of the full
-// `state.get` snapshot. Returns `snap` unchanged when `bar` is not newer. Never
-// invents task details: the bar subset has no task id, so a task the snapshot does
-// not know stays unknown until an explicit refresh. With `acrossDatabases`, a file
-// from another database (see replacesDatabase) also merges, and the old database's
-// task details are dropped rather than shown against the new one.
-function merge(snap, bar, acrossDatabases) {
-    if (!snap || !bar)
-        return snap
-    var across = acrossDatabases === true && replacesDatabase(snap, bar)
-    if (!across && !isNewer(snap, bar))
-        return snap
-    var out = copy(snap)
-    out.state_version = bar.state_version
-    if (typeof bar.db_id === "string")
-        out.db_id = bar.db_id
-    if (across) {
-        out.active_task = null
-        out.recent = []
-    }
-
-    var meters = {}
-    for (var i = 0; i < METERS.length; i++)
-        meters[METERS[i]] = bar.meters[METERS[i]]
-    out.meters = meters
-
-    var care = copy(snap.care)
-    for (var j = 0; j < CARE_BOOLS.length; j++)
-        care[CARE_BOOLS[j]] = bar.care[CARE_BOOLS[j]]
-    care.sleep_remaining_ms = bar.care.sleep_remaining_ms
-    care.sleep_started_at_ms = bar.care.sleep_started_at_ms === undefined
-        ? null : bar.care.sleep_started_at_ms
-    care.readiness_reasons = bar.care.readiness_reasons.slice(0)
-    out.care = care
-
-    var life = bar.life === undefined ? null : bar.life
-    if (life === null) {
-        out.life = null
-    } else {
-        var same = isObject(snap.life) && snap.life.life_id === life.life_id
-        var merged = same ? copy(snap.life) : {}
-        var keys = ["life_id", "ordinal", "name", "appearance", "stage", "level", "xp",
-                    "status", "mode", "armed", "pace", "paused", "fainted", "death_pending"]
-        for (var k = 0; k < keys.length; k++) {
-            if (life[keys[k]] !== undefined)
-                merged[keys[k]] = life[keys[k]]
-        }
-        out.life = merged
-        if (isObject(snap.decay)) {
-            var decay = copy(snap.decay)
-            decay.paused = life.paused
-            out.decay = decay
-        }
-    }
-
-    var task = bar.task === undefined ? null : bar.task
-    if (task === null) {
-        out.active_task = null
-    } else if (isObject(out.active_task)) {
-        var brief = copy(out.active_task)
-        brief.state = task.state
-        if (typeof task.category === "string")
-            brief.category = task.category
-        out.active_task = brief
-    }
-
-    if (bar.unseen_events !== undefined) {
-        var events = []
-        for (var e = 0; e < bar.unseen_events.length; e++)
-            events.push({ "seq": bar.unseen_events[e].seq, "kind": "evolved",
-                          "stage": bar.unseen_events[e].stage })
-        out.unseen_events = events
-    }
-
-    if (isObject(snap.lifecycle) && (bar.needs !== undefined || bar.critical !== undefined)) {
-        var lc = copy(snap.lifecycle)
-        if (bar.needs !== undefined && Array.isArray(snap.lifecycle.needs)) {
-            var needs = []
-            for (var n = 0; n < snap.lifecycle.needs.length; n++) {
-                var row = copy(snap.lifecycle.needs[n])
-                for (var b = 0; b < bar.needs.length; b++) {
-                    if (bar.needs[b].need !== row.need)
-                        continue
-                    row.state = bar.needs[b].state
-                    if (bar.needs[b].until_warning_ms !== undefined)
-                        row.until_warning_ms = bar.needs[b].until_warning_ms
-                    if (bar.needs[b].until_critical_ms !== undefined)
-                        row.until_critical_ms = bar.needs[b].until_critical_ms
-                    if (bar.needs[b].until_end_ms !== undefined)
-                        row.until_end_ms = bar.needs[b].until_end_ms
-                }
-                if (meters[row.need] !== undefined)
-                    row.meter = meters[row.need]
-                needs.push(row)
-            }
-            lc.needs = needs
-        }
-        if (bar.critical !== undefined)
-            lc.critical = bar.critical === null ? null : copy(bar.critical)
-        out.lifecycle = lc
-    }
-
-    if (bar.memorial !== undefined) {
-        var mem = copy(snap.memorial)
-        mem.count = bar.memorial.count
-        var latestName = bar.memorial.latest_name
-        if (latestName === null || latestName === undefined)
-            mem.latest = null
-        else if (!(isObject(mem.latest) && mem.latest.name === latestName))
-            mem.latest = { "name": latestName }
-        out.memorial = mem
-    }
-    return out
 }

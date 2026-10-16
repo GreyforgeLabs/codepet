@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Offscreen preview lifecycle; does not certify compositor focus/masking."""
+"""Offscreen preview lifecycle of the v0.3 desktop pet; does not certify compositor
+focus/masking. A click opens Home (a stand-in window for the bar popup); hiding the pet
+never opens anything."""
 import os
 from pathlib import Path
 from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl
@@ -12,21 +14,28 @@ engine.load(QUrl.fromLocalFile(str(Path(__file__).resolve().parents[1] / "standa
 assert engine.rootObjects(), "preview must load"
 root = engine.rootObjects()[0]
 scene = root.findChild(QObject, "overlayScene")
-task = root.findChild(QObject, "overlayTaskWindow")
-assert scene is not None and task is not None
-assert not task.property("visible"), "task panel must not open on startup"
-QMetaObject.invokeMethod(scene, "taskPanelRequested", Qt.DirectConnection)
+home = root.findChild(QObject, "overlayHomeWindow")
+assert scene is not None and home is not None
 app.processEvents()
-assert task.property("visible"), "explicit task gesture opens the independent window"
-task.setProperty("visible", False)
+assert scene.property("shown"), "the preview pet is drawn"
+assert not home.property("visible"), "Home must not open on startup"
+QMetaObject.invokeMethod(scene, "petClicked", Qt.DirectConnection)
 app.processEvents()
-assert scene.property("visible"), "closing tasks leaves pet alive"
-QMetaObject.invokeMethod(scene, "hideRequested", Qt.DirectConnection)
+assert home.property("visible"), "a click on the pet opens Home"
+assert scene.property("heartMsLeft") > 0, "with a heart bubble"
+home.setProperty("visible", False)
 app.processEvents()
-assert not scene.property("visible"), "explicit hide removes the pet"
-assert not task.property("visible"), "hide never opens a task"
+assert scene.property("visible"), "closing Home leaves the pet alive"
+scene.setProperty("visible", False)
+app.processEvents()
+assert not scene.property("active"), "a hidden pet is inactive"
+assert not home.property("visible"), "hiding never opens Home"
 scene.setProperty("visible", True)
 app.processEvents()
-assert not task.property("visible"), "showing pet never opens task window"
-print("PASS: explicit task window, close, hide and restore lifecycle (7 checks)")
+assert not home.property("visible"), "showing the pet never opens Home"
+for face in ("working", "needs you", "hungry", "asleep", "all done", "happy"):
+    root.setProperty("face", face)
+    app.processEvents()
+    assert scene.property("shown"), face
+print("PASS: click opens Home, close, hide, restore and every preview face (9 checks)")
 root.close()

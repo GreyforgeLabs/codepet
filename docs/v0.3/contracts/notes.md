@@ -410,6 +410,111 @@ of each item are made (in their own commit, with `check_contracts.py` passing).
    asterisk shapes. SPEC §4.1 (outside the repository) still names "spark"; this item
    supersedes it.
 
+## 9. WP6 decisions (overlay and shared state, 2026-10-16)
+
+Numbered 9 so it does not collide with section 7 (owner decisions after wave 1, branch
+`v0.3-fix`) and section 8 (WP5). Earlier WP6 drafts called this section 7; "WP6 notes
+item N" means item N here. No frozen contract file, schema, fixture or vector changed.
+These fill gaps the spec left open; consumers named below must follow them.
+
+1. **How the overlay opens Home (§3.8 `openHome`).** Omarchy's `shell call <id> …` reaches
+   panel/overlay plugins only, and a bar widget has one instance per monitor (a plugin
+   `IpcHandler` would register its target once per bar). The overlay therefore runs
+   `omarchy-shell -q shell summon greyforge.codepet`, detached:
+   `$OMARCHY_PATH/bin/omarchy-shell`, or, without an absolute `OMARCHY_PATH`,
+   `/usr/bin/env OMARCHY_PATH=/usr/share/omarchy omarchy-shell` (the PATH wrapper refuses
+   to run without `OMARCHY_PATH`, silently under `-q`). Omarchy's `summon` calls the
+   focused bar's widget through the bar-widget panel contract. **WP5:** `BarWidget.qml`
+   exposes `open()` (opens the popup at Home, including the Off cell rule of §3.1),
+   `close()` and a boolean `opened` (done on `v0.3-wp5` at 9b316f0). Home requests are
+   coalesced: at most one Omarchy call per `OverlayFlow.HOME_COOLDOWN_MS` (1 s), however
+   fast the pet is clicked or the verbs arrive; the hop and heart still answer every
+   click (K5). `status.home_requests` counts the calls sent.
+   **Merge condition (spec §10 step 6, decided here):** the v0.2 bar on `v0.3` has no
+   `open()`, and the overlay exits while `overlayOnLoad` is missing or false (the v0.2
+   default), so the "stub `panel` verb keeps the old bar menu working" condition cannot
+   hold against the old bar: no stub can open a v0.2 popup from outside. WP6 and WP5
+   therefore merge **back to back** (WP6, then WP5 at once; no install, tag, release or
+   hand-off of the integration branch between them), and the stub condition is waived.
+   The overlay keeps `panel` and the v0.2 window verbs as aliases of `openHome`.
+2. **"Pet on my desktop" is `overlayOnLoad`** (the existing manifest setting, §7.2
+   decision 5). The overlay reads `$HOME/.config/omarchy/shell.json` read-only, exactly the
+   file the Omarchy shell reads and writes (`userConfigPath`, which ignores
+   `XDG_CONFIG_HOME`). The bar entry's settings are found like `CodePetBar.ownSettings`.
+   In a file the Omarchy shell would use (a JSON object with `version: 1`): `true` keeps
+   the pet; `false`, a missing key (the manifest default) or no CodePet cell at all (the
+   cell was removed in Omarchy's bar settings without the uninstall) is off. Only no usable
+   file (none, unparsable, oversized, not `version: 1`) is unknown, and a standalone
+   overlay keeps running. **WP5:** `CodePetBar.paths().shellConfig` must use the same path
+   (`$HOME/.config/omarchy/shell.json`, not `XDG_CONFIG_HOME`), so the bar, the overlay
+   and the shell agree. The bar side is `omarchy-plugin/DesktopPetFlow.js` (pure, tested):
+   `afterStart` (Let's go! sets the switch and launches `show`), `setDesktopPet` (on:
+   `show`; off: no verb, the overlay exits by itself), `launchOnLoad` (only with the switch
+   on, CodePet on and an armed life) and `launchOnEnabled` (Off to On). **WP5** writes the
+   returned settings with `updateEntryInline` and runs the returned verb.
+3. **The overlay exits by itself** when the drawn export has `enabled: false` or the switch
+   is off (`OverlayFlow.exitReason`, `Qt.quit()`); started while Off, it exits without
+   running codepet (K9). Off exits at once, and so does the switch turning off after this
+   process saw it on. A switch read as off before the process ever saw it on exits only
+   after the off has held for `OverlayFlow.SETTLE_MS` (1.5 s, one single-shot timer):
+   Omarchy's `persistShellConfig` writes through a non-blocking `FileView.setText`, so the
+   `show` launched right after Let's go! can read the old `false` first (K7). The pet is
+   not drawn while an exit is pending. WP5 therefore needs no write confirmation before
+   launching. `status.exit_reason` names a pending exit (`off`, `desktop_pet_off`, or "").
+4. **The overlay sends no RPC on its own.** It draws `bar-state.json` only. Its two explicit
+   reads are one startup `state.get` when the file is missing or unreadable, and one per
+   `refresh` verb. `CODEPET_OPEN` is ignored (the launcher sends its verb right after
+   starting; honouring both opened Home twice). It never sends `pet.events_seen`, care or
+   any mutation; the v0.3.0 care ring (§3.8, optional) is **not** implemented and slips
+   to v0.3.1.
+5. **Overlay IPC and the launcher.** `openHome` and `panel` open Home; the v0.2 window verbs
+   `tasks`, `care`, `companion`, `life` are aliases while the v0.2 bar menu and launcher
+   send them. `status` drops `window`/`view` and adds `enabled`, `desktop_pet`,
+   `exit_reason`, `calm`, `face`, `overlay`, `drawn`, `home_requests`; `supervisor` is
+   always `false` (the launcher's `quit` check needs the key).
+   **WP3** (`packaging/omarchy/codepet-overlay`): add a `panel` verb. Before starting an
+   overlay for `show`/`toggle`/`panel` (and the aliases), when `$XDG_STATE_HOME/codepet/off`
+   exists (§7.3) print `codepet-overlay: CodePet is off` and exit 0 without starting it.
+   After a start or a call, read `status`; when `exit_reason` is not empty print
+   `codepet-overlay: the desktop pet is off` (or `CodePet is off` for `off`) and exit 0,
+   never "did not answer within 3 s" or "<verb> failed". The window verbs can go once WP5
+   stops sending them.
+   **WP5:** the v0.2 bar menu entries (Care, Tasks, Companion, Life, Show/hide pet) are
+   removed in the same merge that lands the v0.3 popup.
+6. **Celebrate once on the desktop.** The overlay keeps its own `seen`
+   (`finished_seq`, `hello_seq`, `test_at_ms`, from the face's new `celebrate` field) and
+   plays a growth celebration once by dropping the unseen growth from its own face
+   (`OverlayFace.withoutGrowth`); only Home acknowledges growth in Rust. A new overlay
+   process seeds `seen` and the played growth from the first export it draws
+   (`OverlayFace.seenAtStart`: the export's `finished_seq`, `hello_seq`, a done ready
+   check's `at_ms` and the newest unseen growth), so a restart (Off to On, the switch off
+   and on, a bar reload or a session restart) never replays a celebration. The cost: a
+   celebration exported before the process started is not played on the desktop (the bar
+   and Home still show it). Nothing is persisted, so no new state file exists.
+7. **Calm mode reaches the overlay live.** Calm mode is the bar entry's `calm` setting in
+   the same `shell.json` (WP5 notes section 8 item 6: default off, because Omarchy exposes
+   no system reduced-motion signal, so "follows system" means the plugin default). The
+   overlay reads it with the `FileView` it already has for `overlayOnLoad` and applies a
+   change at once (no walking, bob or hop). `CODEPET_REDUCED_MOTION=1` from the launcher
+   applies only when there is no usable file or no CodePet cell; a `setReducedMotion` IPC
+   call holds until the setting next changes. **WP5:** nothing more is needed (keep
+   writing `calm` with `updateEntryInline`; passing the env var stays harmless). If a
+   system reduced-motion signal appears later, the bar resolves it into `calm`; the
+   overlay reads only the setting.
+8. **`petstate.js`** is generated by `tools/petstate/gen_petstate.py` into
+   `qml/shared/` and `omarchy-plugin/` (identical bytes; `--check` fails when stale,
+   including after any `agent_vectors.json` change). Beyond the vector keys, the face has
+   `celebrate` ({kind, seq, at_ms} or null), and the module exports `emptyFace`,
+   `appName` (client id to display name) and `needLevel`. Replayed through both copies by
+   `qml/tests/test_petstate.mjs`. **WP5:** load `omarchy-plugin/petstate.js` instead of
+   re-deriving the order in `CodePetBar.js`.
+9. **Readers.** `qml/omarchy/BarState.js` accepts `codepet.bar.v1` and `codepet.bar.v2`.
+   The v0.3 blocks (`enabled`, `agent`, `treats`, `clients`) are all present (required
+   under v2, validated under v1 too) or all absent (a v0.2 v1 file). The care
+   compatibility keys `ready_to_work`/`readiness_reasons` are optional, so v0.3.1 can drop
+   them. Once `CodePetBar.js` (WP5) also accepts v2, Rust can switch the label
+   (`bar_export.rs` `BAR_SCHEMA`).
+
 ## 10. WP3 decisions and amendments (integrations + packaging, 2026-10-16)
 
 Numbered 10 at the merge: section 7 is the owner decisions after wave 1 (branch `v0.3-fix`),

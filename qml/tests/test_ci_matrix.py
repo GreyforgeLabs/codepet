@@ -24,7 +24,8 @@ def run_lines():
 class CiMatrix(unittest.TestCase):
     def test_every_smoke_runs(self):
         smokes = sorted(p.name for p in TESTS.glob("*Smoke.qml"))
-        self.assertGreaterEqual(len(smokes), 9)
+        # v0.3 retired the two task smokes (FilteredDraft, Timeline) and added OverlayAgent.
+        self.assertGreaterEqual(len(smokes), 8)
         lines = "\n".join(run_lines())
         # Either the glob loop or each smoke by name.
         if 'for smoke in qml/tests/*Smoke.qml' in lines:

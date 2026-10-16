@@ -1,10 +1,11 @@
 # CodePet QML UI
 
-Rust is the authority for care, readiness, sleep, acceptance and progression. QML
-renders snapshots and sends deliberate requests. It never grants stats or XP,
-completes sleep, or starts work from an animation, timer, care action or level.
-Only the mock provider is available. The shared UI prominently labels simulation;
-no commands run and no project files are read or changed by mock execution.
+Rust is the authority for care, sleep, treats and growth. QML renders snapshots and the
+exported `bar-state.json` and sends deliberate requests. It never grants stats or XP or
+completes sleep from an animation, timer or care action. In v0.3 the simulated task
+pipeline is retired (SPEC-v0.3 §6.5): the task form, review, timeline, meters and
+progression panel are deleted, and the everyday UI is the Omarchy bar popup
+(`omarchy-plugin/`). Coding apps are only observed (their hooks), never started.
 
 See [overlay capabilities and live validation](../docs/desktop-overlay.md) and
 [Quickshell host controls](omarchy/README.md) for the primary desktop entry.
@@ -13,12 +14,20 @@ See [overlay capabilities and live validation](../docs/desktop-overlay.md) and
 
 v0.2 (raster companions and the life UI):
 
-- `shared/Panel.qml`: views `home`, `care`, `tasks`, `companion` and `life` (plus the
-  internal form/review views); adoption when no companion lives, a "Set up life rules"
-  banner for an unarmed life
-- `shared/DesktopPet.qml`: transparent floor-local pet scene, hover meters, compact care
-  menu, transient props and the single bounded cosmetic scheduler; aquatic companions stay
-  in their habitat
+- `shared/Panel.qml`: the v0.2 window views `home`, `care`, `companion` and `life`, kept for
+  the standalone preview; adoption when no companion lives, a "Set up life rules" banner
+  for an unarmed life
+- `shared/DesktopPet.qml` (v0.3): the desktop pet. It draws a parsed `bar-state.json` and
+  sends nothing: `shared/petstate.js` picks the face in the one shared order, and
+  `shared/OverlayFace.js` turns it into an animation and a picture-only thought bubble
+  (app tiles, the need's care icon, bandage, star, heart). Celebrations play once. A click
+  hops (Calm mode: bubble only), shows a heart and emits `homeRequested()`. A new process
+  never replays a celebration that was in its first export. One bounded
+  cosmetic scheduler plus one single-shot wake timer for the face's `wake_at_ms`; no menu,
+  meters or text on the desktop; aquatic companions stay in their habitat
+- `shared/petstate.js` (and the identical `omarchy-plugin/petstate.js`): the shared
+  priority, GENERATED from `docs/v0.3/contracts/agent_vectors.json` by
+  `tools/petstate/gen_petstate.py`; never edit it by hand
 - `shared/PetSprite.qml`: passive raster renderer. It sets one frame URL from the species
   manifest's explicit frame lists (`qml/assets/pets/<id>/s<stage>/b|cNN.webp`), mirrors
   floor species when walking left, and shows `_placeholder.webp` for a missing or broken
@@ -36,26 +45,19 @@ v0.2 (raster companions and the life UI):
 
 Retained from v0.1:
 
-- `shared/PetCare.qml`: explicit care controller and keyboard-accessible task-window
-  controls, including the atomic care routine
-- `shared/ProgressionPanel.qml`: isolated demo/real XP, levels, four mastery tracks
-- `shared/TaskForm.qml`: bounded draft, small guided simulation, providers,
-  revision-bound preflight, explicit acknowledgement and Start
-- `shared/TaskReview.qml`: literal-text artifacts, honest verification status,
-  override reason, explicit acceptance/discard and saved reward receipts. A saved review
-  digest outside the protocol's 1 to 128 UTF-8 bytes keeps Accept, Discard and Abandon
-  disabled and points to "Check interrupted tasks"; an `INVALID_PARAMS` refusal shows the
-  same hint
-- `shared/TaskTimeline.qml`: bounded, explicitly loaded durable task-state events
-- `shared/WellbeingMeter.qml`, `shared/StatusBadge.qml`: textual values and states
+- `shared/PetCare.qml`: explicit care controller of the preview's Care view, including the
+  atomic care routine
 - `standalone/Main.qml`, `standalone/PreviewHost.qml`, `standalone/Fixtures.js`:
-  pure-QML fixed-fixture preview
-- `shell.qml`: Quickshell host entry (at `qml/` so `shared/`, `omarchy/` and `assets/` are
-  inside its config folder): transparent non-focusable layer-shell overlay and the
-  explicit-open Care · Tasks · Companion · Life window
-- `standalone/OverlayPreview.qml`: fixture-only scene preview in a normal window
-- `omarchy/HostAdapter.qml`: Quickshell transport, one `codepet rpc` process per request;
-  `omarchy/BarStateWatcher.qml` and `omarchy/BarState.js` merge `bar-state.json` without RPC
+  pure-QML fixed-fixture preview of the v0.2 views
+- `shell.qml`: Quickshell host entry of the desktop pet (at `qml/` so `shared/`, `omarchy/`
+  and `assets/` are inside its config folder): one transparent, non-focusable,
+  click-through layer-shell overlay whose input region is the pet. There is no window: a
+  click opens the bar popup at Home. The process exits on Off and when "Pet on my
+  desktop" is off, and follows Calm mode live ([omarchy/README.md](omarchy/README.md))
+- `standalone/OverlayPreview.qml`: fixture-only desktop-pet preview in a normal window
+- `omarchy/HostAdapter.qml`: explicit `codepet rpc` transport (one process per request);
+  `omarchy/BarStateWatcher.qml` and `omarchy/BarState.js` read `bar-state.json` (v1 and v2)
+  without RPC; `omarchy/OverlayFlow.js` holds the exit, settings and Home rules
 - `tests/`: headless UI/transport harnesses, not product runtime code
 
 Quickshell imports remain confined to the host entry `shell.qml`, the Omarchy adapter
@@ -76,14 +78,10 @@ Shared components receive a `host` object. Required:
 
 Optional (each is feature-tested, so an older host keeps working):
 
-- `supervisorActive`: used only for the explicit Refresh hint
 - `clientTag`: request-id prefix for retry keys (`overlay`, `preview`; default `ui`)
 - `presentationLocks`: integer the care routine increments while its cosmetic
   choreography runs, so the scene holds still
 - `openCompanion()`, `openLife()`: ask the host to open that tab; they only signal
-- `taskAccepted(outcome)`: a signal or function the host exposes; `TaskReview` calls it
-  after its own acceptance and the follow-up `state.get`, and `DesktopPet` celebrates
-  growth from it. Other UIs celebrate on the next explicit click
 
 `Panel`, `LifePanel` and `PetChooser` take an optional `registry` (the generated
 `PetRegistry.REGISTRY`); without it `LifeText` uses its built-in roster, which
@@ -96,30 +94,14 @@ The v0.2 snapshot adds `life` (null when no companion lives), `lifecycle` (inclu
 [docs/lifecycle.md](../docs/lifecycle.md). Hosts must not issue RPC in response to a
 snapshot change or a file event; the Quickshell host merges `bar-state.json` as data only.
 
-Existing task/transport contracts are retained. `snapshot.care` provides readiness,
-bathroom/rest counters and sleep status; `snapshot.progression` separates `demo`
-and `real` lifetime XP, levels and mastery. See `docs/milestone-1.md` for RPC shapes.
-Care mutations are `pet.care {action: food|water|play|wash|bathroom|routine}`,
-`pet.sleep {}` and `pet.wake {}`. The UI care routine is one click and one request,
-the atomic backend `pet.care {action: "routine"}` (as the bar popup sends): storage fills
-every needed bar in one transaction. Only after that confirmed response does the overlay
-play each step's reaction, cosmetically; no timer ever sends a request (spec §1), and
-Stop or hiding only ends the choreography.
-Each confirmed care/sleep action is followed by an explicit state refresh.
-
-The Start button and its handler require the authoritative `ready_to_work`, a
-fresh preflight for this exact draft and care revision, and acknowledgement.
-Any edit or care/rest revision change clears preflight and acknowledgement.
-Start checks token expiry at click time and drops the token once clicked. Rust
-rechecks readiness and consumes the token transactionally. Care changes while
-already running do not cancel the task or prevent review/acceptance.
-
-Saved instructions returned by Rust replace any locally entered text changed by
-privacy filtering. The form visibly discloses the change before acknowledgement.
-Folder/scope/instructions remain bounded (16 KiB instructions, 32 KiB combined
-JSON), and override reasons remain bounded to 512 UTF-8 bytes. Untrusted artifacts,
-events, summaries and labels are plain text. Preview logging includes only request
-ID/method, never instructions, reasons or full payloads.
+`snapshot.care` provides bathroom/rest counters and sleep status (its v0.3.0
+`ready_to_work`/`readiness_reasons` keys are inert compatibility values). Care mutations
+are `pet.care {action: food|water|play|wash|bathroom|routine}`, `pet.sleep {}` and
+`pet.wake {}`. The UI care routine is one click and one request, the atomic backend
+`pet.care {action: "routine"}`: storage fills every needed bar in one transaction; no timer
+ever sends a request. Each confirmed care/sleep action is followed by an explicit state
+refresh. The task methods (`task.*`, preflight, acceptance) are retired in v0.3.0 and are
+not sent by any QML.
 
 ## Care, motion and sleep
 
@@ -178,7 +160,10 @@ is not a real state mutation.
 Current gates: the QML job in [`.github/workflows/qml.yml`](../.github/workflows/qml.yml)
 (every `tests/*Smoke.qml`, the Python and node suites, `copy_lint.py` and `qmllint`), with
 results recorded in [docs/validation.md](../docs/validation.md). The section below is the
-historical record of the care/progression revision.
+historical record of the care/progression revision (v0.2). Its task-era results (draft,
+review, preflight, readiness and timeline checks) describe QML that v0.3 retired
+(SPEC-v0.3 §6.5); those smokes no longer exist, and the commands below list only smokes
+that still do.
 
 ### Validation in a headless build environment without Quickshell (2026-10-15, care/progression revision)
 
@@ -195,7 +180,6 @@ export QT_QPA_PLATFORM=offscreen
 python qml/tests/run_qml.py qml/tests/PreviewSmoke.qml
 python qml/tests/run_qml.py qml/tests/CareSmoke.qml
 python qml/tests/run_qml.py qml/tests/CareFlowSmoke.qml
-python qml/tests/run_qml.py qml/tests/FilteredDraftSmoke.qml
 /tmp/codepet-qt/bin/pyside6-qmllint \
   -I /tmp/codepet-qt/PySide6/Qt/qml -I qml \
   qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml
@@ -211,8 +195,6 @@ Results:
 - `CareFlowSmoke.qml`: the routine is one atomic request with a cosmetic choreography
   (no request from its timer), Stop/hide end the choreography, a busy host refuses it,
   no stranded routine and no task launch; pending/failure/retry-key choreography
-- `FilteredDraftSmoke.qml`: 3 checks, 0 failures; saved filtered instructions are
-  reviewed with visible disclosure, not stale unsanitized local text
 - Qt6 `qmllint`: no output on shared/standalone components and these smoke tests
 - Standalone offscreen rendering inspected at 720 × 900; this is not a live desktop
   or accessibility certification

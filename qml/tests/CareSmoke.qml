@@ -1,4 +1,6 @@
-// Care UI policy tests. Fixed fixtures are the only state authority in this test.
+// Care UI policy tests (the shared PetCare card of the standalone preview). Fixed
+// fixtures are the only state authority in this test. The v0.2 task form and timeline
+// are retired (SPEC-v0.3 §6.5); the panel must not show them.
 import QtQuick
 import "../shared"
 import "../standalone"
@@ -10,8 +12,6 @@ Item {
     property int step: 0
     property int failures: 0
     property var care: null
-    property var form: null
-    property var timeline: null
     property int requestsBefore: 0
     property int savedFrame: 0
     property int lifeRequests: 0
@@ -55,9 +55,10 @@ Item {
                 break
             case 2:
                 top.care = top.find(panel, "panel.petCare")
-                top.form = top.find(panel, "panel.taskForm")
-                top.timeline = top.find(panel, "panel.timeline")
-                top.check(top.care && top.form && top.timeline, "care, form and timeline components loaded")
+                top.check(top.care !== null, "the care component loaded")
+                top.check(!top.find(panel, "panel.taskForm") && !top.find(panel, "panel.timeline")
+                          && !top.find(panel, "panel.taskBox") && !top.find(panel, "panel.careMeters")
+                          && !top.find(panel, "panel.progression"), "no task form, timeline, meters or progression")
                 top.check(!host.snapshot.care.ready_to_work && top.care.readinessText.indexOf("food") >= 0, "low bars show actionable readiness")
                 top.check(top.care.canCare, "awake low-bar fixture enables explicit care")
                 top.find(top.care, "petCare.food").clicked()
@@ -78,9 +79,9 @@ Item {
                 top.check(!top.find(bareCare, "petCare.seeLife").visible, "See Life is hidden when the host cannot open it")
                 top.check(!host.snapshot.care.ready_to_work, "full bars plus bathroom due is not ready")
                 top.fixture("sleep_due")
-                top.check(!top.form.readyToWork && top.care.canSleep, "sleep due blocks Start and offers bed")
+                top.check(top.care.canSleep, "sleep due offers bed")
                 top.fixture("sleeping")
-                top.check(!top.care.canCare && !top.form.readyToWork, "asleep blocks care and Start")
+                top.check(!top.care.canCare, "asleep blocks care")
                 top.requestsBefore = host.seq
                 break
             case 10:
@@ -108,39 +109,6 @@ Item {
                 top.check(!top.care.animationRunning, "quiet mode keeps a static scene")
                 top.care.quietMode = false
                 top.check(top.care.animationRunning, "visible motion resumes without RPC")
-                panel.openNewTask()
-                top.form.setFields("mental_health", "mock", "/tmp/project", ["docs"], "Explain bounded code", "artifact", 0)
-                top.find(top.form, "taskForm.preflight").clicked()
-                break
-            case 16:
-                top.find(top.form, "taskForm.ack").checked = true
-                top.check(top.find(top.form, "taskForm.start").enabled, "ready + fresh reviewed preflight permits Start")
-                top.fixture("idle")
-                var revised = host.buildSnapshot("idle")
-                revised.care.revision = 2
-                host.snapshot = revised
-                top.check(!top.form.preflightFresh && !top.find(top.form, "taskForm.ack").checked,
-                          "care revision change clears preflight and acknowledgement")
-                top.check(top.form.formError.indexOf("Care or rest changed") >= 0, "stale care token has actionable re-preflight hint")
-                top.check(!top.find(top.form, "taskForm.start").enabled, "care change invalidates Start availability even with same preflight")
-                top.requestsBefore = host.seq
-                top.form.startClicked()
-                top.check(host.seq === top.requestsBefore, "programmatic Start handler also enforces care gate")
-                panel.view = "home"
-                top.timeline.loadMore()
-                break
-            case 19:
-                top.check(top.timeline.entries.length === 3 && top.timeline.cursor === 3, "durable fixture transitions rendered")
-                top.check(top.timeline.entries[2].data.state === "running", "timeline uses actual event state")
-                top.timeline.loadMore()
-                break
-            case 21:
-                top.check(top.timeline.entries.length === 3, "repeated timeline refresh adds no fake events")
-                top.fixture("demo_level_2")
-                top.check(host.snapshot.progression.demo.level === 2 && host.snapshot.progression.real.lifetime_xp === 0,
-                          "demo level fixture isolated from real-work XP")
-                top.check(host.snapshot.providers.filter(function (p) { return p.available }).length === 1,
-                          "demo level unlocks no real provider")
                 console.log("DONE failures=" + top.failures)
                 Qt.exit(top.failures === 0 ? 0 : 3)
             }
