@@ -238,8 +238,13 @@ echo "installed: $BIN_DIR/codepet ($got), $BIN_DIR/codepet-overlay"
 
 # 3. overlay runtime; record a running overlay before `current` moves
 OVERLAY_RUNNING=0
-if [ "$UPDATE" -eq 1 ] && "$BIN_DIR/codepet-overlay" status >/dev/null 2>&1; then
+OVERLAY_REPORTS_TASKS=0
+if [ "$UPDATE" -eq 1 ] && overlay_status=$("$BIN_DIR/codepet-overlay" status 2>/dev/null); then
     OVERLAY_RUNNING=1
+    # An overlay from 0.2.0 does not report its task supervisor, so `quit` refuses it.
+    case "$overlay_status" in
+        *'"supervisor":'*) OVERLAY_REPORTS_TASKS=1 ;;
+    esac
 fi
 PREVIOUS=$(readlink -- "$RUNTIME/current" 2>/dev/null || true)
 PREVIOUS=${PREVIOUS#releases/}
@@ -340,9 +345,14 @@ fi
 
 # 5. advice only; nothing is restarted here
 if [ "$UPDATE" -eq 1 ]; then
-    if [ "$OVERLAY_RUNNING" -eq 1 ]; then
+    if [ "$OVERLAY_RUNNING" -eq 1 ] && [ "$OVERLAY_REPORTS_TASKS" -eq 1 ]; then
         echo "The desktop overlay is still running the previous release. Once no task is executing:"
         echo "  codepet-overlay quit && codepet-overlay show"
+    elif [ "$OVERLAY_RUNNING" -eq 1 ]; then
+        echo "The desktop overlay is still running a release that does not report running tasks (0.2.0)."
+        echo "Finish or cancel any task in its Tasks window (codepet-overlay tasks), then log out and"
+        echo "back in, or, once no task is running:"
+        echo "  codepet-overlay quit --force && codepet-overlay show"
     fi
     if [ "$NO_PLUGIN" -eq 0 ]; then
         echo "If the bar does not pick up the plugin by itself (never while the session is locked):"

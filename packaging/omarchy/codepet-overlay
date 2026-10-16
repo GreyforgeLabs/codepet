@@ -1,13 +1,16 @@
 #!/bin/sh
 # codepet-overlay: verb launcher for the CodePet desktop overlay (Quickshell).
 #
-#   codepet-overlay show|hide|toggle|tasks|care|companion|life|refresh|status|quit
+#   codepet-overlay show|hide|toggle|tasks|care|companion|life|refresh|status|quit [--force]
 #
 # The overlay is one separate, detached `qs` process. This script finds a running
 # instance and sends it an IPC verb; it never starts a second copy. `hide`,
 # `refresh`, `status` and `quit` never start the overlay. `hide` only hides the pet;
-# `quit` ends the overlay process (`qs kill`), for example before an uninstall; it
-# refuses while a simulation task is executing.
+# `quit` ends the overlay process (`qs kill`), for example before an uninstall. It
+# refuses while a simulation task is executing, and also when the overlay's status
+# reply does not say (an empty reply, or one without the `supervisor` field, as from
+# an overlay of CodePet 0.2.0). `quit --force` skips only that second refusal, for
+# when you know no task is running; it never ends an overlay reporting a running task.
 #
 # Exit status: 0 success (status: running), 1 failure (status: not running),
 # 2 usage error.
@@ -24,16 +27,23 @@ set -u
 PROG=codepet-overlay
 TOKEN="codepet-overlay"
 
+USAGE="usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status|quit [--force]"
+
 usage() {
-    echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status|quit" >&2
+    echo "$USAGE" >&2
     exit 2
 }
 
-[ "$#" -eq 1 ] || usage
+FORCE=0
+case "$#" in
+    1) ;;
+    2) if [ "$1" = quit ] && [ "$2" = --force ]; then FORCE=1; else usage; fi ;;
+    *) usage ;;
+esac
 VERB=$1
 case "$VERB" in
     show|hide|toggle|tasks|care|companion|life|refresh|status|quit) ;;
-    -h|--help) echo "usage: $PROG show|hide|toggle|tasks|care|companion|life|refresh|status|quit"; exit 0 ;;
+    -h|--help) echo "$USAGE"; exit 0 ;;
     *) usage ;;
 esac
 
@@ -184,11 +194,19 @@ case "$VERB" in
     quit)
         if running; then
             # Ending the overlay would interrupt a running simulation task's supervisor.
+            # Fail closed: only an explicit "supervisor":false (or --force) lets it end.
             st=$("$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet status 2>/dev/null) || st=
             case "$st" in
                 *'"supervisor":true'*)
-                    echo "$PROG: a simulation task is executing; quit once it has finished" >&2
+                    echo "$PROG: a simulation task is executing; finish or cancel it in the overlay's Tasks window ($PROG tasks), then quit" >&2
                     exit 1 ;;
+                *'"supervisor":false'*) ;;
+                *)
+                    if [ "$FORCE" -ne 1 ]; then
+                        echo "$PROG: the running overlay did not report whether a simulation task is executing (an overlay from CodePet 0.2.0 cannot)" >&2
+                        echo "$PROG: finish or cancel any task in its Tasks window ($PROG tasks); then log out and back in, or run: $PROG quit --force" >&2
+                        exit 1
+                    fi ;;
             esac
             if "$QS" kill "$TARGET_FLAG" "$TARGET_VALUE" >/dev/null 2>&1; then
                 exit 0

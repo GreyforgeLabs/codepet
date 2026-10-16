@@ -649,6 +649,10 @@ class LauncherStatic(unittest.TestCase):
         quit_branch = dispatch[dispatch.index('quit)'):dispatch.index('    hide|refresh)')]
         self.assertIn('"$QS" kill "$TARGET_FLAG" "$TARGET_VALUE"', quit_branch)
         self.assertLess(quit_branch.index('"supervisor":true'), quit_branch.index('"$QS" kill'))
+        # Fail closed: an unknown status needs an explicit --force before the kill.
+        self.assertLess(quit_branch.index('"supervisor":false'), quit_branch.index('"$QS" kill'))
+        self.assertLess(quit_branch.index('"$FORCE" -ne 1'), quit_branch.index('"$QS" kill'))
+        self.assertIn('if [ "$1" = quit ] && [ "$2" = --force ]; then FORCE=1', LAUNCHER)
 
     @unittest.skipUnless(shutil.which('shellcheck'), 'shellcheck unavailable')
     def test_shellcheck(self):
@@ -701,7 +705,10 @@ if args[:1] == ["ipc"]:
     if fn == "ping":
         print("codepet-overlay shown")
     elif fn == "status":
-        print('{{"pet":"shown","supervisor":%s}}' % ("true" if st.get("supervisor") else "false"))
+        if "status_reply" in st:  # an older overlay's reply, or none at all
+            print(st["status_reply"])
+        else:
+            print('{{"pet":"shown","supervisor":%s}}' % ("true" if st.get("supervisor") else "false"))
     sys.exit(0)
 if args[:3] == ["-n", "-d", "-p"]:
     st["launches"] += 1
@@ -763,7 +770,8 @@ class LauncherBehaviour(unittest.TestCase):
                 if c["argv"][:1] == ["ipc"] and c["argv"][6] != "ping"]
 
     def test_usage_errors(self):
-        for argv in ([], ["stop"], ["show", "extra"], ["--pid"]):
+        for argv in ([], ["stop"], ["show", "extra"], ["--pid"], ["show", "--force"],
+                     ["--force", "quit"], ["quit", "--now"], ["quit", "--force", "x"]):
             r, calls = self.run_launcher(*argv)
             self.assertEqual(r.returncode, 2, argv)
             self.assertEqual(calls, [], argv)
@@ -835,6 +843,42 @@ class LauncherBehaviour(unittest.TestCase):
         self.assertEqual(self.launches(calls), [])
         r, _ = self.run_launcher("status")
         self.assertEqual(r.returncode, 1, "stopped")
+
+    def kills(self, calls):
+        return [c["argv"] for c in calls if c["argv"][:1] == ["kill"]]
+
+    def test_quit_refuses_an_overlay_that_does_not_report_its_task(self):
+        # 0.2.0's status has no "supervisor" field; an empty reply says nothing either.
+        for reply, functions in (('{"pet":"shown","busy":false}', ALL_FUNCTIONS),
+                                 ("", ALL_FUNCTIONS),
+                                 (None, [f for f in ALL_FUNCTIONS if f != "status"])):
+            over = {"running": True, "functions": functions}
+            if reply is not None:
+                over["status_reply"] = reply
+            self.set_state(**over)
+            r, calls = self.run_launcher("quit")
+            self.assertEqual(r.returncode, 1, (reply, r.stderr))
+            self.assertIn("did not report whether a simulation task is executing", r.stderr)
+            self.assertIn("quit --force", r.stderr)
+            self.assertEqual(self.kills(calls), [], reply)
+            # --force: the user has checked that no task runs.
+            r, calls = self.run_launcher("quit", "--force")
+            self.assertEqual(r.returncode, 0, (reply, r.stderr))
+            self.assertEqual(self.kills(calls), [["kill", "-p", str(self.qml)]], reply)
+            self.assertEqual(self.launches(calls), [])
+
+    def test_quit_force_never_ends_a_running_task(self):
+        self.set_state(running=True, supervisor=True)
+        r, calls = self.run_launcher("quit", "--force")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("simulation task is executing", r.stderr)
+        self.assertEqual(self.kills(calls), [])
+        # Not running: nothing to quit, forced or not.
+        self.set_state()
+        r, calls = self.run_launcher("quit", "--force")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.kills(calls), [])
+        self.assertEqual(self.launches(calls), [])
 
     def test_older_release_instance_is_found_by_pid(self):
         older = str(self.data / "codepet/releases/0.1.9/qml/shell.qml")

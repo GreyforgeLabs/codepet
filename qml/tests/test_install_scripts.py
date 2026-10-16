@@ -362,6 +362,36 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse((e.data / "codepet/current").is_symlink())
 
+    def test_update_advice_depends_on_what_the_running_overlay_reports(self):
+        e = Env(self)
+        r = e.run(INSTALL, "--no-plugin", CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # A running overlay that answers ping and returns $HOME/status-reply as its status.
+        (e.bin / "qs").write_text(STUB + """
+case "$1 $7" in
+  "ipc ping") echo "codepet-overlay shown" ;;
+  "ipc status") cat "$HOME/status-reply" ;;
+  "list ") echo "No running instances." ;;
+  *) exit 1 ;;
+esac
+exit 0
+""")
+        reply = e.home / "status-reply"
+        reply.write_text('{"pet":"shown","supervisor":false}\n')
+        r = e.run(INSTALL, "--no-plugin", CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("  codepet-overlay quit && codepet-overlay show", r.stdout)
+        self.assertNotIn("--force", r.stdout)
+        # 0.2.0's status has no supervisor field: `quit` alone would refuse it.
+        reply.write_text('{"pet":"shown","busy":false}\n')
+        r = e.run(INSTALL, "--no-plugin", CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("does not report running tasks (0.2.0)", r.stdout)
+        self.assertIn("log out and", r.stdout)
+        self.assertIn("  codepet-overlay quit --force && codepet-overlay show", r.stdout)
+        self.assertNotIn("  codepet-overlay quit && codepet-overlay show", r.stdout)
+        self.assertFalse(any(c.startswith("qs kill") for c in e.calls()), "advice only")
+
     def test_without_a_running_shell_the_enable_command_is_printed(self):
         e = Env(self)
         (e.home / "shell-down").write_text("")

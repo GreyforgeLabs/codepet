@@ -26,7 +26,9 @@ storage schema.
   WebP image plugin is missing, stages the bar plugin on the same filesystem as its
   destination so each swap is one rename, keeps only the current and previous release
   trees, prints next steps after a first install and a pasteable shell-restart line.
-- `codepet-overlay quit` stops the desktop pet (refused while a simulation task runs);
+- `codepet-overlay quit` stops the desktop pet. It is always refused while a simulation
+  task runs. When the overlay cannot say whether one does (an overlay from 0.2.0) it is
+  refused unless `--force` is given, and the installer's update advice says so.
   `uninstall.sh` names it, and warns and continues when the bar plugin cannot be disabled.
 
 ### Safety
