@@ -338,3 +338,104 @@ differ, these entries win.
    `jar_full`, including the one late-tool re-check (which the Rust fold did not record).
    New `sessions` vectors: `jar_full_describes_only_the_last_finished_turn` and
    `late_tool_recheck_on_a_full_jar_sets_jar_full`.
+
+## 7. WP3 decisions and amendments (integrations + packaging, 2026-10-16)
+
+No frozen file changed: `commands.json`, the shim, the six Codex trust hashes and every
+schema stay as they are (the rendered Claude and Grok files, the stored commands and the
+shim are tested byte for byte against them at the reference paths). These entries record
+what WP3 had to decide; where they differ from the SPEC text, they win.
+
+1. **`TEST_STATE` signal (new contract for WP5).** The CLI cannot tell a `stateHome` test
+   override from a user's own `XDG_STATE_HOME`. The bar must set `CODEPET_TEST_STATE=1` in
+   the child environment whenever it runs with a `stateHome` override; `clients.connect`,
+   `clients.disconnect` and `clients.test` then answer `TEST_STATE`. `clients.status` runs.
+2. **Internal command `codepet clients-refresh`** (not in `protocol.json` `cli`): the
+   installer's step 5 (§6.6). It refreshes connected clients' wholly CodePet-owned files
+   (Claude marketplace tree, OpenCode `codepet.js`, Hermes plugin dir, Grok `codepet.json`)
+   only when the marker is present and the bytes differ, upgrades an older shim in place
+   with its own `S`/`B`, never runs a client and never edits Codex's shared file.
+3. **The inbox dir.** Nothing in the default build created `$STATE/inbox`, and the shim
+   drains and exits without it. The clients job creates it (0700, owner and mode checked)
+   at Connect and before every ready check.
+4. **Versions.** Sources, file-only: the mise wrapper's `installs/<tool>/latest` (Claude
+   Code, OpenCode), the resolved binary path (`releases/<v>-<target>` for Codex,
+   `downloads/grok-<v>-<target>` for Grok), the `pyproject.toml` of the checkout the
+   `hermes` wrapper runs (else `$HERMES_HOME/hermes-agent/pyproject.toml`). Binaries are
+   also looked for in each client's usual dirs (`~/.grok/bin`, `~/.claude/local`,
+   `~/.local/bin`, mise shims, ...) because the bar's `PATH` may be short. Tested minimums:
+   Claude Code 2.1.294, Codex 0.162.0, OpenCode 1.19.0, Hermes 0.21.3, Grok 1.0.52. When no
+   file gives a version, the Connect job asks `<binary> --version` under the CLI rules
+   (never Hermes); when that gives nothing either, the Connect proceeds and records no
+   `installed_version` (the ready check still proves the path).
+5. **Claude Code day-0 gate: passed offline** (`tools/integrations/claude-day0-gate.sh`,
+   capture `crates/codepet-cli/tests/fixtures/claude-cli/day0-gate-2.1.294.txt`): run in a
+   network namespace with no network, a throwaway `HOME` and `CLAUDE_CONFIG_DIR`, no model
+   call. `CLAUDE_CONFIG_DIR` is honoured. Both manifests pass `claude plugin validate`.
+   `install --json` answers `outcome: ok` also when already installed; `uninstall` and
+   `marketplace remove` answer `outcome: failed` with `failureCode` `not_installed` /
+   `not_configured` when there is nothing to remove (treated as done). Claude rewrites the
+   whole `settings.json` (key order changes) and leaves `extraKnownMarketplaces: {}` after
+   the removal; the key check therefore compares parsed values, treats an absent map as
+   `{}` and allows only CodePet's own entries (`codepet@codepet-local`, `codepet-local`)
+   to appear, change or go. A connected, enabled plugin skips the CLI (no rewrite on a
+   second Connect). It also keeps a copy under `plugins/cache/codepet-local/` but loads in
+   place from CodePet's marketplace dir.
+6. **Hermes.** The key check compares `hooks`, `hooks_auto_accept`, `approvals`,
+   `command_allowlist`, `permissions` and `plugins` (where only `codepet` may move between
+   `enabled` and `disabled`, compared as sets because Hermes rewrites them sorted, and a
+   `plugins.entries.codepet` may appear) with a small block-YAML reader; a `config.yaml`
+   it cannot read fails the Connect as `blocked` before the CLI runs. In 0.21.3
+   `agent_loop_stopped` carries `session_key` and `platform` but no `session_id`
+   (`tui_gateway/session_lifecycle.py`), so the plugin drops it and the stale rule covers
+   the turn. The plugin is about 140 lines (the SPEC aimed for under 100).
+7. **Codex.** A CodePet group is one whose every handler runs `*/codepet-hook codex`. The
+   tombstone is the group left byte-identical (still trusted, so Codex shows no review
+   prompt; the `disconnected` flag makes the shim exit); a later pass removes it once it is
+   last, and an event array CodePet emptied is removed. Each Connect/Disconnect writes
+   `hooks.json.codepet-orig` (once) and `hooks.json.codepet-last` (0600), keeps the file's
+   mode, and checks every foreign `[hooks.state]` position (literal and canonical path)
+   for the same handler fingerprint before and after; otherwise it restores the old bytes
+   and fails `blocked`. A CodePet line with `enabled = false` in `/hooks` reports
+   `needs_step: codex_hooks_off` ("! Turned off in Codex"), like `[features] hooks = false`.
+   `codepet doctor` warns when other hooks follow CodePet lines (Stop watching would leave
+   them as tombstones).
+8. **Shim path.** Stored commands carry the literal shim path, so it must be usable in a
+   shell and a JSON string unquoted: `[A-Za-z0-9._/+:@,=-]` only, else Connect fails
+   `blocked` (`commands.json` `path_rule` still governs `S` and `B` inside the shim).
+9. **Status.** `connected` follows the files: the client's `disconnected` flag or a
+   missing artifact means false, and so does a stale one (CodePet's marker with other
+   bytes: "Tap to connect"; Connect repairs it). For Codex, all six lines trusted (or no
+   lines) clears `needs_step`; otherwise status keeps it.
+10. **Jobs.** One job at a time (`$STATE/jobs/.lock`). The journal records kind, clients,
+    `B`, pid and start time, attempts, per-client `recorded` steps, results (with a short
+    plain detail, never file content) and the ready check's outcome. `state.get` and every
+    `clients.*` call resume a non-done journal whose process is dead; after 3 attempts the
+    job rolls back (unrecorded clients `failed: blocked`; OpenCode and Grok files removed
+    again). Finished journals are kept 7 days (at most 20). `clients.test` with no
+    connected client answers `INVALID_STATE` ("no connected app to check"); a client that
+    already has a running job answers `BUSY` (new storage error `JobRunning`).
+11. **Ready check.** Stored commands run with only `PATH` and `HOME` (shell clients through
+    `/bin/sh -c`), bounded to 3 s each. `meta.test_at_ms` is set again when the check ends,
+    for both outcomes, so the "{name} is ready!" window starts at the result. A client that
+    arrives clears an earlier `ready_check` failure.
+12. **Client CLI environment.** `PATH`, `HOME`, and when set `CLAUDE_CONFIG_DIR`,
+    `CODEX_HOME`, `HERMES_HOME`, `GROK_HOME`, `MISE_DATA_DIR`, `XDG_CONFIG_HOME`,
+    `XDG_DATA_HOME` (the mise wrappers and OpenCode need the last two), plus Claude Code's
+    `DISABLE_AUTOUPDATER=1` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`.
+13. **Installer (§6.6).** The installer never restarts the shell (the restart-shell
+    lesson): on an update it asks the running shell to rescan, which reloads the swapped
+    plugin, and prints the restart command (with the live `HYPRLAND_INSTANCE_SIGNATURE`)
+    only when the shell cannot be reached. The 0.3.x gate checks the binary before anything
+    is replaced and refuses a tree whose version is not 0.3.x: **until WP7 bumps the
+    workspace version (still 0.2.1), `install.sh` and `tools/release/package.sh` refuse this
+    branch on purpose**; the installer tests install from a copy whose version is 0.3.0.
+14. **`codepet doctor --json`** is `codepet.doctor.v1`: `version`, `state_dir`,
+    `state_exists`, `enabled`, `helpers_counted`, `shim` (`path`, `state`
+    current|outdated|tombstone|missing|foreign, `sha256`, `paths_match`), `inbox`
+    (`waiting`, `dropped`, `overflow`), `fold_backoff`, `clients[]` (detection, row,
+    `artifact`, the `disconnected` flag, Codex trust counts) and `codex_login_shell`
+    (`shell`, `ms`, `silent`, `timed_out`; only when Codex is installed). It opens no
+    missing state dir.
+15. **OpenCode `setup()`** is a no-op, as herdr's plugin; which loader 1.19.0 uses stays a
+    WP7 check (§5.5).
