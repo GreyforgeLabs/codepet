@@ -56,8 +56,9 @@ const _: () = assert!(START_GRACE_MS > LOCK_WAIT.as_millis() as i64 + 10_000);
 pub const JOB_DEADLINE: Duration = Duration::from_secs(300);
 /// Detail of a job ended because CodePet was Off.
 const OFF_DETAIL: &str = "CodePet was off";
-/// The ready-check payloads (`commands.json` `ready_check`), the frozen contract itself.
-const COMMANDS_JSON: &str = include_str!("../../../docs/v0.3/contracts/commands.json");
+/// Only the ready-check payloads; tests keep this projection equal to the frozen contract.
+const READY_CHECK_PAYLOADS_JSON: &str =
+    include_str!("../../../integrations/ready-check-payloads.json");
 
 /// One client's result in the journal.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -788,11 +789,8 @@ fn rollback(store: &mut Store, ctx: &Ctx, j: &mut Journal) {
 
 /// The ready-check payload lines of `client` with `nonce` filled in.
 pub fn ready_payloads(client: ClientId, nonce: &str) -> Vec<String> {
-    let v: serde_json::Value = serde_json::from_str(COMMANDS_JSON).unwrap_or_default();
-    let list = v["ready_check"]["payloads"][client.as_str()]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(READY_CHECK_PAYLOADS_JSON).unwrap_or_default();
+    let list = v[client.as_str()].as_array().cloned().unwrap_or_default();
     list.into_iter()
         .map(|mut p| {
             if let Some(o) = p.as_object_mut() {
@@ -917,6 +915,15 @@ pub fn ready_check(store: &mut Store, ctx: &Ctx, tested: &[ClientId]) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ready_check_payloads_match_frozen_contract() {
+        let payloads: serde_json::Value = serde_json::from_str(READY_CHECK_PAYLOADS_JSON).unwrap();
+        let commands: serde_json::Value =
+            serde_json::from_str(include_str!("../../../docs/v0.3/contracts/commands.json"))
+                .unwrap();
+        assert_eq!(payloads, commands["ready_check"]["payloads"]);
+    }
 
     #[test]
     fn job_ids_and_payloads() {
