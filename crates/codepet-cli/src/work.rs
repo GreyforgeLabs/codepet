@@ -1227,9 +1227,7 @@ fn base_sandbox() -> Command {
         "--size",
         "16777216",
         "--tmpfs",
-        "/home",
-        "--dir",
-        "/home/pet",
+        "/pet-home",
         "--dir",
         "/provider",
         "--dir",
@@ -1239,7 +1237,7 @@ fn base_sandbox() -> Command {
     ])
     .env_clear()
     .env("PATH", "/usr/bin:/bin")
-    .env("HOME", "/home/pet")
+    .env("HOME", "/pet-home")
     .env("CODEX_HOME", "/provider")
     .env("LANG", "C.UTF-8")
     .env("PYTHONDONTWRITEBYTECODE", "1");
@@ -2305,6 +2303,25 @@ mod tests {
         fs::write(project.join("x"), [0, 1, 2]).unwrap();
         assert!(collect_changes(&base, &project, &baseline, "bug", 0).is_err());
     }
+    #[test]
+    fn sandbox_home_is_private_writable_and_independent_of_host_home_paths() {
+        if !Path::new("/usr/bin/bwrap").exists() {
+            return;
+        }
+        let status = base_sandbox()
+            .args([
+                "/bin/sh",
+                "-c",
+                "test \"$HOME\" = /pet-home && test ! -e /home && test -d \"$HOME\" && printf test > \"$HOME/probe\" && test \"$(cat \"$HOME/probe\")\" = test",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+
     #[test]
     fn namespace_kills_setsid_descendants_and_tmpfs_has_a_hard_size_limit() {
         if !Path::new("/usr/bin/bwrap").exists() {
