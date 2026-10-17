@@ -752,7 +752,12 @@
       "mock-demo (moves into tests behind legacy-tasks)",
       "the supervisor entry"
     ],
-    "wp0_behaviour": "added commands other than hook print 'NOT_IMPLEMENTED: codepet <cmd> is not implemented yet in this v0.3 build' on stderr and exit 1 without touching state; hook exits 0 silently"
+    "wp0_behaviour": "added commands other than hook print 'NOT_IMPLEMENTED: codepet <cmd> is not implemented yet in this v0.3 build' on stderr and exit 1 without touching state; hook exits 0 silently",
+    "post_freeze_work": {
+      "work-rpc": "2026-10-17 unreleased manual useful-work controller; separate JSON envelope, documented in docs/work.md. Does not enable retired task.* methods.",
+      "work-run <task-id>": "Internal per-job supervisor; requires recorded explicit Start and verified systemd resource scope.",
+      "work-sandbox <kind>": "Internal contained helper; runs provider in bounded tmpfs and exports reviewed text changes. No standalone project/auth authority."
+    }
   },
   "job_id_pattern": "^job-[0-9a-f]{24}$",
   "job_id_rule": "'job-' + 24 lowercase hex (12 bytes from sys::random_bytes). It names the journal $STATE/jobs/<job_id>.json and appears in the export, so nothing else is ever accepted as a job id (the clients-job subcommand refuses any other argument).",

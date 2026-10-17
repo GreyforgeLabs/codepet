@@ -11,12 +11,12 @@ directory proves the scripts themselves never write $XDG_STATE_HOME/codepet (onl
 `codepet` commands they run may). tools/measure-overlay.sh is run read-only against a
 `sleep` child.
 
-The v0.3 installer ships the 0.3 bar plugin and refuses a tree whose version is not
-0.3.x; until the release bumps the workspace version, the tests install from a copy of
-the tree whose Cargo.toml says 0.3.0 (VERSION below).
+The installer requires the current release series and an exact binary/tree version
+match. Fixtures use the actual workspace version, so a release bump cannot pass by
+silently installing an older synthetic package.
 
 Covered for v0.3: the upgrade sequence (overlay and 0.2 supervisor stopped by exact pid,
-swap, rescan, migrate, refresh, overlay started again), the icon copy, the 0.3.x gate
+swap, rescan, migrate, refresh, overlay started again), the icon copy, the release-series gate
 (checked before anything is replaced), the prune exclusion of
 ~/.local/share/codepet/{bin,integrations,staging} and the uninstall tombstone.
 
@@ -38,9 +38,10 @@ from pathlib import Path
 REAL_REPO = Path(__file__).resolve().parents[2]
 REAL_VERSION = tomllib.loads((REAL_REPO / "Cargo.toml").read_text())["workspace"]["package"]["version"]
 MEASURE = REAL_REPO / "tools/measure-overlay.sh"
-VERSION = REAL_VERSION if REAL_VERSION.startswith("0.3.") else "0.3.0"
+VERSION = REAL_VERSION
+SERIES = ".".join(VERSION.split(".")[:2])
 TOMBSTONE = (REAL_REPO / "docs/v0.3/contracts/shim-tombstone.sh").read_bytes()
-SOURCES = ("Cargo.toml", "packaging", "omarchy-plugin", "qml/shell.qml", "qml/shared", "qml/omarchy",
+SOURCES = ("Cargo.toml", "packaging", "omarchy-plugin", "qml/shell.qml", "qml/work.qml", "qml/shared", "qml/omarchy",
            "qml/assets")
 
 
@@ -56,7 +57,7 @@ def copy_tree(dst, version=VERSION, sources=SOURCES):
         (dst / "Cargo.toml").write_text(text)
 
 
-_REPO_TMP = tempfile.TemporaryDirectory(prefix="codepet-repo-v03-")
+_REPO_TMP = tempfile.TemporaryDirectory(prefix="codepet-repo-release-")
 REPO = Path(_REPO_TMP.name)
 copy_tree(REPO)
 INSTALL = REPO / "packaging/omarchy/install.sh"
@@ -215,7 +216,8 @@ class InstallDryRun(unittest.TestCase):
         expected = sorted(expected + ["greyforge.codepet/LifeText.js"])
         self.assertEqual(plugin, expected)
         runtime = {l.split(" ", 1)[1] for l in out.splitlines() if l.startswith("runtime ")}
-        for must in ("qml/shell.qml", "qml/shared/PetCatalog.js", "qml/shared/PetRegistry.js",
+        for must in ("qml/shell.qml", "qml/work.qml", "qml/shared/PetCatalog.js", "qml/shared/PetRegistry.js",
+                     "qml/omarchy/WorkPanel.qml", "qml/omarchy/WorkRpc.qml", "qml/omarchy/WorkModel.js",
                      "qml/omarchy/BarStateWatcher.qml", "qml/assets/pets/registry.json",
                      "qml/assets/pets/cat/s1/b00.webp", "qml/assets/pets/_memorial.webp"):
             self.assertIn(must, runtime)
@@ -228,6 +230,7 @@ class InstallDryRun(unittest.TestCase):
         self.assertIn("would enable: omarchy plugin enable greyforge.codepet --section right --before omarchy.tray", out)
         self.assertIn(f"would run: codepet migrate (the pet's data in {e.state}/codepet", out)
         self.assertIn("would run: codepet clients-refresh", out)
+        self.assertIn(f"would install: {e.home}/.local/bin/codepet-work", out)
         # Nothing ran and nothing changed: no build, no omarchy/qs, HOME and state untouched.
         self.assertEqual(e.calls(), [])
         self.assertEqual(tree(e.home), before_home)
@@ -256,6 +259,23 @@ class InstallDryRun(unittest.TestCase):
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("refusing to install a symlink", r.stderr)
 
+    def test_work_launcher_missing_or_symlink_is_refused_before_mutations(self):
+        for mode in ("missing", "symlink"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory(prefix="codepet-work-source-") as tmp:
+                repo = Path(tmp)
+                copy_tree(repo)
+                launcher = repo / "packaging/omarchy/codepet-work"
+                launcher.unlink()
+                if mode == "symlink":
+                    launcher.symlink_to("/etc/passwd")
+                e = Env(self)
+                before = tree(e.home)
+                r = e.run(repo / "packaging/omarchy/install.sh", CODEPET_BIN_SOURCE=str(e.fake))
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("missing packaging/omarchy/codepet-work" if mode == "missing" else "refusing to install a symlink", r.stderr)
+                self.assertEqual(tree(e.home), before, "invalid launcher must fail before any installation")
+                self.assertEqual(e.calls(), [])
+
 
 class InstallForReal(unittest.TestCase):
     """A full install, an update and an uninstall into the temporary HOME."""
@@ -266,12 +286,14 @@ class InstallForReal(unittest.TestCase):
         r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         bin_dir = e.home / ".local/bin"
-        for name in ("codepet", "codepet-overlay"):
+        for name in ("codepet", "codepet-overlay", "codepet-work", "codepet-update"):
             p = bin_dir / name
             self.assertTrue(p.is_file() and not p.is_symlink(), name)
             self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o755, name)
         self.assertEqual((bin_dir / "codepet-overlay").read_bytes(),
                          (REPO / "packaging/omarchy/codepet-overlay").read_bytes())
+        self.assertEqual((bin_dir / "codepet-work").read_bytes(),
+                         (REPO / "packaging/omarchy/codepet-work").read_bytes())
         self.assertEqual(list(bin_dir.glob("*.tmp-*")), [])
         runtime = e.data / "codepet"
         current = runtime / "current"
@@ -279,6 +301,7 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual(os.readlink(current), f"releases/{VERSION}")
         qml = runtime / "releases" / VERSION / "qml"
         self.assertEqual((qml / "shell.qml").read_bytes(), (REPO / "qml/shell.qml").read_bytes())
+        self.assertEqual((qml / "work.qml").read_bytes(), (REPO / "qml/work.qml").read_bytes())
         self.assertTrue((qml / "assets/pets/registry.json").is_file())
         self.assertEqual([p for p in qml.rglob("*") if p.is_symlink()], [])
         plugin = e.config / "omarchy/plugins/greyforge.codepet"
@@ -339,11 +362,13 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual(e.state_tree(), state0)
 
         # A binary reporting another version is refused before anything is replaced:
-        # another series (the 0.3.x gate) or another 0.3 release.
+        # another series or another patch release.
         installed = (bin_dir / "codepet").read_bytes()
         n_calls = len(e.calls())
-        for reported, why in (("codepet 0.2.1", "needs a codepet 0.3.x"), ("codepet 9.9.9", "needs a codepet 0.3.x"),
-                              ("codepet 0.3.99", f"expected 'codepet {VERSION}'")):
+        for reported, why in (("codepet 0.2.1", f"needs a codepet {SERIES}.x"),
+                              ("codepet 0.3.0", f"needs a codepet {SERIES}.x"),
+                              ("codepet 9.9.9", f"needs a codepet {SERIES}.x"),
+                              (f"codepet {SERIES}.99", f"expected 'codepet {VERSION}'")):
             wrong = e.home / "wrong"
             wrong.write_text(f'#!/bin/sh\necho "{reported}"\n')
             wrong.chmod(0o755)
@@ -376,6 +401,7 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual(len(moved), 1)
         self.assertTrue((moved[0] / "plugin-greyforge.codepet/manifest.json").is_file())
         self.assertTrue((moved[0] / "releases" / VERSION / "qml/shell.qml").is_file())
+        self.assertTrue((moved[0] / "releases" / VERSION / "qml/work.qml").is_file())
         self.assertTrue((bin_dir / "codepet").is_file())
         self.assertEqual(e.state_tree(), state0, "uninstall never touches the pet state")
         self.assertFalse(any(c.startswith("codepet disconnect") for c in e.calls()), "no shim: nothing to disconnect")
@@ -514,14 +540,14 @@ class InstallForReal(unittest.TestCase):
                 self.assertEqual(r.returncode, 1, args)
                 self.assertIn("icon copies", r.stderr)
 
-    def test_a_tree_that_is_not_03_is_refused(self):
+    def test_a_tree_outside_the_release_series_is_refused(self):
         with tempfile.TemporaryDirectory(prefix="codepet-repo-") as tmp:
             repo = Path(tmp)
             copy_tree(repo, version="0.2.1")
             e = Env(self)
             r = e.run(repo / "packaging/omarchy/install.sh", "--dry-run")
             self.assertEqual(r.returncode, 1)
-            self.assertIn("ships the CodePet 0.3 bar plugin but its version is 0.2.1", r.stderr)
+            self.assertIn(f"ships the CodePet {SERIES} bar plugin but its version is 0.2.1", r.stderr)
             self.assertEqual(e.calls(), [])
 
     def test_a_failed_migration_fails_the_install_and_skips_the_refresh(self):
@@ -677,7 +703,7 @@ class InstallForReal(unittest.TestCase):
 
 def archive_tree(root):
     """The release archive layout (tools/release/package.sh): no Cargo.toml or crates/."""
-    copy_tree(root, sources=("LICENSE", "README.md", "packaging", "omarchy-plugin", "qml/shell.qml",
+    copy_tree(root, sources=("LICENSE", "README.md", "packaging", "omarchy-plugin", "qml/shell.qml", "qml/work.qml",
                              "qml/shared", "qml/omarchy", "qml/assets"))
     (root / "VERSION").write_text(VERSION + "\n")
     (root / "bin").mkdir()
@@ -701,6 +727,9 @@ class InstallFromArchive(unittest.TestCase):
             r = e.run(script)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertEqual((e.home / ".local/bin/codepet").read_bytes(), e.fake.read_bytes())
+            self.assertEqual((e.home / ".local/bin/codepet-work").read_bytes(),
+                             (root / "packaging/omarchy/codepet-work").read_bytes())
+            self.assertEqual((e.data / "codepet/current/qml/work.qml").read_bytes(), (root / "qml/work.qml").read_bytes())
             self.assertEqual(os.readlink(e.data / "codepet/current"), f"releases/{VERSION}")
             self.assertFalse(any(c.startswith(("cargo", "systemd-run")) for c in e.calls()))
             r = e.run(root / "packaging/omarchy/uninstall.sh")
@@ -723,7 +752,7 @@ class InstallFromArchive(unittest.TestCase):
 class Static(unittest.TestCase):
     def test_the_tests_install_this_trees_scripts(self):
         for rel in ("packaging/omarchy/install.sh", "packaging/omarchy/uninstall.sh",
-                    "packaging/omarchy/codepet-overlay"):
+                    "packaging/omarchy/codepet-overlay", "packaging/omarchy/codepet-work", "packaging/omarchy/codepet-update"):
             self.assertEqual((REPO / rel).read_bytes(), (REAL_REPO / rel).read_bytes(), rel)
 
     def test_the_uninstall_tombstone_is_the_frozen_contract_file(self):
@@ -742,11 +771,12 @@ class Static(unittest.TestCase):
             r = subprocess.run(["bash", "-n", str(p)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
 
-    def test_state_dir_is_only_ever_printed(self):
+    def test_state_dir_is_only_printed_or_forwarded_to_restored_overlay(self):
         for p in (REAL_REPO / "packaging/omarchy/install.sh", REAL_REPO / "packaging/omarchy/uninstall.sh"):
             for line in p.read_text().splitlines():
                 if "STATE_HOME" in line and not line.lstrip().startswith("#"):
-                    self.assertTrue("STATE_HOME=$(xdg" in line or line.lstrip().startswith("echo"), line)
+                    self.assertTrue("STATE_HOME=$(xdg" in line or line.lstrip().startswith("echo")
+                                or line.lstrip().startswith("for key in HOME PATH XDG_DATA_HOME"), line)
 
     @unittest.skipUnless(shutil.which("shellcheck"), "shellcheck unavailable")
     def test_shellcheck(self):

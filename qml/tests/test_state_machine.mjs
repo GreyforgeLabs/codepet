@@ -59,8 +59,8 @@ test('DesktopPet: one cosmetic scheduler, one single-shot wake, and no transport
     assert.match(wake.slice(0, 200), /repeat: false/, 'the wake timer is single-shot');
     for (const banned of ['.request(', 'host', 'Process', 'execDetached', 'state.get', 'pet.care', 'pet.events_seen'])
         assert.ok(!src.includes(banned), `DesktopPet must not contain ${banned}`);
-    // Picture-only: no Text on the desktop (no numbers, no words, K1/K2).
-    assert.doesNotMatch(src, /\bText \{|\bLabel \{|\bButton \{/);
+    // Operator placement correction permits the small Pinned label (§14).
+    assert.doesNotMatch(src, /\bLabel \{|\bButton \{/);
     assert.ok(!src.includes('Item {\n        id: prop'), 'the separate prop item is gone');
 });
 

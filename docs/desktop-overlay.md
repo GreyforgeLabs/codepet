@@ -1,35 +1,53 @@
-# Desktop pet (v0.3)
+# Desktop pet (v0.4)
 
-The desktop pet is a small transparent Quickshell surface. It reads the same
-`bar-state.json` as the Omarchy widget and shares its state-priority rules. It
-reacts to coding activity, needs and growth. A click makes it hop and opens Home
-on the bar through Omarchy's `greyforge.codepet` panel contract. It does not open
-a separate task, care or life window.
+The desktop pet is a small transparent Quickshell surface. Clicking it opens a
+compact card with work status, level, exact XP and age. A suspected bug offers
+**Fix**; a candidate repair offers **Review**. **Care** opens Home on the bar.
+Research/custom tasks and full before/after review use a separate native QML window.
+
+Drag the pet in either direction to move it. Right-click to pin/unpin; **More →
+Pin pet in place** offers the same switch. Pinning stops wandering while still
+allowing deliberate dragging. Position and monitor are saved across restarts.
+The activity bubble distinguishes owned work from separately observed coding apps.
 
 ```sh
 codepet-overlay show
 codepet-overlay hide
 codepet-overlay toggle
+codepet-overlay card
 codepet-overlay refresh
 codepet-overlay status
 codepet-overlay quit
+codepet-work compact
 ```
 
-These are the only launcher verbs. Retired `tasks`, `care`, `companion`, `life`
-and `panel` verbs are usage errors. Show/toggle while Off reports that CodePet
-is off and starts nothing. Turning off **Pet on my desktop** makes the running
-pet exit; the bar remains. Let's go! enables the desktop pet automatically.
+`card` opens the existing desktop card or a compact fallback window when the
+pet is hidden/unavailable. It does not silently enable a hidden desktop pet.
+`codepet-work bug`, `research` or `build` opens the advanced form. Retired `tasks`,
+`care`, `companion`, `life` and `panel` overlay verbs remain usage errors.
 
-The visible pet and its interaction region are meant to preserve click-through
-outside the pet. The overlay takes no keyboard focus; typing lives in the bar
-popup. Calm mode follows the widget's live setting. A celebration is acknowledged
-locally once shown, with persisted growth acknowledgement through the bar.
+Show/toggle while Off starts nothing. Turning off **Pet on my desktop** exits
+the running pet; the bar remains. Let's go! enables the desktop pet. Hide/show
+preserves position and pinning. Calm mode follows the widget's live setting.
 
-The overlay does not record presence, connect coding clients, or launch coding
-apps. With no bar presence recorder the pet's care clock stays frozen. It can
-read exports but cannot migrate storage.
+The desktop surface requests no keyboard focus; the card's controls and the pet
+form input regions, while the remainder is intended to click through. Text entry
+uses the bar popup or native work window. Isolated Qt/Quickshell tests cover drag,
+geometry and input regions. Actual compositor pointer/focus behavior for the new
+card remains unqualified; installed hide/show and placement preservation were
+checked separately. See [validation](validation.md).
 
-The launcher uses the installed `~/.local/share/codepet/current` runtime, `qs`
-(or `CODEPET_QS`) and `codepet` (or `CODEPET_BIN`). Its status is scoped to that
-runtime. All tests use isolated state and offscreen or nested surfaces; see
-[validation](validation.md) for the actual compositor and input evidence.
+The overlay reads `bar-state.json` and the redacted `work-state.json`. Opening a
+card loads private work details through a bounded RPC. An eligible one-shot timer
+requests automatic scouting; owned jobs are supervised outside QML. Closing a
+window does not abandon or duplicate the bounded job. Stop active execution before
+turning Off or sleeping. Interrupted application remains reachable through Review.
+
+The overlay does not record attended presence or connect observer hooks. With no
+bar presence recorder the pet's care clock remains frozen. Automatic lock/suspend/
+fullscreen detection is not implemented; those are explicit integration inputs.
+
+The launcher uses `~/.local/share/codepet/current`, `qs` (or `CODEPET_QS`) and
+`codepet` (or `CODEPET_BIN`). Its status is scoped to that runtime. No compositor
+rules or screen-lock hooks are installed. See [host details](../qml/omarchy/README.md)
+and [work scope](work.md).

@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh: install or update CodePet for the current user on Omarchy (v0.3, SPEC-v0.3 §6.6).
+# install.sh: install or update CodePet for the current user on Omarchy (v0.4, schema 5).
 #
 #   packaging/omarchy/install.sh [--dry-run] [--no-plugin]
 #
@@ -11,12 +11,12 @@
 #   1. build the `codepet` binary (memory-capped), unless CODEPET_BIN_SOURCE names a
 #      prebuilt one or this is a release archive (its bin/codepet); before anything is
 #      replaced, that binary must report exactly `codepet <version>` of this tree, and this
-#      tree's plugin needs a 0.3.x backend (an older binary refuses schema 5 data);
+#      tree's plugin needs a matching 0.4.x backend (an older binary refuses schema 5 data);
 #   2. upgrade only: stop a running desktop overlay and any CodePet 0.2 task supervisor,
 #      each by its exact PID (never a pattern kill);
-#   3. install `codepet` and `codepet-overlay` into ~/.local/bin atomically (temporary
+#   3. install `codepet`, `codepet-overlay` `codepet-work` and `codepet-update` into ~/.local/bin atomically (temporary
 #      name, then rename);
-#   4. copy qml/{shell.qml,shared,omarchy,assets} to ~/.local/share/codepet/releases/
+#   4. copy qml/{shell.qml,work.qml,shared,omarchy,assets} to ~/.local/share/codepet/releases/
 #      <version>/qml and atomically repoint the `current` symlink there;
 #   5. stage the bar plugin (omarchy-plugin/ plus qml/shared/LifeText.js, byte for byte, no
 #      symlinks) beside the plugins folder (~/.config/omarchy/.codepet-stage-*, the same
@@ -67,7 +67,7 @@ PLUGIN_ID=greyforge.codepet
 OMARCHY=${CODEPET_OMARCHY:-omarchy}
 QS=${CODEPET_QS:-qs}
 # The release series this tree's plugin and overlay speak to (schema 5, protocol v1).
-SERIES=0.3
+SERIES=0.4
 
 usage() {
     echo "usage: $PROG [--dry-run] [--no-plugin]"
@@ -126,12 +126,14 @@ SHELL_JSON="$CONFIG_HOME/omarchy/shell.json"
 WORK="$CACHE_HOME/codepet"
 TS="$(date +%Y%m%d-%H%M%S)-$$"
 
-RUNTIME_SOURCES=(qml/shell.qml qml/shared qml/omarchy qml/assets)
+RUNTIME_SOURCES=(qml/shell.qml qml/work.qml qml/shared qml/omarchy qml/assets)
 PLUGIN_SOURCES=(omarchy-plugin qml/shared/LifeText.js)
 LAUNCHER_SOURCE=packaging/omarchy/codepet-overlay
+WORK_LAUNCHER_SOURCE=packaging/omarchy/codepet-work
+UPDATER_SOURCE=packaging/omarchy/codepet-update
 
 # A symlink in what we ship could point anywhere; refuse instead of copying it.
-for src in "${RUNTIME_SOURCES[@]}" "${PLUGIN_SOURCES[@]}" "$LAUNCHER_SOURCE"; do
+for src in "${RUNTIME_SOURCES[@]}" "${PLUGIN_SOURCES[@]}" "$LAUNCHER_SOURCE" "$WORK_LAUNCHER_SOURCE" "$UPDATER_SOURCE"; do
     [ -e "$REPO/$src" ] || die "missing $src"
     links=$(find "$REPO/$src" -type l -print)
     [ -z "$links" ] || die "refusing to install a symlink: ${links//$'\n'/, }"
@@ -147,10 +149,11 @@ case "$VERSION" in
     *) die "this tree ships the CodePet $SERIES bar plugin but its version is $VERSION" ;;
 esac
 
-# stage_runtime <dir>: <dir>/qml/{shell.qml,shared,omarchy,assets}
+# stage_runtime <dir>: <dir>/qml/{shell.qml,work.qml,shared,omarchy,assets}
 stage_runtime() {
     mkdir -p -- "$1/qml"
     cp -- "$REPO/qml/shell.qml" "$1/qml/shell.qml"
+    cp -- "$REPO/qml/work.qml" "$1/qml/work.qml"
     for d in shared omarchy assets; do
         cp -R -- "$REPO/qml/$d" "$1/qml/$d"
     done
@@ -184,6 +187,8 @@ if [ "$DRY" -eq 1 ]; then
     fi
     echo "would install: $BIN_DIR/codepet"
     echo "would install: $BIN_DIR/codepet-overlay"
+    echo "would install: $BIN_DIR/codepet-work"
+    echo "would install: $BIN_DIR/codepet-update"
     echo "would copy runtime to: $RELEASE/qml"
     echo "would point: $RUNTIME/current -> releases/$VERSION"
     (cd "$tmp/runtime" && find . -type f | sed 's|^\./|runtime |' | LC_ALL=C sort)
@@ -213,6 +218,8 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
     "$OMARCHY" plugin validate --help >/dev/null 2>&1 ||
         die "this omarchy has no plugin support (Omarchy 4 or later is required); rerun with --no-plugin"
 fi
+command -v python3 >/dev/null 2>&1 || die "Python 3.11 or later is required for updates and the Work launcher"
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "Python 3.11 or later is required"
 # The pet sprites are WebP: without Qt's WebP image plugin they render blank.
 webp_plugin=0
 for d in /usr/lib/qt6/plugins /usr/lib64/qt6/plugins /usr/lib/x86_64-linux-gnu/qt6/plugins; do
@@ -242,7 +249,7 @@ fi
 got=$("$BIN_SRC" --version 2>/dev/null || true)
 case "$got" in
     "codepet $SERIES".*) ;;
-    *) die "$BIN_SRC reports '$got': this plugin needs a codepet $SERIES.x (an older one refuses the pet's schema 5 data); nothing was changed" ;;
+    *) die "$BIN_SRC reports '$got': this plugin needs a codepet $SERIES.x (the bundled UI and backend must match); nothing was changed" ;;
 esac
 [ "$got" = "codepet $VERSION" ] || die "$BIN_SRC reports '$got', expected 'codepet $VERSION'; nothing was changed"
 
@@ -335,7 +342,9 @@ install_file "$BIN_SRC" "$BIN_DIR/codepet"
 got=$("$BIN_DIR/codepet" --version 2>/dev/null || true)
 [ "$got" = "codepet $VERSION" ] || die "installed codepet reports '$got', expected 'codepet $VERSION'"
 install_file "$REPO/$LAUNCHER_SOURCE" "$BIN_DIR/codepet-overlay"
-echo "installed: $BIN_DIR/codepet ($got), $BIN_DIR/codepet-overlay"
+install_file "$REPO/$WORK_LAUNCHER_SOURCE" "$BIN_DIR/codepet-work"
+install_file "$REPO/$UPDATER_SOURCE" "$BIN_DIR/codepet-update"
+echo "installed: $BIN_DIR/codepet ($got), $BIN_DIR/codepet-overlay, $BIN_DIR/codepet-work, $BIN_DIR/codepet-update"
 
 # 4. overlay runtime
 PREVIOUS=$(readlink -- "$RUNTIME/current" 2>/dev/null || true)
@@ -482,7 +491,20 @@ fi
 
 # 8. upgrade: the overlay comes back if it was running
 if [ "$OVERLAY_RUNNING" -eq 1 ]; then
-    if "$BIN_DIR/codepet-overlay" show >/dev/null 2>&1; then
+    restart=("$BIN_DIR/codepet-overlay" show)
+    if [ "${CODEPET_UPDATE_SERVICE:-0}" = 1 ]; then
+        # An updater's control group is removed when it exits. Put the restored
+        # desktop in its own service, whose lifetime follows every cgroup process,
+        # including Quickshell after its launcher daemonizes and exits.
+        restart=(systemd-run --user --quiet --collect --service-type=exec
+            --unit="codepet-overlay-restored-$TS" --property=ExitType=cgroup
+            --property=KillMode=control-group -- /usr/bin/env -i)
+        for key in HOME PATH XDG_DATA_HOME XDG_CONFIG_HOME XDG_CACHE_HOME XDG_STATE_HOME XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS WAYLAND_DISPLAY DISPLAY HYPRLAND_INSTANCE_SIGNATURE OMARCHY_PATH; do
+            [ -z "${!key+x}" ] || restart+=("$key=${!key}")
+        done
+        restart+=("$BIN_DIR/codepet-overlay" show)
+    fi
+    if "${restart[@]}" >/dev/null 2>&1; then
         echo "overlay: started again"
     else
         echo "overlay: not started again; start it with: codepet-overlay show"

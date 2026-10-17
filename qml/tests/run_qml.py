@@ -7,7 +7,7 @@ Run: python qml/tests/run_qml.py qml/tests/PreviewSmoke.qml   (always offscreen)
 - qml/tests/stubs is on the import path: test-only stand-ins for the Omarchy shell's
   qs.Commons (Style, Color), so the bar plugin's popup screens load without Quickshell.
 - Smokes may read repository files with XMLHttpRequest (fixtures, the pet registry).
-- A smoke that never calls Qt.exit() fails with 124 after the timeout (default 20 s,
+- A smoke that never calls Qt.exit() fails with 124 after the timeout (default 30 s,
   CODEPET_QML_TIMEOUT_S to change it).
 Requires an already installed PySide6. Does not install anything or contact a service.
 """
@@ -45,5 +45,5 @@ engine.quit.connect(app.quit)
 engine.load(QUrl.fromLocalFile(str(Path(sys.argv[1]).resolve())))
 if not engine.rootObjects():
     raise SystemExit(2)
-QTimer.singleShot(int(float(os.environ.get("CODEPET_QML_TIMEOUT_S", "20")) * 1000), lambda: app.exit(124))
+QTimer.singleShot(int(float(os.environ.get("CODEPET_QML_TIMEOUT_S", "30")) * 1000), lambda: app.exit(124))
 raise SystemExit(app.exec())

@@ -8,7 +8,8 @@
 // The face (which state wins, its line and its bubble) comes from petstate.js
 // sharedPriority(); this file turns that face into what each surface draws.
 //
-// Kid copy rules (SPEC-v0.3 §1.2 K1/K2/K8): no numbers, no jargon, short lines. Every word a
+// Copy rules: short action text; Home statistics expose numbers, XP and level per the
+// operator's October 16 correction (contracts/notes.md §13). Every word a
 // kid sees comes from strings.json; nothing here invents copy.
 
 var SCHEMAS = ["codepet.bar.v1", "codepet.bar.v2"]
@@ -95,6 +96,14 @@ function parse(text) {
     return normalize(boundedJson(text, MAX_STATE_BYTES))
 }
 
+function parseWork(text) {
+    var doc = boundedJson(text, MAX_STATE_BYTES)
+    if (!isObject(doc) || !isObject(doc.readiness) || typeof doc.readiness.ready !== "boolean"
+            || !isNum(doc.readiness.energy) || doc.readiness.energy < 0 || doc.readiness.energy > 100) return null
+    if (doc.task !== null && doc.task !== undefined && (!isObject(doc.task) || typeof doc.task.status !== "string")) return null
+    return doc
+}
+
 function normalize(doc) {
     if (!isObject(doc) || SCHEMAS.indexOf(doc.schema) < 0) return null
     if (!isNum(doc.state_version) || doc.state_version < 0 || Math.floor(doc.state_version) !== doc.state_version) return null
@@ -170,6 +179,7 @@ function config(settings) {
         presence: boolSetting(s.presence, true),
         overlayOnLoad: boolSetting(s.overlayOnLoad, false),
         calm: boolSetting(s.calm, false),
+        desktopPlacement: isObject(s.desktopPlacement) ? s.desktopPlacement : { pinned: false },
         binary: absolutePath(s.binary),
         stateHome: absolutePath(s.stateHome)
     }
@@ -189,11 +199,14 @@ function paths(cfg, env) {
         stateHome: stateHome,
         stateDir: stateDir,
         barState: stateDir + "/bar-state.json",
+        workState: stateDir + "/work-state.json",
         presence: stateDir + "/presence.json",
         runtime: dataHome + "/codepet/current/",
         registry: dataHome + "/codepet/current/qml/assets/pets/registry.json",
         binary: cfg.binary || home + "/.local/bin/codepet",
         launcher: home + "/.local/bin/codepet-overlay",
+        workLauncher: home + "/.local/bin/codepet-work",
+        updateHelper: home + "/.local/bin/codepet-update",
         shellConfig: home + "/.config/omarchy/shell.json",
         testState: testState,
         // Extra environment for every BarRpc process; empty = inherit. With a test state home
@@ -464,6 +477,28 @@ function careIsFull(doc, need) {
     return isNum(meter) && meter >= METER_FULL
 }
 
+// Read-only Home statistics. Unknown input stays unknown, never a fabricated zero/full.
+function careMeter(doc, need) {
+    var value = doc && isObject(doc.meters) ? doc.meters[METER_OF[need]] : null
+    var known = isNum(value) && value >= 0 && value <= METER_FULL
+    return { known: known, percent: known ? Math.floor(value / 100) : null,
+             fraction: known ? value / METER_FULL : 0 }
+}
+
+function petProgress(life) {
+    var known = isObject(life) && isNum(life.xp) && life.xp >= 0 && Math.floor(life.xp) === life.xp
+        && isNum(life.level) && life.level >= 1 && Math.floor(life.level) === life.level
+        && [1, 2, 3].indexOf(life.stage) >= 0
+    if (!known) return { known: false, level: null, xp: null, evolved: false, remaining: null, fraction: 0 }
+    var evolved = life.stage === 3
+    var floor = STAGE_FLOOR_XP[life.stage - 1]
+    var next = life.next_stage_xp
+    var targetKnown = isNum(next) && Math.floor(next) === next && next > floor
+    return { known: true, level: life.level, xp: life.xp, evolved: evolved,
+             remaining: !evolved && targetKnown ? Math.max(0, next - life.xp) : null,
+             fraction: evolved ? 1 : targetKnown ? Math.max(0, Math.min(1, (life.xp - floor) / (next - floor))) : 0 }
+}
+
 // Which controls Home shows for a face (agent_vectors.json priority.home_controls, K4, K6).
 // tiles: [{need, glow: "now"|"soon"|"", label key}], wake: "" | "pet.wake" | "pet.pause",
 // turnOn, round (the three round buttons), treats.
@@ -694,15 +729,17 @@ function wordCount(text) {
 }
 
 // Problems of one rendered kid-facing line: [] when it passes K1, K2 and K8.
-function kidTextProblems(text) {
+function kidTextProblems(text, statistic) {
     var out = []
     var s = String(text)
     for (var e = 0; e < EXEMPT_LITERALS.length; e++) s = s.split(EXEMPT_LITERALS[e]).join(" ")
-    if (/[0-9%]/.test(s)) out.push("K1 digit or %")
+    if (!statistic && /[0-9%]/.test(s)) out.push("K1 digit or %")
     var low = s.toLowerCase()
     for (var v = 0; v < VERB_PHRASES.length; v++) low = low.replace(VERB_PHRASES[v], " ")
-    for (var j = 0; j < JARGON.length; j++)
+    for (var j = 0; j < JARGON.length; j++) {
+        if (statistic && ["xp", "level", "percent"].indexOf(JARGON[j]) >= 0) continue
         if (new RegExp("\\b" + JARGON[j]).test(low)) out.push("K2 " + JARGON[j])
+    }
     if (wordCount(text) > 8) out.push("K8 more than 8 words")
     return out
 }

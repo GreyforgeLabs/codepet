@@ -1,8 +1,39 @@
-// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+// Task-pipeline tests and helpers run only with `legacy-tasks` (retained for non-default compatibility).
 #![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 
 mod common;
 use common::Env;
+
+#[test]
+fn repository_discovery_is_metadata_only_and_creates_no_pet_state() {
+    use std::io::Write;
+    let env = Env::new();
+    let repo = env.home().join("Projects/example");
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    // Invalid provider/state configuration must not be consulted by discovery.
+    let mut command = env.command(&["work-rpc"], None);
+    command
+        .env("PATH", "")
+        .env("XDG_STATE_HOME", "relative-invalid");
+    let mut child = command.spawn().unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"{\"method\":\"repos\",\"params\":{}}\n")
+        .unwrap();
+    let output = common::wait_output(child);
+    assert!(output.status.success());
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["ok"], true);
+    assert_eq!(
+        response["result"]["repos"][0]["path"],
+        repo.to_str().unwrap()
+    );
+    assert!(!env.xdg().exists());
+    assert!(!env.home().join(".codex").exists());
+    assert!(output.stderr.is_empty());
+}
 
 #[cfg(feature = "legacy-tasks")]
 #[test]

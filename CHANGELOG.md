@@ -2,6 +2,67 @@
 
 All notable changes to CodePet.
 
+## 0.4.0 — 2026-10-17
+
+CodePet can find a suspected bug in your local repositories, prepare a repair when
+you choose **Fix**, and grow when you review and apply useful work.
+
+### A pet that codes
+
+- **Updates in the app:** More → Updates checks the latest stable GitHub release.
+  One Update button verifies and installs it in a bounded independent job, preserving
+  pet progress and installer recovery backups. Active work/review and open Work
+  windows block installation; interrupted updates remain visible. See
+  [updates and recovery](docs/updates.md).
+- The desktop icon opens a compact card: suspected bug, Fix, progress, Stop and
+  Review. Research and custom coding tasks remain available in the advanced window.
+- Automatic discovery searches conventional local development folders. Read-only
+  scouts use isolated source copies, return at most one provider-reported suspected
+  bug, and never fix or apply code automatically. Checks are enabled after Let's go!
+  when the pet is ready; **Details → Checks off** pauses future checks.
+- One scout attempt per six hours globally and one per repo per day, including
+  failed preparation. A bounded preflight skips unsuitable checkouts before a single
+  provider job. Scouts run for at most five minutes and earn no XP or care.
+- Accepted bug fixes fill food, research fills water, and builds lift mood. Each
+  accepted job earns 20 XP exactly once. Play and free recovery care remain available;
+  happiness, sleep and energy gate new jobs without requiring full food/water bars.
+  Three accepted jobs or 45 minutes of accepted work call for a two-minute nap.
+- Codex 0.163.0 uses an existing ChatGPT subscription sign-in. Selected source context
+  can be sent to the provider and the job can access the network. Other coding-app
+  connections continue to observe externally started sessions independently.
+
+### Visible progress and desktop controls
+
+- Home shows four care percentages and bars, exact XP, level and growth progress.
+  The pet card shows level, XP and age from the current life's saved birth timestamp.
+- Drag the desktop pet in either direction, pin it from its context menu or More,
+  and retain its position and monitor across restarts. Hide/show preserves placement
+  and pinning. Calm mode remains available.
+- Preparation failures remain visible after refresh or reopening. File-watch refresh
+  no longer forms a request loop. Interrupted application reopens Review so the
+  existing recovery path remains reachable.
+
+### Containment and compatibility
+
+- One job owns the slot through review. The provider sees a bounded isolated copy,
+  with process-tree cancellation/deadlines, memory/process limits, credential read
+  restrictions and no automatic escalation. Missing containment refuses work.
+- Explicit Apply checks the reviewed digest and original bytes, refuses conflicts,
+  preserves recovery data, and binds its durable reward to the original companion.
+  Provider-reported checks require acknowledgement; they are not presented as
+  independent verification. Failed/cancelled jobs earn nothing.
+- Review export supports small edits to larger text files within a 384 KiB combined
+  text budget, retaining the 512 KiB encoded review limit. Export failures identify
+  CodePet's limit instead of blaming the provider; no changed files are dropped.
+- Existing companions, XP, age, life history and observer connections are preserved.
+  SQLite remains schema 5. The retired mock pipeline stays behind non-default
+  `legacy-tasks` for compatibility; real work does not depend on it.
+
+See [work and limits](docs/work.md), [provider requirements](docs/providers.md),
+[security](docs/security.md) and [qualification](docs/validation.md).
+Actual compositor pointer/focus behavior for the new card remains unqualified;
+offscreen tests and actual hide/show checks are recorded separately.
+
 ## 0.3.0 — release candidate
 
 CodePet now keeps company with your real coding apps. The old mock task window is
@@ -20,7 +81,7 @@ replaced by one simple popup with painted care buttons and an obvious power swit
 - Crash-safe client jobs, nonblocking hooks, bounded inbox/fold processing,
   metadata-only diagnostics, migration backups and uninstall tombstones.
 - The default binary no longer routes task methods. Historical tables remain;
-  the mock pipeline is behind non-default `legacy-tasks` until v0.3.1.
+  the mock pipeline is behind non-default `legacy-tasks` (still retained for compatibility in 0.4.0).
 
 Qualification is in [validation](docs/validation.md). See
 [architecture](docs/architecture.md), [security](docs/security.md),

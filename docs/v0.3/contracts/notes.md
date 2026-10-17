@@ -898,3 +898,94 @@ sections were renumbered so each package keeps its own: 7 owner decisions, 8 WP5
    fields are additive and both v0.3 readers accept v1/v2. Changing the label would break
    a loaded v0.2.1 bar before its hot reload. This is an intentional compatibility choice,
    not an unfinished schema bump; schema-v5 SQLite is unchanged.
+
+## 13. Operator correction: visible stats (2026-10-16)
+
+The operator rejected the loss of health bars and numeric XP/level as "TOO
+simplified". This supersedes K1's blanket number ban and K2's XP/level ban for
+visible pet statistics. Short action labels and the remaining copy rules stay.
+
+Home now shows saved level, exact total XP, and a bar from the current evolution
+stage's XP floor to the next stage threshold. The caption gives remaining XP to
+evolve; the last stage says Fully evolved while retaining total XP. These are
+evolution thresholds, not next-level thresholds. This occupies the former thought
+bubble area, keeping the 160 px pet and existing popup height. Activity still has
+its status sentence, pet animation and bar badge.
+
+The four care tiles show their saved percentages and proportional fill. High is
+good. Percentages round down so 99.99% never claims full; unavailable or invalid
+values show a dash. Care actions, stats storage, lifecycle rules, reward earning
+and explicit Treats acceptance are unchanged. No polling or new RPC is added.
+
+`stats.*` strings and `cpStatistic` text fields are the narrow numeric-copy
+exception. Model tests and HomeSmoke verify actual values, fill widths, unknown
+data, final evolution, maximum XP, and fit at base sizes 12, 16 and 20. Local
+installation is separate from publication; this is not a new released version.
+
+## 14. Desktop placement — operator correction, 2026-10-16
+
+The operator requested that the desktop pet be draggable, movable and pinnable.
+This supersedes the fixed floor-only position, absence of desktop controls, and
+stationary working animation in §3.8. A left drag moves in both axes without opening
+Home; a click still opens Home. Right-click toggles pinning, also available as
+**Pin pet in place** in More (which now permits seven rows). Pinning stops automatic
+wandering but still permits intentional dragging. Calm mode stops cosmetic motion,
+not manual placement. An unpinned working pet may wander between animation beats.
+
+Position, monitor preference and pin state are saved in the CodePet bar entry's
+`desktopPlacement` object via Omarchy's settings mutator. Coordinates are normalized
+within the usable overlay surface and clamped; a disconnected monitor uses the
+existing connected-screen fallback. These preferences survive overlay restarts and
+do not modify care, XP, agent exports or the database. The desktop input mask remains
+the pet's hit box; the activity bubble and the Pinned label stay click-through.
+
+The terminal picture remains the Codex activity indicator. It does not mean CodePet
+is itself executing a coding task. The operator also rejected the removal of real
+task functionality; neither restoring the historical mock pipeline nor showing a
+button constitutes a real execution implementation.
+
+
+## 15. Useful-work loop — delegated product design, 2026-10-17
+
+The operator rejected losing CodePet tasks, then explicitly delegated the loop
+choice. Decision0003 and docs/work.md define the current source behavior: chosen
+bug/research/build jobs, explicit Start, isolated progress/cancel, review and
+acceptance, then matching care and20XP once. Mood/energy/awake/On gate new work;
+food/water never require full bars. Free care avoids a needs/work deadlock.
+
+The historical v0.3 observer contract still describes external client sessions.
+A separate work-rpc envelope and internal work-run/work-sandbox entry points are
+listed in cli.post_freeze_work and checked against main.rs. Removed task.* mock
+methods stay removed. No observer schema or migration is repurposed. Permanent
+work.accept receipts contribute to life XP; a work.active receipt freezes attended
+decay through execution/review. Display-only work-state.json is separate from the
+content-free observer export and excludes prompt, paths, output and raw errors.
+
+Ordinary sleep/Off/retirement actions refuse while a CodePet-owned job executes;
+parameter and schema validation still precede state mutation. Codex0.163.0 tools
+use a native read-denial profile for /auth and /provider inside outer namespace and
+cgroup containment. These are local unreleased extensions, not claims about the
+published v0.3.0 archive. Previous frozen inputs remain historical where the new
+explicitly requested behavior supersedes them.
+
+
+## 16. Icon discovery, scouting and age — operator correction, 2026-10-17
+
+The operator superseded the manual task-manager primary flow with a pet icon that
+finds local repositories and suspected bugs. Read docs/work.md for coverage and
+limits. The bounded automatic scout is read-only, consumes its durable cooldown
+before preparation, and earns no XP. Fix and reviewed Apply remain explicit.
+
+The separate work-rpc adds repos (empty params), scout (empty params),
+scout-settings ({enabled: boolean}), and fix ({task_id, review_digest, request_id}).
+Discovery returns repos [{name,path,kind: repository|gitfile}], scanned_roots,
+skipped_directories, incomplete and limit_reason, without opening pet/provider
+state. Normal work results add scout {enabled,next_due_ms}; tasks add source_kind
+(manual|scout|scout_fix), finding and has_finding. A finding has title, relative path,
+line, evidence, check and verification=provider_reported. Status scouted holds the
+slot only when a finding exists. Public get excludes internal source bindings and
+raw last-message storage; the minimal export also strips finding text entirely.
+
+bar-state life.adopted_at_ms is an additive optional schema property, copied from
+its existing durable life timestamp; state.get already exposed it. Older exports
+may omit it. This adds no migration and never changes an existing companion's age.

@@ -1,0 +1,6 @@
+#!/bin/sh
+# The helper holds the shared work lock through window creation, so an update cannot
+# pass its no-open-Work check while a new window is being launched.
+set -eu
+[ "$#" -le 1 ] || { echo 'usage: codepet-work [compact|bug|research|build]' >&2; exit 2; }
+exec "$HOME/.local/bin/codepet-update" _open-work "${1:-build}"

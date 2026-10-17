@@ -2,6 +2,31 @@
 
 Read README.md and docs/implementation-spec.md before modifying behavior. The spec is a target, not evidence that security or runtime features exist. For v0.3 work, the frozen contracts are in docs/v0.3/contracts/ (start with its README.md and notes.md).
 
+## Operator correction — 2026-10-17 (takes precedence over v0.3 product direction)
+
+Latest correction: the pet should be a simple icon that automatically knows where
+to find bugs in local repositories. The manual folder/task form is an advanced
+fallback, not the primary interaction. Bounded metadata discovery and read-only
+automatic scouting now precede an explicit Fix click; a repair still uses isolated
+execution and explicit reviewed Apply. Scouting itself grants no XP or care.
+The older blanket prohibition on automatic provider launches is superseded only
+for this bounded scout path. No automatic fixes, application, retry or queue follows.
+
+Read [docs/decisions/0003-care-driven-real-work.md](docs/decisions/0003-care-driven-real-work.md).
+The operator delegated the game-loop design after rejecting the earlier care-arrow
+interpretation. Useful accepted work feeds the pet: bug → food, research → water,
+build → mood; each accepted job earns 20 XP once. Care buttons enter jobs; free
+recovery care stays available. Mood and energy gate new work; food/water never need
+to be full. Read docs/work.md. The new default-build work controller is independent
+of the retired mock pipeline. Do not cite the earlier wording of decision 0003 as
+an immutable operator requirement.
+
+The v0.3 observe-only restriction below still governs externally launched coding
+sessions. It does not prohibit CodePet-owned scouting or explicitly started repairs
+under the scope, isolation, containment, review and acceptance rules below.
+No falling meter, cosmetic timer or unrelated observer event authorizes a task.
+Keep the restored numeric stats, desktop dragging and pinning.
+
 ## v0.3 invariants (SPEC-v0.3 §6.1)
 
 CodePet observes local coding clients (Claude Code, Codex, OpenCode, Hermes, Grok CLI) and never runs them. These replace the v0.2 provider-launch rules.
@@ -28,6 +53,6 @@ CodePet observes local coding clients (Claude Code, Codex, OpenCode, Hermes, Gro
 - Run cargo fmt --all --check, cargo test --workspace --locked and cargo clippy --workspace --all-targets --locked -- -D warnings, each also with `--features legacy-tasks`, plus `python3 docs/v0.3/contracts/check_contracts.py`. Update tests for every state/policy change.
 - State verification limits honestly. QML source review does not mean Qt/Omarchy tested; unmeasured resource goals (such as the hook latency budget) are not benchmarks.
 
-## Retired task pipeline (`legacy-tasks`, deleted in v0.3.1)
+## Retired task pipeline (`legacy-tasks`, retained for non-default compatibility)
 
-The v0.2 mock task pipeline is unrouted in v0.3.0 and kept only behind the non-default `legacy-tasks` cargo feature until its deletion. While it exists it keeps its v0.2 rules: one task owns the active slot until containment confirms all children stopped; no host-project writes, shell interpolation, implicit network/secrets or privileged actions; reward only after explicit result acceptance in one atomic durable transaction; failed execution/containment is terminal. No new feature work may depend on it. Its historic data tables stay read-only and are never dropped.
+The v0.2 mock task pipeline is unrouted in v0.3.0 and kept only behind the non-default `legacy-tasks` cargo feature for compatibility. While it exists it keeps its v0.2 rules: one task owns the active slot until containment confirms all children stopped; no host-project writes, shell interpolation, implicit network/secrets or privileged actions; reward only after explicit result acceptance in one atomic durable transaction; failed execution/containment is terminal. No new feature work may depend on it. Its historic data tables stay read-only and are never dropped.

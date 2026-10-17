@@ -66,9 +66,73 @@ Window {
         if (face.state === "asleep" || face.state === "paused") kit.check(tiles === 0 && kit.find(app, "cp.wake").visible, label + ": asleep shows Wake up only")
         if (face.state === "fainted") kit.check(tiles === 2 && rounds === 0 && tile("food") && tile("water"), label + ": fainted shows the two tiles that revive")
         if (["off", "asleep", "paused", "fainted"].indexOf(face.state) < 0) kit.check(tiles === 4 && rounds === 3, label + ": 4 tiles and 3 round buttons")
-        var bubble = kit.find(app, "cp.thought")
-        kit.check(!bubble.visible || kit.px16(bubble.height) <= 72.5, label + ": thought bubble <= 72 px")
+        var progress = kit.find(app, "cp.progress")
+        kit.check(progress && progress.visible, label + ": level and XP are visible on Home")
+        kit.check(text("cp.progress.level") === "Level " + ctl.barState.life.level, label + ": exact level")
+        kit.check(text("cp.progress.xp") === ctl.barState.life.xp + " XP", label + ": exact total XP")
+        kit.check(text("cp.progress.age") === "Age unavailable", label + ": old export never invents a birth date")
+        var careNeeds = ["food", "water", "play", "wash"]
+        for (var n = 0; n < careNeeds.length; n++) {
+            var careTile = tile(careNeeds[n])
+            if (!careTile || !careTile.visible) continue
+            var meter = kit.find(careTile, "cp.meter.value")
+            var raw = ctl.barState.meters[Model.METER_OF[careNeeds[n]]]
+            kit.check(meter && meter.text === Math.floor(raw / 100) + "%", label + ": " + careNeeds[n] + " percentage")
+            var track = kit.find(careTile, "cp.meter.track")
+            var fill = kit.find(careTile, "cp.meter.fill")
+            kit.check(track && fill && Math.abs(fill.width - track.width * raw / 10000) < 0.5, label + ": " + careNeeds[n] + " bar fill")
+        }
     }).concat([
+        function () {
+            win.load("idle-treats")
+            var doc = ctl.barState
+            doc.life.adopted_at_ms = ctl.now - 43 * 3600000
+            ctl.barState = JSON.parse(JSON.stringify(doc))
+        },
+        function () {
+            kit.check(text("cp.progress.age") === "Living for 1 day", "durable birth time shows wall age beside XP")
+            kit.check(text("cp.progress.birth").indexOf("Born ") === 0, "exact birth date remains available on hover")
+            kit.all(app, "age beside XP with Treats")
+        },
+        function () {
+            win.load("idle-happy")
+            ctl.workState = { readiness: { ready: true, energy: 67 }, task: null }
+        },
+        function () {
+            kit.check(text("cp.statusLine") === "Energy 67% · Ready to work", "Home shows numeric energy and readiness")
+            kit.all(app, "Home with work readiness")
+            ctl.workState = { readiness: { ready: false, energy: 67 }, task: { status: "review" } }
+        },
+        function () {
+            kit.check(text("cp.statusLine") === "Your job is ready to review", "owned review is distinct from observed client activity")
+            kit.find(app, "cp.round.work").tapped()
+            kit.check(ctl.workLaunches[ctl.workLaunches.length - 1] === "compact", "existing job reachable when not ready for another")
+            ctl.workState = null
+            win.load("fainted")
+        },
+        function () {
+            tile("food").tapped()
+            kit.check(ctl.last("pet.care").params.action === "food", "fainted pet has free food recovery without work")
+        },
+        // Numeric stats remain visible after final evolution; missing data is not zero.
+        function () {
+            win.load("idle-happy")
+            var doc = ctl.barState
+            doc.life.stage = 3; doc.life.level = 5; doc.life.xp = 4294967295; doc.life.next_stage_xp = null
+            ctl.barState = JSON.parse(JSON.stringify(doc))
+        },
+        function () {
+            kit.check(text("cp.progress.xp") === "4294967295 XP", "final evolution keeps exact total XP")
+            kit.check(text("cp.progress.next") === "Fully evolved", "final evolution has no invented next target")
+            kit.all(app, "maximum XP @20")
+            var doc = ctl.barState
+            doc.meters = {}
+            ctl.barState = JSON.parse(JSON.stringify(doc))
+        },
+        function () {
+            var meter = kit.find(tile("food"), "cp.meter.value")
+            kit.check(meter && meter.text === "—", "unknown care displays a dash, not zero")
+        },
         // ---- K9: Off has zero running timers in the popup; On animates while open.
         function () { win.load("off"); return 120 },
         function () {
@@ -92,23 +156,19 @@ Window {
             ctl.cfg = { label: "name", calm: true, overlayOnLoad: false }
         },
         function () {
-            kit.check(kit.runningTimers(app).length === 0, "Calm mode: no animation clock " + JSON.stringify(kit.runningTimers(app)))
+            kit.check(kit.runningTimers(app).filter(function (name) { return name !== "codepetPopup.age" }).length === 0, "Calm mode: only the minute age clock " + JSON.stringify(kit.runningTimers(app)))
             ctl.cfg = { label: "name", calm: false, overlayOnLoad: false }
             Style.fontBaseSize = 16
             var doc = kit.fixture("idle-happy")
             doc.meters = { hunger: 6000, thirst: 6000, mental_health: 6000, hygiene: 6000 }
             ctl.barState = doc
         },
-        // ---- K5: a care tap reacts at once, even when nothing changes.
+        // Useful work opens its real task window; care rewards wait for acceptance.
         function () {
             var before = ctl.calls.length
-            var t0 = Date.now()
             tile("food").tapped()
-            var dt = Date.now() - t0
-            var word = Model.careWord(kit.registry, "cat", "food")
-            kit.check(app.bubbleText === "Yum! " + word + "!" && dt < 150, "food tap: bubble '" + app.bubbleText + "' in " + dt + " ms")
-            kit.check(app.actionState === "food", "food tap starts the food animation")
-            kit.check(ctl.calls.length === before + 1 && ctl.last("pet.care").params.action === "food", "food tap sends pet.care food")
+            kit.check(ctl.workLaunches[ctl.workLaunches.length - 1] === "compact", "food opens compact bug card")
+            kit.check(ctl.calls.length === before, "opening bug fixing grants no care or XP")
         },
         function () {
             var doc = kit.fixture("idle-happy")
@@ -117,7 +177,7 @@ Window {
         },
         function () {
             tile("food").tapped()
-            kit.check(app.bubbleText === "Ginger is full!", "a full pet says so at once: " + app.bubbleText)
+            kit.check(ctl.workLaunches[ctl.workLaunches.length - 1] === "compact", "full food never blocks bug card")
             ctl.responses = { "pet.care": { changed: false } }
             tile("play").tapped()
             kit.check(app.bubbleText.indexOf("Wheee!") === 0, "play reacts: " + app.bubbleText)
@@ -131,8 +191,8 @@ Window {
             kit.check(app.bubbleText === "Oops! Please try again.", "a failed tap says so: " + app.bubbleText)
             ctl.responses = {}
             ctl.hold = true
-            tile("water").tapped()
-            kit.check(app.bubbleText.indexOf("Ahh!") === 0, "a tap reacts while the request is still running")
+            tile("play").tapped()
+            kit.check(app.bubbleText.indexOf("Wheee!") === 0, "play reacts while the request is still running")
             ctl.hold = false
             ctl.release()
         },
@@ -145,15 +205,15 @@ Window {
         },
         function () {
             var t = tile("water"), w = tile("wash")
-            kit.check(t.text === "Fresh water" && w.text === "Clean tank", "goldfish tiles: " + t.text + " / " + w.text)
+            kit.check(t.text === "Fresh water" && t.detail === "" && w.text === "Clean tank", "goldfish work and care labels")
             kit.check(tile("food").icon === "care-aquatic/food", "goldfish uses the aquatic icons")
             kit.check(text("cp.statusLine") === "Ginger's tank is a bit dirty.", "goldfish line: " + text("cp.statusLine"))
             tile("water").tapped()
-            kit.check(app.bubbleText === "Ahh! Fresh water!", "goldfish water bubble: " + app.bubbleText)
+            kit.check(ctl.last("pet.care").params.action === "water", "water is free recovery care")
         },
         function () { win.load("robot-bolt") },
         function () {
-            kit.check(tile("food").text === "Charge" && tile("water").text === "Cool down" && tile("wash").text === "Polish",
+            kit.check(tile("food").detail === "Charge" && tile("water").text === "Cool down" && tile("wash").text === "Polish",
                       "robot tiles: " + tile("food").text + " / " + tile("water").text + " / " + tile("wash").text)
             kit.check(tile("food").icon === "care-robot/food", "robot uses the robot icons")
         },
@@ -230,9 +290,12 @@ Window {
             power.toggled(false)
             kit.check(ctl.last("app.set_enabled").params.enabled === false, "the power switch sends app.set_enabled false")
         },
-        function () { kit.find(app, "cp.round.helpers").tapped() },
+        function () { kit.find(app, "cp.round.work").tapped() },
         function () {
-            kit.check(app.screen === "helpers", "Helpers opens: " + app.screen)
+            kit.check(ctl.workLaunches[ctl.workLaunches.length - 1] === "compact", "Work opens compact bug card")
+            app.go("helpers", {})
+        },
+        function () {
             kit.check(kit.find(app, "cp.back").visible, "‹ Back is shown on Helpers")
             kit.find(app, "cp.header").back()
         },

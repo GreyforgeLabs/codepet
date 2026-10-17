@@ -14,7 +14,7 @@
 # listed). Nothing else is deleted: the plugin folder and ~/.local/share/codepet/
 # {current,releases} move to ~/.cache/codepet/uninstall-<timestamp>/. The pet's data in
 # $XDG_STATE_HOME/codepet is kept (the disconnects record themselves there), and the
-# `codepet` and `codepet-overlay` commands stay in ~/.local/bin (remove them by hand if you
+# `codepet`, `codepet-overlay` `codepet-work` and `codepet-update` stay in ~/.local/bin (remove them by hand if you
 # want).
 # A running desktop overlay is left alone and the uninstall refuses until it is stopped
 # (`codepet-overlay quit`). If `omarchy plugin disable` fails (no running shell, or the
@@ -140,7 +140,7 @@ fi
 if [ "${#moves[@]}" -gt 0 ]; then
     echo "backup: $BACKUP (delete it when you no longer need it)"
 fi
-echo "kept: $HOME/.local/bin/codepet and codepet-overlay (remove by hand if you want)"
+echo "kept: $HOME/.local/bin/codepet, codepet-overlay, codepet-work and codepet-update (remove by hand if you want)"
 if [ "$DISABLE_FAILED" -eq 1 ]; then
     echo "warning: $PLUGIN_ID may still be listed in $SHELL_JSON. Once the shell runs, try:"
     echo "  omarchy plugin disable $PLUGIN_ID"

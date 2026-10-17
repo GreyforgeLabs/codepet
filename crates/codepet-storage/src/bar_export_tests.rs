@@ -66,6 +66,7 @@ fn export_writes_the_contract_shape_with_mode_0600() {
         set(&[
             "life_id",
             "ordinal",
+            "adopted_at_ms",
             "name",
             "appearance",
             "stage",
@@ -82,6 +83,11 @@ fn export_writes_the_contract_shape_with_mode_0600() {
         ])
     );
     assert_eq!(v["life"]["name"], "Ginger");
+    assert_eq!(v["life"]["adopted_at_ms"], T0);
+    assert_eq!(
+        v["life"]["adopted_at_ms"],
+        store.snapshot().unwrap().life.unwrap().adopted_at_ms
+    );
     assert_eq!(v["life"]["next_stage_xp"], 80);
     assert_eq!(v["needs"].as_array().unwrap().len(), 4);
     assert_eq!(
@@ -385,8 +391,11 @@ fn the_ui_fixture_has_exactly_the_exported_shape() {
     shape(&real, "", &mut a);
     shape(&fixture, "", &mut b);
     // Options that are null in a fresh export (critical, task, sleep start, latest name)
-    // may be filled in the fixture; everything the export emits must be in the fixture.
-    let missing: Vec<_> = a.difference(&b).collect();
+    // may be filled in the fixture. Older exports predate the additive age timestamp.
+    let missing: Vec<_> = a
+        .difference(&b)
+        .filter(|k| k.as_str() != ".life.adopted_at_ms")
+        .collect();
     assert!(missing.is_empty(), "fixture lacks {missing:?}");
     let extra: Vec<_> = b
         .difference(&a)
@@ -420,7 +429,11 @@ fn the_export_has_the_v03_contract_shape() {
     let (mut a, mut b) = (BTreeSet::new(), BTreeSet::new());
     shape(&real, "", &mut a);
     shape(&fixture, "", &mut b);
-    let missing: Vec<_> = a.difference(&b).collect();
+    // Preserve the frozen v0.3 fixture; the optional age field was added afterward.
+    let missing: Vec<_> = a
+        .difference(&b)
+        .filter(|k| k.as_str() != ".life.adopted_at_ms")
+        .collect();
     assert!(missing.is_empty(), "contract fixture lacks {missing:?}");
     // The fixture fills options a fresh export leaves empty (apps, test, client records).
     let extra: Vec<_> = b

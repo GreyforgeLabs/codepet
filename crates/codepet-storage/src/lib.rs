@@ -29,6 +29,8 @@ mod sys;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 mod treats;
+mod work;
+pub use work::{work_readiness, WorkReadiness};
 
 pub use agent_export::{
     AgentExport, AppExport, ClientExport, ClientsExport, JobExport, TestExport, TreatsExport,
@@ -119,7 +121,7 @@ pub const FAULT_POINTS: [&str; 10] = [
     "disconnect_after_flag",
     "test_after_begin",
 ];
-/// The retired task pipeline's fault points (`legacy-tasks` only; deleted in v0.3.1).
+/// The retired task pipeline's fault points (`legacy-tasks` only; retained for non-default compatibility).
 #[cfg(feature = "legacy-tasks")]
 pub const LEGACY_FAULT_POINTS: [&str; 5] = [
     "accept_before_commit",

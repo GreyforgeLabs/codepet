@@ -66,6 +66,7 @@ pub fn publish_bar_state(store: &Store) {
         let mut err = io::stderr().lock();
         let _ = writeln!(err, "{line}").and_then(|()| err.flush());
     }
+    crate::work::refresh_export();
 }
 
 /// `codepet: bar-state.json not updated: <reason>`, on one line, the reason cut to
@@ -406,6 +407,8 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
         }
         Method::PetSleep => {
             let _: EmptyParams = parse_params(p)?;
+            ctx.store()?;
+            let _guard = work_idle_guard()?;
             encode(serde_json::to_value(ctx.store()?.sleep(&req.id)?))
         }
         Method::PetWake => {
@@ -433,6 +436,8 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                     .ok_or_else(|| Failure::invalid_params("pace must be steady or playtest"))?,
                 acknowledge_rules: a.acknowledge_rules,
             };
+            ctx.store()?;
+            let _guard = work_idle_guard()?;
             encode(serde_json::to_value(ctx.store()?.adopt(&req.id, &request)?))
         }
         Method::PetRules => {
@@ -461,6 +466,8 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
         }
         Method::PetRetire => {
             let r: PetRetireParams = parse_params(p)?;
+            ctx.store()?;
+            let _guard = work_idle_guard()?;
             encode(serde_json::to_value(ctx.store()?.retire(
                 &req.id,
                 &r.life_id,
@@ -521,6 +528,12 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
         }
         Method::AppSetEnabled => {
             let e: AppSetEnabledParams = parse_params(p)?;
+            ctx.store()?;
+            let _guard = if !e.enabled {
+                Some(work_idle_guard()?)
+            } else {
+                None
+            };
             encode(serde_json::to_value(
                 ctx.store()?.set_enabled(&req.id, e.enabled)?,
             ))
@@ -637,6 +650,10 @@ fn task_input(d: &DraftParams) -> Result<TaskInput, Failure> {
         },
         mock,
     })
+}
+
+fn work_idle_guard() -> Result<std::fs::File, Failure> {
+    crate::work::idle_guard().map_err(|reason| Failure::new(ErrorCode::InvalidState, &reason))
 }
 
 #[cfg(test)]

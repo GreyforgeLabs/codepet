@@ -28,6 +28,10 @@ jobs:
       - name: Overlay host and bar plugin contracts
         run: |
           python3 qml/tests/test_overlay_windows.py
+          python3 qml/tests/test_overlay_drag.py
+          python3 qml/tests/test_overlay_host.py
+          python3 qml/tests/test_work_host.py
+          python3 qml/tests/test_update_host.py
           python3 qml/tests/test_quickshell_host.py
           python3 qml/tests/test_bar_plugin.py
       - name: Pet assets (legacy sprites, v0.2 packs, invalid-pack fixtures, distinctness)
@@ -53,7 +57,9 @@ jobs:
           python3 -I docs/art-library/verify.py
           python3 -I docs/art-library/test_verify.py
       - name: Install, uninstall and measurement tooling (temporary HOME, stub tools)
-        run: python3 qml/tests/test_install_scripts.py
+        run: |
+          python3 qml/tests/test_install_scripts.py
+          python3 qml/tests/test_update.py
       # Calm copy, and the v0.3 kid copy rules K1/K2/K8 over the plugin's strings, its
       # kid-facing QML and the species fields that reach the screen; the plugin's copy table
       # must be the contract plus the WP5 additions.
@@ -84,4 +90,5 @@ jobs:
       - name: Portable QML lint
         run: |
           pyside6-qmllint -I qml -I qml/tests/stubs qml/shared/*.qml qml/standalone/*.qml qml/tests/*Smoke.qml \
-            $(ls omarchy-plugin/*.qml | grep -vE '/(BarWidget|BarRpc|BarPopup|PresenceRecorder)\.qml$')
+            qml/omarchy/WorkPanel.qml \
+            $(ls omarchy-plugin/*.qml | grep -vE '/(BarWidget|BarRpc|BarPopup|PresenceRecorder|UpdateController)\.qml$')

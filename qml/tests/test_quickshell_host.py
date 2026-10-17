@@ -458,7 +458,7 @@ assert.equal(parse(text(bar({life: null}))).life, null);
 assert.equal(parse(text(bar({care: Object.assign(bar().care, {readiness_reasons: Array(9).fill('a')})}))), null);
 assert.equal(parse(text(bar({care: Object.assign(bar().care, {sleeping: 1})}))), null);
 const noCompat = bar(); delete noCompat.care.ready_to_work; delete noCompat.care.readiness_reasons;
-assert.ok(parse(text(noCompat)), 'the v0.3.0 compatibility care keys are optional (dropped in v0.3.1)');
+assert.ok(parse(text(noCompat)), 'the v0.3.0 compatibility care keys are optional (retained as optional compatibility fields)');
 assert.equal(parse(text(bar({task: {state: 'Running!'}}))), null);
 assert.equal(parse(text(bar({needs: [{need: 'mood', action: 'play', state: 'low'}]}))), null);
 assert.equal(parse(text(bar({unseen_events: [{seq: 1, stage: 7}]}))), null);
@@ -706,7 +706,7 @@ print("unexpected qs call", args, file=sys.stderr)
 sys.exit(99)
 """
 
-ALL_FUNCTIONS = ["ping", "status", "show", "hide", "toggle", "openHome", "refresh"]
+ALL_FUNCTIONS = ["ping", "status", "show", "hide", "toggle", "openHome", "openCard", "refresh"]
 
 
 class LauncherBehaviour(unittest.TestCase):
@@ -793,6 +793,33 @@ class LauncherBehaviour(unittest.TestCase):
         r, calls = self.run_launcher("show")
         self.assertEqual(self.launches(calls), [])
         self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "show"]])
+
+    def test_card_uses_shown_overlay_and_falls_back_without_showing_pet(self):
+        work = Path(self.tmp.name) / "work-launcher"
+        receipt = Path(self.tmp.name) / "work-args"
+        work.write_text("#!/usr/bin/python3\nimport sys\nfrom pathlib import Path\nPath(" + repr(str(receipt)) + ").write_text(repr(sys.argv[1:]))\n")
+        work.chmod(0o700)
+        self.env["CODEPET_WORK_LAUNCHER"] = str(work)
+        self.set_state(running=True, status_reply='{"pet":"shown","exit_reason":""}')
+        result, calls = self.run_launcher("card")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.ipc_calls(calls), [["-p", str(self.qml), "openCard"]])
+        self.assertFalse(receipt.exists())
+        for running, pet in [(True, "hidden"), (True, "suppressed"), (False, "shown")]:
+            with self.subTest(running=running, pet=pet):
+                self.set_state(running=running, status_reply=json.dumps({"pet": pet, "exit_reason": ""}))
+                result, calls = self.run_launcher("card")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(receipt.read_text(), "['compact']")
+                self.assertEqual(self.launches(calls), [])
+                self.assertEqual(self.ipc_calls(calls), [])
+                receipt.unlink()
+        self.off_flag.write_text("")
+        self.set_state(running=False)
+        result, calls = self.run_launcher("card")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(receipt.read_text(), "['compact']")
+        self.assertEqual(self.launches(calls), [])
 
     def test_off_starts_nothing_and_says_so(self):
         # notes.md section 9 item 5: Off is no failure; an overlay would only exit again.

@@ -1,4 +1,14 @@
-# Care and progression (mock-only feature slice)
+> **Current v0.4 loop, 2026-10-17:**
+> Accepted bug fixes feed the pet, research quenches thirst, and building lifts mood;
+> accepted jobs earn XP. Happy/awake/energy gates replace the historical full-bars gate.
+> See [decision 0003](decisions/0003-care-driven-real-work.md) and [work.md](work.md).
+> Older mock/observer-only supersession notes below are historical.
+
+
+## Historical care-only implementation
+
+The following record describes the superseded mock-task loop. Current behavior
+and real-work rewards are in [work.md](work.md).
 
 Care gets the pet ready. Explicitly accepted simulated work earns **demo XP**, never
 verified-work XP. This change does not enable real providers, project writes, verification

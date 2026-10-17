@@ -1,5 +1,5 @@
 // More, Memories, Say goodbye and the bar cell's right-click menu (SPEC-v0.3 §3.1, §3.6,
-// §9.3 MoreSmoke): at most six rows, kid sizes and copy at base sizes 12, 16 and 20, the
+// §9.3 MoreSmoke): at most nine rows, kid sizes and copy at base sizes 12, 16 and 20, the
 // desktop-pet and Calm switches, Bedtime only while awake, the typed-name goodbye.
 import QtQuick
 import QtQuick.Window
@@ -59,7 +59,7 @@ Window {
         kit.check(app.screen === c.page, label + ": screen " + app.screen)
         kit.all(app, label)
         if (c.page === "more") {
-            kit.check(win.rows() <= 6, label + ": at most six rows (" + win.rows() + ")")
+            kit.check(win.rows() <= 9, label + ": at most nine rows (" + win.rows() + ")")
             kit.check(win.shown("cp.more.bedtime") === (c.fixture !== "asleep"), label + ": Bedtime only while awake")
         }
     }).concat(kit.each([12, 16, 20], ["idle-happy", "off"], function (size, name) {
@@ -69,6 +69,7 @@ Window {
         kit.check(menu.screen === "menu", label + ": menu screen")
         kit.all(menu, label)
         kit.check(kit.find(menu, "cp.menu.helpers").visible === (name !== "off"), label + ": Helpers only while On")
+        kit.check(kit.find(menu, "cp.menu.work").visible, label + ": Work remains reachable even while Off")
     })).concat([
         // ---- the switches and Bedtime
         function () { win.load("idle-happy", "more") },
@@ -79,6 +80,10 @@ Window {
             kit.check(ctl.cfg.overlayOnLoad === true && ctl.launches[ctl.launches.length - 1] === "show", "Pet on my desktop on: setting + show")
         },
         function () {
+            win.find("cp.more.pin").toggled(true)
+            kit.check(ctl.cfg.desktopPlacement.pinned === true, "Pin saves its setting")
+            win.find("cp.more.pin").toggled(false)
+            kit.check(ctl.cfg.desktopPlacement.pinned === false, "Unpin saves its setting")
             var n = ctl.launches.length
             win.find("cp.more.desktop").toggled(false)
             kit.check(ctl.cfg.overlayOnLoad === false && ctl.launches.length === n, "Pet on my desktop off: the setting only (the pet exits by itself)")

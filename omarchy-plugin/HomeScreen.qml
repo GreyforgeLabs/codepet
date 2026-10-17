@@ -3,8 +3,8 @@ import QtQuick
 import "CodePetBar.js" as Model
 import "Strings.js" as Strings
 
-// Home (SPEC-v0.3 §3.2) and its Off look (§3.7). A big animated pet with its thought
-// bubble and the Treats button, one sentence, the four picture tiles and the three round
+// Home (SPEC-v0.3 §3.2) and its Off look (§3.7). A big animated pet, exact level/XP,
+// evolution progress and Treats, one sentence, four care meters and three round
 // buttons. Fainted, asleep and Off use the same frame with fewer controls (K4, K6), so
 // every look fits the 640 px budget at base sizes 12, 16 and 20 (K13).
 Item {
@@ -24,6 +24,10 @@ Item {
     // ------------------------------------------------------------- taps (K5)
 
     function care(need) {
+        if (home.face && home.face.state !== "fainted" && need === "food") {
+            home.app.openWork("compact")
+            return
+        }
         var full = Model.careIsFull(home.doc, need)
         var name = home.life ? home.life.name : ""
         home.app.say(Model.reactText(Strings.STRINGS, home.app.reg, home.appearance, need, full, name), need)
@@ -78,7 +82,7 @@ Item {
             PetPlayer {
                 id: pet
                 objectName: "cp.pet"
-                x: home.off ? (parent.width - width) / 2 : home.t.u(48)
+                x: home.t.u(48)
                 width: home.t.u(160)
                 height: width
                 registry: home.app.reg
@@ -115,15 +119,13 @@ Item {
                 y: 0
                 z: 2
             }
-            ThoughtBubble {
-                id: thought
-                objectName: "cp.thought"
-                t: home.t
-                visible: !home.off && icons.length > 0
-                icons: home.off ? [] : Model.bubbleIcons(home.app.reg, home.doc, home.face)
-                big: home.face ? ["need_soon", "idle"].indexOf(home.face.state) < 0 : true
-                x: pet.x + pet.width + home.t.u(8)
+            PetProgress {
+                objectName: "cp.progress"
+                app: home.app
+                anchors.right: parent.right
+                width: home.t.u(216)
                 y: 0
+                visible: !!home.life
             }
             Rectangle {
                 id: treats
@@ -186,11 +188,16 @@ Item {
             id: line
             objectName: "cp.statusLine"
             readonly property bool cpStatusLine: true
+            readonly property bool cpStatistic: true
             width: parent.width
             height: home.t.u(36)
             verticalAlignment: Text.AlignVCenter
             horizontalAlignment: Text.AlignHCenter
-            text: home.jarFull && home.face && home.face.state === "idle"
+            text: home.app.workState && home.app.workState.task && ["preparing", "running", "review", "applying"].indexOf(home.app.workState.task.status) >= 0
+                ? home.app.s(home.app.workState.task.status === "review" ? "work.review" : "work.working")
+                : home.app.workState && home.app.workState.readiness && !home.off
+                ? home.app.s("work.energy", { value: home.app.workState.readiness.energy }) + " · " + home.app.s(home.app.workState.readiness.ready ? "work.ready" : "work.rest")
+                : home.jarFull && home.face && home.face.state === "idle"
                 ? home.app.s("treats.full") : Model.faceLine(Strings.STRINGS, home.app.reg, home.doc, home.face)
             textFormat: Text.PlainText
             font.family: home.t.family
@@ -214,9 +221,13 @@ Item {
                     objectName: "cp.tile." + modelData.need
                     t: home.t
                     icon: Model.careIcon(home.app.reg, home.appearance, modelData.need)
-                    text: home.app.s("tile." + modelData.need)
+                    readonly property bool isWork: home.face && home.face.state !== "fainted" && modelData.need === "food"
+                    text: home.app.s(isWork ? (modelData.need === "food" ? "work.bug" : "work.research") : "tile." + modelData.need)
+                    detail: isWork ? home.app.s("tile." + modelData.need) : ""
                     glow: modelData.glow
                     calm: home.app.calm
+                    meter: Model.careMeter(home.doc, modelData.need)
+                    meterText: meter.known ? home.app.s("stats.percent", { value: meter.percent }) : home.app.s("stats.unknown")
                     onTapped: home.care(modelData.need)
                 }
             }
@@ -242,6 +253,16 @@ Item {
             text: home.app.s("btn.turn_on")
             onTapped: home.app.setPower(true)
         }
+        BigButton {
+            objectName: "cp.workRecovery"
+            visible: !home.off && !!home.life && !home.controls.round
+            t: home.t
+            width: parent.width
+            text: home.app.s("work.open")
+            icon: "status/laptop"
+            kind: "secondary"
+            onTapped: home.app.openWork("compact")
+        }
 
         Item { width: 1; height: home.t.u(8); visible: home.controls.round }
 
@@ -262,11 +283,11 @@ Item {
                     onTapped: home.app.go("change", {})
                 }
                 RoundButton {
-                    objectName: "cp.round.helpers"
+                    objectName: "cp.round.work"
                     t: home.t
                     icon: "status/laptop"
-                    text: home.app.s("round.helpers")
-                    onTapped: home.app.go("helpers", {})
+                    text: home.app.s("work.open")
+                    onTapped: home.app.openWork("compact")
                 }
                 RoundButton {
                     objectName: "cp.round.more"

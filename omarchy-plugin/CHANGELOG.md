@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-10-17
+
+- Exact level, XP, evolution progress, care percentages and current-life age on Home.
+- Work/Fix opens the compact pet card; suspected bugs lead to explicit Fix and Review.
+- Care and free recovery stay available alongside useful work and two-minute naps.
+- Show/hide and pin controls preserve desktop placement; hiding the pet does not
+  silently re-enable it when opening the fallback compact window.
+- Automatic check failures survive reopening. Interrupted Apply opens Review.
+- Existing companions, observer connections, growth and schema 5 data remain intact.
+
 ## 0.3.0 (release candidate)
 
 The "a 5-year-old can use it" popup (SPEC-v0.3 §3).

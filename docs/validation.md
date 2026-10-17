@@ -1,6 +1,38 @@
+# v0.4.0 qualification (2026-10-17)
+
+This entry covers the useful-work and compact-card implementation. It distinguishes
+source tests, isolated native UI tests, real provider execution and installed
+runtime checks. Historical v0.3 compositor results below do not qualify the new card.
+
+| Gate | Evidence |
+|---|---|
+| Default and `legacy-tasks` Rust suites | Full workspace tests, strict Clippy, formatting and protocol/contract checks passed for the completed implementation |
+| Automatic selection and failure feedback | Four scout RPC regressions passed: oversized/linked candidates before a valid checkout, ten-candidate cap, durable cooldown/error, private-error redaction and no reward on refusal |
+| Work containment and recovery | Fourteen focused work tests passed, including shared preflight budgets, state-size caps, cancellation races, credential read denial/aliases, detached-child termination, review bounds and apply conflicts |
+| Real disposable scout → Fix → Review → Apply | Automatic discovery found a seeded defect; scout left originals unchanged and earned no XP. Stale digest was refused, repeated Fix returned one job, Apply passed three independently run tests, repeated acceptance stayed at one 20-XP reward, and the birth timestamp was preserved |
+| Real coding and research jobs | Contained Codex 0.163.0 produced reviewable code changes and a read-only research report. Conflict refusal, exact-once acceptance and a full two-minute nap recovery were exercised on disposable state |
+| Native compact/work UI | Fourteen card checks and offscreen Quickshell work-window tests passed, including literal text, explicit Fix/Review, cancel/reopen, persistent preparation refusal and interrupted-Apply recovery |
+| Placement and input regions | Isolated Qt/Quickshell tests passed for dragging, geometry, pinning, hide/show and bounded input regions; these are not compositor pointer/focus acceptance |
+| Installed runtime | Matching build loaded one desktop overlay. Actual hide/show preserved pin and position; life identity, age, XP, mode, appearance and arming were preserved. One read-only automatic check completed; its suspected finding remained provider-reported and was not automatically fixed/applied |
+| Review | General and simplicity reviews closed with no open issues after the refresh-loop, recovery-action and candidate-preparation corrections |
+| Linux archive ABI | The 0.4.0 release binary requires GLIBC_2.39 symbols; archive runtime minimum is glibc 2.39. Source MSRV remains Rust 1.85 |
+| Release archive | Final versioned archive/checksums and extracted install/uninstall gate are checked by the release packaging workflow; source/runtime qualification alone does not prove those artifacts |
+
+The illustrative card image in README is a real-source render with synthetic
+finding/stat data. It is not a screenshot of an actual discovered bug.
+
+Remaining limits: actual compositor pointer/focus behavior for the new card,
+monitor hotplug, fractional scale and isolated whole-desktop resource measurements
+were not exercised. A provider-reported finding/check is not independent proof;
+only the disposable post-Apply tests above were independently run. The adapter
+refuses versions other than Codex 0.163.0. No portability claim is made for a
+non-Quickshell desktop host. See [work](work.md) and [security](security.md).
+
+---
+
 # v0.3.0 qualification (2026-10-16)
 
-Current implementation: `v0.3`, following the frozen
+Historical implementation: `v0.3`, following the frozen
 [contracts](v0.3/contracts/README.md). This section distinguishes source tests,
 offscreen UI, nested compositor behavior, live clients and human acceptance.
 It does not inherit passes from v0.2 records below.
@@ -21,7 +53,7 @@ It does not inherit passes from v0.2 records below.
 | Nested visual coverage | 165 captures, observed font scales 0.75 / 1.0 / 1.25 at base sizes 12 / 16 / 20; five Helpers rows and hints, Connect cards with 1–4 apps. Independent review found no clipping in the sampled screens. Earlier mislabeled-size runs are superseded |
 | Release archive install/uninstall and rollback | passed: stripped archive and install/uninstall gates; synthetic v4 → v5 upgrade preserved the entire life row, journal and XP ledgers; v4 backup reopened with 0.2.1 and the old binary refused schema 5. The fixture has zero XP and no historical tasks |
 | Kid read-aloud (K12) | pending human feedback; never inferred from automated checks |
-| Live installation | archive installed over 0.2.0; schema 4 → 5 backup created; Ginger’s identity, goldfish look, XP, stage and unarmed life settings preserved. The running shell reloaded the plugin without a restart. Overlay loaded and exited normally because desktop-pet visibility was off |
+| Live installation | archive installed over 0.2.0; schema 4 → 5 backup created; the existing life identity, appearance, XP, stage and unarmed settings preserved. The running shell reloaded the plugin without a restart. Overlay loaded and exited normally because desktop-pet visibility was off |
 | Live resource behavior | whole-desktop resource isolation, monitor hotplug and fractional scale remain unmeasured |
 
 Offscreen source/runtime checks are not compositor or live-desktop acceptance.

@@ -138,7 +138,7 @@ test('every overlay value of the shared order has an animation', () => {
     assert.equal(O.animation('none').state, '');
     assert.equal(O.animation('sleep').state, 'sleep');
     assert.equal(O.animation('waiting').bob, true);
-    assert.equal(O.animation('working').roam, false);
+    assert.equal(O.animation('working').roam, true);
     assert.equal(O.animation('needs_care').roam, false);
     assert.equal(O.animation('needs_care_frame').roam, true);
     assert.equal(O.animation('wander').roam, true);
@@ -233,4 +233,19 @@ test('a new overlay process counts what its first export holds as celebrated', (
     const running = fixture('idle-happy');
     running.agent = { ...running.agent, test: { state: 'running', at_ms: 5 } };
     assert.equal(O.seenAtStart(running).seen.test_at_ms, 0, 'a running ready check is not seen yet');
+});
+
+
+test('desktop placement validates saved coordinates and writes one structured host setting', () => {
+    const p = {x: 0.2, y: 0.7, pinned: true, screen: 'DP-1'};
+    assert.deepEqual(plain(F.placementSetting(shellJson({id: F.PLUGIN_ID, desktopPlacement: p}))), p);
+    for (const bad of [null, [], {}, {x: -1, y: 0}, {x: 0, y: 2}, {x: '0', y: 0}]) {
+        const got = F.placementSetting(shellJson({id: F.PLUGIN_ID, desktopPlacement: bad}));
+        assert.equal(got.x, null);
+        assert.equal(got.y, null);
+        assert.equal(got.pinned, false);
+    }
+    assert.deepEqual(plain(F.placementArgv('/usr/share/omarchy', p)),
+        ['qs', 'ipc', '-p', '/usr/share/omarchy/shell', 'call', '--', 'shell', 'setBarWidget',
+         F.PLUGIN_ID, 'desktopPlacement', JSON.stringify(p), '{}']);
 });

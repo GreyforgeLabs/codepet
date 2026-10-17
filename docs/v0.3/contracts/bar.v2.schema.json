@@ -261,6 +261,11 @@
      "type": "integer",
      "minimum": 1
     },
+    "adopted_at_ms": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Optional additive field in local development builds: durable creation time of this life, also exposed in state.get. Older exports may omit it."
+    },
     "name": {
      "type": "string",
      "minLength": 1,

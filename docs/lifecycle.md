@@ -1,7 +1,7 @@
-# Companion lifecycle (v0.3)
+# Companion lifecycle (v0.4)
 
-The numerical `lifecycle-v1` care rules below remain in force. v0.3 changes how a
-life starts, how growth is earned, and the UI. These rules supersede the historical
+The numerical `lifecycle-v1` care rules below remain in force. v0.4 adds the
+[useful-work loop](work.md) alongside external-session treats. These rules supersede the historical
 v0.2 task/default descriptions retained below.
 
 - Fresh state has no life until **Let's go!** (`pet.start`). The cat is preselected;
@@ -15,10 +15,14 @@ v0.2 task/default descriptions retained below.
 - **Off** freezes care, grace and earning, stops presence recording and exits the
   desktop pet. On resumes without catch-up. The bar remains to turn it on again.
 - Real interactive coding activity earns bounded treats. Giving one grants five
-  XP exactly once. From zero XP, grown takes sixteen treats and mature takes eighty.
+  XP exactly once. Pet-owned accepted work grants 20 XP and matching care once;
+  scouting grants nothing.
   Old earned XP is kept. Agent events never settle care or change a life status.
-- No Start, preflight, task slot, mandatory work nap or readiness gate is exposed by
-  the default build. The old task methods exist only with `legacy-tasks`.
+- New owned work requires On, an awake living pet, mood at least 25% and energy.
+  Three accepted jobs or 45 minutes of accepted work require a two-minute nap.
+  Hunger/thirst do not need full bars. Free recovery care remains available.
+  Attended decay is frozen through owned work/review. Old mock task methods remain
+  non-default compatibility code behind `legacy-tasks`.
 - **Memories** reads paged journal events across current and ended lives, including
   growth already seen. It neither settles time nor acknowledges a celebration.
 
@@ -31,7 +35,7 @@ See [architecture](architecture.md), [privacy](security.md) and
 
 The following detailed record is preserved for the old implementation and its
 `legacy-tasks` tests. Task actions, default permadeath, first-run placeholders,
-and v0.2 screen text below are historical, not v0.3 UI behavior.
+and v0.2 screen text below are historical, not current UI behavior.
 
 This page documents ruleset `lifecycle-v1`: evolution by XP, the humane permadeath lifecycle, attended-time accounting, and how storage enforces them. It is the reference for the storage layer (`crates/codepet-storage`) and for UI copy.
 

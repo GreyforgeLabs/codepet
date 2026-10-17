@@ -1,7 +1,9 @@
 # CodePet bar widget (`greyforge.codepet`)
 
-Your CodePet on the Omarchy bar: a pet to feed and play with that cheers on your coding apps
-(Claude Code, Codex, OpenCode, Hermes, Grok) and grows from their finished work.
+Your coding companion on the Omarchy bar. Home shows care meters, level, exact XP,
+growth progress and current-life age. Work opens a compact pet card for automatic
+read-only bug checks, explicit Fix and reviewed Apply. Accepted work fills a need
+and earns XP; optional external coding-app observations keep their own treat loop.
 
 Install it with the CodePet installer, which stages this folder (plus `LifeText.js` from
 `qml/shared/`), validates it and enables it on the right of the bar:
@@ -28,7 +30,8 @@ and never in Calm mode.
 
 The popup has one big power switch on every screen. Off freezes everything (no needs drop,
 no growth, the desktop pet and the coding-app hooks stop); turning it on resumes exactly
-where it was.
+where it was. Active owned execution must be stopped, and application recovery
+finished, before turning Off.
 
 ## Settings
 
@@ -45,7 +48,10 @@ Stored in this widget's entry in `~/.config/omarchy/shell.json`:
 
 Active time counts only while the CodePet bar widget is on your Omarchy bar and you are at
 the computer. The desktop pet is always started through `~/.local/bin/codepet-overlay`.
-The desktop pet opens Home with `omarchy-shell greyforge.codepet openHome`.
+Clicking the desktop pet opens its compact work card; Care opens Home through the
+bar panel. `codepet-overlay card` preserves a hidden pet and uses a compact fallback
+window. Automatic checks can be paused from Details; see [work and provider
+requirements](../docs/work.md).
 See `docs/omarchy-plugin.md` in the [CodePet repository](https://github.com/GreyforgeLabs/codepet)
 for the full contract.
 

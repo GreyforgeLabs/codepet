@@ -42,10 +42,13 @@ TIMERS = {
     "codepetBar.rpcWatchdog": ("BarRpc.qml", False),
     "codepetPopup.frames": ("PopupApp.qml", True),
     "codepetPopup.bubble": ("PopupApp.qml", False),
+    "codepetPopup.age": ("PetProgress.qml", True),
+    "codepetUpdate.watchdog": ("UpdateController.qml", False),
+    "codepetUpdate.poll": ("UpdateController.qml", True),
 }
 # Files that run only inside Quickshell; every other QML file imports QtQuick (and
 # qs.Commons / QtQuick.Effects) only, so the PySide smokes load it.
-SHELL_FILES = {"BarWidget.qml", "BarRpc.qml", "BarPopup.qml", "PresenceRecorder.qml"}
+SHELL_FILES = {"BarWidget.qml", "BarRpc.qml", "BarPopup.qml", "PresenceRecorder.qml", "UpdateController.qml"}
 SMOKES = ["HomeSmoke.qml", "FirstRunSmoke.qml", "HelpersSmoke.qml", "MoreSmoke.qml", "HelpSmoke.qml", "OffSmoke.qml"]
 LIFE = "life-0123456789abcdef01234567"
 
@@ -154,7 +157,7 @@ class Manifest(unittest.TestCase):
     def test_retired_v02_ui_is_gone(self):
         for name in ("BarPopup.qml", "BarWidget.qml", "CodePetBar.js"):
             text = (PLUGIN / name).read_text()
-            for gone in ("Tasks…", "readiness", "Refresh", "sleepCountdown", "hoverGrace", "tooltip(", "lifecycleText"):
+            for gone in ("Tasks…", "Refresh", "sleepCountdown", "hoverGrace", "tooltip(", "lifecycleText"):
                 self.assertNotIn(gone, text, f"{name} still has {gone}")
             if name.endswith(".qml"):
                 self.assertNotIn("simulation", text.lower(), name)
@@ -192,6 +195,12 @@ class SourceContract(unittest.TestCase):
 
     def test_no_timer_handler_sends_a_request_or_launches(self):
         for name, text in self.qml.items():
+            if name == "UpdateController.qml":
+                self.assertIn('running: updates.opened && Updates.active(updates.snapshot)', text)
+                self.assertIn('onTriggered: if (!updates.busy) updates.request("status")', text)
+                self.assertNotIn('onTriggered: updates.install', text)
+                self.assertNotIn('onTriggered: updates.check', text)
+                continue
             funcs = function_bodies(text)
             for timer in blocks(text, "Timer {"):
                 for bad in ("request", "launch", "execDetached", "startup", "openPopup", "openHome", "care",
@@ -233,7 +242,8 @@ class SourceContract(unittest.TestCase):
             self.assertNotIn(gone, allow)
         for name, text in self.qml.items():
             for method in re.findall(r"request\(\s*\"([^\"]+)\"", text):
-                self.assertIn(method, allow, f"{name} sends {method}")
+                self.assertIn(method, ["status", "check", "install"] if name == "UpdateController.qml" else allow,
+                              f"{name} sends {method}")
             self.assertNotRegex(text, r"\"task\.", f"{name} mentions a task method")
         rpc = self.qml["BarRpc.qml"]
         funcs = function_bodies(rpc)
@@ -252,7 +262,13 @@ class SourceContract(unittest.TestCase):
 
     def test_processes_are_argv_only(self):
         rpc = self.qml["BarRpc.qml"]
-        self.assertEqual(self.all_qml.count("Process {"), 1)
+        self.assertEqual(self.all_qml.count("Process {"), 2)
+        updater = self.qml["UpdateController.qml"]
+        self.assertIn('supported: !root.paths.testState && root.cfg.binary === "" && Quickshell.env("CODEPET_TEST_STATE") !== "1"', self.qml["BarWidget.qml"])
+        self.assertLess(function_bodies(updater)["request"].index("if (!supported)"), function_bodies(updater)["request"].index("process.createObject"))
+        self.assertIn('command: [updates.helper, verb]', updater)
+        self.assertIn('environment: updates.childEnv', updater)
+        self.assertIn('["status", "check", "install"].indexOf(verb) < 0', updater)
         self.assertIn('command: [rpc.binary, "rpc"]', rpc)
         self.assertIn("environment: rpc.childEnv", rpc)
         for name, text in self.qml.items():
@@ -268,7 +284,7 @@ class SourceContract(unittest.TestCase):
         self.assertIn("root.launcherVerbs.indexOf(verb) < 0", launch)
         self.assertIn('argv = ["/usr/bin/env"].concat(root.paths.launcherEnv, argv)', launch)
         self.assertIn('if (root.paths.launcher.indexOf("=") >= 0) return false', launch)
-        self.assertIn('readonly property var launcherVerbs: ["show", "hide", "toggle"]', bw)
+        self.assertIn('readonly property var launcherVerbs: ["show", "hide", "toggle", "card"]', bw)
 
     def test_mouse_buttons_and_the_off_click(self):
         bw = self.qml["BarWidget.qml"]
@@ -369,7 +385,7 @@ class SourceContract(unittest.TestCase):
                 self.assertRegex(path, r"^(root\.paths\.|recorder\.stateDir)", f"{name}: {path}")
         bw = self.qml["BarWidget.qml"]
         self.assertIn("bar.shell.updateEntryInline(root.moduleName, next)", bw)
-        self.assertIn('["label", "presence", "overlayOnLoad", "calm"].indexOf(key) < 0', function_bodies(bw)["setSetting"])
+        self.assertIn('["label", "presence", "overlayOnLoad", "calm", "desktopPlacement"].indexOf(key) < 0', function_bodies(bw)["setSetting"])
 
     def test_presence_recorder_rules(self):
         rec = self.qml["PresenceRecorder.qml"]
@@ -654,7 +670,7 @@ ShellRoot {
         walk(w, 0, [])
         var a = shell.popupOf(w)
         return { leader: w.leader, face: w.face, cell: w.cell, version: w.barState ? w.barState.state_version : -1,
-                 menu: w.menu, mode: w.popupMode, busy: w.rpcBusy, notInstalled: w.rpcNotInstalled, isOn: w.isOn,
+                 workState: w.workState, updateState: w.updateState, updateBusy: w.updateBusy, updateSupported: w.updateSupported, menu: w.menu, mode: w.popupMode, busy: w.rpcBusy, notInstalled: w.rpcNotInstalled, isOn: w.isOn,
                  testState: w.paths.testState, stateDir: w.paths.stateDir, stateMissing: w.stateMissing, cfg: w.cfg,
                  notice: a ? a.notice : "",
                  timers: timers, running: all, screen: a ? a.screen : "", label: w.labelText, seen: w.seen,
@@ -769,7 +785,7 @@ class QuickshellPluginLoad(unittest.TestCase):
         (stage / "shell.qml").write_text(HARNESS)
         self.entry = stage / "shell.qml"
         if installed:
-            for name, body in (("codepet", FAKE_CODEPET), ("codepet-overlay", FAKE_LAUNCHER)):
+            for name, body in (("codepet", FAKE_CODEPET), ("codepet-overlay", FAKE_LAUNCHER), ("codepet-work", FAKE_LAUNCHER.replace("launch.log", "work-launch.log"))):
                 f = home / ".local/bin" / name
                 f.write_text(body.format(python=sys.executable))
                 f.chmod(0o700)
@@ -850,6 +866,49 @@ class QuickshellPluginLoad(unittest.TestCase):
         tmp.write_text(json.dumps(doc))
         os.rename(tmp, self.state_dir / "bar-state.json")
 
+    def test_updates_page_routes_to_fixture_helper_and_stops_polling_when_closed(self):
+        self.start(state=fixture("idle-happy", state_version=5))
+        helper = self.home / ".local/bin/codepet-update"
+        helper.write_text("#!/usr/bin/python3\n" + r'''import json,os,sys
+from pathlib import Path
+root=Path(os.environ['HOME']);p=root/'update-fixture.json'
+a=sys.argv[1:];assert len(a)==1 and a[0] in ['status','check','install']
+with (root/'update-calls.jsonl').open('a') as log:log.write(json.dumps(a)+'\n')
+s=json.loads(p.read_text()) if p.exists() else {'schema':'codepet.update.v1','current':'0.4.0','latest':'','state':'idle','message':'','checked_at':0}
+if a[0]=='check':s.update(state='available',latest='0.4.1',message='An update is ready.')
+if a[0]=='install':s.update(state='downloading',message='Downloading the release.')
+p.write_text(json.dumps(s));print(json.dumps(s))
+''')
+        helper.chmod(0o700)
+        calls = self.home / "update-calls.jsonl"
+        self.assertFalse(calls.exists(), "bar startup does not check GitHub")
+        self.harness("page", "updates")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["updateState"] and self.dump()["w1"]["updateState"]["state"] == "available" and not self.dump()["w1"]["updateBusy"]))
+        self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()], [["status"], ["check"]])
+        self.harness("tap", "cp.updates.action")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["updateState"]["state"] == "downloading" and not self.dump()["w1"]["updateBusy"]))
+        self.harness("close")
+        count = len(calls.read_text().splitlines())
+        time.sleep(1.5)
+        self.assertEqual(len(calls.read_text().splitlines()), count)
+
+    def test_work_file_is_passive_and_food_opens_compact_card(self):
+        self.start(state=fixture("idle-happy", state_version=5))
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"]))
+        before = len(self.rpc_log())
+        state = {"readiness": {"ready": True, "energy": 67}, "provider": {"available": True}, "task": None}
+        (self.state_dir / "work-state.json").write_text(json.dumps(state))
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"].get("workState") == state))
+        self.assertEqual(len(self.rpc_log()), before, "work export observation launches no request")
+        self.harness("press", "1")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]))
+        self.harness("tap", "cp.tile.food")
+        path = self.home / "launch.log"
+        self.assertTrue(self.wait_for(path.exists))
+        self.assertEqual(json.loads(path.read_text().splitlines()[0])["argv"], ["card"])
+        self.assertFalse(self.dump()["w1"]["menu"], "opening the task window closes the bar popup")
+        self.assertFalse(any(e["method"] == "pet.care" for e in self.rpc_log()), "a draft earns no food")
+
     def test_leader_startup_cell_popup_and_refusals(self):
         self.start(state=fixture("idle-happy", state_version=5))
         self.assertTrue(self.wait_for(lambda: len(self.rpc_log()) >= 1))
@@ -890,10 +949,10 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.assertEqual(self.dump()["w1"]["timers"].get("codepetPopup.frames"), True)
 
         # A care tap from the popup: one request, the bubble at once.
-        self.harness("tap", "cp.tile.food")
+        self.harness("tap", "cp.tile.play")
         self.assertTrue(self.wait_for(lambda: any(e["method"] == "pet.care" for e in self.rpc_log())))
         care = [e for e in self.rpc_log() if e["method"] == "pet.care"][0]
-        self.assertEqual(care["params"], {"action": "food"})
+        self.assertEqual(care["params"], {"action": "play"})
         self.assertRegex(care["id"], r"^bar-[a-z0-9]+-\d+$", "a care press carries its retry key")
 
         # Refusals happen client-side, before any process exists.
@@ -1037,20 +1096,20 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.start(state=fixture("idle-happy", state_version=7))
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 8))
         self.harness("rpcTimeout", "1500")
-        (self.home / "slow.json").write_text(json.dumps({"pet.care:food": 30}))
+        (self.home / "slow.json").write_text(json.dumps({"pet.care:play": 30}))
         self.harness("press", "1")
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]))
-        self.harness("tap", "cp.tile.food")
-        self.harness("tap", "cp.tile.water")
-        self.harness("tap", "cp.tile.water")
+        self.harness("tap", "cp.tile.play")
+        self.harness("tap", "cp.tile.wash")
+        self.harness("tap", "cp.tile.wash")
         self.harness("close")
         t0 = time.monotonic()
-        self.assertTrue(self.wait_for(lambda: sum(e["params"].get("action") == "water" for e in self.rpc_log()) == 2, 15),
+        self.assertTrue(self.wait_for(lambda: sum(e["params"].get("action") == "wash" for e in self.rpc_log()) == 2, 15),
                         self.rpc_log())
-        self.assertGreater(time.monotonic() - t0, 0.5, "the water presses waited for the food press")
+        self.assertGreater(time.monotonic() - t0, 0.5, "the wash presses waited for the play press")
         self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"], 10), "the slot frees after the timeout")
         care = [e for e in self.rpc_log() if e["method"] == "pet.care"]
-        self.assertEqual([e["params"]["action"] for e in care], ["food", "water", "water"], "oldest first")
+        self.assertEqual([e["params"]["action"] for e in care], ["play", "wash", "wash"], "oldest first")
         self.assertEqual(len({e["id"] for e in care}), 3, "every press has its own request id")
         # The timed-out child was ended (python's sleep dies on SIGTERM well before 30 s).
         self.assertLess(time.monotonic() - t0, 15)
@@ -1144,6 +1203,7 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] == 8))
         d = self.dump()
         self.assertTrue(d["w1"]["testState"])
+        self.assertFalse(d["w1"]["updateSupported"], "an isolated state never offers a production installation")
         self.assertEqual(d["w1"]["stateDir"], str(qa / "codepet"))
         self.harness("launch", "toggle")
         self.assertTrue(self.wait_for(lambda: len(self.launch_log()) >= 1))
@@ -1158,6 +1218,7 @@ class QuickshellPluginLoad(unittest.TestCase):
         self.assertTrue(self.wait_for(lambda: len(self.launch_log()) >= 1))
         self.assertEqual(self.launch_log()[0]["argv"], ["toggle"])
         self.assertEqual(self.launch_log()[0]["bin"], alt)
+        self.assertFalse(self.dump()["w1"]["updateSupported"], "a custom backend never offers a production installation")
 
     def test_a_refused_answer_ends_the_child_before_the_slot_frees(self):
         garbled = self.make_tmp_state_home().parent / "garbled-codepet"

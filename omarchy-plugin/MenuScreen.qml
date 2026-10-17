@@ -41,6 +41,15 @@ Item {
             onToggled: c => menu.app.setDesktop(c)
         }
         MenuRow {
+            objectName: "cp.menu.work"
+            visible: menu.hasPet
+            t: menu.t
+            width: parent.width
+            icon: "status/laptop"
+            text: menu.app.s("work.open")
+            onTapped: menu.app.openWork("compact")
+        }
+        MenuRow {
             objectName: "cp.menu.helpers"
             visible: menu.hasPet && menu.app.isOn
             t: menu.t
@@ -48,6 +57,14 @@ Item {
             icon: "status/laptop"
             text: menu.app.s("menu.helpers")
             onTapped: menu.app.ctl.openPage("helpers")
+        }
+        MenuRow {
+            objectName: "cp.menu.updates"
+            t: menu.t
+            width: parent.width
+            icon: "care-floor/star"
+            text: menu.app.s("updates.title")
+            onTapped: menu.app.ctl.openPage("updates")
         }
         MenuRow {
             objectName: "cp.menu.more"

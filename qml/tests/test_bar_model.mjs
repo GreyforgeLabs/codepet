@@ -87,9 +87,9 @@ test('parseRegistry, ownSettings and config', () => {
     assert.deepEqual(plain(M.ownSettings(JSON.stringify(shell), 'greyforge.codepet', { label: 'name', id: 'x' })),
         { label: 'none', calm: true });
     assert.deepEqual(plain(M.ownSettings('garbage', 'greyforge.codepet', { label: 'name', id: 'x' })), { label: 'name' });
-    assert.deepEqual(plain(M.config({})), { label: 'name', presence: true, overlayOnLoad: false, calm: false, binary: '', stateHome: '' });
+    assert.deepEqual(plain(M.config({})), { label: 'name', presence: true, overlayOnLoad: false, calm: false, desktopPlacement: { pinned: false }, binary: '', stateHome: '' });
     const c = M.config({ label: 'status', presence: 'false', overlayOnLoad: true, calm: 'true', binary: 'rel/x', stateHome: '/tmp/qa/' });
-    assert.deepEqual(plain(c), { label: 'name', presence: false, overlayOnLoad: true, calm: true, binary: '', stateHome: '/tmp/qa' });
+    assert.deepEqual(plain(c), { label: 'name', presence: false, overlayOnLoad: true, calm: true, desktopPlacement: { pinned: false }, binary: '', stateHome: '/tmp/qa' });
     assert.equal(M.config({ label: 'none' }).label, 'none');
 });
 

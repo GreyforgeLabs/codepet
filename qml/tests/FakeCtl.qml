@@ -11,6 +11,16 @@ QtObject {
     id: ctl
     property var barState: null
     property var snapshot: null
+    property var workState: null
+    property var updateState: null
+    property bool updateSupported: true
+    property bool updateBusy: false
+    property string updateOperation: ""
+    property var updateCalls: []
+    function openUpdates() { updateCalls = updateCalls.concat(["open"]) }
+    function closeUpdates() { updateCalls = updateCalls.concat(["close"]) }
+    function checkUpdates() { updateCalls = updateCalls.concat(["check"]) }
+    function installUpdate() { updateCalls = updateCalls.concat(["install"]) }
     property var registry: null
     property var cfg: ({ label: "name", presence: true, overlayOnLoad: false, calm: false })
     property string runtimeBase: ""
@@ -24,6 +34,7 @@ QtObject {
     property var calls: []
     property var settings: []
     property var launches: []
+    property var workLaunches: []
     property var pages: []
     property int closes: 0
     // method -> result object, or function(params) returning {ok, result|error}.
@@ -81,6 +92,7 @@ QtObject {
         return true
     }
     function launch(verb) { ctl.launches = ctl.launches.concat([verb]); return true }
+    function openWork(kind) { ctl.workLaunches = ctl.workLaunches.concat([kind]); return true }
     function openPage(page) { ctl.pages = ctl.pages.concat([page]) }
     function closePopup() { ctl.closes += 1 }
 }

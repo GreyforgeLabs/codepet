@@ -1,30 +1,38 @@
 # CodePet QML UI
 
-Rust is the authority for care, sleep, treats and growth. QML renders snapshots and the
-exported `bar-state.json` and sends deliberate requests. It never grants stats or XP or
-completes sleep from an animation, timer or care action. In v0.3 the simulated task
-pipeline is retired (SPEC-v0.3 §6.5): the task form, review, timeline, meters and
-progression panel are deleted, and the everyday UI is the Omarchy bar popup
-(`omarchy-plugin/`). Coding apps are only observed (their hooks), never started.
+Rust is the authority for care, sleep, rewards and growth. QML renders snapshots;
+animations and cosmetic timers grant no stats or XP. The v0.4 desktop pet opens a
+compact work card. Readiness and a bounded one-shot deadline can request a read-only
+scout; Fix and reviewed Apply remain explicit. The bar popup owns care and observer
+connections, and a native work window provides advanced tasks and full review.
 
 See [overlay capabilities and live validation](../docs/desktop-overlay.md) and
 [Quickshell host controls](omarchy/README.md) for the primary desktop entry.
 
 ## Components
 
-v0.2 (raster companions and the life UI):
+Current work surfaces:
+
+- `shared/WorkCard.qml`: portable compact status/finding card, with level, XP and age.
+- `shared/PetAge.js`: age from the durable current-life timestamp, never session time.
+- `omarchy/WorkController.qml`, `WorkRpc.qml`, `WorkModel.js`: shared work state,
+  bounded argv transport, one-shot scouting and explicit job/review actions.
+- `omarchy/WorkPanel.qml` and `work.qml`: native advanced form and before/after review;
+  the same entry supports the compact fallback. Closing it does not kill a supervisor.
+
+Companion rendering and retained preview components:
 
 - `shared/Panel.qml`: the v0.2 window views `home`, `care`, `companion` and `life`, kept for
   the standalone preview; adoption when no companion lives, a "Set up life rules" banner
   for an unarmed life
-- `shared/DesktopPet.qml` (v0.3): the desktop pet. It draws a parsed `bar-state.json` and
+- `shared/DesktopPet.qml`: the desktop pet. It draws a parsed `bar-state.json` and
   sends nothing: `shared/petstate.js` picks the face in the one shared order, and
   `shared/OverlayFace.js` turns it into an animation and a picture-only thought bubble
   (app tiles, the need's care icon, bandage, star, heart). Celebrations play once. A click
-  hops (Calm mode: bubble only), shows a heart and emits `homeRequested()`. A new process
+  hops (Calm mode: bubble only), shows a heart and toggles the compact card. A new process
   never replays a celebration that was in its first export. One bounded
-  cosmetic scheduler plus one single-shot wake timer for the face's `wake_at_ms`; no menu,
-  meters or text on the desktop; aquatic companions stay in their habitat
+  cosmetic scheduler plus one single-shot wake timer for the face's `wake_at_ms`; drag/pin placement and the compact card are coordinated by the host; aquatic
+  companions stay in their habitat
 - `shared/petstate.js` (and the identical `omarchy-plugin/petstate.js`): the shared
   priority, GENERATED from `docs/v0.3/contracts/agent_vectors.json` by
   `tools/petstate/gen_petstate.py`; never edit it by hand
@@ -51,8 +59,8 @@ Retained from v0.1:
   pure-QML fixed-fixture preview of the v0.2 views
 - `shell.qml`: Quickshell host entry of the desktop pet (at `qml/` so `shared/`, `omarchy/`
   and `assets/` are inside its config folder): one transparent, non-focusable,
-  click-through layer-shell overlay whose input region is the pet. There is no window: a
-  click opens the bar popup at Home. The process exits on Off and when "Pet on my
+  click-through layer-shell overlay whose input region covers the pet and open card.
+  A click opens that card; Care opens the bar popup at Home. The process exits on Off and when "Pet on my
   desktop" is off, and follows Calm mode live ([omarchy/README.md](omarchy/README.md))
 - `standalone/OverlayPreview.qml`: fixture-only desktop-pet preview in a normal window
 - `omarchy/HostAdapter.qml`: explicit `codepet rpc` transport (one process per request);
@@ -60,9 +68,9 @@ Retained from v0.1:
   without RPC; `omarchy/OverlayFlow.js` holds the exit, settings and Home rules
 - `tests/`: headless UI/transport harnesses, not product runtime code
 
-Quickshell imports remain confined to the host entry `shell.qml`, the Omarchy adapter
+Quickshell imports remain confined to the host entries, the Omarchy adapter
 and its test harnesses.
-The real standalone QProcess launcher is still not implemented. The optional
+A non-Quickshell standalone product host remains a portability goal. The optional
 Python test runner is a test dependency, not a replacement product architecture.
 
 ## Host contract

@@ -1,0 +1,546 @@
+#!/usr/bin/env python3
+"""Bounded, explicit GitHub updates. Python 3.11+, standard library only.
+
+Public commands return one codepet.update.v1 JSON object. `check` only fetches release
+metadata. `install` hands one job to user systemd; it never retries an unknown job.
+The installed helper is copied before launch so replacing it cannot interrupt an update.
+"""
+import contextlib
+import fcntl
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import platform
+import re
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+API = "https://api.github.com/repos/GreyforgeLabs/codepet/releases/latest"
+DOWNLOAD = "https://github.com/GreyforgeLabs/codepet/releases/download/"
+MAX_ARCHIVE = 128 * 1024 * 1024
+MAX_EXPANDED = 256 * 1024 * 1024
+BUSY = {"downloading", "verifying", "installing"}
+STATES = {"idle", "checking", "available", "current", "succeeded", "error"} | BUSY
+
+
+class UpdateError(Exception):
+    pass
+
+
+def version(value):
+    if not isinstance(value, str) or not re.fullmatch(r"(?:0|[1-9][0-9]{0,5})\.(?:0|[1-9][0-9]{0,5})\.(?:0|[1-9][0-9]{0,5})", value):
+        raise UpdateError("GitHub did not provide a stable release version.")
+    return tuple(map(int, value.split(".")))
+
+
+def private_dir(path):
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise UpdateError("The update or work directory is not private. Repair its permissions before updating.")
+    return path
+
+
+def read_file(path, limit):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > limit:
+            raise UpdateError("An update or work file is unsafe or too large.")
+        data = handle.read(limit + 1)
+        if len(data) > limit:
+            raise UpdateError("An update or work file is too large.")
+        return data
+
+
+def atomic_json(path, value):
+    fd, name = tempfile.mkstemp(prefix=".status-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as out:
+            json.dump(value, out, separators=(",", ":"))
+            out.write("\n")
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+@contextlib.contextmanager
+def lock(path, blocking=False):
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise UpdateError("An update or work lock is unsafe.")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except BlockingIOError as exc:
+            raise UpdateError("CodePet is busy. Let the current operation finish and try again.") from exc
+        yield
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def deadline(seconds):
+    def expired(*_):
+        raise UpdateError("The update operation timed out. Check your connection and try again.")
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+class Redirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlsplit(newurl)
+        # Release downloads redirect to GitHub's signed asset CDN. Never follow an
+        # arbitrary host, HTTP downgrade, credentials, or unusual port.
+        if parsed.scheme != "https" or parsed.hostname not in {"github.com", "release-assets.githubusercontent.com"} or parsed.username or parsed.password or parsed.port not in {None, 443}:
+            raise UpdateError("GitHub redirected the download to an unsupported location.")
+        if parsed.hostname == "github.com" and not newurl.startswith(DOWNLOAD):
+            raise UpdateError("GitHub redirected outside CodePet's releases.")
+        return super().redirect_request(request, fp, code, msg, headers, newurl)
+
+
+class Network:
+    def fetch(self, url, limit, destination=None):
+        if url != API and not re.fullmatch(re.escape(DOWNLOAD) + r"v[0-9]+\.[0-9]+\.[0-9]+/(?:SHA256SUMS|codepet-[0-9]+\.[0-9]+\.[0-9]+-x86_64-linux\.tar\.gz)", url):
+            raise UpdateError("The release URL is not an official CodePet download.")
+        request = urllib.request.Request(url, headers={"User-Agent": "CodePet-Updater", "Accept": "application/vnd.github+json" if url == API else "application/octet-stream", "X-GitHub-Api-Version": "2022-11-28"})
+        opener = urllib.request.build_opener(Redirects())
+        try:
+            with opener.open(request, timeout=10) as response:
+                size = response.headers.get("Content-Length")
+                if size is not None and (not size.isdecimal() or int(size) > limit):
+                    raise UpdateError("The release download exceeds its size limit.")
+                output = destination.open("xb") if destination else None
+                chunks, count = [], 0
+                try:
+                    while True:
+                        block = response.read(64 * 1024)
+                        if not block:
+                            break
+                        count += len(block)
+                        if count > limit:
+                            raise UpdateError("The release download exceeds its size limit.")
+                        if output:
+                            output.write(block)
+                        else:
+                            chunks.append(block)
+                finally:
+                    if output:
+                        output.close()
+                return count if destination else b"".join(chunks)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                raise UpdateError("No downloadable stable release is available on GitHub yet.") from exc
+            if exc.code in {403, 429}:
+                raise UpdateError("GitHub's public request limit was reached. Try again later.") from exc
+            raise UpdateError("GitHub could not serve the update. Try again later.") from exc
+        except (urllib.error.URLError, OSError) as exc:
+            raise UpdateError("Could not reach GitHub. Check your connection and try again.") from exc
+
+
+def release_metadata(data):
+    try:
+        release = json.loads(data)
+        latest = release["tag_name"].removeprefix("v")
+        version(latest)
+        tag = "v" + latest
+        if release["tag_name"] != tag or release.get("draft") is not False or release.get("prerelease") is not False:
+            raise ValueError()
+        if release.get("html_url") != "https://github.com/GreyforgeLabs/codepet/releases/tag/" + tag:
+            raise ValueError()
+        name = "codepet-" + latest + "-x86_64-linux.tar.gz"
+        assets = {}
+        for wanted, cap in ((name, MAX_ARCHIVE), ("SHA256SUMS", 65536)):
+            matches = [a for a in release["assets"] if a.get("name") == wanted]
+            if len(matches) != 1:
+                raise ValueError()
+            asset = matches[0]
+            if asset.get("state") != "uploaded" or type(asset.get("size")) is not int or not 0 < asset["size"] <= cap or asset.get("browser_download_url") != DOWNLOAD + tag + "/" + wanted:
+                raise ValueError()
+            digest = asset.get("digest")
+            if digest is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                raise ValueError()
+            assets[wanted] = {"url": asset["browser_download_url"], "size": asset["size"], "digest": digest}
+        return {"version": latest, "archive": name, "assets": assets}
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise UpdateError("The latest GitHub release is missing a valid Linux archive or checksum file.") from exc
+
+
+def verify_download(path, asset):
+    data = read_file(path, MAX_ARCHIVE)
+    digest = hashlib.sha256(data).hexdigest()
+    if len(data) != asset["size"] or (asset["digest"] and asset["digest"] != "sha256:" + digest):
+        raise UpdateError("The downloaded asset does not match GitHub's size or SHA-256 digest.")
+    return digest
+
+
+def unpack(archive, destination, latest):
+    root = "codepet-" + latest + "-x86_64-linux"
+    seen, members, total = set(), [], 0
+    try:
+        # Include tar headers/metadata in a separate compressed-stream budget. This
+        # catches gzip bombs before tarfile parses long-name or PAX metadata.
+        with gzip.open(archive, "rb") as stream:
+            expanded_stream = 0
+            while block := stream.read(65536):
+                expanded_stream += len(block)
+                if expanded_stream > MAX_EXPANDED + 16 * 1024 * 1024:
+                    raise UpdateError("The expanded release archive exceeds its size limit.")
+        with tarfile.open(archive, mode="r:gz") as source:
+            for item in source:
+                path = PurePosixPath(item.name)
+                if len(members) >= 12000 or len(item.name) > 1024 or path.is_absolute() or ".." in path.parts or not path.parts or path.parts[0] != root or "\\" in item.name or any(ord(c) < 32 for c in item.name) or not (item.isdir() or item.isfile()) or item.mode & 0o7000:
+                    raise UpdateError("The release archive contains an unsafe entry.")
+                normal = str(path)
+                if normal in seen or (len(path.parts) == 1 and not item.isdir()):
+                    raise UpdateError("The release archive contains duplicate or invalid paths.")
+                seen.add(normal)
+                total += item.size
+                if item.size < 0 or total > MAX_EXPANDED:
+                    raise UpdateError("The expanded release archive exceeds its size limit.")
+                members.append(item)
+            for item in members:
+                out = destination / item.name
+                if item.isdir():
+                    out.mkdir(mode=0o700, parents=True, exist_ok=True)
+                else:
+                    out.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    with source.extractfile(item) as src, out.open("xb") as dst:
+                        shutil.copyfileobj(src, dst, 64 * 1024)
+                    out.chmod(0o700 if item.mode & 0o111 else 0o600)
+    except (tarfile.TarError, OSError, EOFError, OverflowError, ValueError) as exc:
+        raise UpdateError("The release archive could not be safely unpacked.") from exc
+    tree = destination / root
+    required = ["VERSION", "bin/codepet", "packaging/omarchy/install.sh", "packaging/omarchy/codepet-update", "qml/work.qml", "omarchy-plugin/manifest.json"]
+    if any(not (tree / name).is_file() for name in required) or read_file(tree / "VERSION", 64).decode().strip() != latest:
+        raise UpdateError("The release archive is incomplete or has the wrong version.")
+    return tree
+
+
+def run_bounded(argv, env=None, timeout=15, log=None):
+    """Bound output/time; write this attempt's private log before waiting or failing."""
+    logfile = None
+    if log:
+        fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            os.close(fd)
+            raise UpdateError("The installer log is unsafe.")
+        os.ftruncate(fd, 0)
+        logfile = os.fdopen(fd, "wb", buffering=0)
+    process = None
+    output = bytearray()
+    start = time.monotonic()
+    try:
+        process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                if time.monotonic() - start > timeout:
+                    raise UpdateError("A required update command timed out. Check the update log before retrying.")
+                for key, _ in selector.select(0.2):
+                    chunk = os.read(key.fd, 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                    else:
+                        if logfile:
+                            logfile.write(chunk[:max(0, 1024 * 1024 - len(output))])
+                        output.extend(chunk)
+                        if len(output) > 1024 * 1024:
+                            raise UpdateError("A required update command exceeded its output limit.")
+        process.wait(timeout=max(0.1, timeout - (time.monotonic() - start)))
+        if process.returncode:
+            raise UpdateError("A required update command failed. Check the update log before retrying.")
+        return bytes(output)
+    finally:
+        if logfile:
+            logfile.close()
+        if process:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            process.stdout.close()
+
+
+class Updater:
+    def __init__(self, env=None, network=None, runner=run_bounded):
+        self.env = dict(os.environ if env is None else env)
+        self.home = Path(self.env["HOME"])
+        if not self.home.is_absolute():
+            raise UpdateError("HOME must be an absolute path.")
+        def xdg(key, fallback):
+            value = Path(self.env.get(key, str(self.home / fallback)))
+            return value if value.is_absolute() else self.home / fallback
+        self.state = xdg("XDG_STATE_HOME", ".local/state") / "codepet"
+        self.data = xdg("XDG_DATA_HOME", ".local/share") / "codepet"
+        private_dir(self.state)
+        self.root = private_dir(self.state / "update")
+        self.work = private_dir(self.state / "work")
+        self.network, self.run = network or Network(), runner
+        self.binary = self.home / ".local/bin/codepet"
+
+    def current(self):
+        try:
+            value = self.run([str(self.binary), "--version"], timeout=5).decode().strip()
+            if not value.startswith("codepet "):
+                raise ValueError()
+            result = value.removeprefix("codepet ")
+            version(result)
+            return result
+        except (OSError, ValueError, UpdateError) as exc:
+            raise UpdateError("The installed CodePet version could not be read. Reinstall CodePet first.") from exc
+
+    def load(self):
+        try:
+            value = json.loads(read_file(self.root / "status.json", 16384))
+            if not isinstance(value, dict) or value.get("schema") != "codepet.update.v1" or value.get("state") not in STATES:
+                raise ValueError()
+            return value
+        except FileNotFoundError:
+            return {"schema": "codepet.update.v1", "state": "idle", "current": self.current(), "latest": "", "checked_at": 0, "message": "Check GitHub for the latest release."}
+        except (ValueError, TypeError) as exc:
+            raise UpdateError("The saved update status is unreadable. Check the update directory.") from exc
+
+    def write(self, state, message, **fields):
+        value = {"schema": "codepet.update.v1", "current": self.current(), "latest": "", "checked_at": 0}
+        value.update(fields)
+        value.update(state=state, message=message[:500])
+        atomic_json(self.root / "status.json", value)
+        return value
+
+    def status(self):
+        value = self.load()
+        value["current"] = self.current()
+        if value["state"] in BUSY:
+            try:
+                result = self.run(["systemctl", "--user", "show", value["unit"], "--property=ActiveState", "--value"], timeout=5).decode().strip()
+            except (OSError, KeyError, UpdateError):
+                result = "unknown"
+            if result not in {"active", "activating", "reloading"}:
+                # Never infer success from an installed version after an interrupted
+                # migration, and never automatically resume a partly installed update.
+                try:
+                    with lock(self.root / "control.lock"):
+                        fresh = self.load()
+                        if fresh.get("job") != value.get("job") or fresh["state"] not in BUSY:
+                            return fresh | {"current": self.current()}
+                        value = self.write("error", "The update was interrupted or its service is unavailable. Check update/install.log and installer recovery backups before trying again.", latest=value.get("latest", ""), checked_at=value.get("checked_at", 0), job=value.get("job", ""))
+                except UpdateError:
+                    return value
+        return value
+
+    def latest(self):
+        return release_metadata(self.network.fetch(API, 512 * 1024))
+
+    def check(self):
+        self.status()
+        with lock(self.root / "control.lock"):
+            value = self.load()
+            if value["state"] in BUSY:
+                return value
+            with deadline(30):
+                current, release = self.current(), self.latest()
+                newer = version(release["version"]) > version(current)
+                return self.write("available" if newer else "current", "An update is ready to install." if newer else "You have the latest CodePet version.", latest=release["version"], checked_at=int(time.time()), job=value.get("job", ""))
+
+    def ensure_idle(self):
+        try:
+            task_id = read_file(self.work / "active", 64).decode()
+        except FileNotFoundError:
+            task_id = None
+        if task_id is not None:
+            if not re.fullmatch(r"[0-9a-fA-F]{64}", task_id):
+                raise UpdateError("The saved work task is unreadable. Resolve it before updating.")
+            try:
+                task = json.loads(read_file(private_dir(self.work / task_id) / "task.json", 4 * 1024 * 1024))
+            except (OSError, ValueError) as exc:
+                raise UpdateError("The saved work task is unreadable. Resolve it before updating.") from exc
+            if task.get("id") != task_id or task.get("status") not in {"accepted", "discarded", "cancelled", "failed", "scouted"}:
+                raise UpdateError("Finish or discard the current job and review before updating.")
+        try:
+            raw = self.run([self.env.get("CODEPET_QS", "qs"), "list", "--all", "--json"], timeout=5).decode().strip()
+            windows = [] if raw == "No running instances." else json.loads(raw)
+            if not isinstance(windows, list):
+                raise ValueError()
+            for window in windows:
+                name = Path(window["config_path"])
+                if name.name == "work.qml" and (name == self.data / "current/qml/work.qml" or name.is_relative_to(self.data / "releases")):
+                    raise UpdateError("Close the CodePet Work window before updating. Your saved finding is kept.")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise UpdateError("Could not check CodePet's open windows. Close Work and check Quickshell before updating.") from exc
+
+    def clean_env(self):
+        keys = {"HOME", "PATH", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "OMARCHY_PATH"}
+        return {k: v for k, v in self.env.items() if k in keys} | {"LC_ALL": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1"}
+
+    def install(self):
+        if self.env.get("CODEPET_TEST_STATE") == "1":
+            raise UpdateError("Updates cannot be installed in a test-state session.")
+        self.status()
+        with lock(self.root / "control.lock"):
+            value = self.load()
+            if value["state"] in BUSY:
+                return value
+            with lock(self.work / "control.lock"), deadline(30):
+                self.ensure_idle()
+                current, release = self.current(), self.latest()
+                if version(release["version"]) <= version(current):
+                    return self.write("current", "You have the latest CodePet version.", latest=release["version"], checked_at=int(time.time()))
+                if platform.system() != "Linux" or platform.machine() != "x86_64":
+                    raise UpdateError("The automatic update archive supports x86_64 Linux only.")
+                if shutil.disk_usage(self.root).free < 512 * 1024 * 1024:
+                    raise UpdateError("At least 512 MiB of free space is needed to prepare the update.")
+                old_job = value.get("job", "")
+                if re.fullmatch(r"[0-9a-f]{32}", old_job):
+                    old_path = self.root / old_job
+                    if old_path.is_dir() and not old_path.is_symlink():
+                        shutil.rmtree(old_path)
+                job_id = uuid.uuid4().hex
+                job = private_dir(self.root / job_id)
+                shutil.copyfile(Path(__file__).resolve(), job / "updater.py")
+                (job / "updater.py").chmod(0o600)
+                atomic_json(job / "release.json", release)
+                unit = "codepet-update-" + job_id
+                value = self.write("downloading", "Starting the update…", latest=release["version"], checked_at=int(time.time()), unit=unit, job=job_id)
+                command = ["systemd-run", "--user", "--quiet", "--collect", "--service-type=exec", "--unit=" + unit, "--property=RuntimeMaxSec=600", "--property=TimeoutStopSec=10", "--property=MemoryMax=512M", "--property=TasksMax=64", "--property=KillMode=control-group", "--property=UMask=0077", "--property=NoNewPrivileges=yes"]
+                # env -i also removes variables inherited from the user systemd
+                # manager, including unrelated installer overrides and credentials.
+                command += ["--", "/usr/bin/env", "-i"]
+                command += [key + "=" + val for key, val in self.clean_env().items()]
+                command += ["/usr/bin/python3", str(job / "updater.py"), "_run", job_id]
+                self.run(command, env=self.clean_env(), timeout=10)
+                return value
+
+    def open_work(self, kind):
+        if kind not in {"compact", "bug", "research", "build"}:
+            raise UpdateError("Usage: codepet-work [compact|bug|research|build]")
+        with lock(self.work / "control.lock"):
+            qml = self.env.get("CODEPET_WORK_QML", str(self.data / "current/qml/work.qml"))
+            if not Path(qml).is_file():
+                raise UpdateError("CodePet work window is missing; reinstall CodePet.")
+            env = self.env | {"CODEPET_BIN": self.env.get("CODEPET_BIN", str(self.binary)), "CODEPET_WORK_KIND": "build" if kind == "compact" else kind, "CODEPET_WORK_MODE": "compact" if kind == "compact" else "advanced"}
+            qs = self.env.get("CODEPET_QS", "qs")
+            try:
+                self.run([qs, "ipc", "-p", qml, "call", "--", "codepet-work", "open", kind], env=env, timeout=5)
+            except UpdateError:
+                self.run([qs, "-p", qml, "--no-duplicate", "--daemonize"], env=env, timeout=10)
+            return {"opened": True}
+
+    def worker(self, job_id):
+        if not re.fullmatch(r"[0-9a-f]{32}", job_id):
+            raise UpdateError("Invalid update job.")
+        with deadline(570), lock(self.root / "control.lock", blocking=True):
+            value = self.load()
+            if value.get("job") != job_id or value["state"] not in BUSY:
+                raise UpdateError("The update job no longer owns the saved status.")
+            job = private_dir(self.root / job_id)
+            try:
+                return self.execute_worker(job_id)
+            finally:
+                # Installer recovery backups remain; staging is disposable. A retry
+                # always fetches and checks the release again.
+                staging = job / "extracted"
+                if staging.is_dir() and not staging.is_symlink():
+                    shutil.rmtree(staging)
+                for path in job.iterdir():
+                    if path.name == "SHA256SUMS" or re.fullmatch(r"codepet-[0-9]+\.[0-9]+\.[0-9]+-x86_64-linux\.tar\.gz", path.name):
+                        if path.is_file() and not path.is_symlink():
+                            path.unlink()
+
+    def execute_worker(self, job_id):
+        value = self.load()
+        if value.get("job") != job_id or value["state"] not in BUSY:
+            raise UpdateError("The update job no longer owns the saved status.")
+        fields = {k: value[k] for k in ("latest", "checked_at", "unit", "job")}
+        job = private_dir(self.root / job_id)
+        with lock(self.work / "control.lock"):
+            self.ensure_idle()
+            release = json.loads(read_file(job / "release.json", 16384))
+            # Revalidate the durable manifest as though it came from GitHub.
+            release = release_metadata(json.dumps({"tag_name": "v" + release["version"], "draft": False, "prerelease": False, "html_url": "https://github.com/GreyforgeLabs/codepet/releases/tag/v" + release["version"], "assets": [{"name": n, "state": "uploaded", "size": a["size"], "digest": a["digest"], "browser_download_url": a["url"]} for n, a in release["assets"].items()]}))
+            if release["version"] != value["latest"] or version(release["version"]) <= version(self.current()):
+                raise UpdateError("The installed version changed. Check GitHub again before updating.")
+            self.write("downloading", "Downloading the GitHub release…", **fields)
+            archive = job / release["archive"]
+            sums = job / "SHA256SUMS"
+            for name, target in (("SHA256SUMS", sums), (release["archive"], archive)):
+                self.network.fetch(release["assets"][name]["url"], 65536 if name == "SHA256SUMS" else MAX_ARCHIVE, target)
+                verify_download(target, release["assets"][name])
+            self.write("verifying", "Checking the download and unpacking…", **fields)
+            matches = []
+            for line in read_file(sums, 65536).decode("ascii").splitlines():
+                match = re.fullmatch(r"([0-9a-fA-F]{64}) [ *](.+)", line)
+                if match and match[2] == release["archive"]:
+                    matches.append(match[1].lower())
+            if len(matches) != 1 or matches[0] != verify_download(archive, release["assets"][release["archive"]]):
+                raise UpdateError("The archive checksum does not match SHA256SUMS. Nothing was installed.")
+            extracted = private_dir(job / "extracted")
+            tree = unpack(archive, extracted, release["version"])
+            self.write("installing", "Installing CodePet; your pet and saved progress are kept…", **fields)
+            env = self.clean_env() | {"TMPDIR": str(job), "CODEPET_UPDATE_SERVICE": "1"}
+            self.run(["/bin/bash", str(tree / "packaging/omarchy/install.sh")], env=env, timeout=180, log=self.root / "install.log")
+            if self.current() != release["version"]:
+                raise UpdateError("The installed version could not be confirmed. Check update/install.log.")
+            return self.write("succeeded", "CodePet is up to date. Your pet's progress was preserved.", **fields)
+
+
+def main():
+    os.umask(0o077)
+    updater = None
+    try:
+        updater = Updater()
+        if len(sys.argv) == 2 and sys.argv[1] in {"status", "check", "install"}:
+            result = getattr(updater, sys.argv[1])()
+        elif len(sys.argv) == 3 and sys.argv[1] == "_open-work":
+            result = updater.open_work(sys.argv[2])
+        elif len(sys.argv) == 3 and sys.argv[1] == "_run":
+            result = updater.worker(sys.argv[2])
+        else:
+            raise UpdateError("Usage: codepet-update status|check|install")
+        print(json.dumps(result, separators=(",", ":")))
+        return 0
+    except (UpdateError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        message = str(exc) if isinstance(exc, UpdateError) else "The update could not finish. Check the installation and update/install.log before retrying."
+        value = {"schema": "codepet.update.v1", "current": "", "latest": "", "state": "error", "message": message[:500], "checked_at": 0}
+        if updater:
+            try:
+                saved = updater.load()
+                value.update(current=saved.get("current", ""), latest=saved.get("latest", ""), checked_at=saved.get("checked_at", 0), job=saved.get("job", ""))
+                try:
+                    value["current"] = updater.current()
+                except UpdateError:
+                    pass
+                # A second caller's refusal must not erase the first job's progress.
+                with lock(updater.root / "control.lock"):
+                    if saved.get("state") not in BUSY or (len(sys.argv) == 3 and saved.get("job") == sys.argv[2]):
+                        atomic_json(updater.root / "status.json", value)
+            except (UpdateError, OSError, ValueError):
+                pass
+        print(json.dumps(value, separators=(",", ":")))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,5 +1,5 @@
 //! Params of the v0.2 task-pipeline methods that v0.3 unroutes (spec §6.5). Compiled only
-//! with the non-default `legacy-tasks` feature; deleted in v0.3.1.
+//! with the non-default `legacy-tasks` feature; retained for non-default compatibility.
 use crate::params::{check_limit, check_token, invalid_params, EmptyParams, Validate};
 use crate::ProtocolError;
 use serde::{Deserialize, Serialize};

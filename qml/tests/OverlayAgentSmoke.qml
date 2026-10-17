@@ -97,11 +97,17 @@ Item {
 
     Timer { interval: 0; running: true; onTriggered: test.runAll() }
     function runAll() {
+        show({})
+        pet.workState = { task: { kind: "bug", status: "running" } }
+        check(pet.face.state === "working" && icons(pet) === "care-floor/food.webp", "owned bug work shows food, distinct from observed client")
+        pet.workState = { task: { kind: "research", status: "review" } }
+        check(pet.face.state === "waiting" && icons(pet) === "care-floor/water.webp", "owned research review waits with water icon")
+        pet.workState = null
         // ---- the shared order reaches the scene ----
         show({agent: agent({state: "working", apps: [app("claude-code", "working")], stale_at_ms: now + 540000})})
         check(pet.face.state === "working" && pet.displayState === "working", "an app working: the working loop")
         check(icons(pet) === "apps/app_claude_code.webp" && iconsLoad(pet), "bubble = the app tile")
-        check(!pet.canRoam && !pet.walking, "the working pet sits")
+        check(pet.canRoam, "an unpinned working pet can wander")
         show({agent: agent({state: "working", stale_at_ms: now + 540000,
                             apps: [app("claude-code", "working", now - 9000), app("codex", "working", now - 8000),
                                    app("opencode", "working", now - 7000), app("grok-cli", "working", now - 6000)]})})

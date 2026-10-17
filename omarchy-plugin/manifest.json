@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "id": "greyforge.codepet",
   "name": "CodePet",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "Greyforge Labs",
   "license": "MIT",
   "homepage": "https://github.com/GreyforgeLabs/codepet",
-  "description": "Your CodePet on the bar: a pet to feed and play with that cheers on your coding apps (Claude Code, Codex, OpenCode, Hermes, Grok) and grows from their finished work. One On/Off switch.",
+  "description": "A desktop coding companion that finds suspected bugs in local repositories, prepares fixes for review and grows through accepted work. Care, XP and age on the bar; observes Claude Code, Codex, OpenCode, Hermes and Grok sessions.",
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "BarWidget.qml" },
   "barWidget": {

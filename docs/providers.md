@@ -1,15 +1,33 @@
-# Provider compatibility
+# Provider compatibility (v0.4)
 
-| Provider | Milestone 1 status | Execution |
-| --- | --- | --- |
-| Mock | Available | Per-job mock supervisor; spawns no process, runs no command, touches no project files |
-| Codex | Unsupported | Never launched |
-| OpenCode | Unsupported | Never launched |
-| Hermes | Unsupported | Never launched |
-| Claude Code | Unsupported | Never launched |
+| Route | Qualified scope | Requirements |
+|---|---|---|
+| Pet-owned Codex work | Read-only bug scouting/research and isolated code candidates; explicit reviewed Apply | Codex **0.163.0**, existing ChatGPT subscription sign-in, Linux user systemd, Bubblewrap and `prlimit` |
+| Claude Code, OpenCode, Hermes, Grok and external Codex sessions | Optional metadata-only observation | Explicit Helpers connection; client-specific hook support |
+| Retired mock pipeline | Non-default compatibility tests only | `legacy-tasks`; not used by pet-owned work |
 
-A draft may name any provider and is stored, but preflight and start refuse every provider except `mock` with `UNSUPPORTED_PROVIDER`, whether or not the CLI is installed. `state.get` and `providers.inspect` list the four real providers as "Not yet supported on this version".
+Other Codex versions are refused until qualified. No other client is a CodePet-owned
+execution adapter. Installing or connecting another coding client does not make
+CodePet launch it for jobs.
 
-The mock offers three outcomes: an artifact for review (`not_verified`), a provider failure (terminal `failed`, no review), and an artifact with a simulated failed check. No mock outcome claims `passed`.
+The Codex adapter uses the existing subscription OAuth route; API-key billing is
+refused. A scout can start automatically after Let's go! when readiness and durable
+cooldowns allow it. Pause future checks from **Details → Checks off**. Fix, custom
+work and Apply remain explicit. Selected source context can be sent to the provider,
+and the contained job can access the network.
 
-No provider executable or CLI flag has been assumed, probed or run. There are no real invocation builders and no shell fallback. Before enabling an adapter, pin and test its version, consult official documentation, prove config/hook/plugin isolation and confinement, and add success/error/auth/approval fixtures plus cancellation tests. Installation alone must not enable it. The project supplies no API keys or authentication flow.
+Every owned job uses fresh private configuration, native filesystem permission
+profiles, resource limits and a PID/mount namespace. No user hooks/custom MCPs
+load, no permission answer is automatically approved, and the original project
+is absent during execution. Version/startup checks do not invoke a model.
+
+Real disposable qualifications exercised read-only scouting, explicit Fix,
+research and reviewed code application. Tests also cover credential read denial,
+process-tree cancellation, conflict refusal and exactly-once rewards. A successful
+provider process alone is insufficient: code jobs need a reviewable change and
+research needs a nonempty report. Checks remain provider-reported until separately
+verified; the UI requires the user's acknowledgement.
+
+See [work limits and recovery](work.md), [security](security.md) and
+[qualification](validation.md). The frozen v0.3 client adapter fixtures describe
+the independent observer pipeline, not owned-work permissions.

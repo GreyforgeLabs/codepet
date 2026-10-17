@@ -132,7 +132,7 @@ function validCare(c) {
     if (c.sleep_started_at_ms !== null && c.sleep_started_at_ms !== undefined
             && !isMs(c.sleep_started_at_ms))
         return false
-    // v0.3.0 compatibility values (always false / []), dropped in v0.3.1: optional here.
+    // v0.3.0 compatibility values (always false / []), retained as optional compatibility fields: optional here.
     if (c.ready_to_work !== undefined && typeof c.ready_to_work !== "boolean")
         return false
     var r = c.readiness_reasons === undefined ? [] : c.readiness_reasons

@@ -33,7 +33,7 @@ var ANIMATIONS = {
     waiting: { state: "waiting", roam: false, bob: true },
     needs_care: { state: "needs_care", roam: false, bob: false },
     needs_care_frame: { state: "needs_care", roam: true, bob: false },
-    working: { state: "working", roam: false, bob: false },
+    working: { state: "working", roam: true, bob: false },
     celebrate: { state: "idle", roam: false, bob: false },
     error: { state: "error", roam: false, bob: false },
     idle: { state: "idle", roam: true, bob: false },
@@ -47,6 +47,21 @@ function own(o, k) {
 // {state, roam, bob} for a face's `overlay` value; unknown values fall back to idle.
 function animation(overlay) {
     return own(ANIMATIONS, overlay) ? ANIMATIONS[overlay] : ANIMATIONS.idle
+}
+
+// Owned jobs have a care icon; observed coding clients keep their app icon.
+function withWork(face, work) {
+    if (!face || ["off", "asleep", "fainted", "paused", "no_pet", "welcome"].indexOf(face.state) >= 0
+            || !work || !work.task) return face
+    var status = work.task.status
+    if (["preparing", "running", "review", "applying", "scouted"].indexOf(status) < 0) return face
+    var next = Object.assign({}, face)
+    if (status === "scouted" && !work.task.has_finding) return face
+    next.state = status === "scouted" ? "idle" : status === "review" || status === "applying" ? "waiting" : "working"
+    next.overlay = next.state
+    next.bubble = work.task.source_kind === "scout" || work.task.source_kind === "scout_fix" ? {} : { need: work.task.kind === "bug" ? "food" : work.task.kind === "research" ? "water" : "play" }
+    next.celebrate = null
+    return next
 }
 
 // The species' care icon set: its `careIconSet`, else from its habitat (SPEC-v0.3 §4.1).

@@ -1281,7 +1281,7 @@ def check_cli(proto: dict) -> None:
         routed.update(re.findall(r'"([^"]+)"', m.group(1)))
     cli = proto["cli"]
     contract = set()
-    for key in list(cli["kept"]) + list(cli["added"]):
+    for key in list(cli["kept"]) + list(cli["added"]) + list(cli.get("post_freeze_work", {})):
         for part in key.split(" / "):
             words = part.split()
             contract.add(words[0])

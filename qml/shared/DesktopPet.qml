@@ -12,7 +12,7 @@ import "OverlayFace.js" as OverlayFace
 //
 // A click always reacts (K5): a short happy hop (in Calm mode only the bubble) with a
 // heart bubble, then `homeRequested()`, which the host turns into "open the bar popup at
-// Home". There is no menu, no meter and no text on the desktop.
+// Home". Drag to move; right-click to pin or unpin. A small label identifies a pinned pet.
 //
 // Timers: one cosmetic scheduler (<= 5 updates per second, a single long wake during idle
 // pauses, stopped while hidden, asleep or in Calm mode except to finish a short
@@ -24,6 +24,10 @@ Item {
     clip: true
     // The last valid bar-state.json (qml/omarchy/BarState.js parse), or null.
     property var barState: null
+    property var workState: null
+    property var workController: null
+    property bool cardOpen: false
+    readonly property rect cardHit: card.visible ? Qt.rect(card.x, card.y, card.width, card.height) : Qt.rect(0, 0, 0, 0)
     property bool surfaceActive: true
     property bool reducedMotion: false
     // Test hook: a fixed clock (ms since the epoch); 0 = the real clock.
@@ -40,6 +44,14 @@ Item {
     property bool initialized: false
     property bool updatingFace: false
     property real petX: 40
+    // -1 follows the floor until the user chooses a position. Pin stops wandering,
+    // never manual dragging; placement belongs to the host, not the pet database.
+    property real petY: -1
+    property bool pinned: false
+    property bool dragging: false
+    property bool dragMoved: false
+    property point pressPoint: Qt.point(0, 0)
+    property point pressPosition: Qt.point(0, 0)
     property bool facingLeft: false
     property real destination: 40
     // 200 ms ticks of stillness left before the next walk (or in-tank swim).
@@ -64,6 +76,8 @@ Item {
     property int clickCount: 0
 
     signal homeRequested()
+    signal reviewRequested()
+    signal placementRequested(real x, real y, bool pinned)
 
     // Set from `barState` by updateFace() (not bindings: a handler of barState must not
     // read values whose bindings have not caught up yet).
@@ -84,7 +98,7 @@ Item {
     readonly property real petSize: Math.min(112, width, height)
     readonly property real floorY: Math.max(0, height - petSize - 12)
     readonly property bool sleeping: anim.state === "sleep"
-    readonly property bool canRoam: anim.roam
+    readonly property bool canRoam: anim.roam && !pinned && !dragging && !cardOpen
     readonly property string baseState: walking && canRoam ? "locomotion" : (anim.state === "" ? "idle" : anim.state)
     readonly property var baseMeta: PetCatalog.stateMeta(petId, baseState)
     readonly property var transientMeta: transientState !== "" ? PetCatalog.stateMeta(petId, transientState) : null
@@ -118,9 +132,11 @@ Item {
     onWidthChanged: if (initialized) clampPosition()
     onHeightChanged: if (initialized) clampPosition()
     onBarStateChanged: refreshClock()
+    onWorkStateChanged: refreshClock()
     onFixedNowMsChanged: refreshClock()
     onActiveChanged: {
         if (!active) {
+            cardOpen = false
             stopMoving()
             clearTransients()
             heartMsLeft = 0
@@ -145,6 +161,52 @@ Item {
     onPetIdChanged: { if (!roamsSpecies) stopMoving(); updateInterval() }
     onCanRoamChanged: if (!canRoam) stopMoving()
 
+    function savePlacement() {
+        placementRequested(petX / Math.max(1, width - petSize),
+                           (petY < 0 ? floorY : petY) / Math.max(1, height - petSize), pinned)
+    }
+    function restorePlacement(position) {
+        if (dragging || !position) return
+        pinned = position.pinned === true
+        if (typeof position.x === "number" && typeof position.y === "number"
+                && isFinite(position.x) && isFinite(position.y)
+                && position.x >= 0 && position.x <= 1 && position.y >= 0 && position.y <= 1) {
+            petX = position.x * Math.max(0, width - petSize)
+            petY = position.y * Math.max(0, height - petSize)
+            stopMoving()
+            clampPosition()
+        }
+    }
+    function togglePinned() {
+        pinned = !pinned
+        stopMoving()
+        idleTicks = 60
+        savePlacement()
+    }
+    function beginDrag(x, y) {
+        dragging = true
+        dragMoved = false
+        stopMoving()
+        hop.stop()
+        hopOffset = 0
+        pressPoint = Qt.point(x, y)
+        pressPosition = Qt.point(petX, petY < 0 ? floorY : petY)
+    }
+    function moveDrag(x, y) {
+        if (!dragging) return
+        var dx = x - pressPoint.x, dy = y - pressPoint.y
+        if (!dragMoved && dx * dx + dy * dy < 64) return
+        dragMoved = true
+        petX = pressPosition.x + dx
+        petY = Math.max(0, pressPosition.y + dy)
+        clampPosition()
+    }
+    function endDrag() {
+        dragging = false
+        idleTicks = 60
+        if (dragMoved) savePlacement()
+    }
+
     // Reads the clock and recomputes the face (also on the wake timer).
     function refreshClock() {
         root.nowMs = root.fixedNowMs > 0 ? root.fixedNowMs : Date.now()
@@ -166,13 +228,14 @@ Item {
         root.petId = l ? String(l.appearance || "") : ""
         root.stage = l && typeof l.stage === "number" ? l.stage : 1
         root.petName = l && l.name ? String(l.name) : ""
-        root.face = PetState.sharedPriority(OverlayFace.withoutGrowth(root.barState, root.grewSeq), root.nowMs, root.seen)
+        root.face = OverlayFace.withWork(PetState.sharedPriority(OverlayFace.withoutGrowth(root.barState, root.grewSeq), root.nowMs, root.seen), root.workState)
         updatingFace = false
         observeFace()
     }
     function clampPosition() {
         if (width <= 0 || height <= 0) return
         petX = Math.max(0, Math.min(petX, Math.max(0, width - petSize)))
+        if (petY >= 0) petY = Math.max(0, Math.min(petY, Math.max(0, height - petSize)))
         destination = Math.max(0, Math.min(destination, Math.max(0, width - petSize)))
     }
     function stopMoving() {
@@ -254,6 +317,7 @@ Item {
         if (next) startTransient(next.state, next.durationMs)
     }
     function startMoving() {
+        if (!canRoam) return
         if (roamsSpecies) {
             var span = 70 + Math.random() * 150
             destination = Math.max(0, Math.min(width - petSize, petX + (Math.random() < 0.5 ? -1 : 1) * span))
@@ -359,7 +423,8 @@ Item {
         heartMsLeft = 1600
         if (!reducedMotion) hop.restart()
         updateInterval()
-        homeRequested()
+        if (workController) cardOpen = !cardOpen
+        else homeRequested()
         return true
     }
 
@@ -383,7 +448,7 @@ Item {
     Item {
         id: pet
         objectName: "desktopPet.pet"
-        x: root.petX; y: root.floorY + root.hopOffset + root.bobOffset
+        x: root.petX; y: (root.petY < 0 ? root.floorY : root.petY) + root.hopOffset + root.bobOffset
         width: root.petSize; height: root.petSize
         visible: root.active
         PetSprite {
@@ -406,20 +471,45 @@ Item {
             width: root.hitBox.width; height: root.hitBox.height
             hoverEnabled: true
             enabled: root.active
-            acceptedButtons: Qt.LeftButton
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.petClicked()
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: root.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+            onPressed: mouse => {
+                if (mouse.button !== Qt.LeftButton) return
+                var p = mapToItem(root, mouse.x, mouse.y)
+                root.beginDrag(p.x, p.y)
+            }
+            onPositionChanged: mouse => {
+                if (!root.dragging) return
+                var p = mapToItem(root, mouse.x, mouse.y)
+                root.moveDrag(p.x, p.y)
+            }
+            onReleased: mouse => {
+                if (mouse.button === Qt.LeftButton) root.endDrag()
+            }
+            onCanceled: root.endDrag()
+            onClicked: mouse => {
+                if (mouse.button === Qt.RightButton) root.togglePinned()
+                else if (!root.dragMoved) root.petClicked()
+            }
         }
         Accessible.role: Accessible.Button
-        Accessible.name: root.petName + ". Open CodePet"
+        Accessible.name: root.petName + ". Click to open, drag to move, right-click to pin"
         Accessible.onPressAction: root.petClicked()
+    }
+    Rectangle {
+        visible: root.active && root.pinned
+        x: Math.max(0, Math.min(root.width - width, pet.x + (pet.width - width) / 2))
+        y: Math.min(root.height - height, pet.y + pet.height - 6)
+        width: pinLabel.implicitWidth + 14; height: 22; radius: 8
+        color: "#ee22303b"
+        Text { id: pinLabel; anchors.centerIn: parent; text: "Pinned"; font.pixelSize: 12; color: "white" }
     }
     // Picture-only thought bubble; decorative and outside the input region.
     Rectangle {
         id: bubble
         objectName: "desktopPet.bubble"
         readonly property int icon: 40
-        visible: root.active && root.bubbleIcons.length > 0
+        visible: root.active && !root.cardOpen && root.bubbleIcons.length > 0
         width: icons.implicitWidth + 16; height: icon + 12; radius: height / 2
         x: Math.max(0, Math.min(root.width - width, pet.x + root.hitBox.x + root.hitBox.width - width / 3))
         y: Math.max(0, pet.y + root.hitBox.y - height - 6)
@@ -441,5 +531,28 @@ Item {
                 }
             }
         }
+    }
+    Rectangle {
+        objectName: "desktopPet.workBadge"
+        visible: root.active && !root.cardOpen && !!(root.workState && root.workState.task
+            && (root.workState.task.status === "review" || root.workState.task.status === "applying"
+                || (root.workState.task.status === "scouted" && root.workState.task.has_finding)))
+        x: Math.max(0, Math.min(root.width - width, pet.x + root.hitBox.x + root.hitBox.width - width))
+        y: Math.max(0, pet.y + root.hitBox.y)
+        width: 18; height: 18; radius: 9; color: "#eab276"; border.color: "#2b303a"; border.width: 2
+        Text { anchors.centerIn: parent; text: "!"; font.bold: true; font.pixelSize: 12; color: "#302719" }
+    }
+    WorkCard {
+        id: card
+        objectName: "desktopPet.workCard"
+        visible: root.active && root.cardOpen && !!root.workController
+        controller: root.workController
+        width: Math.min(implicitWidth, root.width)
+        height: Math.min(implicitHeight, root.height)
+        x: Math.max(0, Math.min(root.width - width, pet.x + root.petSize / 2 - width / 2))
+        y: Math.max(0, Math.min(root.height - height, pet.y >= height + 8 ? pet.y - height - 8 : pet.y + root.petSize + 8))
+        onCloseRequested: root.cardOpen = false
+        onHomeRequested: { root.cardOpen = false; root.homeRequested() }
+        onReviewRequested: root.reviewRequested()
     }
 }

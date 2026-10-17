@@ -3,7 +3,7 @@
 //! `ManualClock` stands in for the hours between commands, settling the same
 //! `presence.json` the bar leader writes. Every check of what users see goes through fresh
 //! CLI processes and the published `bar-state.json`.
-// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+// Task-pipeline tests and helpers run only with `legacy-tasks` (retained for non-default compatibility).
 #![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use common::{error_code, Env, Timeline, HOUR, MIN};

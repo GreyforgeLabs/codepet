@@ -71,6 +71,30 @@ class ReleaseDocs(unittest.TestCase):
         self.assertIn("#6", log)
         self.assertIn("docs/decisions/0001-v0.2-lifecycle.md", log)
 
+    def test_current_release_metadata_and_work_boundary_are_consistent(self):
+        version = tomllib.loads(read("Cargo.toml"))["workspace"]["package"]["version"]
+        lock = tomllib.loads(read("Cargo.lock"))
+        packages = {p["name"]: p["version"] for p in lock["package"] if p["name"] in
+                    {"codepet", "codepet-core", "codepet-protocol", "codepet-storage"}}
+        self.assertEqual(len(packages), 4)
+        self.assertEqual(set(packages.values()), {version})
+        self.assertEqual(json.loads(read("omarchy-plugin/manifest.json"))["version"], version)
+        self.assertIn("SERIES=" + ".".join(version.split(".")[:2]), read("packaging/omarchy/install.sh"))
+        self.assertIn(f"## {version}", read("omarchy-plugin/CHANGELOG.md"))
+        readme = read("README.md")
+        for required in (f"releases/tag/v{version}", "Codex 0.163.0", "Bubblewrap", "prlimit",
+                         "source context", "Checks off", "explicit reviewed Apply", "synthetic data"):
+            self.assertIn(required, " ".join(readme.split()), required)
+        self.assertNotIn("unreleased local development", readme)
+        self.assertNotIn("for v0.3.0 only", readme)
+        self.assertTrue((DOCS / "screenshots/codepet-v0.4-cards.png").is_file())
+
+    def test_archive_libc_requirement_is_separate_from_source_msrv(self):
+        readme = read("README.md")
+        self.assertIn("Release archive: x86_64 Linux with **glibc 2.39 or later**", readme)
+        self.assertIn("Source build: Rust 1.85 or later", readme)
+        self.assertNotIn("glibc 2.34", readme)
+
     def test_pets_doc_covers_every_species(self):
         pets = read("docs/pets.md")
         registry = json.loads(read("qml/assets/pets/registry.json"))

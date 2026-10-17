@@ -38,7 +38,9 @@ def main(argv: list[str]) -> int:
         return 1
     table.update(extra)
     raw = (json.dumps(table, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    # The plugin and desktop are separate QML roots; keep their age rules identical.
     want = {PLUGIN / "strings.json": raw, PLUGIN / "Strings.js": render_js(table).encode("utf-8")}
+    want[PLUGIN / "PetAge.js"] = (REPO / "qml/shared/PetAge.js").read_bytes()
     stale = [p for p, data in want.items() if not p.is_file() or p.read_bytes() != data]
     if "--check" in argv:
         for p in stale:

@@ -3,7 +3,7 @@
 //!
 //! v0.3 (spec §6.5): the in-memory mock task `Engine` (and its meters, receipts, tokens and
 //! events) is the retired task pipeline; it is compiled only with the non-default
-//! `legacy-tasks` feature and deleted in v0.3.1. The task vocabulary (`State`, `Draft`,
+//! `legacy-tasks` feature and retained for non-default compatibility. The task vocabulary (`State`, `Draft`,
 //! `Provider`, `Verification`) stays: storage still reads the historic task tables.
 pub mod agent;
 pub mod evolution;

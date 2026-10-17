@@ -46,6 +46,7 @@ SCAN_GLOBS = [
     "qml/standalone/*.qml", "qml/standalone/*.js",
     "qml/omarchy/*.qml", "qml/omarchy/*.js",
     "qml/shell.qml",
+    "qml/work.qml",
     "omarchy-plugin/*.qml", "omarchy-plugin/*.js",
 ]
 LIFECYCLE_DOC = "docs/lifecycle.md"
@@ -317,7 +318,7 @@ K1_EXEMPT_LITERALS = ["/reload-plugins"]
 # Plugin QML files whose literals are not kid copy: the adult pages, and the transport and
 # presence recorder, whose literals are error messages for logs (the popup shows only
 # strings.json err.generic for any failure).
-ADULT_QML = {"HelpScreen.qml", "CodexGuide.qml", "BarRpc.qml", "PresenceRecorder.qml"}
+ADULT_QML = {"HelpScreen.qml", "UpdatesScreen.qml", "UpdateController.qml", "CodexGuide.qml", "BarRpc.qml", "PresenceRecorder.qml"}
 APP_NAMES = ["Claude Code", "Codex", "OpenCode", "Hermes", "Grok"]
 # Status line fit (SPEC-v0.3 §3.2): inner card width at base 16, monospace advance 0.6 em,
 # Style.font.heading = round(16 x 1.333).
@@ -331,20 +332,22 @@ def words(text: str) -> int:
     return len([w for w in re.split(r"\s+", text.strip()) if re.search(r"[A-Za-z{]", w)])
 
 
-def kid_problems(text: str, k1k2: bool = True) -> list[str]:
+def kid_problems(text: str, k1k2: bool = True, statistic: bool = False) -> list[str]:
     """K1/K2/K8 problems of one kid-facing line ([] when it passes)."""
     out = []
     scan = text
     for lit in K1_EXEMPT_LITERALS:
         scan = scan.replace(lit, " ")
     if k1k2:
-        if re.search(r"[0-9%]", re.sub(r"\{[a-z0-9]+\}", "", scan)):
+        if not statistic and re.search(r"[0-9%]", re.sub(r"\{[a-z0-9]+\}", "", scan)):
             out.append("K1 digit or %")
         low = scan.lower()
         for phrase in K2_VERB_PHRASES:
             low = re.sub(phrase, " ", low)
         low = re.sub(r"\{[a-z0-9]+\}", "", low)
         for term in JARGON:
+            if statistic and term in {"xp", "level", "percent"}:
+                continue
             if re.search(r"\b" + term, low):
                 out.append(f"K2 {term}")
     if words(text) > 8:
@@ -362,8 +365,8 @@ def lint_strings(table: dict) -> tuple[list[str], list[str]]:
     for key, text in table.items():
         if key.startswith("help.") or key.startswith("aquatic.help.") or key.startswith("robot.help."):
             continue
-        adult_guide = key.startswith("codex.")
-        for p in kid_problems(text, k1k2=not adult_guide):
+        adult_guide = (key.startswith("codex.") or key.startswith("updates."))
+        for p in kid_problems(text, k1k2=not adult_guide, statistic=key.startswith("stats.") or key == "work.energy"):
             findings.append(f"{PLUGIN_STRINGS}: {key}: {p}: {text!r}")
         if not adult_guide:
             kid_counts.append(words(text))
@@ -455,6 +458,9 @@ def kid_self_test() -> None:
     assert kid_problems("Turn {name} into…") == []
     assert kid_problems("Or type /reload-plugins.") == []
     assert kid_problems("Level 2") == ["K1 digit or %", "K2 level"]
+    assert kid_problems("Level 2", statistic=True) == []
+    assert kid_problems("72%", statistic=True) == []
+    assert kid_problems("provider 42", statistic=True) == ["K2 provider"]
     assert kid_problems("your turn") == ["K2 turn"]
     assert kid_problems("50% done", k1k2=False) == []
     assert kid_problems("a b c d e f g h i") == ["K8 9 words"]

@@ -1,4 +1,4 @@
-// Task-pipeline helpers stay for the `legacy-tasks` build (deleted in v0.3.1); the default
+// Task-pipeline helpers stay for the `legacy-tasks` build (retained for non-default compatibility); the default
 // build compiles them without callers.
 #![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code))]
 

@@ -61,7 +61,7 @@ BarWidget {
 
     // One plugin setting (label, presence, overlayOnLoad, calm), written through the shell.
     function setSetting(key, value) {
-        if (["label", "presence", "overlayOnLoad", "calm"].indexOf(key) < 0 || !bar || !bar.shell
+        if (["label", "presence", "overlayOnLoad", "calm", "desktopPlacement"].indexOf(key) < 0 || !bar || !bar.shell
                 || typeof bar.shell.updateEntryInline !== "function") return false
         var next = {}
         var current = root.effectiveSettings || {}
@@ -78,6 +78,30 @@ BarWidget {
     property var registry: null
     // The last state.get (or snapshot-shaped) result: Help's helpers switch, Memories.
     property var snapshot: null
+    property var workState: null
+    FileView {
+        path: root.paths.workState
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.workState = Model.parseWork(text())
+        onLoadFailed: root.workState = null
+        onFileChanged: reload()
+    }
+    UpdateController {
+        id: updater
+        helper: root.paths.updateHelper
+        childEnv: root.paths.childEnv
+        supported: !root.paths.testState && root.cfg.binary === "" && Quickshell.env("CODEPET_TEST_STATE") !== "1"
+    }
+    readonly property bool updateSupported: updater.supported
+    readonly property var updateState: updater.snapshot
+    readonly property bool updateBusy: updater.busy
+    readonly property string updateOperation: updater.operation
+    function openUpdates() { updater.open() }
+    function closeUpdates() { updater.opened = false }
+    function checkUpdates() { updater.check() }
+    function installUpdate() { updater.install() }
+
     // The time the face is evaluated at: set when the file is read, by the one-shot below
     // and when the popup opens.
     property real now: Date.now()
@@ -233,7 +257,7 @@ BarWidget {
     }
     Component.onDestruction: if (bar && typeof bar.unregisterClickTarget === "function") bar.unregisterClickTarget(root)
 
-    readonly property var launcherVerbs: ["show", "hide", "toggle"]
+    readonly property var launcherVerbs: ["show", "hide", "toggle", "card"]
     // Desktop overlay verbs go through the codepet-overlay launcher as a detached argv,
     // never through a shell string and never as a child of this shell. The configured
     // binary (CODEPET_BIN), a test state home and Calm mode are passed with env(1) as more
@@ -247,6 +271,16 @@ BarWidget {
             argv = ["/usr/bin/env"].concat(root.paths.launcherEnv, argv)
         }
         Quickshell.execDetached(argv)
+        return true
+    }
+
+    function openWork(kind) {
+        if (kind === "compact") { var opened = root.launch("card"); if (opened) root.close(); return opened }
+        if (["bug", "research", "build"].indexOf(kind) < 0) return false
+        var argv = [root.paths.workLauncher, kind]
+        if (root.paths.launcherEnv.length > 0) argv = ["/usr/bin/env"].concat(root.paths.launcherEnv, argv)
+        Quickshell.execDetached(argv)
+        root.close()
         return true
     }
 

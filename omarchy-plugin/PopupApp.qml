@@ -31,6 +31,7 @@ Item {
 
     readonly property var doc: ctl ? ctl.barState : null
     readonly property var life: doc && doc.life ? doc.life : null
+    readonly property var workState: ctl && ctl.workState ? ctl.workState : null
     readonly property var face: ctl ? ctl.face : null
     readonly property var reg: ctl ? ctl.registry : null
     readonly property var cfg: ctl && ctl.cfg ? ctl.cfg : ({})
@@ -57,6 +58,10 @@ Item {
     function sFor(key, set, vars) { return Model.t(Strings.STRINGS, key, set, vars || {}) }
     function appName(id) { return Model.appName(id) }
     function faceLine() { return Model.faceLine(Strings.STRINGS, popupRoot.reg, popupRoot.doc, popupRoot.face) }
+    function openWork(kind) {
+        if (popupRoot.ctl && typeof popupRoot.ctl.openWork === "function") popupRoot.ctl.openWork(kind)
+        else popupRoot.failed({ error: { code: "NOT_INSTALLED" } })
+    }
 
     // ---------------------------------------------------------------- navigation
 
@@ -70,7 +75,7 @@ Item {
         if (popupRoot.mode === "menu") return "menu"
         if (popupRoot.route === "loading") return "loading"
         // Off wins over any page: the Off look, or the picker with Turn on.
-        if (popupRoot.route === "off_look" || popupRoot.route === "first_run_off") return popupRoot.page === "help" ? "help" : popupRoot.route
+        if (popupRoot.route === "off_look" || popupRoot.route === "first_run_off") return ["help", "updates"].indexOf(popupRoot.page) >= 0 ? popupRoot.page : popupRoot.route
         if (popupRoot.page !== "") return popupRoot.page
         if (popupRoot.route === "memorial" && popupRoot.meetNew) return "first_run"
         return popupRoot.route
@@ -101,7 +106,13 @@ Item {
     Component.onCompleted: if (popupRoot.startPage !== "") popupRoot.go(popupRoot.startPage, {})
     // Off from anywhere (this switch, the bar menu or `codepet off`) shows the Off look; On
     // again routes afresh to Home, not to the page that was open (popup_routing transitions).
-    onIsOnChanged: if (!popupRoot.isOn) popupRoot.home()
+    onIsOnChanged: if (!popupRoot.isOn) {
+        popupRoot.home()
+        bubbleTimer.stop()
+        popupRoot.bubbleText = ""
+        popupRoot.notice = ""
+        popupRoot.actionState = ""
+    }
 
     // ---------------------------------------------------------------- requests
 
@@ -243,6 +254,7 @@ Item {
         case "change": return { title: popupRoot.s("change.title"), back: true }
         case "connect": return { title: "", back: false }
         case "helpers": return { title: popupRoot.s("helpers.title"), back: true }
+        case "updates": return { title: popupRoot.s("updates.title"), back: true }
         case "more": return { title: popupRoot.s("more.title"), back: true }
         case "help": return { title: popupRoot.s("help.title"), back: true }
         case "memories": return { title: popupRoot.s("memories.title"), back: true }
@@ -334,6 +346,7 @@ Item {
         case "first_run": case "first_run_off": case "welcome_back": case "change": return pickerComponent
         case "connect": return connectComponent
         case "helpers": return helpersComponent
+        case "updates": return updatesComponent
         case "more": return moreComponent
         case "help": return helpComponent
         case "memories": return memoriesComponent
@@ -348,6 +361,7 @@ Item {
     Component { id: pickerComponent; PickerScreen { app: popupRoot; mode: popupRoot.screen } }
     Component { id: connectComponent; ConnectScreen { app: popupRoot; offered: popupRoot.pageArgs.offered || [] } }
     Component { id: helpersComponent; HelpersScreen { app: popupRoot } }
+    Component { id: updatesComponent; UpdatesScreen { app: popupRoot } }
     Component { id: moreComponent; MoreScreen { app: popupRoot } }
     Component { id: helpComponent; HelpScreen { app: popupRoot } }
     Component { id: memoriesComponent; MemoriesScreen { app: popupRoot } }

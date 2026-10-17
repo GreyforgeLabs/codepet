@@ -15,8 +15,7 @@ import "omarchy/OverlayFlow.js" as OverlayFlow
 // installs no autostart. packaging/omarchy/codepet-overlay is the verb launcher.
 //
 // The overlay is one click-through layer-shell pet. It draws bar-state.json (watched,
-// never polled) and has no window of its own: everything you do with CodePet happens in
-// the bar popup, which a click on the pet opens at Home. The process exits by itself when
+// never polled). Clicking opens a compact work card; Care opens the bar popup. The process exits by itself when
 // CodePet is Off or "Pet on my desktop" is off, and follows Calm mode live; both switches
 // are the bar entry's settings in ~/.config/omarchy/shell.json (omarchy/OverlayFlow.js).
 ShellRoot {
@@ -25,6 +24,8 @@ ShellRoot {
     property bool explicitlyHidden: false
     // The last valid bar-state.json, and "Pet on my desktop" (null = unknown).
     property var barState: null
+    property var workState: null
+    readonly property bool cardOpened: pet.cardOpen
     property var desktopPet: null
     // This process has seen "Pet on my desktop" on (then an off exits at once).
     property bool sawDesktopPetOn: false
@@ -39,6 +40,8 @@ ShellRoot {
     // Home requests sent to the Omarchy shell (coalesced: at most one per second).
     property int homeRequests: 0
     property real lastHomeMs: 0
+    property var placement: null
+    property string pendingPlacement: ""
     readonly property string exitReason: OverlayFlow.exitReason(shell.barState, shell.desktopPet)
 
     // Integration inputs, NOT detectors. Bind these to trustworthy host events
@@ -73,8 +76,35 @@ ShellRoot {
         onUpdated: state => shell.barState = state
         onUnavailable: shell.startupRead()
     }
+    FileView {
+        path: BarState.statePath(Quickshell.env("XDG_STATE_HOME"), Quickshell.env("HOME")).replace(/bar-state\.json$/, "work-state.json")
+        watchChanges: true
+        printErrors: false
+        onLoaded: {
+            try { shell.workState = JSON.parse(text()) } catch (e) { shell.workState = null }
+        }
+        onLoadFailed: shell.workState = null
+        onFileChanged: reload()
+    }
 
-    // "Pet on my desktop" (overlayOnLoad) and Calm mode (calm): the bar entry's settings, read-only.
+    WorkController {
+        id: work
+        binary: Quickshell.env("CODEPET_BIN") || "codepet"
+        summary: shell.workState
+        pet: shell.barState ? shell.barState.life : null
+        calm: shell.reducedMotion
+        opened: shell.cardOpened && shell.surfaceActive
+        automatic: shell.surfaceActive && !!shell.barState && shell.barState.enabled === true && !!shell.barState.life && shell.barState.life.armed === true
+    }
+    function openCard() { if (shell.surfaceActive) pet.cardOpen = true }
+    function openReview() {
+        var binary = Quickshell.env("CODEPET_BIN")
+        var launcher = Quickshell.env("CODEPET_WORK_LAUNCHER") || (binary.charAt(0) === "/" ? binary.replace(/[^/]+$/, "codepet-work") : "codepet-work")
+        Quickshell.execDetached([launcher, "build"])
+        pet.cardOpen = false
+    }
+
+    // "Pet on my desktop" (overlayOnLoad) and Calm mode (calm): the bar entry's settings. Placement is written only after an explicit drag or pin.
     FileView {
         id: settingsFile
         path: OverlayFlow.settingsPath(Quickshell.env("HOME"))
@@ -87,6 +117,48 @@ ShellRoot {
     function readSettings(text) {
         shell.desktopPet = OverlayFlow.desktopPetSetting(text)
         shell.calmSetting = OverlayFlow.calmSetting(text)
+        if (OverlayFlow.parseSettings(text) !== null) {
+            var next = OverlayFlow.placementSetting(text)
+            if (JSON.stringify(next) !== JSON.stringify(shell.placement)) {
+                // A pin switch in More keeps the pet at its current position, including
+                // distance it wandered since the last drag. Persist that position too.
+                if (shell.placement && next.pinned !== shell.placement.pinned
+                        && next.x === shell.placement.x && next.y === shell.placement.y
+                        && next.screen === shell.placement.screen) {
+                    pet.pinned = next.pinned
+                    pet.savePlacement()
+                    return
+                }
+                shell.placement = next
+                if (next.screen !== "") shell.preferredScreenName = next.screen
+                pet.restorePlacement(next)
+            }
+        }
+    }
+
+    function savePlacement(x, y, pinned) {
+        var next = {x: x, y: y, pinned: pinned,
+                    screen: shell.selectedScreen ? shell.selectedScreen.name : ""}
+        shell.placement = next
+        shell.pendingPlacement = JSON.stringify(next)
+        flushPlacement()
+    }
+    function flushPlacement() {
+        if (placementWriter.running || shell.pendingPlacement === "") return
+        var next = JSON.parse(shell.pendingPlacement)
+        shell.pendingPlacement = ""
+        placementWriter.command = OverlayFlow.placementArgv(Quickshell.env("OMARCHY_PATH"), next)
+        placementWriter.running = true
+    }
+    Process {
+        id: placementWriter
+        stdout: StdioCollector {
+            onStreamFinished: if (text.trim() !== "ok") console.warn("codepet-overlay: placement save failed: " + text.trim())
+        }
+        onExited: (code, status) => {
+            if (code !== 0) console.warn("codepet-overlay: placement save exited " + code)
+            Qt.callLater(shell.flushPlacement)
+        }
     }
 
     // A "Pet on my desktop" off read before this process saw it on must hold this long:
@@ -171,6 +243,13 @@ ShellRoot {
                 "overlay": pet.face.overlay,
                 "drawn": pet.active,
                 "home_requests": shell.homeRequests,
+                "card_open": pet.cardOpen,
+                "card_hit": pet.cardHit,
+                "work_busy": work.busy,
+                "x": pet.petX,
+                "y": pet.petY < 0 ? pet.floorY : pet.petY,
+                "pinned": pet.pinned,
+                "dragging": pet.dragging,
                 "state_version": s ? s.state_version : null,
                 "appearance": life ? life.appearance : null,
                 "stage": life ? life.stage : null
@@ -187,6 +266,7 @@ ShellRoot {
         // (`tasks`, `care`, `companion`, `life`) went with the v0.2 bar menu (SPEC-v0.3 §10
         // step 7; notes.md §8 item 21).
         function openHome(): void { shell.openHome() }
+        function openCard(): void { shell.openCard() }
         function refresh(): void { shell.refresh() }
         function setReducedMotion(value: bool): void { shell.reducedMotionOverride = value }
         function selectScreen(name: string): void { shell.preferredScreenName = name }
@@ -213,21 +293,35 @@ ShellRoot {
 
         readonly property var petInput: OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)
 
-        // The pet's hit box is the only input region; the thought bubble is decorative and
+        readonly property var cardInput: OverlayPolicy.clipHit(pet.cardHit, width, height, shell.surfaceActive)
+
+        // Pet and visible card are separate input islands; the thought bubble is decorative and
         // stays click-through. Never use the full scene Item as a mask, or a null mask
         // while hidden (an empty region is click-through everywhere).
         mask: Region {
             x: overlay.petInput.x; y: overlay.petInput.y
             width: overlay.petInput.width; height: overlay.petInput.height
+            Region {
+                intersection: Intersection.Combine
+                x: overlay.cardInput.x; y: overlay.cardInput.y
+                width: overlay.cardInput.width; height: overlay.cardInput.height
+                radius: 16
+            }
         }
 
         DesktopPet {
             id: pet
             anchors.fill: parent
             barState: shell.barState
+            workState: shell.workState
+            workController: work
+            onReviewRequested: shell.openReview()
             surfaceActive: shell.surfaceActive && overlay.visible
             reducedMotion: shell.reducedMotion
             onHomeRequested: shell.openHome()
+            onPlacementRequested: (x, y, pinned) => shell.savePlacement(x, y, pinned)
+            onWidthChanged: if (shell.placement) Qt.callLater(() => pet.restorePlacement(shell.placement))
+            onHeightChanged: if (shell.placement) Qt.callLater(() => pet.restorePlacement(shell.placement))
         }
     }
 

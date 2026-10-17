@@ -1,7 +1,7 @@
 //! The retired v0.2 mock task pipeline (spec §6.5): drafts, preflight tokens, the mock
 //! supervisor's compare-and-set steps, review sealing, acceptance with its single reward,
 //! discard, recovery, the event feed and history. Compiled only with the non-default
-//! `legacy-tasks` feature and deleted in v0.3.1; no v0.3 feature may depend on it. Its
+//! `legacy-tasks` feature and retained for non-default compatibility; no v0.3 feature may depend on it. Its
 //! historic tables stay in every build, read-only.
 //!
 //! While it exists it keeps its v0.2 rules: one task owns the active slot until containment

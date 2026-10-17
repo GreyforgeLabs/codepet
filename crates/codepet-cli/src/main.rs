@@ -15,13 +15,16 @@ mod errors;
 mod fold;
 mod hook;
 mod install;
+mod repos;
 mod rpc;
 #[cfg(feature = "legacy-tasks")]
 mod supervisor;
+mod work;
 
 use std::io::Write;
 
 const HELP: &str = "CodePet: a desktop pet that keeps you company while your coding apps work
+  codepet work-rpc         One explicit useful-work request (the native Work window uses it)
   codepet state            Print the state.get snapshot as JSON
   codepet rpc              Answer one protocol request frame read from stdin
   codepet migrate          Upgrade the saved pet data to this version (the installer runs it)
@@ -34,8 +37,8 @@ const HELP: &str = "CodePet: a desktop pet that keeps you company while your cod
   codepet disconnect <app> Stop watching a coding app
   codepet doctor [--json]  Plain-word health check (changes nothing)
   codepet --version        Print the version
-No daemon and no background polling. CodePet only observes coding apps you connect; it never
-starts, stops, blocks or answers them.";
+No daemon when idle. Connected external coding apps are observed only. Explicit CodePet Work
+jobs run separately in a bounded isolated workspace and require review before application.";
 #[cfg(feature = "legacy-tasks")]
 const LEGACY_HELP: &str = "Retired (legacy-tasks build only):
   codepet providers   Show provider support (mock only)
@@ -76,6 +79,9 @@ fn main() {
             0
         }
         (Some(Some("rpc")), 1) => rpc::run(),
+        (Some(Some("work-rpc")), 1) => work::rpc(),
+        (Some(Some("work-run")), 2) => args[1].to_str().map_or(2, work::run),
+        (Some(Some("work-sandbox")), 2) => args[1].to_str().map_or(2, work::sandbox),
         (Some(Some("state")), 1) => state(),
         // v0.3: the hook never reports a usage error (O2), whatever its arguments.
         (Some(Some("hook")), _) => hook::run(&args[1..]),

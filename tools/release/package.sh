@@ -72,7 +72,7 @@ echo "== CodePet $VERSION release archive"
 # 0. the shipped paths hold exactly the commit: nothing modified, untracked or ignored
 # (a stray __pycache__/ or editor file would otherwise be copied into the archive)
 SHIPPED=(LICENSE README.md CHANGELOG.md THIRD-PARTY-LICENSES.md docs packaging/omarchy
-    omarchy-plugin qml/README.md qml/shell.qml qml/shared qml/omarchy qml/assets
+    omarchy-plugin qml/README.md qml/shell.qml qml/work.qml qml/shared qml/omarchy qml/assets
     tools/measure-overlay.sh Cargo.toml Cargo.lock crates integrations)
 dirty=$(git -C "$REPO" status --porcelain --ignored --untracked-files=all -- "${SHIPPED[@]}") ||
     die "git status failed"
@@ -118,7 +118,7 @@ cp -R -- "$REPO/docs" "$STAGE/docs"
 rm -rf -- "$STAGE/docs/art-library/source"
 cp -R -- "$REPO/packaging/omarchy" "$STAGE/packaging/omarchy"
 cp -R -- "$REPO/omarchy-plugin" "$STAGE/omarchy-plugin"
-cp -- "$REPO/qml/README.md" "$REPO/qml/shell.qml" "$STAGE/qml/"
+cp -- "$REPO/qml/README.md" "$REPO/qml/shell.qml" "$REPO/qml/work.qml" "$STAGE/qml/"
 for d in shared omarchy assets; do
     cp -R -- "$REPO/qml/$d" "$STAGE/qml/$d"
 done

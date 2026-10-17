@@ -119,6 +119,24 @@ function calmSetting(text) {
     return entry === null ? null : String(entry.calm) === "true"
 }
 
+// Placement is a preference, separate from care/progression. Invalid coordinates
+// fall back to the floor; an unknown monitor falls back to the connected first screen.
+function placementSetting(text) {
+    var entry = pluginEntry(text)
+    var p = entry && isObject(entry.desktopPlacement) ? entry.desktopPlacement : {}
+    var valid = typeof p.x === "number" && isFinite(p.x) && p.x >= 0 && p.x <= 1
+             && typeof p.y === "number" && isFinite(p.y) && p.y >= 0 && p.y <= 1
+    return { x: valid ? p.x : null, y: valid ? p.y : null, pinned: p.pinned === true,
+             screen: typeof p.screen === "string" && p.screen.length <= 256 ? p.screen : "" }
+}
+
+// One explicit preference write, via the host's config mutator, never a shell string.
+function placementArgv(omarchyPath, position) {
+    var base = absolute(omarchyPath) || DEFAULT_OMARCHY_PATH
+    return ["qs", "ipc", "-p", base + "/shell", "call", "--", "shell", "setBarWidget",
+            PLUGIN_ID, "desktopPlacement", JSON.stringify(position), "{}"]
+}
+
 // Whether the pet moves calmly: an explicit `setReducedMotion` call (`override`, null when
 // none) wins until the setting changes; then the bar entry's `calm` (`setting`); with no
 // setting, CODEPET_REDUCED_MOTION=1 from the launch (`envValue`). Omarchy has no system

@@ -1,14 +1,18 @@
-> Historical task-execution design. v0.3 is an observe-only coding companion;
-> its shipped architecture, privacy rules and frozen contracts are documented in
-> [architecture.md](architecture.md), [security.md](security.md) and
-> [v0.3/contracts/README.md](v0.3/contracts/README.md). Task execution and the four-tab
-> UI below are not routed by the default v0.3 build.
+> **Current v0.4 loop, 2026-10-17:**
+> The pet icon, automatic repository discovery and
+> bounded read-only bug scouting are the primary path. The manual folder/task form
+> below is now an advanced fallback. Fix and reviewed Apply remain explicit.
+> Accepted bug fixes feed the pet, research quenches thirst, and building lifts mood;
+> accepted jobs earn XP. Happy/awake/energy gates replace the historical full-bars gate.
+> See [decision 0003](decisions/0003-care-driven-real-work.md) and [work.md](work.md).
+> Older mock/observer-only supersession notes below are historical.
+
 
 # CodePet implementation specification
 
 Version: 1.1 · Status: implementation-ready design, not implemented or benchmarked · Target: supported Linux desktops; Omarchy integration by default
 
-## Current product direction (2026-10-15)
+## Historical product direction (2026-10-15)
 
 This revision supersedes the earlier bar/panel-only and no-roaming direction: the primary interface is a transparent desktop pet with a tight input region, short cosmetic walks, long pauses, hover/selection meters and transient care props. A separate focusable task/review window opens only through explicit user action. Ordinary portable Qt preview windows are not a claim of Wayland overlay support. See [desktop-overlay.md](desktop-overlay.md) for implemented capability boundaries and live validation gates.
 

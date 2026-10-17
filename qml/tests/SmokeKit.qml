@@ -20,7 +20,7 @@ Item {
     property var failed: []
     readonly property var styleFont: Style.font
     // Exemptions: adult pages (K1/K2) and the controls they hold (K3 full width).
-    readonly property var adultNames: ["cp.helpFlick", "cp.codexPicture"]
+    readonly property var adultNames: ["cp.updates", "cp.helpFlick", "cp.codexPicture"]
 
     function json(url) {
         var x = new XMLHttpRequest()
@@ -136,7 +136,7 @@ Item {
         var all = kit.texts(root)
         for (var i = 0; i < all.length; i++) {
             if (all[i].adult) continue
-            var p = Model.kidTextProblems(all[i].text)
+            var p = Model.kidTextProblems(all[i].text, all[i].item.cpStatistic === true)
             if (p.length) bad.push(all[i].text + " (" + p.join(", ") + ")")
         }
         return kit.check(bad.length === 0, label + ": kid copy K1/K2/K8" + (bad.length ? " " + JSON.stringify(bad) : ""))
@@ -162,7 +162,7 @@ Item {
             if (o.enabled === false) bad.push(name + " is disabled (K6)")
             if (["primary", "secondary", "tile", "round", "treats", "switch"].indexOf(kind) >= 0) {
                 kit.walk(o, function (c) {
-                    if (c !== o && kit.isText(c) && c.visible && /[A-Za-z]/.test(String(c.text)) && c.font.pixelSize < kit.styleFont.title)
+                    if (c !== o && kit.isText(c) && c.visible && c.cpStatistic !== true && /[A-Za-z]/.test(String(c.text)) && c.font.pixelSize < kit.styleFont.title)
                         bad.push(name + " label font " + c.font.pixelSize + " < title " + kit.styleFont.title)
                     return true
                 })

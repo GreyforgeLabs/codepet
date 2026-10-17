@@ -1,6 +1,6 @@
 //! Crash injection through `CODEPET_FAULT` (debug builds only). Each fault aborts the real
 //! process; the next process must see a consistent durable state.
-// Task-pipeline tests and helpers run only with `legacy-tasks` (deleted in v0.3.1).
+// Task-pipeline tests and helpers run only with `legacy-tasks` (retained for non-default compatibility).
 #![cfg_attr(not(feature = "legacy-tasks"), allow(dead_code, unused_imports))]
 mod common;
 use codepet_storage::{Clock, SystemClock};

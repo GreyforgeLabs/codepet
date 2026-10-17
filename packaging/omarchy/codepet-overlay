@@ -1,7 +1,7 @@
 #!/bin/sh
 # codepet-overlay: verb launcher for the CodePet desktop overlay (Quickshell).
 #
-#   codepet-overlay show|hide|toggle|refresh|status|quit [--force]
+#   codepet-overlay show|hide|toggle|refresh|status|card|quit [--force]
 #
 # The overlay is one separate, detached `qs` process. This script finds a running
 # instance and sends it an IPC verb; it never starts a second copy. `hide`,
@@ -36,7 +36,7 @@ set -u
 PROG=codepet-overlay
 TOKEN="codepet-overlay"
 
-USAGE="usage: $PROG show|hide|toggle|refresh|status|quit [--force]"
+USAGE="usage: $PROG show|hide|toggle|refresh|status|card|quit [--force]"
 
 usage() {
     echo "$USAGE" >&2
@@ -51,7 +51,7 @@ case "$#" in
 esac
 VERB=$1
 case "$VERB" in
-    show|hide|toggle|refresh|status|quit) ;;
+    show|hide|toggle|refresh|status|card|quit) ;;
     -h|--help) echo "$USAGE"; exit 0 ;;
     *) usage ;;
 esac
@@ -69,6 +69,14 @@ esac
 CODEPET_DATA="$DATA_HOME/codepet"
 QML=${CODEPET_OVERLAY_QML:-"$CODEPET_DATA/current/qml/shell.qml"}
 BIN=${CODEPET_BIN:-"$HOME/.local/bin/codepet"}
+WORK_LAUNCHER=${CODEPET_WORK_LAUNCHER:-}
+if [ -z "$WORK_LAUNCHER" ]; then
+    case "$BIN" in
+        /*) WORK_LAUNCHER="${BIN%/*}/codepet-work" ;;
+        *) WORK_LAUNCHER=codepet-work ;;
+    esac
+fi
+export CODEPET_WORK_LAUNCHER="$WORK_LAUNCHER"
 QS=${CODEPET_QS:-qs}
 STATE_HOME=${XDG_STATE_HOME:-}
 case "$STATE_HOME" in
@@ -212,6 +220,16 @@ start_overlay() {
 }
 
 case "$VERB" in
+    card)
+        # Opening controls never changes the user's desktop-pet visibility preference.
+        if [ ! -e "$OFF_FLAG" ] && running; then
+            st=$("$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet status 2>/dev/null) || st=
+            case "$st" in
+                *'"pet":"shown"'*) if call openCard; then exit 0; fi ;;
+            esac
+        fi
+        export CODEPET_BIN="$BIN"
+        exec "$WORK_LAUNCHER" compact ;;
     status)
         if running; then
             if [ "$TARGET_FLAG" = --pid ]; then

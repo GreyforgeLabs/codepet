@@ -275,7 +275,7 @@ impl Method {
     /// The v0.2 methods v0.3 unroutes (spec §6.2 "Removed"; `hello` stays, only its
     /// supervisor handshake is retired). The default build parses none of them (they answer
     /// `UNKNOWN_METHOD`); they route again only with the non-default `legacy-tasks` feature,
-    /// until v0.3.1 deletes them.
+    /// for non-default compatibility.
     pub const V03_REMOVED: [Self; 17] = [
         Self::EventsSubscribe,
         Self::ProvidersInspect,

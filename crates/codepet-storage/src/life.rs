@@ -263,8 +263,13 @@ pub(crate) fn journal(
 pub(crate) fn life_xp(c: &Connection, life_id: &str) -> Result<(u32, u32)> {
     let (xp, n): (i64, i64) = c.query_row(
         "SELECT (SELECT COALESCE(SUM(amount), 0) FROM demo_xp_rewards WHERE life_id = ?1)
-              + (SELECT COALESCE(SUM(amount), 0) FROM activity_xp WHERE life_id = ?1),
-            (SELECT count(*) FROM demo_xp_rewards WHERE life_id = ?1)",
+              + (SELECT COALESCE(SUM(amount), 0) FROM activity_xp WHERE life_id = ?1)
+              + (SELECT COALESCE(SUM(json_extract(response, '$.amount')), 0)
+                 FROM request_results WHERE method = 'work.accept'
+                 AND json_extract(response, '$.life_id') = ?1),
+            (SELECT count(*) FROM demo_xp_rewards WHERE life_id = ?1)
+              + (SELECT count(*) FROM request_results WHERE method = 'work.accept'
+                 AND json_extract(response, '$.life_id') = ?1)",
         [life_id],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
@@ -281,7 +286,12 @@ pub(crate) enum EvolvedBy<'a> {
     #[cfg(feature = "legacy-tasks")]
     Task(&'a str),
     /// A treat given by `treats.give` (its request id).
-    Treat { request_id: &'a str },
+    Treat {
+        request_id: &'a str,
+    },
+    Work {
+        request_id: &'a str,
+    },
 }
 
 /// Journals each stage newly reached by `old_xp + gained` as `evolved` (once per life and
@@ -308,6 +318,10 @@ pub(crate) fn record_evolution(
             EvolvedBy::Task(task_id) => (Some(task_id), None),
             EvolvedBy::Treat { request_id } => {
                 data["source"] = json!("treat");
+                (None, Some(request_id))
+            }
+            EvolvedBy::Work { request_id } => {
+                data["source"] = json!("work");
                 (None, Some(request_id))
             }
         };
@@ -402,15 +416,19 @@ pub(crate) fn state_version(c: &Connection) -> Result<i64> {
 #[cfg(feature = "legacy-tasks")]
 pub(crate) fn slot_busy(c: &Connection) -> Result<bool> {
     Ok(c.query_row(
-        &format!("SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN {SLOT_STATES})"),
+        &format!("SELECT EXISTS(SELECT 1 FROM tasks WHERE state IN {SLOT_STATES}) OR EXISTS(SELECT 1 FROM request_results WHERE method='work.active')"),
         [],
         |r| r.get(0),
     )?)
 }
 /// See the `legacy-tasks` variant: the default build has no slot holder.
 #[cfg(not(feature = "legacy-tasks"))]
-pub(crate) fn slot_busy(_c: &Connection) -> Result<bool> {
-    Ok(false)
+pub(crate) fn slot_busy(c: &Connection) -> Result<bool> {
+    Ok(c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM request_results WHERE method='work.active')",
+        [],
+        |r| r.get(0),
+    )?)
 }
 
 /// True when a pending end can finalize now (the slot is free and CodePet is On).
