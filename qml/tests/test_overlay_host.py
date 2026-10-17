@@ -60,7 +60,7 @@ if s.get('task') and s['task']['status']=='scouted':
 print(json.dumps({'ok':True,'result':s}))
 """)
     provider.chmod(0o700)
-            stage = root / 'qml'
+    stage = root / 'qml'
     shutil.copytree(REPO / 'qml/shared', stage / 'shared')
     shutil.copytree(REPO / 'qml/omarchy', stage / 'omarchy')
     desktop_scene = stage / 'shared/DesktopPet.qml'

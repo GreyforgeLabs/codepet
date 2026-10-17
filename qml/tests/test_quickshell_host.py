@@ -2,8 +2,8 @@
 """Source contract + pure JS policy tests, plus real Quickshell load smokes when `qs` is
 installed. NOT Wayland runtime proof: the load smokes run offscreen with no compositor.
 Also covers the passive bar-state.json reader (BarState.js, BarStateWatcher.qml), the
-v0.3 overlay lifecycle (exit on Off and when "Pet on my desktop" is off, click -> Home
-through a stub `omarchy-shell`) and the packaging/omarchy/codepet-overlay verb launcher
+overlay lifecycle (exit on Off and when "Pet on my desktop" is off, compact card and
+Care -> Home through a stub `omarchy-shell`) and the packaging/omarchy/codepet-overlay verb launcher
 (static checks, a fake `qs`, and, when Quickshell is installed, a real isolated instance).
 Nothing here reaches the live desktop: every Quickshell run uses a private HOME, XDG
 and runtime directory, no display, and stub `codepet` / `omarchy-shell` programs.
@@ -43,18 +43,23 @@ class HostContract(unittest.TestCase):
         self.assertNotIn('WlrKeyboardFocus.OnDemand', CODE)
         self.assertNotIn('WlrKeyboardFocus.Exclusive', CODE)
 
-    def test_hit_mask_is_only_the_pet(self):
+    def test_hit_mask_is_only_the_pet_and_visible_card(self):
         mask = block(CODE, 'mask: Region {')
-        self.assertEqual(mask.count('Region {'), 1)
+        self.assertEqual(mask.count('Region {'), 2)
+        self.assertEqual(mask.count('intersection: Intersection.Combine'), 1)
         self.assertNotIn('item:', mask)
         self.assertNotIn('mask: null', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)', CODE)
+        self.assertIn('OverlayPolicy.clipHit(pet.cardHit, width, height, shell.surfaceActive)', CODE)
+        self.assertIn('card.visible ? Qt.rect(card.x, card.y, card.width, card.height) : Qt.rect(0, 0, 0, 0)', PET)
         for axis in ('x', 'y', 'width', 'height'):
             self.assertIn(f'{axis}: overlay.petInput.{axis}', mask)
+            self.assertIn(f'{axis}: overlay.cardInput.{axis}', mask)
         # The thought bubble is decorative: no menu or prop region would be a dead click zone.
         for gone in ('menuHit', 'menuInput', 'propsHit', 'propsInput'):
             self.assertNotIn(gone, CODE)
-        bubble = block(PET, 'Rectangle {')
+        bubble_start = PET.rfind('Rectangle {', 0, PET.index('id: bubble'))
+        bubble = block(PET[bubble_start:], 'Rectangle {')
         self.assertIn('objectName: "desktopPet.bubble"', bubble)
         self.assertNotIn('MouseArea', bubble)
         self.assertEqual(PET.count('MouseArea {'), 1, 'one input area: the pet hit box')
@@ -66,7 +71,7 @@ class HostContract(unittest.TestCase):
         self.assertEqual(CODE.count('HostAdapter {'), 1)
         self.assertNotIn('host: hostAdapter', CODE, 'the pet has no transport')
         self.assertLess(CODE.index('HostAdapter {'), CODE.index('PanelWindow {'))
-        self.assertEqual(CODE.count('screen: shell.selectedScreen'), 1)
+        self.assertEqual(len(re.findall(r'^\s*screen: shell.selectedScreen\s*$', CODE, re.M)), 1)
         # One timer only: the single-shot settle of a "Pet on my desktop" off (no polling).
         self.assertEqual(CODE.count('Timer {'), 1)
         settle = block(CODE, 'Timer {')
@@ -90,7 +95,8 @@ class HostContract(unittest.TestCase):
         self.assertIn('onDesktopPetChanged: if (shell.desktopPet === true) shell.sawDesktopPetOn = true', CODE)
         # "Pet on my desktop" and Calm mode are the bar plugin's settings: watched, never written,
         # in the file the Omarchy shell itself uses ($HOME/.config, not XDG_CONFIG_HOME).
-        settings = block(CODE, 'FileView {')
+        settings_start = CODE.rfind('FileView {', 0, CODE.index('id: settingsFile'))
+        settings = block(CODE[settings_start:], 'FileView {')
         self.assertIn('OverlayFlow.settingsPath(Quickshell.env("HOME"))', settings)
         self.assertNotIn('XDG_CONFIG_HOME', CODE)
         self.assertIn('watchChanges: true', settings)
@@ -101,13 +107,18 @@ class HostContract(unittest.TestCase):
         for write in ('setText', 'writeAdapter', 'updateEntryInline'):
             self.assertNotIn(write, CODE)
 
-    def test_click_opens_home_through_the_omarchy_shell(self):
+    def test_care_opens_home_and_only_placement_uses_a_direct_process(self):
         self.assertIn('onHomeRequested: shell.openHome()', CODE)
         home = block(CODE, 'function openHome() {')
         self.assertIn('Quickshell.execDetached(OverlayFlow.openHomeArgv(Quickshell.env("OMARCHY_PATH")))', home)
         self.assertIn('if (!OverlayFlow.homeDue(shell.lastHomeMs, now))', home)
         self.assertLess(home.index('homeDue'), home.index('execDetached'))
-        self.assertNotIn('Process', CODE)
+        self.assertNotIn('Process', home)
+        self.assertEqual(CODE.count('Process {'), 1)
+        self.assertIn('id: placementWriter', block(CODE, 'Process {'))
+        placement = block(CODE, 'function flushPlacement() {')
+        self.assertIn('if (placementWriter.running || shell.pendingPlacement === "") return', placement)
+        self.assertIn('placementWriter.command = OverlayFlow.placementArgv(Quickshell.env("OMARCHY_PATH"), next)', placement)
 
     def test_suppression_and_explicit_restore(self):
         for name in ('sessionLocked', 'sessionSuspended', 'selectedScreenFullscreen'):
@@ -329,19 +340,21 @@ class HostContractV03(unittest.TestCase):
         names = {name: ret for name, _args, ret in declared}
         self.assertEqual(names.get('ping'), 'string')
         self.assertEqual(names.get('status'), 'string')
-        for verb in ('show', 'hide', 'toggle', 'openHome',
+        for verb in ('show', 'hide', 'toggle', 'openHome', 'openCard',
                      'refresh', 'setReducedMotion', 'selectScreen', 'setSessionState', 'setFullscreen'):
             self.assertEqual(names.get(verb), 'void', verb)
         # The stub `panel` verb and the v0.2 window verbs went with the v0.2 bar menu
         # (SPEC-v0.3 §10 step 7).
         for verb in ('panel', 'tasks', 'care', 'companion', 'life'):
             self.assertNotIn(verb, names, verb)
-        # Every verb the launcher can send exists.
+        # `card` is a launcher alias for openCard, with a separate-window fallback.
         verbs = re.search(r'case "\$VERB" in\n\s+([a-z|]+)\) ;;', LAUNCHER).group(1).split('|')
         for verb in verbs:
             if verb != 'quit':
-                self.assertIn(verb, names, verb)
+                self.assertIn('openCard' if verb == 'card' else verb, names, verb)
         self.assertIn('shell.openHome()', block(ipc, 'function openHome(): void {'))
+        self.assertIn('shell.openCard()', block(ipc, 'function openCard(): void {'))
+        self.assertIn('if call openCard; then exit 0; fi', LAUNCHER)
         # ping's fixed prefix is what the launcher's liveness check matches.
         self.assertIn('"codepet-overlay " +', ipc)
         self.assertIn('TOKEN="codepet-overlay"', LAUNCHER)
@@ -619,12 +632,17 @@ class LauncherStatic(unittest.TestCase):
         self.assertNotIn('CODEPET_OPEN', LAUNCHER, 'the v0.3 overlay ignores CODEPET_OPEN')
         self.assertIn('"$QS" list --all --json', LAUNCHER)
         # `call --` keeps qs 0.3.1 from parsing the `show` verb as `qs ipc show`.
-        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 5)
+        self.assertEqual(len(re.findall(r'call -- codepet', LAUNCHER)), 6)
         self.assertNotRegex(re.sub(r'#[^\n]*', '', LAUNCHER), r'call codepet')
         self.assertIn('/current/qml/shell.qml', LAUNCHER)
         self.assertIn('${XDG_DATA_HOME:-}', LAUNCHER)
-        # hide/refresh/status branches never reach start_overlay.
-        dispatch = LAUNCHER[LAUNCHER.index('case "$VERB" in\n    status)'):]
+        # Opening the card never starts or shows the overlay.
+        dispatch = LAUNCHER[LAUNCHER.index('case "$VERB" in\n    card)'):]
+        card_branch = dispatch[dispatch.index('card)'):dispatch.index('    status)')]
+        self.assertNotIn('start_overlay', card_branch)
+        self.assertNotIn('call show', card_branch)
+        self.assertIn('exec "$WORK_LAUNCHER" compact', card_branch)
+        # hide/refresh/status/quit never reach start_overlay.
         for verb in ('status)', 'hide|refresh)', 'quit)'):
             branch = dispatch[dispatch.index(verb):]
             branch = branch[:branch.index('    hide|refresh)' if verb == 'quit)' else ';;')]
