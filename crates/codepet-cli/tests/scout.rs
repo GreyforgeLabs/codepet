@@ -2,6 +2,21 @@ mod common;
 use common::Env;
 use serde_json::{json, Value};
 use std::io::Write;
+use std::path::Path;
+
+fn assert_missing_prerequisite(message: &str) {
+    // These tests exercise cooldown persistence before provider preparation. An
+    // empty PATH guarantees no Codex, but minimal CI hosts can lack containment
+    // tools too; that earlier, safe refusal must have the same cooldown behavior.
+    if !Path::new("/usr/bin/bwrap").is_file() || !Path::new("/usr/bin/prlimit").is_file() {
+        assert_eq!(
+            message,
+            "Bubblewrap and prlimit are needed to keep jobs contained"
+        );
+    } else {
+        assert!(message.contains("Install Codex"), "{message}");
+    }
+}
 
 fn call(env: &Env, method: &str, params: Value) -> Value {
     let mut child = env
@@ -64,10 +79,7 @@ fn failed_scout_setup_consumes_cooldown_before_provider_or_source_preparation() 
     let initial = env.state();
     let first = call(&env, "scout", json!({}));
     assert_eq!(first["ok"], false);
-    assert!(first["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("Install Codex"));
+    assert_missing_prerequisite(first["error"]["message"].as_str().unwrap());
     let path = env.state_dir().join("work/scout-settings.json");
     let bytes = std::fs::read(&path).unwrap();
     let settings: Value = serde_json::from_slice(&bytes).unwrap();
@@ -158,10 +170,7 @@ fn scout_skips_oversized_and_linked_repos_before_one_provider_preparation() {
             .unwrap();
     }
     let first = call(&env, "scout", json!({}));
-    assert!(first["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("Install Codex"));
+    assert_missing_prerequisite(first["error"]["message"].as_str().unwrap());
     let settings: Value = serde_json::from_slice(
         &std::fs::read(env.state_dir().join("work/scout-settings.json")).unwrap(),
     )
@@ -173,10 +182,7 @@ fn scout_skips_oversized_and_linked_repos_before_one_provider_preparation() {
         3_449_401
     );
     let reopened = call(&env, "get", json!({}));
-    assert!(reopened["result"]["scout"]["last_error"]
-        .as_str()
-        .unwrap()
-        .contains("Install Codex"));
+    assert_missing_prerequisite(reopened["result"]["scout"]["last_error"].as_str().unwrap());
 }
 
 #[test]

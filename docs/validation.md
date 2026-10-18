@@ -71,6 +71,13 @@ was excluded from the aggregate test PATH. Those test functions can return early
 the aggregate pass count does not establish their native execution. Ignored latency
 and opt-in resource tests are likewise not measured results.
 
+The first private-PR CI run exposed a fixture assumption: scout cooldown tests
+expected the missing-Codex error even on hosts missing containment tools. The tests
+now require the exact applicable prerequisite refusal and still verify durable
+cooldowns, no active work and no reward. Minimal CI hosts can skip the native
+sandbox checks when Bubblewrap is absent; a green CI result would not qualify
+containment on the supported desktop target.
+
 ## Visual review and remaining gates
 
 Common/narrow card, care-wheel, failure feedback, growth and Apply-recovery captures
