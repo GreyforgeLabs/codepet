@@ -541,3 +541,26 @@ impl Validate for ClientsTestParams {
             .map_or(Ok(()), |c| check_client("client", c))
     }
 }
+
+/// A life-bound care cadence; storage checks mode, pace and the revision atomically.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PetCareTempoParams {
+    pub life_id: String,
+    pub expected_revision: u64,
+    pub tempo: String,
+}
+impl Validate for PetCareTempoParams {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        check_token("life_id", &self.life_id)?;
+        if self.expected_revision == 0 || self.expected_revision > i64::MAX as u64 {
+            return Err(invalid_params(
+                "expected_revision must be a positive signed integer",
+            ));
+        }
+        if !matches!(self.tempo.as_str(), "steady" | "lively") {
+            return Err(invalid_params("tempo must be steady or lively"));
+        }
+        Ok(())
+    }
+}

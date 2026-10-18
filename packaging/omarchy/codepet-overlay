@@ -114,7 +114,7 @@ ping_target() {
 find_listed_pid() {
     "$QS" list --all --json 2>/dev/null | CP_DATA="$CODEPET_DATA" awk '
         BEGIN {
-            cur = ENVIRON["CP_DATA"] "/current/"
+            cur = ENVIRON["CP_DATA"] "/current/qml/shell.qml"
             rel = ENVIRON["CP_DATA"] "/releases/"
         }
         /^[ \t]*\{/ { path = ""; pid = "" }
@@ -131,7 +131,8 @@ find_listed_pid() {
             if (line ~ /^[0-9]+$/) pid = line
         }
         /^[ \t]*\}/ {
-            if (pid != "" && (index(path, cur) == 1 || index(path, rel) == 1)) {
+            tail = substr(path, length(rel) + 1)
+            if (pid != "" && (path == cur || (index(path, rel) == 1 && tail ~ /^[^/]+\/qml\/shell\.qml$/))) {
                 print pid
                 exit
             }

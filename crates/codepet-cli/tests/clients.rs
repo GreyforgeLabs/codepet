@@ -441,6 +441,146 @@ fn a_foreign_codepet_named_file_is_never_clobbered() {
 }
 
 #[test]
+fn unreadable_foreign_artifacts_are_preserved() {
+    for (client, relative) in [
+        ("grok-cli", ".grok/hooks/codepet.json"),
+        ("opencode", ".config/opencode/plugins/codepet.js"),
+    ] {
+        for unreadable in [false, true] {
+            let h = Home::new();
+            h.install_grok();
+            h.install_opencode();
+            let path = h.home().join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let original = b"foreign bytes\xff\xfe\x00";
+            fs::write(&path, original).unwrap();
+            if unreadable {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+            }
+            let j = h.connect(&[client]);
+            assert_eq!(h.result_of(&j, client)["reason"], "blocked", "{j}");
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+            assert_eq!(fs::read(path).unwrap(), original);
+        }
+    }
+}
+
+#[test]
+fn fifo_artifacts_do_not_block_status_rpc() {
+    use std::io::Write;
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    use std::time::{Duration, Instant};
+
+    for relative in [
+        ".grok/hooks/codepet.json",
+        ".config/opencode/plugins/codepet.js",
+    ] {
+        for link in [false, true] {
+            let h = Home::new();
+            let path = h.home().join(relative);
+            let target = h.home().join("foreign-fifo");
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            rustix::fs::mkfifoat(
+                rustix::fs::CWD,
+                if link { &target } else { &path },
+                rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+            )
+            .unwrap();
+            if link {
+                std::os::unix::fs::symlink(&target, &path).unwrap();
+            }
+            let before = fs::symlink_metadata(&path).unwrap();
+            let mut child = h.cmd(&["rpc"]).stdin(Stdio::piped()).spawn().unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(
+                    b"{\"v\":1,\"id\":\"fifo\",\"method\":\"clients.status\",\"params\":{}}\n",
+                )
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while child.try_wait().unwrap().is_none() {
+                if Instant::now() >= deadline {
+                    child.kill().unwrap();
+                    child.wait().unwrap();
+                    panic!("status blocked on {relative}, symlink={link}");
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success());
+            let reply: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(reply["ok"], true, "{reply}");
+            assert!(reply["result"]["clients"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|c| c["connected"] == false));
+            assert_eq!(fs::symlink_metadata(&path).unwrap().ino(), before.ino());
+            if link {
+                assert_eq!(fs::read_link(&path).unwrap(), target);
+            }
+            assert!(fs::metadata(&path).unwrap().file_type().is_fifo());
+        }
+    }
+}
+
+#[test]
+fn foreign_artifact_symlinks_are_not_replaced() {
+    for (client, relative) in [
+        ("grok-cli", ".grok/hooks/codepet.json"),
+        ("opencode", ".config/opencode/plugins/codepet.js"),
+    ] {
+        let h = Home::new();
+        h.install_grok();
+        h.install_opencode();
+        let path = h.home().join(relative);
+        let target = h.home().join("missing-foreign-target");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        let j = h.connect(&[client]);
+        assert_eq!(h.result_of(&j, client)["reason"], "blocked", "{j}");
+        assert_eq!(fs::read_link(path).unwrap(), target);
+        assert!(!target.exists());
+    }
+}
+
+#[test]
+fn hermes_status_tracks_enablement_without_changing_owned_files() {
+    if !python_has_yaml() {
+        assert!(std::env::var_os("CI").is_none(), "PyYAML required in CI");
+        return;
+    }
+    let h = Home::new();
+    h.install_hermes();
+    let j = h.connect(&["hermes"]);
+    assert_eq!(h.result_of(&j, "hermes")["outcome"], "connected", "{j}");
+    let artifact = h.home().join(".hermes/plugins/codepet/__init__.py");
+    let before = fs::read(&artifact).unwrap();
+    let cfg = h.home().join(".hermes/config.yaml");
+    for (config, connected) in [
+        ("plugins: {enabled: [], disabled: [codepet]}", false),
+        ("plugins: {enabled: [codepet], disabled: [codepet]}", false),
+        ("plugins: {enabled: [codepet], disabled: []}", true),
+        ("plugins: {enabled: [codepet], disabled: invalid}", false),
+        ("plugins: {enabled: [codepet], disabled: [true]}", false),
+        ("plugins: {enabled: [codepet], disabled: []", false),
+    ] {
+        fs::write(&cfg, config).unwrap();
+        assert_eq!(h.status_of("hermes")["connected"], connected, "{config}");
+        assert_eq!(fs::read(&artifact).unwrap(), before);
+    }
+    assert_eq!(
+        h.calls("hermes-calls.log").len(),
+        1,
+        "status never invokes Hermes"
+    );
+}
+
+#[test]
 fn hermes_plugin_dir_and_config_key_check() {
     if !python_has_yaml() {
         // CI installs PyYAML (rust.yml): there a missing module is a failure, not a skip.
@@ -454,7 +594,7 @@ fn hermes_plugin_dir_and_config_key_check() {
     let h = Home::new();
     h.install_hermes();
     let cfg = h.home().join(".hermes/config.yaml");
-    fs::write(&cfg, "# my config\nmodel:\n  default: m1\nplugins:\n  enabled:\n  - herdr-agent-state\nhooks:\n  pre_tool_call:\n  - command: echo hi\n    timeout: 5\n").unwrap();
+    fs::write(&cfg, "# my config\nmodel:\n  default: m1\nplugins:\n  enabled:\n  - herdr-agent-state\nhooks:\n  z_last: []\n  pre_tool_call:\n  - timeout: 5\n    command: echo hi\npermissions: {z_last: [b, a], a_first: {z: 1, a: 2}}\n").unwrap();
     let j = h.connect(&["hermes"]);
     assert_eq!(h.result_of(&j, "hermes")["outcome"], "connected", "{j}");
     assert_eq!(j["test"], "done", "{j}");

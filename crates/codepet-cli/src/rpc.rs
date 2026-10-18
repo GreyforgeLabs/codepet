@@ -18,9 +18,10 @@ use codepet_protocol::{
     parse_params, parse_request, read_frame, AgentForgetHistoryParams, AppSetEnabledParams,
     AppSetHelpersParams, ClientsConnectParams, ClientsDisconnectParams, ClientsStatusParams,
     ClientsTestParams, EmptyParams, ErrorCode, HelloParams, LifecycleRulesParams, Method,
-    PetAdoptParams, PetCareParams, PetConfigureLifeParams, PetEventsSeenParams, PetMemorialParams,
-    PetMemoriesParams, PetPauseParams, PetRenameParams, PetRetireParams, PetRulesParams,
-    PetSelectParams, PetStartParams, ProtocolError, Request, Response, TreatsGiveParams,
+    PetAdoptParams, PetCareParams, PetCareTempoParams, PetConfigureLifeParams, PetEventsSeenParams,
+    PetMemorialParams, PetMemoriesParams, PetPauseParams, PetRenameParams, PetRetireParams,
+    PetRulesParams, PetSelectParams, PetStartParams, ProtocolError, Request, Response,
+    TreatsGiveParams,
 };
 #[cfg(feature = "legacy-tasks")]
 use codepet_protocol::{
@@ -450,6 +451,18 @@ fn dispatch(req: Request, ctx: &mut Ctx) -> Outcome {
                 r.acknowledge_rules,
                 r.confirm_name.as_deref(),
             )?))
+        }
+        Method::PetCareTempo => {
+            let c: PetCareTempoParams = parse_params(p)?;
+            let expected = to_i64(c.expected_revision, "expected_revision")?;
+            let tempo = codepet_core::lifecycle::CareTempo::parse(&c.tempo)
+                .ok_or_else(|| Failure::invalid_params("tempo must be steady or lively"))?;
+            ctx.store()?;
+            let _guard = work_idle_guard()?;
+            encode(serde_json::to_value(
+                ctx.store()?
+                    .set_care_tempo(&req.id, &c.life_id, expected, tempo)?,
+            ))
         }
         Method::PetConfigureLife => {
             let c: PetConfigureLifeParams = parse_params(p)?;

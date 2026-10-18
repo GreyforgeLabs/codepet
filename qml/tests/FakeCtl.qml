@@ -20,6 +20,7 @@ QtObject {
     function openUpdates() { updateCalls = updateCalls.concat(["open"]) }
     function closeUpdates() { updateCalls = updateCalls.concat(["close"]) }
     function checkUpdates() { updateCalls = updateCalls.concat(["check"]) }
+    function restartBar() { updateCalls = updateCalls.concat(["restart-bar"]) }
     function installUpdate() { updateCalls = updateCalls.concat(["install"]) }
     property var registry: null
     property var cfg: ({ label: "name", presence: true, overlayOnLoad: false, calm: false })
@@ -29,7 +30,7 @@ QtObject {
     property string stateHome: ""
     property real now: 1792123900000
     property var seen: ({ finished_seq: 0, hello_seq: 0, test_at_ms: 0 })
-    readonly property var face: barState ? PetState.sharedPriority(barState, now, seen) : null
+    readonly property var face: barState ? PetState.currentPriority(barState, now, seen) : null
 
     property var calls: []
     property var settings: []

@@ -7,6 +7,7 @@ import "CodePetBar.js" as Model
 import "DesktopPetFlow.js" as DesktopFlow
 import "petstate.js" as PetState
 import "Strings.js" as Strings
+import "BuildInfo.js" as BuildInfo
 
 // CodePet on the Omarchy bar (plugin greyforge.codepet), v0.3 (SPEC-v0.3 §3.1, §8).
 //
@@ -101,13 +102,14 @@ BarWidget {
     function closeUpdates() { updater.opened = false }
     function checkUpdates() { updater.check() }
     function installUpdate() { updater.install() }
+    function restartBar() { updater.restartBar() }
 
     // The time the face is evaluated at: set when the file is read, by the one-shot below
     // and when the popup opens.
     property real now: Date.now()
     // Celebrations already shown in the popup (agent_vectors.json priority.celebrate.seen).
     property var seen: ({ finished_seq: 0, hello_seq: 0, test_at_ms: 0 })
-    readonly property var face: root.barState ? PetState.sharedPriority(root.barState, root.now, root.seen) : null
+    readonly property var face: root.barState ? PetState.currentPriority(root.barState, root.now, root.seen) : null
     readonly property bool isOn: !root.barState || root.barState.enabled !== false
     readonly property var cell: Model.barCell(root.barState, root.face, root.registry, root.cfg, root.cfg.calm)
 
@@ -175,6 +177,7 @@ BarWidget {
             barState: root.barState
             stateDir: root.paths.stateDir
             stateDirReady: root.stateDirReady
+            onCommitted: lifeId => root.settlePresence(lifeId)
         }
     }
 
@@ -184,6 +187,8 @@ BarWidget {
         target: "greyforge.codepet"
         enabled: root.leader
         function openHome(): void { root.open() }
+        function openUpdates(): void { root.openPage("updates") }
+        function buildIdentity(): string { return BuildInfo.identity }
         function close(): void { root.close() }
         function toggle(): void { if (root.menu) root.close(); else root.open() }
     }
@@ -206,6 +211,17 @@ BarWidget {
     readonly property bool rpcBusy: rpc.busy
     readonly property bool rpcNotInstalled: rpc.notInstalled
     property bool startupDone: false
+    property bool presenceSettleBusy: false
+    function settlePresence(lifeId) {
+        var life = root.barState ? root.barState.life : null
+        if (root.presenceSettleBusy || !root.leader || !root.isOn || !life
+                || life.life_id !== lifeId || life.armed !== true) return
+        root.presenceSettleBusy = true
+        rpc.request("state.get", {}, function (resp) {
+            root.presenceSettleBusy = false
+            if (resp.ok) root.snapshot = resp.result
+        })
+    }
 
     // Every popup request goes through here: the allow-list, the queue, and a snapshot
     // kept when the answer is one. Each care or treat press gets its own request id; a press
@@ -336,11 +352,13 @@ BarWidget {
     // When the popup closes, what it showed counts as seen: a celebration ends, and a
     // growth is acknowledged once (pet.events_seen) so it is not shown again.
     function noteShown() {
-        if (root.popupMode !== "popup" || !root.barState || !root.face) return
-        root.seen = Model.seenAfter(root.seen, root.barState, root.face)
-        var life = root.barState.life
-        var seq = Model.maxUnseenSeq(root.barState.unseen_events)
-        if (life && seq >= 0 && root.face.line === "grew")
+        var app = popupLoader.item ? popupLoader.item.app : null
+        if (root.popupMode !== "popup" || !app || !app.presentedDoc || !app.presentedFace) return
+        var doc = app.presentedDoc, face = app.presentedFace
+        root.seen = Model.seenAfter(root.seen, doc, face)
+        var life = doc.life
+        var seq = Model.maxUnseenSeq(doc.unseen_events)
+        if (life && seq >= 0 && face.line === "grew")
             rpc.request("pet.events_seen", { life_id: life.life_id, through_seq: seq }, null)
     }
 

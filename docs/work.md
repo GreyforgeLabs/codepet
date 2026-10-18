@@ -1,7 +1,7 @@
 # Useful work
 
-CodePet 0.4 discovers local repositories and uses Codex
-0.163.0 to look for one suspected bug in a read-only isolated source copy. Inspect
+CodePet discovers local repositories and uses the selected coding client
+to look for one suspected bug in a read-only isolated source copy. Inspect
 a finding on the pet, choose **Fix**, then review and apply the resulting repair.
 Discovery and scouting grant no reward. Code changes remain in the isolated copy
 until explicit Apply. Research and custom coding tasks remain available through
@@ -12,6 +12,36 @@ Accepting a useful result gives 20 XP exactly once and fills food (bug), water
 accepted bug/build result. Reports and checks remain provider-reported: the app
 shows an explicit verification acknowledgement and does not claim independent
 verification. Research sources should be inspected by the user.
+
+## Choose a coding client
+
+The compact pet strip has a visible **Client** button. It expands an inline list
+from the backend's supported catalog, including each client's availability and
+setup explanation. The advanced Work view uses the same selector. A name in the
+list is not a claim that the client is installed, authenticated or ready: selecting
+an unavailable client saves that explicit preference, shows why it cannot work,
+and blocks new work until setup is ready. There is no fallback to another client.
+See [adapter support and limits](providers.md) for the current execution routes.
+The expanded chooser shows the selected adapter's capability limits even when it
+is available. Full job results retain their original capability note; for example,
+a file-only adapter does not claim to have run command-based checks.
+
+The choice is for the next job. A pending save keeps the previous confirmed label;
+a failed save does not claim success. Closing and reopening reads the saved choice.
+Changing it does not launch a check or repair, change the checks toggle, or reset
+scouting cooldowns. A later normal readiness/deadline transition can make an
+automatic check eligible under the existing rules.
+
+Every job retains the client that created it. The strip shows **Job: …** separately
+from the next-client button; the expanded selector gives the full origin. Historical
+jobs without a stored client are Codex jobs. Findings retain their originating
+client, while **Fix** uses the currently selected client shown in the chooser.
+Start and Fix include that expected client identity, so a concurrent selection
+change is rejected rather than running the wrong executor.
+
+**Helpers** is separate: those connections watch external sessions that you launch.
+They do not select the executor for CodePet-owned work. T3 is a cockpit using the
+underlying client, not a separate CodePet executor.
 
 ## Care and energy
 
@@ -58,8 +88,9 @@ These checks share a five-second budget (checked between filesystem operations),
 from metadata first. Every checked repo consumes its daily receipt, including
 skipped repos; only one eligible source tree can proceed to a provider launch.
 The selected baseline is reused and its hashes are checked again while copying.
-A failed preparation remains visible on reopening the card; its bounded private
-reason is retained locally, while the display export contains only a generic notice.
+A failed preparation remains available as a Previous check notice until dismissed;
+its bounded private reason is retained locally, while the display export contains
+only a generic notice. Dismissal does not retry the check or change its cooldown.
 
 Each scout has a five-minute execution deadline (350-second final cgroup lifetime).
 It can return at most one structured, provider-reported suspected bug, or no finding.
@@ -105,9 +136,34 @@ the slot for a later eligible attempt and does not assert that all code is corre
   reviews are refused as a whole; changed files are never silently omitted.
   Export errors identify CodePet's review limit, with the filename where available.
   Large jobs need a smaller selected folder/task.
-- A helper exports bounded text changes after Codex exits. Provider writes cannot
+- A helper exports bounded text changes after the coding client exits. Provider writes cannot
   grow the host staging directory. Cancellation kills the complete PID namespace,
   including children that create new sessions.
+
+## Left-click status and previous results
+
+A normal desktop-pet click opens a compact status strip, with exact XP, current-life
+age, numeric food/water/mood/cleanliness and work energy. Current readiness comes
+first. **Fix**, **Stop** or **Review** appears when that action is relevant; **Care**,
+**Details** and **Updates** remain explicit controls. Details expands the current
+context, finding or saved report. Full Work opens only through an explicit advanced
+work or Review action; accepting/applying still requires the full review safeguards.
+
+Finished work is a small **Previous repair/check/research/build** cue, not the pet's
+current status. Details labels the saved timestamp **Started … ago**; the advanced window shows
+the absolute start date/time. Neither claims an end time. **Dismiss** durably acknowledges that exact finished result.
+The saved job status, error, output, changes and evidence remain under its private
+job directory, while the compact card, reopened Work window and display export no
+longer repeat it. The advanced window's **Dismiss result** has the same behavior.
+Active work, review, interrupted application and actual suspected findings cannot
+be acknowledged this way; their existing Stop/Review/Discard controls remain.
+A new failure is a new notice and is not covered by an earlier acknowledgement.
+
+Saved preparation errors are separate Previous check notices. Their dismissal is
+bound to the exact saved attempt and preserves the private error, scouting setting
+and cooldown. Fresh action/transport errors are shown as **Last action**, rather
+than treating a saved preparation failure as a new error on every refresh. Dismissal
+starts no job, changes no care/XP and does not enable automatic checks.
 
 ## Review, application and recovery
 
@@ -147,11 +203,23 @@ readiness. The historical mock-task tables and observer privacy rules are preser
 without changing desktop-pet visibility. `codepet-work [compact|bug|research|build]`
 opens the compact or advanced native window. `codepet work-rpc` reads
 one JSON request from stdin and prints one JSON response. Its methods are `status`,
-`start`, `get`, `cancel`, `accept`, `discard`, `repos`, `scout`, `scout-settings` and
+`start`, `get`, `cancel`, `accept`, `discard`, `dismiss`, `repos`, `scout`, `scout-settings`, `client-select` and
 `fix`; this protocol is separate from the
 retired `task.*` mock protocol. `work-run` and `work-sandbox` are internal supervised
 entry points, not alternate ways around readiness, cooldown or explicit repair gates.
 
+`client-select` takes `{ "client_id": "<catalog id>" }`. Status/get return the
+selected `provider` and the `clients` catalog, each with `id`, `name`, `available`
+`reason` and `detail`. Start/Fix carry the expected `client_id`; task records keep
+their own `client_id`, `client_name` and `client_detail` independently of this preference.
+
 The durable age timestamp is `life.adopted_at_ms`, now present in bar-state as well
 as state.get. It is the current life's existing creation time; names, appearances,
 sleep and rewards do not reset it. `generated_at_ms` supplies the export clock.
+
+`dismiss` takes exactly `{ "task_id": "<current finished task id>" }`, or
+`{ "scout_due_ms": <current saved next_due_ms> }` for a preparation notice. The
+existing work lock serializes it with job changes. Acknowledgement is a
+backward-compatible default-false flag in the private task/settings record; no
+SQLite migration is required. It does not delete task evidence or clear a pending
+finding. Old or mismatched identities are refused.

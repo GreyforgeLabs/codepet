@@ -36,6 +36,32 @@ BUSY = {"downloading", "verifying", "installing"}
 STATES = {"idle", "checking", "available", "current", "succeeded", "error"} | BUSY
 
 
+def active(value):
+    return value["state"] in BUSY or value.get("restart_state") == "restarting"
+
+
+def build_identity(source):
+    """One content identity for both installed UI hosts, including same-version edits."""
+    digest = hashlib.sha256()
+    roots = ["omarchy-plugin", "qml/shared", "qml/omarchy", "qml/assets", "qml/shell.qml", "qml/work.qml",
+             "packaging/omarchy/codepet-overlay", "packaging/omarchy/codepet-work", "packaging/omarchy/codepet-update"]
+    for relative in sorted(roots):
+        root = source / relative
+        if root.is_symlink():
+            raise UpdateError("Build identity requires regular source files.")
+        paths = sorted(root.rglob("*")) if root.is_dir() else [root]
+        for path in paths:
+            if path.name == "BuildInfo.js":
+                continue  # Generated from this digest; source placeholder is not shipped.
+            if path.is_symlink() or not (path.is_dir() or path.is_file()):
+                raise UpdateError("Build identity requires regular source files.")
+            if path.is_file():
+                data = path.read_bytes()
+                digest.update(str(path.relative_to(source)).encode() + b"\0")
+                digest.update(str(len(data)).encode() + b"\0" + data)
+    return digest.hexdigest()
+
+
 class UpdateError(Exception):
     pass
 
@@ -326,14 +352,32 @@ class Updater:
     def write(self, state, message, **fields):
         value = {"schema": "codepet.update.v1", "current": self.current(), "latest": "", "checked_at": 0}
         value.update(fields)
+        value.update(self.ui_fields())
         value.update(state=state, message=message[:500])
+        self.explain_pending_restart(value)
         atomic_json(self.root / "status.json", value)
         return value
+
+    def explain_pending_restart(self, value):
+        notice = " The bar still needs a restart. From a terminal on your unlocked desktop, run: codepet-update restart-bar."
+        value["message"] = value["message"].removesuffix(notice)
+        if value.get("restart_required") and not value.get("loaded_identity"):
+            # A cached pre-identity UI only understands state/message and cannot
+            # render the new button. Keep its recovery path visible after Check.
+            value["message"] = value["message"][:300] + notice
 
     def status(self):
         value = self.load()
         value["current"] = self.current()
-        if value["state"] in BUSY:
+        value.update(self.record_ui())
+        if value.get("restart_state") == "error" and value.get("expected_identity") and not value["restart_required"]:
+            # A later manual restart can also finish recovery, once its bytes match.
+            with lock(self.root / "control.lock"):
+                fresh = self.load()
+                if fresh.get("restart_state") == "error":
+                    fields = {k: v for k, v in fresh.items() if k not in {"state", "message", "restart_state", "restart_message"}}
+                    value = self.write(fresh["state"], fresh["message"], **fields, restart_state="idle", restart_message="The bar is running the installed CodePet.")
+        if active(value):
             try:
                 result = self.run(["systemctl", "--user", "show", value["unit"], "--property=ActiveState", "--value"], timeout=5).decode().strip()
             except (OSError, KeyError, UpdateError):
@@ -344,12 +388,64 @@ class Updater:
                 try:
                     with lock(self.root / "control.lock"):
                         fresh = self.load()
-                        if fresh.get("job") != value.get("job") or fresh["state"] not in BUSY:
-                            return fresh | {"current": self.current()}
-                        value = self.write("error", "The update was interrupted or its service is unavailable. Check update/install.log and installer recovery backups before trying again.", latest=value.get("latest", ""), checked_at=value.get("checked_at", 0), job=value.get("job", ""))
+                        if fresh.get("job") != value.get("job") or not active(fresh):
+                            return fresh | {"current": self.current()} | self.ui_fields()
+                        restarting = value.get("restart_state") == "restarting"
+                        value = self.write("error", "The update was interrupted or its service is unavailable. Check update/install.log and installer recovery backups before trying again.", latest=value.get("latest", ""), checked_at=value.get("checked_at", 0), job=value.get("job", ""), restart_state="error" if restarting else "idle", restart_message="The bar restart was interrupted. Reopen Updates and try Restart bar again." if restarting else "")
                 except UpdateError:
                     return value
+        self.explain_pending_restart(value)
         return value
+
+    def ui_fields(self):
+        try:
+            value = json.loads(read_file(self.root / "ui.json", 4096))
+            if (not isinstance(value, dict) or type(value.get("restart_required")) is not bool
+                    or not re.fullmatch(r"[0-9a-f]{64}|", value.get("expected_identity", ""))
+                    or not re.fullmatch(r"[0-9a-f]{64}|", value.get("loaded_identity", ""))):
+                raise ValueError()
+            return {key: value[key] for key in ("restart_required", "expected_identity", "loaded_identity")}
+        except FileNotFoundError:
+            return {"restart_required": False, "expected_identity": "", "loaded_identity": ""}
+
+    def installed_identity(self):
+        try:
+            value = json.loads(read_file(self.data / "current/build.json", 4096))
+        except FileNotFoundError:
+            return ""  # An older installer has no content identity to verify.
+        if not isinstance(value, dict) or value.get("schema") != "codepet.build.v1" or not re.fullmatch(r"[0-9a-f]{64}", value.get("identity", "")) or type(value.get("plugin")) is not bool:
+            raise UpdateError("The installed UI identity is unreadable. Reinstall CodePet.")
+        return value["identity"] if value["plugin"] else ""
+
+    def loaded_identity(self):
+        try:
+            value = self.run(["omarchy-shell", "greyforge.codepet", "buildIdentity"], env=self.clean_env(), timeout=4).decode().strip()
+            return value if re.fullmatch(r"[0-9a-f]{64}", value) else ""
+        except (OSError, UnicodeError, UpdateError):
+            return ""
+
+    def record_ui(self):
+        with lock(self.root / "ui.lock", blocking=True):
+            expected = self.installed_identity()
+            # Absence of newer metadata must not erase an already pending receipt.
+            if not expected:
+                return self.ui_fields()
+            loaded = self.loaded_identity()
+            fields = {"expected_identity": expected, "loaded_identity": loaded, "restart_required": expected != loaded}
+            atomic_json(self.root / "ui.json", fields)
+            return fields
+
+    def ensure_unlocked(self):
+        try:
+            state = json.loads(self.run(["omarchy-shell", "lock", "status"], env=self.clean_env(), timeout=4))
+            monitors = json.loads(self.run(["hyprctl", "-j", "monitors"], env=self.clean_env(), timeout=4))
+            readable = isinstance(monitors, list) and bool(monitors) and all(isinstance(m, dict) and isinstance(m.get("solitaryBlockedBy"), list) and all(isinstance(x, str) for x in m["solitaryBlockedBy"]) for m in monitors)
+            if (not isinstance(state, dict) or any(state.get(key) is not False for key in ("locked", "requested", "pending", "sessionLocked", "secure"))
+                    or not readable or any("LOCK" in m["solitaryBlockedBy"] for m in monitors)
+                    or not any("WORKSPACE" not in m["solitaryBlockedBy"] for m in monitors)):
+                raise UpdateError("Unlock the desktop before restarting the bar. The session must be confirmed unlocked.")
+        except (OSError, ValueError, UpdateError) as exc:
+            raise UpdateError("The session is locked or its unlocked state could not be confirmed. Unlock it and try again.") from exc
 
     def latest(self):
         return release_metadata(self.network.fetch(API, 512 * 1024))
@@ -358,12 +454,12 @@ class Updater:
         self.status()
         with lock(self.root / "control.lock"):
             value = self.load()
-            if value["state"] in BUSY:
+            if active(value):
                 return value
             with deadline(30):
                 current, release = self.current(), self.latest()
                 newer = version(release["version"]) > version(current)
-                return self.write("available" if newer else "current", "An update is ready to install." if newer else "You have the latest CodePet version.", latest=release["version"], checked_at=int(time.time()), job=value.get("job", ""))
+                return self.write("available" if newer else "current", "An update is ready to install." if newer else "You have the latest CodePet version.", latest=release["version"], checked_at=int(time.time()), job=value.get("job", ""), restart_state=value.get("restart_state", "idle"), restart_message=value.get("restart_message", ""))
 
     def ensure_idle(self):
         try:
@@ -401,7 +497,7 @@ class Updater:
         self.status()
         with lock(self.root / "control.lock"):
             value = self.load()
-            if value["state"] in BUSY:
+            if active(value):
                 return value
             with lock(self.work / "control.lock"), deadline(30):
                 self.ensure_idle()
@@ -412,26 +508,78 @@ class Updater:
                     raise UpdateError("The automatic update archive supports x86_64 Linux only.")
                 if shutil.disk_usage(self.root).free < 512 * 1024 * 1024:
                     raise UpdateError("At least 512 MiB of free space is needed to prepare the update.")
-                old_job = value.get("job", "")
-                if re.fullmatch(r"[0-9a-f]{32}", old_job):
-                    old_path = self.root / old_job
-                    if old_path.is_dir() and not old_path.is_symlink():
-                        shutil.rmtree(old_path)
-                job_id = uuid.uuid4().hex
-                job = private_dir(self.root / job_id)
-                shutil.copyfile(Path(__file__).resolve(), job / "updater.py")
-                (job / "updater.py").chmod(0o600)
-                atomic_json(job / "release.json", release)
-                unit = "codepet-update-" + job_id
-                value = self.write("downloading", "Starting the update…", latest=release["version"], checked_at=int(time.time()), unit=unit, job=job_id)
-                command = ["systemd-run", "--user", "--quiet", "--collect", "--service-type=exec", "--unit=" + unit, "--property=RuntimeMaxSec=600", "--property=TimeoutStopSec=10", "--property=MemoryMax=512M", "--property=TasksMax=64", "--property=KillMode=control-group", "--property=UMask=0077", "--property=NoNewPrivileges=yes"]
-                # env -i also removes variables inherited from the user systemd
-                # manager, including unrelated installer overrides and credentials.
-                command += ["--", "/usr/bin/env", "-i"]
-                command += [key + "=" + val for key, val in self.clean_env().items()]
-                command += ["/usr/bin/python3", str(job / "updater.py"), "_run", job_id]
-                self.run(command, env=self.clean_env(), timeout=10)
-                return value
+                return self.start_job(value, release=release)
+
+    def start_job(self, value, release=None):
+        old_job = value.get("job", "")
+        if re.fullmatch(r"[0-9a-f]{32}", old_job):
+            old_path = self.root / old_job
+            if old_path.is_dir() and not old_path.is_symlink():
+                shutil.rmtree(old_path)
+        job_id = uuid.uuid4().hex
+        job = private_dir(self.root / job_id)
+        shutil.copyfile(Path(__file__).resolve(), job / "updater.py")
+        (job / "updater.py").chmod(0o600)
+        unit = "codepet-update-" + job_id
+        if release is not None:
+            atomic_json(job / "release.json", release)
+            value = self.write("downloading", "Starting the update…", latest=release["version"], checked_at=int(time.time()), unit=unit, job=job_id)
+            verb = "_run"
+        else:
+            atomic_json(job / "restart.json", {"identity": self.installed_identity()})
+            value = self.write(value["state"], value["message"], latest=value.get("latest", ""), checked_at=value.get("checked_at", 0), unit=unit, job=job_id, restart_state="restarting", restart_message="Restarting the bar to load the installed CodePet…")
+            verb = "_restart"
+        command = ["systemd-run", "--user", "--quiet", "--collect", "--service-type=exec", "--unit=" + unit, "--property=RuntimeMaxSec=600", "--property=TimeoutStopSec=10", "--property=MemoryMax=512M", "--property=TasksMax=64", "--property=KillMode=control-group", "--property=UMask=0077", "--property=NoNewPrivileges=yes"]
+        # Independent user service: destroying the old QML shell cannot kill this job.
+        command += ["--", "/usr/bin/env", "-i"]
+        command += [key + "=" + val for key, val in self.clean_env().items()]
+        command += ["/usr/bin/python3", str(job / "updater.py"), verb, job_id]
+        self.run(command, env=self.clean_env(), timeout=10)
+        return value
+
+    def restart_bar(self):
+        if self.env.get("CODEPET_TEST_STATE") == "1":
+            raise UpdateError("The bar cannot be restarted in a test-state session.")
+        self.status()
+        with lock(self.root / "control.lock"):
+            value = self.load()
+            if active(value):
+                return value | self.ui_fields()
+            with lock(self.work / "control.lock"):
+                self.ensure_idle()
+                self.ensure_unlocked()
+                if not self.record_ui()["restart_required"]:
+                    return value | self.ui_fields()
+                return self.start_job(value)
+
+    def restart_worker(self, job_id):
+        if not re.fullmatch(r"[0-9a-f]{32}", job_id):
+            raise UpdateError("Invalid update job.")
+        with deadline(90), lock(self.root / "control.lock", blocking=True):
+            value = self.load()
+            if value.get("job") != job_id or value.get("restart_state") != "restarting":
+                raise UpdateError("The bar restart no longer owns the saved status.")
+            fields = {k: value[k] for k in ("latest", "checked_at", "unit", "job")}
+            try:
+                with lock(self.work / "control.lock"):
+                    self.ensure_idle()
+                    self.ensure_unlocked()
+                    expected = json.loads(read_file(private_dir(self.root / job_id) / "restart.json", 4096))["identity"]
+                    if not expected or expected != self.installed_identity():
+                        raise UpdateError("The installed UI changed. Reopen Updates before restarting the bar.")
+                    self.run(["omarchy", "restart", "shell"], env=self.clean_env(), timeout=30, log=self.root / "restart.log")
+                    end = time.monotonic() + 20
+                    while time.monotonic() < end:
+                        if self.loaded_identity() == expected:
+                            fields.update(self.record_ui())
+                            if not fields["restart_required"]:
+                                return self.write(value["state"], value["message"], **fields, restart_state="idle", restart_message="The bar is running the installed CodePet.")
+                        time.sleep(0.25)
+                    raise UpdateError("The bar restarted, but the installed CodePet UI could not be confirmed. Check the plugin is enabled and try again.")
+            except (UpdateError, OSError, ValueError, KeyError) as exc:
+                message = str(exc) if isinstance(exc, UpdateError) else "The bar restart could not finish. Check update/restart.log."
+                self.write(value["state"], value["message"], **fields, restart_state="error", restart_message=message)
+                raise UpdateError(message) from exc
 
     def open_work(self, kind):
         if kind not in {"compact", "bug", "research", "build"}:
@@ -503,22 +651,30 @@ class Updater:
             self.run(["/bin/bash", str(tree / "packaging/omarchy/install.sh")], env=env, timeout=180, log=self.root / "install.log")
             if self.current() != release["version"]:
                 raise UpdateError("The installed version could not be confirmed. Check update/install.log.")
-            return self.write("succeeded", "CodePet is up to date. Your pet's progress was preserved.", **fields)
+            self.record_ui()
+            return self.write("succeeded", "CodePet is installed. Your pet's progress was preserved.", **fields)
 
 
 def main():
     os.umask(0o077)
     updater = None
     try:
+        if len(sys.argv) == 3 and sys.argv[1] == "_identity":
+            print(build_identity(Path(sys.argv[2])))
+            return 0
         updater = Updater()
-        if len(sys.argv) == 2 and sys.argv[1] in {"status", "check", "install"}:
-            result = getattr(updater, sys.argv[1])()
+        if len(sys.argv) == 2 and sys.argv[1] in {"status", "check", "install", "restart-bar"}:
+            result = getattr(updater, sys.argv[1].replace("-", "_"))()
+        elif len(sys.argv) == 2 and sys.argv[1] == "_record-ui":
+            result = updater.record_ui()
+        elif len(sys.argv) == 3 and sys.argv[1] == "_restart":
+            result = updater.restart_worker(sys.argv[2])
         elif len(sys.argv) == 3 and sys.argv[1] == "_open-work":
             result = updater.open_work(sys.argv[2])
         elif len(sys.argv) == 3 and sys.argv[1] == "_run":
             result = updater.worker(sys.argv[2])
         else:
-            raise UpdateError("Usage: codepet-update status|check|install")
+            raise UpdateError("Usage: codepet-update status|check|install|restart-bar")
         print(json.dumps(result, separators=(",", ":")))
         return 0
     except (UpdateError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
@@ -532,9 +688,11 @@ def main():
                     value["current"] = updater.current()
                 except UpdateError:
                     pass
+                value.update(updater.ui_fields())
+                value.update(restart_state="error" if saved.get("restart_state") in {"restarting", "error"} else "idle", restart_message=saved.get("restart_message", ""))
                 # A second caller's refusal must not erase the first job's progress.
                 with lock(updater.root / "control.lock"):
-                    if saved.get("state") not in BUSY or (len(sys.argv) == 3 and saved.get("job") == sys.argv[2]):
+                    if not active(saved) or (len(sys.argv) == 3 and saved.get("job") == sys.argv[2]):
                         atomic_json(updater.root / "status.json", value)
             except (UpdateError, OSError, ValueError):
                 pass

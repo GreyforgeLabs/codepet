@@ -239,6 +239,42 @@ function setFace(res, state, bar, line, vars, overlay, bubble) {
     res.overlay = overlay
     res.bubble = bubble
 }
+
+// Current presentation keeps care and growth legible while a coding app is active.
+// sharedPriority remains the frozen v0.3 reference used by compatibility fixtures.
+function currentPriority(doc, now, seen) {
+    var activity = sharedPriority(doc, now, seen)
+    if (!isObject(doc) || ["off", "no_pet", "welcome", "fainted", "paused", "asleep"].indexOf(activity.state) >= 0)
+        return activity
+    var careDoc = Object.assign({}, doc)
+    careDoc.agent = {}
+    careDoc.needs = Array.isArray(doc.needs) ? doc.needs.slice() : []
+    var meters = isObject(doc.meters) ? doc.meters : {}
+    var meterOf = { food: "hunger", water: "thirst", play: "mental_health", wash: "hygiene" }
+    for (var i = 0; i < NEED_PRIORITY.length; i++) {
+        var need = NEED_PRIORITY[i], value = num(meters[meterOf[need]])
+        if (value === null || value < 0 || value > 6000) continue
+        var recorded = careDoc.needs.some(function (n) {
+            return isObject(n) && n.action === need && (["now", "critical"].indexOf(needLevel(n.state)) >= 0
+                || (value > 3000 && needLevel(n.state) === "soon"))
+        })
+        if (!recorded) careDoc.needs.push({ action: need, state: value <= 3000 ? "empty" : "low" })
+    }
+    var care = sharedPriority(careDoc, now, seen)
+    var levels = {}
+    for (var j = 0; j < careDoc.needs.length; j++) {
+        var n = careDoc.needs[j]
+        if (isObject(n)) levels[n.action] = needLevel(n.state)
+    }
+    care.need_levels = levels
+    activity.need_levels = levels
+    if (["need_now", "need_soon"].indexOf(care.state) >= 0 || (care.celebrate && care.celebrate.kind === "grew")) {
+        care.wake_at_ms = activity.wake_at_ms
+        if (care.state === "need_soon") care.bar = "need_" + care.bubble.need
+        return care
+    }
+    return activity
+}
 """
 
 

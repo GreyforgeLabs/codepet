@@ -191,7 +191,7 @@ fn the_owners_ginger_survives_the_v5_migration() {
 
     env.clock.set(T0 + 7);
     let (store, report) = Store::open_migrating(&env.paths, env.clock.clone()).unwrap();
-    assert_eq!((report.from, report.to), (4, 5));
+    assert_eq!((report.from, report.to), (4, SCHEMA_VERSION));
     let backup = report.backup.clone().expect("a v4 backup");
     assert_eq!(
         backup,
@@ -201,7 +201,7 @@ fn the_owners_ginger_survives_the_v5_migration() {
     );
     assert_eq!(backups(&env), std::slice::from_ref(&backup));
     assert_eq!(mode(&backup), 0o600);
-    assert_eq!(env.count("PRAGMA user_version"), 5);
+    assert_eq!(env.count("PRAGMA user_version"), SCHEMA_VERSION);
 
     // K11: same life id, name, look, XP, journal and history row counts; every v4 row and
     // column is byte-identical (the owner had no tasks, no pending death and no rest
@@ -233,7 +233,7 @@ fn the_owners_ginger_survives_the_v5_migration() {
             1
         )
     );
-    assert_eq!(s.schema_version, 5);
+    assert_eq!(s.schema_version, SCHEMA_VERSION);
     assert!(s.care.welcome_care_available);
     assert_eq!(s.lifecycle.frozen_reason, "unarmed");
 
@@ -278,13 +278,13 @@ fn the_owners_ginger_survives_the_v5_migration() {
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         Store::open_with(&env.paths, env.clock.clone(), &schema::MIGRATIONS[..4]),
-        Err(StorageError::SchemaUnsupported(5))
+        Err(StorageError::SchemaUnsupported(SCHEMA_VERSION))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
 
     // Reopening (any mode) neither migrates nor backs up again.
     let (_store, again) = Store::open_migrating(&env.paths, env.clock.clone()).unwrap();
-    assert_eq!((again.from, again.backup), (5, None));
+    assert_eq!((again.from, again.backup), (SCHEMA_VERSION, None));
     drop(Store::open_current(&env.paths, env.clock.clone()).unwrap());
     assert_eq!(backups(&env).len(), 1);
 }
@@ -490,14 +490,14 @@ fn a_failed_v5_migration_rolls_back_to_v4_and_keeps_its_backup() {
     // The real migration then succeeds (with its own backup).
     env.clock.advance(1);
     drop(env.open());
-    assert_eq!(env.count("PRAGMA user_version"), 5);
+    assert_eq!(env.count("PRAGMA user_version"), SCHEMA_VERSION);
 }
 
 #[test]
 fn a_fresh_install_is_created_at_v5_by_any_open() {
     let env = Env::with_boot();
     let store = Store::open_current(&env.paths, env.clock.clone()).unwrap();
-    assert_eq!(env.count("PRAGMA user_version"), 5);
+    assert_eq!(env.count("PRAGMA user_version"), SCHEMA_VERSION);
     assert!(backups(&env).is_empty());
     let salt: Vec<u8> = env
         .raw()
@@ -533,7 +533,10 @@ fn a_fresh_install_is_created_at_v5_by_any_open() {
         .unwrap();
     assert_ne!(salt, salt2);
     let (_s, report) = Store::open_migrating(&other.paths, other.clock.clone()).unwrap();
-    assert_eq!((report.from, report.to, report.backup), (5, 5, None));
+    assert_eq!(
+        (report.from, report.to, report.backup),
+        (SCHEMA_VERSION, SCHEMA_VERSION, None)
+    );
 }
 
 #[test]
@@ -682,7 +685,7 @@ fn concurrent_upgrades_both_succeed_with_exactly_one_v4_backup() {
         });
         let mut froms: Vec<i64> = reports.iter().map(|r| r.from).collect();
         froms.sort_unstable();
-        assert_eq!(froms, [4, 5], "round {round}: {reports:?}");
+        assert_eq!(froms, [4, SCHEMA_VERSION], "round {round}: {reports:?}");
         let taken: Vec<&PathBuf> = reports.iter().filter_map(|r| r.backup.as_ref()).collect();
         assert_eq!(taken.len(), 1, "round {round}");
         assert_eq!(backups(&env), vec![taken[0].clone()], "round {round}");
@@ -697,7 +700,7 @@ fn concurrent_upgrades_both_succeed_with_exactly_one_v4_backup() {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, 4, "round {round}");
-        assert_eq!(env.count("PRAGMA user_version"), 5);
+        assert_eq!(env.count("PRAGMA user_version"), SCHEMA_VERSION);
         assert_eq!(&v4_counts(&env)[..], &before[..]);
     }
 }

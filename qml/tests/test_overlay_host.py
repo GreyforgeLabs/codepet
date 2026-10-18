@@ -38,6 +38,12 @@ with tempfile.TemporaryDirectory(prefix='cpmove') as td:
     provider.write_text("""#!/usr/bin/python3
 import json,os,sys,time
 from pathlib import Path
+if sys.argv[1:]==['rpc']:
+    req=json.loads(sys.stdin.readline());r=Path(os.environ['FIXTURE_ROOT'])
+    assert req['method']=='pet.care' and req['params']['action']=='food'
+    (r/'care-call.json').write_text(json.dumps(req))
+    print(json.dumps({'v':1,'id':req['id'],'ok':True,'result':{'changed':True}}))
+    sys.exit(0)
 assert sys.argv[1:]==['work-rpc']
 r=Path(os.environ['FIXTURE_ROOT']);p=r/'home/.local/state/codepet/work-state.json'
 req=json.loads(sys.stdin.readline());m=req['method'];params=req['params']
@@ -74,10 +80,20 @@ print(json.dumps({'ok':True,'result':s}))
         function testCloseCard(): void { pet.cardOpen = false }
         function testDetails(): void { pet.testExpanded = true }
         function testPetClick(): void { pet.petClicked() }
+        function testCareFood(): void { pet.chooseCare("food") }
         function testLeftTop(): void { pet.petX = 0; pet.petY = 0 }
         function testRightBottom(): void { pet.petX = 799; pet.petY = 599; pet.clampPosition() }
+        function testUpdates(): void {
+            var pending = [pet]
+            while (pending.length) {
+                var item = pending.pop()
+                if (item.objectName === "workCard.updates") { item.tapped(); return }
+                if (item.children) for (var i = 0; i < item.children.length; i++) pending.push(item.children[i])
+            }
+            throw new Error("Updates control missing")
+        }
         function ping(): string {''')
-    text = text.replace('"work_busy": work.busy,', '"work_busy": work.busy, "test_auto": work.automatic, "test_summary": work.summary, "test_state": work.state, "test_attempt": work.attemptedScoutKey, "test_expanded": pet.testExpanded,')
+    text = text.replace('"work_busy": work.busy,', '"work_busy": work.busy, "test_care_busy": pet.careBusy, "test_reaction": pet.transientState, "test_auto": work.automatic, "test_summary": work.summary, "test_state": work.state, "test_attempt": work.attemptedScoutKey, "test_expanded": pet.testExpanded,')
     # Offscreen has no layer-shell backend. Preserve the actual controller/scene and
     # adapt only the host surface; the installed compositor is checked separately.
     text = text.replace('PanelWindow {', 'FloatingWindow {').replace(
@@ -98,6 +114,14 @@ t=p.with_suffix('.new');t.write_text(json.dumps(d));t.replace(p)
 print('ok')
 ''')
     fake.chmod(0o700)
+    shell_stub = root / 'bin/omarchy-shell'
+    shell_stub.write_text('''#!/usr/bin/python3
+import json,os,sys
+from pathlib import Path
+assert sys.argv[1:]==['-q','greyforge.codepet','openUpdates']
+(Path(os.environ['FIXTURE_ROOT'])/'updates-launch.json').write_text(json.dumps(sys.argv[1:]))
+''')
+    shell_stub.chmod(0o700)
     env = {"HOME": str(home), "PATH": str(root / 'bin') + ':/usr/bin:/bin',
            "XDG_RUNTIME_DIR": str(root / 'run'), "XDG_CONFIG_HOME": str(home / '.config'),
            "XDG_STATE_HOME": str(home / '.local/state'), "XDG_CACHE_HOME": str(home / '.cache'),
@@ -118,7 +142,12 @@ print('ok')
             except (subprocess.SubprocessError, json.JSONDecodeError): pass
             time.sleep(.05)
         log.seek(0)
-        raise AssertionError('overlay check timed out\n' + log.read() + '\n' + str(status()))
+        details = log.read()
+        try:
+            last_status = str(status())
+        except (subprocess.SubprocessError, json.JSONDecodeError) as error:
+            last_status = str(error)
+        raise AssertionError('overlay check timed out\n' + details + '\n' + last_status)
     def status(): return json.loads(ipc('status'))
     def start():
         global proc
@@ -150,6 +179,10 @@ print('ok')
         assert abs(status()['x'] - moved['x']) < 2
         ipc('hide'); assert not status()['drawn']
         ipc('show'); wait(lambda: status()['drawn'])
+        ipc('testCareFood')
+        wait(lambda: (root/'care-call.json').exists() and not status()['test_care_busy'])
+        assert json.loads((root/'care-call.json').read_text())['params']=={'action':'food'}
+        assert status()['test_reaction']=='food', 'real host transport only reacts after its matching care receipt'
         # Only a ready, armed pet scouts automatically; no window/card opens itself.
         def publish(doc):
             tmp=work_state.with_suffix('.new');tmp.write_text(json.dumps(doc));tmp.replace(work_state)
@@ -204,11 +237,14 @@ print('ok')
         time.sleep(1.6)
         assert len([c for c in calls() if c['method']=='get'])==terminal_reads, 'terminal summary rewrites must not poll'
         assert status()['test_expanded'], 'terminal Details must stay expanded while reading'
-        ipc('testCloseCard')
+        ipc('testUpdates')
+        wait(lambda: (root/'updates-launch.json').exists())
+        assert json.loads((root/'updates-launch.json').read_text())==['-q','greyforge.codepet','openUpdates']
+        assert not status()['card_open'], 'Updates closes the card and navigates to the existing bar page'
         log.flush(); log.seek(0); output = log.read()
         for error in ('ReferenceError', 'TypeError', 'Cannot assign', 'Binding loop', 'placement save failed', 'Cannot read', 'failed to load'):
             assert error not in output, output
-        print('PASS: overlay controller load, host preference write, restart restore, pin switch, hide/show')
+        print('PASS: overlay controller load, host preference write, restart restore, pin switch, hide/show, Updates navigation')
     finally:
         stop()
         log.close()

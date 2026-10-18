@@ -25,7 +25,7 @@ fn assert_snapshot(v: &Value) {
     ] {
         assert!(v.get(k).is_some(), "{k} missing in {v}");
     }
-    assert_eq!(v["schema_version"], 5);
+    assert_eq!(v["schema_version"], 6);
 }
 
 #[test]
@@ -264,5 +264,45 @@ fn the_retired_task_methods_are_unknown_in_the_default_build() {
     assert_eq!(
         h.get("supervisor").is_some(),
         cfg!(feature = "legacy-tasks")
+    );
+}
+
+#[test]
+fn care_tempo_round_trips_through_rpc_and_published_bar_state() {
+    let env = Env::new();
+    let s = env.ok(
+        "pet.start",
+        json!({"species":"penguin", "mode":"gentle", "acknowledge_rules":true}),
+    );
+    assert_eq!(s["life"]["care_tempo"], "lively");
+    let params = json!({"life_id":s["life"]["life_id"], "expected_revision":s["life"]["revision"], "tempo":"steady"});
+    let response = env
+        .call_with("tempo-click", "pet.care_tempo", params.clone(), None)
+        .response()
+        .clone();
+    assert_eq!(response["ok"], true, "{response}");
+    let first = response["result"].clone();
+    assert_eq!(first["changed"], true);
+    assert_eq!(first["life"]["care_tempo"], "steady");
+    assert_eq!(
+        first["lifecycle"]["rules"]["decay_per_hour"],
+        json!([1000, 1250, 600, 500])
+    );
+    let bar = env.bar_state().unwrap();
+    assert_eq!(bar["life"]["care_tempo"], "steady");
+    assert_eq!(bar["life"]["revision"], first["life"]["revision"]);
+    assert_eq!(bar["care_rules"], first["lifecycle"]["rules"]);
+    assert_eq!(
+        env.call_with("tempo-click", "pet.care_tempo", params.clone(), None)
+            .response()["result"],
+        first
+    );
+    assert_eq!(env.err("pet.care_tempo", params), "STALE_REVISION");
+    assert_eq!(
+        env.err(
+            "pet.care_tempo",
+            json!({"life_id":s["life"]["life_id"], "expected_revision":0,"tempo":"fast"})
+        ),
+        "INVALID_PARAMS"
     );
 }

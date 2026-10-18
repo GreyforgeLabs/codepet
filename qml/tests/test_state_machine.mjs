@@ -51,12 +51,19 @@ test('shared QML never imports Quickshell', () => {
         assert.doesNotMatch(read(`../shared/${f}`), /^\s*import\s+Quickshell/m, f);
 });
 
-test('DesktopPet: one cosmetic scheduler, one single-shot wake, and no transport at all', () => {
+test('DesktopPet: one cosmetic scheduler, single-shot wake and explicit care feedback, no transport', () => {
     const src = read('../shared/DesktopPet.qml').replace(/\/\/[^\n]*/g, '');
-    assert.equal(src.match(/Timer \{/g).length, 2);
+    assert.equal(src.match(/Timer \{/g).length, 3);
     assert.match(src, /objectName: "desktopPet\.cosmeticTimer"/);
     const wake = src.slice(src.indexOf('objectName: "desktopPet.wakeTimer"'));
     assert.match(wake.slice(0, 200), /repeat: false/, 'the wake timer is single-shot');
+    const feedback = src.slice(src.indexOf('id: careFeedbackTimer'), src.indexOf('id: cosmeticTimer'));
+    assert.match(feedback, /interval: 6000/);
+    assert.match(feedback, /repeat: false/);
+    assert.doesNotMatch(feedback, /running:/, 'feedback never polls while idle');
+    assert.match(feedback, /onTriggered: root.careMessage = ""/);
+    assert.equal(src.match(/careFeedbackTimer\.restart\(\)/g).length, 1);
+    assert.match(src, /onCareMessageChanged: if \(careMessage !== ""\) careFeedbackTimer\.restart\(\)/);
     for (const banned of ['.request(', 'host', 'Process', 'execDetached', 'state.get', 'pet.care', 'pet.events_seen'])
         assert.ok(!src.includes(banned), `DesktopPet must not contain ${banned}`);
     // Operator placement correction permits the small Pinned label (§14).

@@ -35,11 +35,15 @@ Window {
         interval: 100; repeat: true; running: true
         onTriggered: {
             if (win.phase === 0) {
+                win.check(!!win.find(panel, "workClient.toggle"), "advanced work shares the client selector")
                 win.check(!win.find(panel, "work.start").enabled, "empty form cannot start")
                 panel.project = "/home/test/project"
                 panel.prompt = "Fix the broken empty-input case"
                 panel.selectedKind = "bug"
+                ctl.state = Object.assign({}, ctl.state, { provider: {id: "claude-code", name: "Claude Code", available: true, detail: "File edits only; command-based checks are not run."} })
             } else if (win.phase === 1) {
+                var scope = win.find(panel, "work.scope").text
+                win.check(scope.indexOf("Claude Code") >= 0 && scope.indexOf("private copy") >= 0 && scope.indexOf("run commands") < 0, "file-only client scope does not promise command execution")
                 win.check(win.find(panel, "work.start").enabled, "ready pet and complete form can start")
                 panel.start()
                 win.check(ctl.calls.length === 1 && ctl.calls[0].kind === "bug", "Start preserves selected task kind")
@@ -47,9 +51,10 @@ Window {
             } else if (win.phase === 2) {
                 panel.start()
                 win.check(ctl.calls.length === 1 && !win.find(panel, "work.start").enabled, "tired pet cannot bypass readiness")
-                ctl.state = Object.assign({}, ctl.state, { task: { id: "job-1", kind: "bug", project: "/project", prompt: "Fix it", status: "running", progress: "Checking files", output: "<b>literal output</b>", changes: [] } })
+                ctl.state = Object.assign({}, ctl.state, { task: { id: "job-1", client_id: "claude-code", client_name: "Claude Code", client_detail: "File edits only; command-based checks are not run.", kind: "bug", project: "/project", prompt: "Fix it", status: "running", progress: "Checking files", output: "<b>literal output</b>", changes: [] } })
             } else if (win.phase === 3) {
                 win.check(win.find(panel, "work.stop").visible, "active job remains stoppable while pet is tired")
+                win.check(win.find(panel, "work.clientDetail").text === ctl.state.task.client_detail, "job capability limits stay visible in the full result")
                 win.check(win.find(panel, "work.output").textFormat === Text.PlainText, "provider output is plain text")
                 win.find(panel, "work.stop").clicked()
                 win.check(ctl.calls[1].method === "cancel" && ctl.calls[1].params.task_id === "job-1", "Stop targets durable job identity")
@@ -64,9 +69,10 @@ Window {
                 ctl.state = Object.assign({}, ctl.state, { task: Object.assign({}, ctl.state.task, { review_digest: "digest-b" }) })
             } else if (win.phase === 6) {
                 win.check(!panel.verificationAcknowledged && !win.find(panel, "work.accept").enabled, "changed review resets acknowledgement")
-                ctl.state = Object.assign({}, ctl.state, { task: Object.assign({}, ctl.state.task, { status: "failed", error: "Provider stopped before a result." }) })
+                ctl.state = Object.assign({}, ctl.state, { task: Object.assign({}, ctl.state.task, { status: "failed", started_at_ms: 1800000000000, error: "Provider stopped before a result." }) })
             } else if (win.phase === 7) {
-                win.check(win.find(panel, "work.new").visible && !win.find(panel, "work.accept").visible, "failed jobs show recovery, not acceptance")
+                win.check(win.find(panel, "work.new").text === "Dismiss result" && win.find(panel, "work.new").visible && !win.find(panel, "work.accept").visible, "failed jobs show recovery, not acceptance")
+                win.check(win.find(panel, "work.previousTime").text === "Started " + new Date(1800000000000).toLocaleString(), "advanced result uses a stable absolute start date")
                 win.width = 480; win.height = 400
                 ctl.state = Object.assign({}, ctl.state, { task: null })
             } else if (win.phase === 8) {

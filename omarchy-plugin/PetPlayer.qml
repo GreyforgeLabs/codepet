@@ -22,13 +22,17 @@ Item {
     property bool greyscale: false
     property bool mirror: false
     property real startMs: 0
+    property int replay: 0
+    property bool affectionate: false
 
     implicitWidth: 160
     implicitHeight: 160
     onPetStateChanged: player.startMs = player.clockMs
     onSpeciesChanged: player.startMs = player.clockMs
+    onReplayChanged: player.startMs = player.clockMs
 
-    readonly property string frame: Model.frameRel(registry, species, stage, petState, clockMs - startMs, calm)
+    readonly property string frame: Model.frameRel(registry, species, stage, affectionate ? "celebrate" : petState,
+        affectionate ? Model.stateMeta(registry, species, "celebrate").frameMs : clockMs - startMs, affectionate ? false : calm)
     readonly property string thumb: Model.thumbPath(species, stage)
     readonly property string rel: frame !== "" ? frame : thumb
     readonly property bool broken: art.status === Image.Error || rel === "" || runtimeBase === ""

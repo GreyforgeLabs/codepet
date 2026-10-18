@@ -301,7 +301,7 @@ fn v03_state_command_prints_the_snapshot() {
     let text = String::from_utf8(output.stdout).unwrap();
     assert_eq!(text.lines().count(), 1);
     let s: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(s["schema_version"], 5);
+    assert_eq!(s["schema_version"], 6);
     assert_eq!(s["protocol_version"], 1);
     assert_eq!(s["meters"]["hunger"], 7000);
     assert_eq!(s["enabled"], true);
@@ -336,7 +336,7 @@ fn migrate_creates_then_reports_up_to_date_and_publishes() {
     assert_eq!(first.status.code(), Some(0), "{first:?}");
     assert_eq!(
         String::from_utf8(first.stdout).unwrap(),
-        "CodePet data created (schema 5).\n"
+        "CodePet data created (schema 6).\n"
     );
     assert!(first.stderr.is_empty());
     let bar = env.bar_state().expect("migrate publishes bar-state.json");
@@ -351,7 +351,7 @@ fn migrate_creates_then_reports_up_to_date_and_publishes() {
     assert_eq!(again.status.code(), Some(0));
     assert_eq!(
         String::from_utf8(again.stdout).unwrap(),
-        "CodePet data is up to date (schema 5).\n"
+        "CodePet data is up to date (schema 6).\n"
     );
     let backups = std::fs::read_dir(env.state_dir())
         .unwrap()

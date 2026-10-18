@@ -117,6 +117,20 @@ Rectangle {
                 }
                 Action { text: "Refresh"; enabled: !panel.busy; onClicked: panel.controller.refresh() }
             }
+            RowLayout {
+                visible: Work.finished(panel.task)
+                Layout.fillWidth: true
+                Words { objectName: "work.previousTime"; Layout.fillWidth: true; color: panel.muted; font.pixelSize: 12; text: Work.startedDate(panel.task) }
+                    Action {
+                        objectName: "work.new"
+                        visible: Work.finished(panel.task)
+                        enabled: !panel.busy
+                        text: "Dismiss result"
+                        highlighted: false
+                        onClicked: { panel.verificationAcknowledged = false; panel.controller.newJob() }
+                    }
+            }
+            ClientSelector { Layout.fillWidth: true; controller: panel.controller }
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: readinessColumn.implicitHeight + 28
@@ -214,16 +228,17 @@ Rectangle {
                     }
                 }
                 Words {
+                    objectName: "work.scope"
                     Layout.fillWidth: true
                     color: panel.muted
                     font.pixelSize: 13
-                    text: "Codex works on a private copy of this folder. It can read that copy, run commands there and use the internet. Your project changes only after you review and apply the result."
+                    text: Work.clientName(panel.snapshot) + " works on a private copy of this folder with network access. Your project changes only after you review and apply the result."
                 }
                 Words {
                     Layout.fillWidth: true
                     visible: !!panel.snapshot && !!panel.snapshot.provider && !panel.snapshot.provider.available
                     color: "#ffc2a8"
-                    text: panel.snapshot && panel.snapshot.provider ? String(panel.snapshot.provider.reason || "Codex is not ready.") : ""
+                    text: panel.snapshot && panel.snapshot.provider ? String(panel.snapshot.provider.reason || "This client is not ready.") : ""
                 }
                 Action {
                     objectName: "work.start"
@@ -241,6 +256,7 @@ Rectangle {
                 Words { Layout.fillWidth: true; text: panel.task ? Work.title(panel.task.kind) + " · " + panel.task.project : ""; color: panel.accent; font.bold: true }
                 Words { Layout.fillWidth: true; text: panel.task ? panel.task.prompt || "" : "" }
                 Words { objectName: "work.progress"; Layout.fillWidth: true; text: panel.task ? String(panel.task.progress || "") : ""; color: panel.muted }
+                Words { objectName: "work.clientDetail"; Layout.fillWidth: true; visible: text !== ""; text: panel.task ? String(panel.task.client_detail || "") : ""; color: panel.muted; font.pixelSize: 12 }
                 BusyIndicator { running: !!panel.task && ["preparing", "running"].indexOf(panel.task.status) >= 0; visible: running; Layout.alignment: Qt.AlignHCenter }
                 Words { Layout.fillWidth: true; text: panel.task ? String(panel.task.error || "") : ""; color: "#ffc2a8"; visible: text !== "" }
                 Words { text: panel.reviewing ? "Result and reported checks" : "Activity"; font.bold: true }
@@ -332,14 +348,7 @@ Rectangle {
                         text: panel.task && panel.task.changes && panel.task.changes.length ? "Apply changes and reward pet" : "Accept result and reward pet"
                         onClicked: panel.accept()
                     }
-                    Action {
-                        objectName: "work.new"
-                        visible: Work.finished(panel.task)
-                        enabled: !panel.busy
-                        text: "New job"
-                        highlighted: true
-                        onClicked: { panel.verificationAcknowledged = false; panel.controller.newJob() }
-                    }
+
                 }
                 Words {
                     visible: !!panel.task && panel.task.status === "accepted"

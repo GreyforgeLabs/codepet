@@ -1,8 +1,8 @@
-# Security and privacy (v0.4)
+# Security and privacy (v0.5)
 
 CodePet-owned work and external coding-session observations have different data
 boundaries. The observer never reads chats or source. Owned jobs intentionally
-read a bounded source copy and may send its context to the signed-in provider.
+read a bounded source copy and may send its context to the selected provider.
 
 ## Owned work boundary
 
@@ -13,12 +13,36 @@ Source preflight is separately bounded and may skip an unsuitable checkout. A
 scout runs read-only for up to five minutes and returns at most one suspected bug;
 only explicit Fix starts a repair and explicit reviewed Apply changes originals.
 
+The persisted executor choice applies only to future work. Start and Fix bind the
+expected client under the existing work lock; each saved job pins its client,
+adapter version and typed authentication route. Changing selection cannot mutate
+that binding, retry a task or grant a new launch. Unsupported clients/versions fail
+closed without fallback.
+
 Codex 0.163.0 uses existing ChatGPT subscription authentication, with no API-key
-billing route. Jobs have network access. A fresh private provider environment
-loads no user hooks, rules or custom MCP integrations. Native filesystem policies
-deny tool reads of the provider/auth paths, including tested aliases; the provider
-itself retains the credential access needed to authenticate. Temporary auth
-snapshots are removed on completion/recovery. Escalation requests are denied.
+billing route. Its native filesystem policies deny tool reads of provider/auth
+paths, including tested aliases. Claude Code 2.1.294 instead has a restricted native
+file-tool allowlist: canonical workspace Read/Glob/Grep, WebSearch, and (for code
+jobs) Edit/Write. Shell, subagents, MCP, hooks, plugins and custom settings are not
+available. Native dummy-provider tests cover direct credential paths, traversal,
+symlinks, proc-root aliases and process environment reads. Claude receives only an
+access token and required subscription metadata; its refresh token is never copied,
+so jobs cannot rotate the user's saved login. Preflight requires 25 minutes of
+remaining token validity; command-based tests are unavailable with this adapter.
+
+OpenCode 1.19.0 uses the explicit free Big Pickle route documented in [providers](providers.md)
+with no private credentials anywhere in its job namespace. Its tools do not provide
+native credential separation, so subscription/API-key routes are not enabled.
+The environment/config/cache are fresh, the model catalog is pinned to the native
+artifact, and no model fallback is permitted. Project `opencode.json`,
+`opencode.jsonc` and `.opencode` directories are excluded at every source depth.
+This production staging filter is tested with the real native client: its pure
+flags alone do not prevent an early local plugin import. No ancestor project or
+host configuration is mounted. Formatter/LSP/custom MCP configuration is disabled.
+
+Jobs have network access. No user hooks, rules or custom MCP integrations are
+supplied. Temporary credential snapshots are removed on completion/recovery.
+Escalation requests are denied.
 
 User-systemd enforces memory/process/lifetime limits. Bubblewrap gives each job its
 own PID/mount namespace; no original home, project, desktop sockets or CodePet
@@ -28,7 +52,7 @@ bounded scratch space; research/scouting source is mounted read-only.
 
 Known credential files/directories, build caches and (for scouts/scout repairs)
 binary media assets are omitted. This is limited coverage and **not a general
-secret detector**: ordinary source can contain secrets and be sent to Codex. Input,
+secret detector**: ordinary source can contain secrets and be sent to the selected provider. Input,
 traversal, manifests, messages, changed files and review text have explicit caps;
 oversized or binary results fail rather than being silently accepted. Exact limits
 and omissions are in [work.md](work.md).
@@ -116,7 +140,7 @@ This is a local convenience companion, not an anti-cheat or security boundary
 against another process running as the same user. Such a process can forge
 presence, edit local state or invoke the CLI. The optional helper-counting setting
 includes headless activity; it is off by default. Owned work uses the existing
-provider sign-in and can transmit selected source context to that provider. CodePet has no separate cloud account or telemetry service.
+selected provider route and can transmit selected source context to that provider. CodePet has no separate cloud account or telemetry service.
 
 The old mock task pipeline is unreachable in the default build. Its non-default
 `legacy-tasks` feature retains mock behavior only, with no real command execution.

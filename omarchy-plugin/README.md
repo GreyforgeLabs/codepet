@@ -19,8 +19,9 @@ The bar cell is the pet's picture, a painted badge and its name:
 | moon, picture dimmed | CodePet is off (a left click turns it on) |
 | egg + sparkle, "Hi!" | no pet yet, or your pet is waiting for Let's go! |
 | sleeping picture (+ bandage) | asleep (or fainted) |
-| hand (pulses) | a coding app needs you |
-| bowl / drop / ball / tub | a need is at "now" |
+| bowl / drop / ball / tub | a need is at 60% or lower; urgent at 30% |
+| star | unseen growth before generic activity |
+| hand (pulses) | a coding app needs you, while care is healthy |
 | working picture | a coding app is working |
 | star | just finished, treats waiting, or just grew up |
 
@@ -56,3 +57,9 @@ See `docs/omarchy-plugin.md` in the [CodePet repository](https://github.com/Grey
 for the full contract.
 
 MIT licensed.
+
+Home keeps finite Treats N/10 visible, including zero. Snack/Drink are free recovery;
+Play restores mood, and no care button grants XP. Reactions wait for a confirmed
+response. Click the Home pet (or focus it and press Enter) for a cosmetic happy face.
+Help → Care tempo offers Steady or Lively and shows the effective care rates.
+The desktop right-click wheel has Pet, Snack, Drink, Play, Bath, Nap/Wake and Pin/Roam.

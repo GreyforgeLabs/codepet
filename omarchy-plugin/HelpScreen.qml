@@ -11,6 +11,8 @@ Item {
     readonly property var t: app.t
     readonly property var life: app.life
     readonly property bool hardcore: !!(life && life.mode === "permadeath")
+    readonly property bool lively: !!(life && life.care_tempo === "lively")
+    readonly property var careRules: app.doc && app.doc.care_rules ? app.doc.care_rules : null
     readonly property bool helpersOn: !!(app.ctl && app.ctl.snapshot && app.ctl.snapshot.count_helpers === true)
     property bool askHardcore: false
     property bool askForget: false
@@ -22,6 +24,7 @@ Item {
     function setHardcore(on) {
         help.message = ""
         if (!help.life) return
+        if (on && help.lively) { help.message = help.app.s("care.steady_first"); return }
         if (on) { help.askHardcore = true; Qt.callLater(function () { hardcoreName.focusField() }); return }
         help.askHardcore = false
         help.app.request("pet.rules", { life_id: help.life.life_id, mode: "gentle", acknowledge_rules: true }, function (resp) {
@@ -39,6 +42,18 @@ Item {
     }
     function setHelpers(on) {
         help.app.request("app.set_helpers", { enabled: on }, function (resp) { if (!resp.ok) help.app.failed(resp) })
+    }
+    function setTempo(on) {
+        help.message = ""
+        if (!help.life) return
+        if (on && (help.hardcore || help.life.pace !== "steady")) {
+            help.message = help.app.s("care.lively_needs_gentle")
+            return
+        }
+        help.app.request("pet.care_tempo", { life_id: help.life.life_id,
+            expected_revision: help.life.revision, tempo: on ? "lively" : "steady" }, function (resp) {
+            if (!resp.ok) help.app.failed(resp)
+        })
     }
     function forget() {
         help.askForget = false
@@ -85,8 +100,32 @@ Item {
             }
 
             Heading { text: help.app.s("help.rules") }
-            Body { text: help.app.s("help.rules.body") }
-            Body { text: help.app.s("help.pace.body") }
+            Body { text: help.app.s("help.current_rules_body") }
+            Body { text: help.app.s("help.current_pace_body") }
+            MenuRow {
+                objectName: "cp.help.tempo"
+                visible: help.life !== null
+                t: help.t
+                width: parent.width
+                icon: "care-floor/play"
+                text: help.app.s("care.tempo")
+                kind: "switch"
+                checked: help.lively
+                textOn: help.app.s("care.lively")
+                textOff: help.app.s("care.steady")
+                onToggled: on => help.setTempo(on)
+            }
+            Body { text: help.app.s(help.lively ? "help.current_lively_body" : "help.current_steady_body") }
+            Body {
+                visible: !!help.careRules
+                text: help.careRules ? help.app.s("help.current_effective_rates", {
+                    food: help.careRules.decay_per_hour[0] / 100,
+                    water: help.careRules.decay_per_hour[1] / 100,
+                    mood: help.careRules.decay_per_hour[2] / 100,
+                    hygiene: help.careRules.decay_per_hour[3] / 100,
+                    minutes: help.careRules.full_hold_ms / 60000
+                }) : ""
+            }
 
             Heading { text: help.app.s("help.grownup") }
             MenuRow {
@@ -211,10 +250,10 @@ Item {
             Body { text: help.app.s("help.forget.body") }
 
             Heading { text: help.app.s("help.apps") }
-            Body { text: help.app.s("help.apps.body") }
+            Body { text: help.app.s("help.current_apps_body") }
 
             Heading { text: help.app.s("help.privacy") }
-            Body { text: help.app.s("help.privacy.body") }
+            Body { text: help.app.s("help.current_privacy_body") }
             Item { width: 1; height: help.t.u(16) }
         }
     }

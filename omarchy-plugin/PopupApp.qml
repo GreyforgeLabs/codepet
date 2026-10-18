@@ -70,6 +70,13 @@ Item {
     property var history: []
     // Meet a new pet: memorial -> picker, for this popup session only (UI-local).
     property bool meetNew: false
+    property var presentedDoc: null
+    property var presentedFace: null
+    function recordPresented(doc, face) {
+        if (!face || face.state !== "celebrate") return
+        popupRoot.presentedDoc = doc
+        popupRoot.presentedFace = face
+    }
     readonly property string route: Model.route(doc)
     readonly property string screen: {
         if (popupRoot.mode === "menu") return "menu"
@@ -217,6 +224,7 @@ Item {
     property string bubbleText: ""
     property string actionState: ""
     property real actionStartMs: 0
+    property int actionReplay: 0
     Timer {
         id: bubbleTimer
         objectName: "codepetPopup.bubble"
@@ -234,6 +242,9 @@ Item {
         if (action !== undefined && action !== "") {
             popupRoot.actionState = action
             popupRoot.actionStartMs = popupRoot.clockMs
+            popupRoot.actionReplay += 1
+        } else {
+            popupRoot.actionState = ""
         }
         bubbleTimer.restart()
     }

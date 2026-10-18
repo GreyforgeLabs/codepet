@@ -31,3 +31,33 @@ test('scout one-shot eligibility respects readiness, provider, setting and activ
   assert.equal(M.badge({status:'scouted',has_finding:true}),true);
   assert.equal(M.canAccept({status:'review',source_kind:'scout',review_digest:'hash'},false,true),false);
 });
+
+test('previous results distinguish repairs from checks and label reliable start age', () => {
+  const now = 1800000000000;
+  const task = {status:'failed',kind:'bug',source_kind:'scout_fix',started_at_ms:now-3*86400000};
+  assert.equal(M.previousTitle(task),'Previous repair · Couldn’t finish');
+  assert.equal(M.previousTitle({...task,source_kind:'scout'}),'Previous check · Couldn’t finish');
+  assert.equal(M.startedText(task,now),'Started 3 days ago');
+  assert.equal(M.startedText({...task,started_at_ms:undefined},now),'Start time unavailable');
+  assert.equal(M.startedText({...task,started_at_ms:now+1},now),'Start time unavailable');
+  for (const status of ['running','preparing','review','applying']) assert.equal(M.finished({...task,status}),false);
+  assert.equal(M.finished({status:'scouted',has_finding:true}),false);
+});
+
+test('advanced history uses an absolute start date rather than a frozen relative clock', () => {
+  const at = 1800000000000;
+  assert.equal(M.startedDate({started_at_ms:at}), 'Started ' + new Date(at).toLocaleString());
+  for (const invalid of [undefined,null,0,-1,Infinity,NaN,8640000000000001,1.5])
+    assert.equal(M.startedDate({started_at_ms:invalid}), 'Start time unavailable');
+});
+
+test('selected executor and immutable job origin stay distinct, including historical Codex jobs', () => {
+  const state = {provider:{id:'opencode',name:'OpenCode',available:false,reason:'Sign in first'}};
+  assert.equal(M.clientId(state),'opencode');
+  assert.equal(M.clientName(state),'OpenCode');
+  assert.equal(M.taskClientName({client_id:'claude-code',client_name:'Claude Code'}),'Claude Code');
+  assert.equal(M.taskClientName({id:'historical-job'}),'Codex');
+  assert.equal(M.taskClientName({client_id:'future-client',client_name:'Future Client'}),'Future Client');
+  assert.equal(M.clientId(null),'');
+  assert.equal(M.clientName(null),'Checking…');
+});

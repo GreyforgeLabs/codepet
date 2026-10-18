@@ -457,6 +457,9 @@ pub struct LifeView {
     pub mode: String,
     pub armed: bool,
     pub pace: String,
+    // Historical receipts predate schema v6 and replay as Steady without mutation.
+    #[serde(default = "steady_care_tempo")]
+    pub care_tempo: String,
     pub paused: bool,
     pub fainted: bool,
     pub death_pending: bool,
@@ -469,6 +472,10 @@ pub struct LifeView {
     pub stage_key: String,
     pub next_stage: Option<NextStageView>,
     pub tasks_accepted: u32,
+}
+
+fn steady_care_tempo() -> String {
+    "steady".to_owned()
 }
 
 /// Attended-time view of one need. Durations are active (attended) time, never wall time.

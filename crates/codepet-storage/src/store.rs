@@ -573,7 +573,7 @@ pub(crate) fn finish(tx: Transaction<'_>, at: &care::TimeMark) -> Result<()> {
 
 const CARE_METHODS: &str = "('pet.care','pet.sleep','pet.wake')";
 const LIFE_RECEIPT_METHODS: &str =
-    "('pet.select','pet.events_seen','pet.rules','pet.configure_life')";
+    "('pet.select','pet.events_seen','pet.rules','pet.configure_life','pet.care_tempo')";
 /// Frequent v0.3 clicks, pruned like care receipts. `pet.start` receipts are kept, like
 /// adoption and retirement.
 const V03_RECEIPT_METHODS: &str =

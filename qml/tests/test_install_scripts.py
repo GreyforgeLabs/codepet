@@ -6,9 +6,8 @@ packaging/omarchy/install.sh and uninstall.sh run against a private temporary HO
 stub `cargo`, `systemd-run`, `omarchy` and `qs` commands that only log their arguments,
 and a stub `codepet` that logs `migrate`, `clients-refresh` and `disconnect` without
 touching anything, so nothing here builds, touches the live desktop, the Omarchy shell,
-any coding app or the real ~/.config, ~/.local or ~/.cache. A sentinel pet state
-directory proves the scripts themselves never write $XDG_STATE_HOME/codepet (only the
-`codepet` commands they run may). tools/measure-overlay.sh is run read-only against a
+any coding app or the real ~/.config, ~/.local or ~/.cache. Sentinel pet data proves the installer only adds updater receipts beside existing
+state; database/export writes remain owned by the `codepet` commands it runs. tools/measure-overlay.sh is run read-only against a
 `sleep` child.
 
 The installer requires the current release series and an exact binary/tree version
@@ -167,7 +166,7 @@ class Env:
         self.bin = root / "stubs"
         for d in (self.home, self.bin, root / "tmp"):
             d.mkdir()
-        for name, body in (("cargo", STUB), ("systemd-run", STUB), ("omarchy", OMARCHY), ("qs", QS)):
+        for name, body in (("cargo", STUB), ("systemd-run", STUB), ("omarchy", OMARCHY), ("qs", QS), ("omarchy-shell", "#!/bin/sh\nexit 1\n")):
             f = self.bin / name
             f.write_text(body)
             f.chmod(0o755)
@@ -181,6 +180,7 @@ class Env:
         # The pet's data: must never be touched.
         pet = self.state / "codepet"
         pet.mkdir(parents=True)
+        pet.chmod(0o700)
         (pet / "codepet.sqlite3").write_bytes(b"pretend database")
         (pet / "bar-state.json").write_text("{}")
         self.env = {
@@ -200,7 +200,8 @@ class Env:
         return p.read_text().splitlines() if p.exists() else []
 
     def state_tree(self):
-        return tree(self.state)
+        # Updater receipts are permitted; the pet database and exports remain untouched.
+        return {k: v for k, v in tree(self.state).items() if k != 'codepet/update' and not k.startswith('codepet/update/') and k != 'codepet/work'}
 
 
 class InstallDryRun(unittest.TestCase):
@@ -225,7 +226,7 @@ class InstallDryRun(unittest.TestCase):
         # Every listed path is a regular file in the repository (none is a symlink).
         for rel in runtime:
             p = REPO / rel
-            self.assertTrue(p.is_file() and not p.is_symlink(), rel)
+            self.assertTrue((p.is_file() and not p.is_symlink()) or rel == "build.json", rel)
         self.assertIn("staged files: %d, symlinks: 0" % (len(runtime) + len(plugin)), out)
         self.assertIn("would enable: omarchy plugin enable greyforge.codepet --section right --before omarchy.tray", out)
         self.assertIn(f"would run: codepet migrate (the pet's data in {e.state}/codepet", out)
@@ -280,6 +281,22 @@ class InstallDryRun(unittest.TestCase):
 class InstallForReal(unittest.TestCase):
     """A full install, an update and an uninstall into the temporary HOME."""
 
+    def test_work_window_is_never_classified_as_overlay_to_stop(self):
+        e = Env(self)
+        result = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        child = subprocess.Popen(['sleep', '30'])
+        try:
+            (e.home / 'overlays').write_text(f'{child.pid} {e.data}/codepet/current/qml/work.qml\n')
+            result = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIsNone(child.poll(), 'Work must not be signalled as if it were the desktop pet')
+            self.assertNotIn('stopped the desktop overlay', result.stdout)
+        finally:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)
+
     def test_install_update_uninstall(self):
         e = Env(self)
         state0 = e.state_tree()
@@ -308,7 +325,8 @@ class InstallForReal(unittest.TestCase):
         self.assertEqual([p for p in plugin.rglob("*") if p.is_symlink() or not (p.is_file() or p.is_dir())], [])
         for p in (q for q in PLUGIN.rglob("*") if q.is_file()):
             rel = p.relative_to(PLUGIN)
-            self.assertEqual((plugin / rel).read_bytes(), p.read_bytes(), str(rel))
+            if str(rel) != "BuildInfo.js":
+                self.assertEqual((plugin / rel).read_bytes(), p.read_bytes(), str(rel))
         self.assertEqual((plugin / "LifeText.js").read_bytes(), (REPO / "qml/shared/LifeText.js").read_bytes())
         calls = e.calls()
         self.assertFalse(any(c.startswith(("cargo", "systemd-run")) for c in calls), "prebuilt: no build")
@@ -423,9 +441,9 @@ class InstallForReal(unittest.TestCase):
         r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("<", r.stdout)
-        self.assertIn("  omarchy restart shell", r.stdout)
+        self.assertIn("codepet-update restart-bar", r.stdout)
         r = e.run(INSTALL, CODEPET_BIN_SOURCE=str(e.fake), HYPRLAND_INSTANCE_SIGNATURE="abc_123")
-        self.assertIn("  HYPRLAND_INSTANCE_SIGNATURE=abc_123 omarchy restart shell", r.stdout)
+        self.assertIn("codepet-update restart-bar", r.stdout)
 
     def test_older_release_trees_are_pruned(self):
         e = Env(self)

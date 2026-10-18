@@ -17,6 +17,28 @@ Item {
     readonly property var controls: Model.homeControls(doc, face)
     readonly property bool off: face && face.state === "off"
     readonly property string appearance: life ? String(life.appearance || "") : ""
+    readonly property int jarCount: doc && doc.treats ? doc.treats.jar : 0
+    readonly property real growthSeq: face && face.celebrate && face.celebrate.kind === "grew" ? face.celebrate.seq : 0
+    readonly property string growthKey: (life ? life.life_id : "") + ":" + growthSeq
+    property string shownGrowthLife: ""
+    property real shownGrowthSeq: 0
+    property bool growthReady: false
+    onGrowthKeyChanged: showNewGrowth()
+    onOffChanged: if (off) growthFlash.stop()
+    onVisibleChanged: if (!visible) growthFlash.stop()
+    function showNewGrowth() {
+        if (!growthReady) return
+        var id = life ? life.life_id : ""
+        if (id !== shownGrowthLife) { shownGrowthLife = id; shownGrowthSeq = growthSeq; return }
+        if (growthSeq <= shownGrowthSeq) return
+        shownGrowthSeq = growthSeq
+        if (visible && !off && !app.calm && app.screen === "home" && app.ctl.popupVisible)
+            growthFlash.restart()
+    }
+    Timer { id: growthFlash; objectName: "codepetPopup.growthAccent"; interval: 1600; repeat: false }
+    property bool carePending: false
+    property var lifetime: ({ alive: true })
+    Component.onDestruction: home.lifetime.alive = false
 
     implicitWidth: t.u(448)
     implicitHeight: column.implicitHeight
@@ -24,29 +46,43 @@ Item {
     // ------------------------------------------------------------- taps (K5)
 
     function care(need) {
-        if (home.face && home.face.state !== "fainted" && need === "food") {
-            home.app.openWork("compact")
-            return
-        }
-        var full = Model.careIsFull(home.doc, need)
+        if (home.carePending) return
         var name = home.life ? home.life.name : ""
-        home.app.say(Model.reactText(Strings.STRINGS, home.app.reg, home.appearance, need, full, name), need)
+        var lifetime = home.lifetime
+        home.carePending = true
+        home.app.say(home.app.s("care.wait"), "")
         home.app.request("pet.care", { action: need }, function (resp) {
+            if (!lifetime.alive) return
+            home.carePending = false
             if (!resp.ok) { home.app.failed(resp); return }
-            if (resp.result && resp.result.changed === false && !full)
-                home.app.say(Model.reactText(Strings.STRINGS, home.app.reg, home.appearance, need, true, name), "")
+            var changed = !!(resp.result && resp.result.changed === true)
+            home.app.say(Model.reactText(Strings.STRINGS, home.app.reg, home.appearance, need, !changed, name), (changed || need === "play") ? need : "")
         })
     }
     function giveTreat() {
-        if (!home.life) return
-        home.app.say(home.app.s("react.treat"), "food")
+        if (!home.life || home.carePending) return
+        if (home.jarCount <= 0) { home.app.say(home.app.s("care.jar_empty"), ""); return }
+        home.carePending = true
+        var lifetime = home.lifetime
+        home.app.say(home.app.s("care.wait"), "")
         home.app.request("treats.give", { life_id: home.life.life_id }, function (resp) {
-            if (!resp.ok) home.app.failed(resp)
+            if (!lifetime.alive) return
+            home.carePending = false
+            if (!resp.ok) {
+                if (resp.error && resp.error.code === "NO_TREATS") home.app.say(home.app.s("care.jar_empty"), "")
+                else home.app.failed(resp)
+                return
+            }
+            home.app.say(home.app.s("stats.treat_given"), "food")
         })
     }
     function wake() {
         if (home.controls.wake === "pet.pause") home.app.request("pet.pause", { paused: false }, function (r) { if (!r.ok) home.app.failed(r) })
         else home.app.request("pet.wake", {}, function (r) { if (!r.ok) home.app.failed(r) })
+    }
+    function petAffection() {
+        if (!home.controls.round) return
+        home.app.say(home.app.s("care.petted"), "pet")
     }
 
     // The treat jar wiggles once when it is full and a new piece of work just finished: when
@@ -63,6 +99,10 @@ Item {
         home.seenFinished = home.finishedSeq
     }
     Component.onCompleted: {
+        // Opening an existing growth result shows its text without replaying the accent.
+        home.shownGrowthLife = home.life ? home.life.life_id : ""
+        home.shownGrowthSeq = home.growthSeq
+        home.growthReady = true
         home.seenFinished = home.finishedSeq
         if (home.jarFull && home.face && home.face.line === "act.done_full") jarWiggle.restart()
     }
@@ -90,31 +130,35 @@ Item {
                 stage: Model.stageOf(home.life)
                 petState: home.app.actionState !== "" ? home.app.actionState : Model.petStateFor(home.face, home.app.clockMs)
                 clockMs: home.app.clockMs
+                replay: home.app.actionReplay
+                affectionate: home.app.actionState === "pet"
                 calm: home.app.calm
                 runtimeBase: home.app.runtimeBase
                 dim: home.off
+                activeFocusOnTab: home.controls.round
+                Accessible.role: Accessible.Button
+                Accessible.name: home.app.s("care.pet_action")
+                Accessible.onPressAction: home.petAffection()
+                Keys.onReturnPressed: home.petAffection()
+                Keys.onSpacePressed: home.petAffection()
+                MouseArea { anchors.fill: parent; enabled: home.controls.round; onClicked: home.petAffection() }
             }
             Icon {
                 id: confetti
                 objectName: "cp.confetti"
                 icon: "status/confetti"
-                size: home.t.u(96)
-                x: pet.x + home.t.u(32)
-                y: 0
-                visible: home.face && home.face.state === "celebrate"
+                size: home.t.u(24)
+                x: pet.x - width - home.t.u(8)
+                y: home.t.u(68)
+                visible: growthFlash.running && !home.app.calm && !home.off
                 opacity: 0.9
-                SequentialAnimation on scale {
-                    running: confetti.visible && !home.app.calm
-                    loops: 2
-                    NumberAnimation { from: 0.6; to: 1.15; duration: 450; easing.type: Easing.OutBack }
-                    NumberAnimation { to: 1; duration: 250 }
-                }
             }
             SpeechBubble {
                 id: speech
                 objectName: "cp.speech"
                 t: home.t
                 text: home.app.bubbleText
+                statistic: home.app.bubbleText === home.app.s("stats.treat_given")
                 x: Math.max(0, pet.x - home.t.u(36))
                 y: 0
                 z: 2
@@ -135,7 +179,7 @@ Item {
                 visible: home.controls.treats
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                width: home.t.u(150)
+                width: home.t.u(192)
                 height: home.t.u(72)
                 radius: home.t.radius
                 color: treatsMouse.pressed ? home.t.tilePress : home.t.glowFill
@@ -143,7 +187,7 @@ Item {
                 border.color: activeFocus ? home.t.focusRing : home.t.accent
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
-                Accessible.name: home.app.s("btn.treats")
+                Accessible.name: home.app.s("stats.treats", { count: home.jarCount })
                 Accessible.onPressAction: home.giveTreat()
                 Keys.onReturnPressed: home.giveTreat()
                 Keys.onSpacePressed: home.giveTreat()
@@ -161,14 +205,16 @@ Item {
                     Icon {
                         anchors.verticalCenter: parent.verticalCenter
                         icon: "care-floor/treat_jar"
-                        size: home.t.u(52)
+                        size: home.t.u(40)
                     }
                     Text {
+                        objectName: "cp.treats.count"
+                        readonly property bool cpStatistic: true
                         anchors.verticalCenter: parent.verticalCenter
-                        text: home.app.s("btn.treats")
+                        text: home.app.s("stats.treats", { count: home.jarCount })
                         textFormat: Text.PlainText
                         font.family: home.t.family
-                        font.pixelSize: home.t.fontTitle
+                        font.pixelSize: home.t.fontBody
                         font.bold: true
                         color: home.t.text
                     }
@@ -193,10 +239,10 @@ Item {
             height: home.t.u(36)
             verticalAlignment: Text.AlignVCenter
             horizontalAlignment: Text.AlignHCenter
-            text: home.app.workState && home.app.workState.task && ["preparing", "running", "review", "applying"].indexOf(home.app.workState.task.status) >= 0
+            text: home.face && ["off", "asleep", "paused", "fainted", "need_now", "need_soon", "celebrate"].indexOf(home.face.state) >= 0
+                ? home.app.faceLine()
+                : home.app.workState && home.app.workState.task && ["preparing", "running", "review", "applying"].indexOf(home.app.workState.task.status) >= 0
                 ? home.app.s(home.app.workState.task.status === "review" ? "work.review" : "work.working")
-                : home.app.workState && home.app.workState.readiness && !home.off
-                ? home.app.s("work.energy", { value: home.app.workState.readiness.energy }) + " · " + home.app.s(home.app.workState.readiness.ready ? "work.ready" : "work.rest")
                 : home.jarFull && home.face && home.face.state === "idle"
                 ? home.app.s("treats.full") : Model.faceLine(Strings.STRINGS, home.app.reg, home.doc, home.face)
             textFormat: Text.PlainText
@@ -205,8 +251,29 @@ Item {
             font.bold: true
             color: home.t.text
             elide: Text.ElideRight
+            function recordPresented() {
+                if (visible && home.app.screen === "home" && home.app.ctl.popupVisible)
+                    home.app.recordPresented(home.doc, home.face)
+            }
+            onTextChanged: Qt.callLater(recordPresented)
+            Component.onCompleted: Qt.callLater(recordPresented)
         }
-        Item { width: 1; height: home.t.u(8) }
+        Text {
+            objectName: "cp.energyLine"
+            readonly property bool cpStatistic: true
+            visible: !!(home.app.workState && home.app.workState.readiness) && !home.off
+            width: parent.width
+            height: visible ? home.t.u(18) : 0
+            text: visible ? home.app.s("work.energy", { value: home.app.workState.readiness.energy }) + " · "
+                + home.app.s(home.app.workState.readiness.ready ? "work.ready" : "work.rest") : ""
+            textFormat: Text.PlainText
+            horizontalAlignment: Text.AlignHCenter
+            font.family: home.t.family
+            font.pixelSize: home.t.fontBody
+            color: home.t.dim
+            elide: Text.ElideRight
+        }
+        Item { width: 1; height: home.app.workState && home.app.workState.readiness && !home.off ? 0 : home.t.u(8) }
 
         // ---- care tiles (two rows of two; the two that revive while fainted)
         Grid {
@@ -221,9 +288,8 @@ Item {
                     objectName: "cp.tile." + modelData.need
                     t: home.t
                     icon: Model.careIcon(home.app.reg, home.appearance, modelData.need)
-                    readonly property bool isWork: home.face && home.face.state !== "fainted" && modelData.need === "food"
-                    text: home.app.s(isWork ? (modelData.need === "food" ? "work.bug" : "work.research") : "tile." + modelData.need)
-                    detail: isWork ? home.app.s("tile." + modelData.need) : ""
+                    text: home.app.s(modelData.need === "food" ? "care.snack" : modelData.need === "water" ? "care.drink" : "tile." + modelData.need)
+                    detail: ""
                     glow: modelData.glow
                     calm: home.app.calm
                     meter: Model.careMeter(home.doc, modelData.need)

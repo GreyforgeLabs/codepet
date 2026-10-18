@@ -729,3 +729,41 @@ fn the_fold_refuses_other_schemas_and_unsafe_dirs() {
         Err(StorageError::SchemaUnsupported(4))
     ));
 }
+
+#[test]
+fn delayed_events_across_fold_batches_preserve_turn_completion_and_approval() {
+    let env = Env::new();
+    env.clock.set(T0 + 10_000);
+    let mut store = env.fold();
+    env.fold_one(
+        &mut store,
+        turn(env.rec("codex", "turn_start", T0 + 2_000), "current"),
+    );
+    env.fold_one(
+        &mut store,
+        turn(env.rec("codex", "turn_start", T0 + 1_500), "old"),
+    );
+    env.fold_one(&mut store, env.rec("codex", "waiting", T0 + 1_700));
+    assert_eq!(env.state_of("codex", "s1").as_deref(), Some("working"));
+    let mut done = turn(env.rec("codex", "turn_done", T0 + 5_000), "current");
+    done.tools = 1;
+    env.fold_one(&mut store, done);
+    assert_eq!(env.state_of("codex", "s1").as_deref(), Some("idle"));
+    assert_eq!(env.int("SELECT finished_seq FROM meta"), 1);
+    assert_eq!(env.treats(), 1);
+    for (kind, at) in [("waiting", 2_000), ("activity", 3_000), ("waiting", 2_500)] {
+        let mut rec = env.rec("hermes", kind, T0 + at);
+        rec.session = None;
+        rec.akey = Some("approval".into());
+        env.fold_one(&mut store, rec);
+    }
+    let state: String = env
+        .raw()
+        .query_row(
+            "SELECT state FROM agent_sessions WHERE approval=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "idle");
+}

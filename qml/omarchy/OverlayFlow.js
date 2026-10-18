@@ -183,3 +183,11 @@ function openHomeArgv(omarchyPath) {
         return [base + "/bin/omarchy-shell"].concat(call)
     return ["/usr/bin/env", "OMARCHY_PATH=" + DEFAULT_OMARCHY_PATH, "omarchy-shell"].concat(call)
 }
+
+function openUpdatesArgv(omarchyPath) {
+    var base = absolute(omarchyPath)
+    var call = ["-q", PLUGIN_ID, "openUpdates"]
+    if (base !== "")
+        return [base + "/bin/omarchy-shell"].concat(call)
+    return ["/usr/bin/env", "OMARCHY_PATH=" + DEFAULT_OMARCHY_PATH, "omarchy-shell"].concat(call)
+}

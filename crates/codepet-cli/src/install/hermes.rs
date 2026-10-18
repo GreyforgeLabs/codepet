@@ -66,6 +66,11 @@ fn read_config(ctx: &Ctx) -> Result<Y, ()> {
     }
 }
 
+/// Artifact ownership survives disabling; connection status also requires enablement.
+pub fn enabled(ctx: &Ctx) -> bool {
+    read_config(ctx).is_ok_and(|c| enabled_in(&c))
+}
+
 fn set_of(y: Option<&Y>) -> Option<Vec<String>> {
     match y {
         None => Some(Vec::new()),
@@ -80,7 +85,7 @@ fn plugins_entry<'a>(c: &'a Y, key: &str) -> Option<&'a Y> {
 /// `codepet` is in `plugins.enabled` and not in `plugins.disabled`.
 fn enabled_in(c: &Y) -> bool {
     set_of(plugins_entry(c, "enabled")).is_some_and(|s| s.iter().any(|n| n == NAME))
-        && !set_of(plugins_entry(c, "disabled")).is_some_and(|s| s.iter().any(|n| n == NAME))
+        && set_of(plugins_entry(c, "disabled")).is_some_and(|s| !s.iter().any(|n| n == NAME))
 }
 
 /// The key check (spec §5.2 step 4): the checked sections are unchanged, except that

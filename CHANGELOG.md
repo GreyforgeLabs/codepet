@@ -2,6 +2,24 @@
 
 All notable changes to CodePet.
 
+## 0.4.1 — Unreleased local development
+
+- Adds an explicit Gentle care tempo: Lively uses a five-minute full hold and
+  noticeable attended-time care needs. Existing lives keep Steady until changed;
+  new Gentle starts use Lively. Switching preserves progress and critical clocks.
+- Schema 6 adds a per-life tempo while retaining frozen lifecycle-v1 rules, stored
+  leniency and all historical data. Older binaries refuse the newer schema.
+- Delayed observer events cannot replace a newer coding turn or approval state;
+  matching late tools still count toward their original turn.
+- Adds **Updates** directly to the desktop pet's compact card, and a right-click
+  care wheel for Pet, Snack, Drink, Play, Nap/Wake and Pin/Roam. Pinning retains
+  occasional expressions; petting is cosmetic.
+- Need cues survive work status, attended minute checkpoints refresh settled care,
+  and repeated Play restarts its reaction. Treats shows the finite jar count and
+  confirms the actual grant; growth feedback follows saved evolution.
+- This source version is not a published GitHub release. Local qualification is
+  separate from the v0.4.0 download; see [lifecycle rules](docs/lifecycle.md).
+
 ## 0.4.0 — 2026-10-17
 
 CodePet can find a suspected bug in your local repositories, prepare a repair when

@@ -1424,3 +1424,21 @@ fn nothing_is_earned_while_off() {
     );
     assert_eq!(env.count("SELECT count(*) FROM activity_turns"), 0);
 }
+
+#[test]
+fn fresh_gentle_start_uses_lively_tempo_without_changing_frozen_rules() {
+    let env = Env::with_boot();
+    let mut store = Store::open(&env.paths, env.clock.clone()).unwrap();
+    let s = store
+        .start_pet("go", &start(None, "penguin", None, Mode::Gentle))
+        .unwrap();
+    let v = serde_json::to_value(&s).unwrap();
+    assert_eq!(v["life"]["care_tempo"], "lively");
+    assert_eq!(s.lifecycle.rules.decay_per_hour, [6000, 8000, 4000, 3000]);
+    assert_eq!(s.lifecycle.rules.full_hold_ms, 300_000);
+    assert_eq!(s.lifecycle.rules.warning_at, 3000);
+    assert_eq!(
+        serde_json::from_str::<Value>(&lifecycle_rules_json()).unwrap()["steady"]["decay_per_hour"],
+        serde_json::json!([1000, 1250, 600, 500])
+    );
+}

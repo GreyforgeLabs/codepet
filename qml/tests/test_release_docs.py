@@ -82,10 +82,12 @@ class ReleaseDocs(unittest.TestCase):
         self.assertIn("SERIES=" + ".".join(version.split(".")[:2]), read("packaging/omarchy/install.sh"))
         self.assertIn(f"## {version}", read("omarchy-plugin/CHANGELOG.md"))
         readme = read("README.md")
-        for required in (f"releases/tag/v{version}", "Codex 0.163.0", "Bubblewrap", "prlimit",
+        for required in ("releases/tag/v0.4.0", "Codex 0.163.0", "Bubblewrap", "prlimit",
                          "source context", "Checks off", "explicit reviewed Apply", "synthetic data"):
             self.assertIn(required, " ".join(readme.split()), required)
-        self.assertNotIn("unreleased local development", readme)
+        self.assertIn(f"{version}, unreleased local development", readme)
+        self.assertNotIn(f"releases/tag/v{version}", readme)
+        self.assertIn(f"## {version} — Unreleased local development", read("CHANGELOG.md"))
         self.assertNotIn("for v0.3.0 only", readme)
         self.assertTrue((DOCS / "screenshots/codepet-v0.4-cards.png").is_file())
 
@@ -120,7 +122,8 @@ class ReleaseDocs(unittest.TestCase):
         version = tomllib.loads(read("Cargo.toml"))["workspace"]["package"]["version"]
         self.assertIn("](docs/screenshots/codepet-v0.2-roster.webp)", readme)
         self.assertIn(f"`codepet --version` prints `codepet {version}`", readme)
-        self.assertIn(f"codepet-{version}-x86_64-linux.tar.gz", readme)
+        self.assertIn("codepet-0.4.0-x86_64-linux.tar.gz", readme)
+        self.assertNotIn(f"codepet-{version}-x86_64-linux.tar.gz", readme)
         for section in ("## Requirements", "## Quick start", "### First run", "### Uninstall"):
             self.assertIn(section, readme)
         for stale in ("private testing prerelease", "operator", "v0.1"):

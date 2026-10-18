@@ -255,7 +255,7 @@ fn v03_snapshot_json_shape_matches_contract() {
     );
     assert_eq!(
         (v["schema_version"].clone(), v["protocol_version"].clone()),
-        (5.into(), 1.into())
+        (SCHEMA_VERSION.into(), 1.into())
     );
     assert_eq!(
         keys(&v["care"]),
@@ -1880,13 +1880,13 @@ fn newer_schema_is_refused_untouched() {
     env.paths.prepare().unwrap();
     {
         let c = env.raw();
-        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 6;")
+        c.execute_batch("CREATE TABLE future(x); PRAGMA user_version = 7;")
             .unwrap();
     }
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(6))
+        Err(StorageError::SchemaUnsupported(7))
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     assert_eq!(fs::read_dir(&env.paths.state_dir).unwrap().count(), 1);
@@ -1937,7 +1937,7 @@ fn corrupt_database_is_refused_untouched() {
 #[cfg(feature = "legacy-tasks")]
 #[test]
 fn migration_backs_up_older_versions_first() {
-    fn v6(tx: &rusqlite::Transaction<'_>, _at: &care::TimeMark) -> Result<()> {
+    fn future(tx: &rusqlite::Transaction<'_>, _at: &care::TimeMark) -> Result<()> {
         Ok(tx.execute_batch("CREATE TABLE extra (x INTEGER)")?)
     }
     let env = Env::new();
@@ -1948,45 +1948,39 @@ fn migration_backs_up_older_versions_first() {
             .unwrap()
             .task_id
     };
-    let migrations: &[schema::Migration] = &[
-        schema::MIGRATIONS[0],
-        schema::MIGRATIONS[1],
-        schema::MIGRATIONS[2],
-        schema::MIGRATIONS[3],
-        schema::MIGRATIONS[4],
-        v6,
-    ];
+    let mut migrations = schema::MIGRATIONS.to_vec();
+    migrations.push(future);
     env.clock.set(T0 + 42);
-    let store = Store::open_with(&env.paths, env.clock.clone(), migrations).unwrap();
+    let store = Store::open_with(&env.paths, env.clock.clone(), &migrations).unwrap();
     assert_eq!(store.task(&id).unwrap().task_id, id);
     drop(store);
-    assert_eq!(env.count("PRAGMA user_version"), 6);
+    assert_eq!(env.count("PRAGMA user_version"), SCHEMA_VERSION + 1);
     assert_eq!(env.count("SELECT count(*) FROM extra"), 0);
     let backup = env
         .paths
         .state_dir
-        .join(format!("codepet.sqlite3.bak-v5-{}", T0 + 42));
+        .join(format!("codepet.sqlite3.bak-v{SCHEMA_VERSION}-{}", T0 + 42));
     assert_eq!(mode(&backup), 0o600);
     let b = Connection::open(&backup).unwrap();
     let v: i64 = b
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(v, 5);
+    assert_eq!(v, SCHEMA_VERSION);
     let n: i64 = b
         .query_row("SELECT count(*) FROM tasks WHERE id = ?1", [&id], |r| {
             r.get(0)
         })
         .unwrap();
     assert_eq!(n, 1);
-    // This build (v5) now refuses the upgraded file without touching it.
+    // This build now refuses the upgraded file without touching it.
     let bytes = fs::read(&env.paths.db_path).unwrap();
     assert!(matches!(
         env.try_open(),
-        Err(StorageError::SchemaUnsupported(6))
+        Err(StorageError::SchemaUnsupported(v)) if v == SCHEMA_VERSION + 1
     ));
     assert_eq!(fs::read(&env.paths.db_path).unwrap(), bytes);
     // Reopening at the same version neither migrates nor backs up again.
-    Store::open_with(&env.paths, env.clock.clone(), migrations).unwrap();
+    Store::open_with(&env.paths, env.clock.clone(), &migrations).unwrap();
     let backups = fs::read_dir(&env.paths.state_dir)
         .unwrap()
         .filter(|e| {
@@ -2739,3 +2733,6 @@ const SLOT_STATE_LIST: [State; 7] = [
 
 #[path = "memories_tests.rs"]
 mod memories_cases;
+
+#[path = "care_tempo_tests.rs"]
+mod care_tempo_cases;

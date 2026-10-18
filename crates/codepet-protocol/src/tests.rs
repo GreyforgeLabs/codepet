@@ -126,9 +126,10 @@ fn every_method_parses_and_round_trips() {
         "clients.disconnect",
         "clients.test",
         "pet.memories",
+        "pet.care_tempo",
     ];
     assert_eq!(Method::ALL.len(), names.len());
-    assert_eq!(Method::ALL.len(), 42);
+    assert_eq!(Method::ALL.len(), 43);
     for (m, name) in Method::ALL.into_iter().zip(names) {
         assert_eq!(m.as_str(), name);
         assert_eq!(m.to_string(), name);
@@ -893,7 +894,7 @@ fn protocol_version_stays_one_and_changes_are_additive() {
     assert_eq!(ErrorCode::ALL[28], ErrorCode::NoActivePet);
     // v0.3 appends after the v0.2 lists.
     assert_eq!(ErrorCode::ALL[29], ErrorCode::NotImplemented);
-    assert_eq!(Method::ALL[31..], Method::V03_ADDED);
+    assert_eq!(Method::ALL[31..42], Method::V03_ADDED);
     for (i, (name, _)) in NEW_METHODS.iter().enumerate() {
         assert_eq!(Method::ALL[23 + i].as_str(), *name);
     }
@@ -949,6 +950,7 @@ fn is_mutating_table_for_every_method() {
         ("clients.disconnect", true),
         ("clients.test", true),
         ("pet.memories", false),
+        ("pet.care_tempo", true),
     ];
     assert_eq!(table.len(), Method::ALL.len());
     for (m, (name, mutating)) in Method::ALL.into_iter().zip(table) {
@@ -1394,7 +1396,7 @@ fn v03_method_lists_partition_the_spec_tables() {
         .iter()
         .filter(|m| !Method::V03_ADDED.contains(m) && !Method::V03_REMOVED.contains(m))
         .count();
-    assert_eq!(kept, 14, "hello + state.get + 12 pet/lifecycle methods");
+    assert_eq!(kept, 15, "v0.3 kept methods plus pet.care_tempo");
 }
 
 #[test]
@@ -1536,7 +1538,7 @@ fn v03_protocol_contract_matches_the_crate() {
     let kept = names("kept");
     assert_eq!(
         kept.len() + added.len() + Method::V03_REMOVED.len(),
-        Method::ALL.len()
+        Method::ALL.len() - 1 // pet.care_tempo was added after the frozen v0.3 contract
     );
     for name in &kept {
         let m = Method::parse(name).unwrap();
@@ -1584,4 +1586,23 @@ fn v03_protocol_contract_matches_the_crate() {
             );
         }
     }
+}
+
+#[test]
+fn care_tempo_params_are_bounded_and_life_bound() {
+    let valid = json!({"life_id":"life-1", "expected_revision":1, "tempo":"lively"});
+    assert!(parse_params::<PetCareTempoParams>(valid.clone()).is_ok());
+    for (key, value) in [
+        ("life_id", json!("")),
+        ("expected_revision", json!(0)),
+        ("expected_revision", json!(u64::MAX)),
+        ("tempo", json!("fast")),
+        ("xp", json!(80)),
+    ] {
+        let mut bad = valid.clone();
+        bad[key] = value;
+        assert!(parse_params::<PetCareTempoParams>(bad).is_err(), "{key}");
+    }
+    assert_eq!(Method::parse("pet.care_tempo"), Some(Method::PetCareTempo));
+    assert!(Method::PetCareTempo.is_mutating());
 }

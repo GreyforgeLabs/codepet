@@ -34,27 +34,58 @@ sed "s|@CODEPET_SHIM@|$SHIM|g" "$REPO/integrations/claude-code/plugin/hooks/hook
 printf '{\n  "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "slopbrake-hook stop", "timeout": 600}]}]},\n  "permissions": {"allow": ["Bash(ls)"]},\n  "enabledPlugins": {"x@y": true},\n  "theme": "dark"\n}\n' >"$H/.claude/settings.json"
 redact() { sed "s|$D/home|/home/u|g"; }
 C() {
-    local out rc
+    local out rc expected
+    expected=$1
+    shift
     echo "\$ claude $*" | redact
     rc=0
     out=$(cd "$D" && timeout 30 unshare -rn env -i HOME="$H" PATH=/usr/bin:/bin DISABLE_AUTOUPDATER=1 \
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CONFIG_DIR="$H/.claude" "$CLAUDE" "$@" </dev/null 2>&1) || rc=$?
     printf '%s\n' "$out" | redact
     echo "[exit $rc]"
+    # The second remove/uninstall is intentionally idempotent. Accept only its
+    # documented absence code; a failing validator must never mint a receipt.
+    python3 - "$expected" "$rc" "$out" <<'PY'
+import json, sys
+expected, rc, text = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+if expected == 'validate':
+    ok = rc == 0 and 'Validation passed' in text
+else:
+    try:
+        value = json.loads(text)
+    except ValueError:
+        value = None
+        for line in text.splitlines():
+            try:
+                value = json.loads(line)
+                break
+            except ValueError:
+                pass
+    if expected == 'list':
+        ok = rc == 0 and isinstance(value, list) and any(isinstance(v, dict) and v.get('id') == 'codepet@codepet-local' and v.get('scope') == 'user' and v.get('enabled') is True for v in value)
+    elif expected in ('not_installed', 'not_configured'):
+        command = 'uninstall' if expected == 'not_installed' else 'marketplace-remove'
+        ok = rc == 1 and isinstance(value, dict) and value.get('command') == command and value.get('outcome') == 'failed' and value.get('failureCode') == expected
+    else:
+        ok = rc == 0 and isinstance(value, dict) and value.get('command') == expected and value.get('outcome') == 'ok'
+if not ok:
+    print('gate: failed required ' + expected + ' check', file=sys.stderr)
+    sys.exit(1)
+PY
 }
 show() { echo "== $1"; redact <"$2"; echo; }
 show "settings.json before" "$H/.claude/settings.json"
-C plugin validate "$M"
-C plugin validate "$M/plugin"
-C plugin install codepet --marketplace "$M" --json
-C plugin install codepet --marketplace "$M" --json
-C plugin list --json
+C validate plugin validate "$M"
+C validate plugin validate "$M/plugin"
+C install plugin install codepet --marketplace "$M" --json
+C install plugin install codepet --marketplace "$M" --json
+C list plugin list --json
 show "settings.json after install" "$H/.claude/settings.json"
 show "installed_plugins.json" "$H/.claude/plugins/installed_plugins.json"
-C plugin uninstall codepet@codepet-local --json
-C plugin uninstall codepet@codepet-local --json
-C plugin marketplace remove codepet-local --json
-C plugin marketplace remove codepet-local --json
+C uninstall plugin uninstall codepet@codepet-local --json
+C not_installed plugin uninstall codepet@codepet-local --json
+C marketplace-remove plugin marketplace remove codepet-local --json
+C not_configured plugin marketplace remove codepet-local --json
 show "settings.json after uninstall" "$H/.claude/settings.json"
 show "installed_plugins.json after uninstall" "$H/.claude/plugins/installed_plugins.json"
 # The override was honoured: the install records live in the throwaway config dir.

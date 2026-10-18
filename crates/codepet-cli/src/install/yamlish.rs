@@ -32,11 +32,11 @@ impl Y {
             Y::Seq(items) => {
                 let mut out: Vec<String> = items
                     .iter()
-                    .filter_map(|i| match i {
+                    .map(|i| match i {
                         Y::Str(s) => Some(s.clone()),
                         _ => None,
                     })
-                    .collect();
+                    .collect::<Option<Vec<_>>>()?;
                 out.sort();
                 out.dedup();
                 Some(out)
@@ -49,6 +49,15 @@ impl Y {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct YamlError;
+
+// YAML mappings are unordered; reject duplicate keys before canonicalizing them.
+fn mapping(mut pairs: Vec<(String, Y)>) -> Result<Y, YamlError> {
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    if pairs.windows(2).any(|p| p[0].0 == p[1].0) {
+        return Err(YamlError);
+    }
+    Ok(Y::Map(pairs))
+}
 
 const MAX_DEPTH: usize = 64;
 
@@ -304,7 +313,7 @@ impl Flow {
                     self.ws();
                     if self.b.get(self.i) == Some(&'}') {
                         self.i += 1;
-                        return Ok(Y::Map(kv));
+                        return mapping(kv);
                     }
                     let k = unquote_key(&self.token())?;
                     self.ws();
@@ -460,7 +469,7 @@ impl P {
             };
             kv.push((key, value));
         }
-        Ok(Y::Map(kv))
+        mapping(kv)
     }
     fn seq(&mut self, indent: usize, depth: usize) -> Result<Y, YamlError> {
         let mut items = Vec::new();
@@ -566,6 +575,31 @@ quoted: \"a\\nb\"
         let a = "plugins:\n  enabled: [b, a]\n  scan_on_install: true\nx: 'y'\n";
         let b = "plugins:\n    enabled:\n    - b\n    - a\n    scan_on_install: true\nx: y\n";
         assert_eq!(parse(a).unwrap(), parse(b).unwrap());
+    }
+
+    #[test]
+    fn plugin_name_lists_refuse_unknown_item_types() {
+        assert_eq!(parse("[codepet, true]").unwrap().str_set(), None);
+        assert_eq!(parse("[codepet, {name: other}]").unwrap().str_set(), None);
+    }
+
+    #[test]
+    fn mapping_order_is_semantic_but_sequence_order_is_preserved() {
+        assert_eq!(
+            parse("hooks: {z: [{second: b, first: a}], a: []}\npermissions: {z: no, a: yes}\n")
+                .unwrap(),
+            parse("permissions: {a: yes, z: no}\nhooks: {a: [], z: [{first: a, second: b}]}\n")
+                .unwrap()
+        );
+        assert_ne!(parse("a: [x, y]").unwrap(), parse("a: [y, x]").unwrap());
+        for duplicate in [
+            "a: x\na: y\n",
+            "a: {b: x, b: y}",
+            "a: [{b: x, b: y}]",
+            "a:\n  b: x\n  'b': y\n",
+        ] {
+            assert_eq!(parse(duplicate), Err(YamlError), "{duplicate}");
+        }
     }
 
     /// Manual probe (ignored): `CODEPET_YAML_PROBE=<file> cargo test yaml_probe -- --ignored`

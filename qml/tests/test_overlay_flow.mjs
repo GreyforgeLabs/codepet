@@ -132,6 +132,15 @@ test('Home opens through the Omarchy shell, silently', () => {
     assert.equal(F.opensHome, undefined, 'the v0.2 window verbs and the stub panel verb are gone');
 });
 
+test('Updates opens the existing bar page through literal Omarchy IPC argv', () => {
+    assert.deepEqual(plain(F.openUpdatesArgv('/usr/share/omarchy')),
+                     ['/usr/share/omarchy/bin/omarchy-shell', '-q', 'greyforge.codepet', 'openUpdates']);
+    const fallback = ['/usr/bin/env', 'OMARCHY_PATH=/usr/share/omarchy', 'omarchy-shell', '-q', 'greyforge.codepet', 'openUpdates'];
+    for (const path of ['', undefined, 'relative/x']) assert.deepEqual(plain(F.openUpdatesArgv(path)), fallback);
+    assert.deepEqual(plain(F.openUpdatesArgv('/fixture/a path;$literal')),
+                     ['/fixture/a path;$literal/bin/omarchy-shell', '-q', 'greyforge.codepet', 'openUpdates']);
+});
+
 test('every overlay value of the shared order has an animation', () => {
     const values = new Set(V.priority.vectors.map((v) => v.expect.overlay));
     for (const ov of values) assert.ok(Object.prototype.hasOwnProperty.call(O.ANIMATIONS, ov), ov);
@@ -248,4 +257,22 @@ test('desktop placement validates saved coordinates and writes one structured ho
     assert.deepEqual(plain(F.placementArgv('/usr/share/omarchy', p)),
         ['qs', 'ipc', '-p', '/usr/share/omarchy/shell', 'call', '--', 'shell', 'setBarWidget',
          F.PLUGIN_ID, 'desktopPlacement', JSON.stringify(p), '{}']);
+});
+
+
+test('observer bubble labels describe external activity only and follow expiry', () => {
+    const names = P.CLIENT_NAMES;
+    assert.equal(O.observerLabel({state: 'working', bubble: {apps: ['codex']}}, names), 'Codex working');
+    assert.equal(O.observerLabel({state: 'waiting', bubble: {apps: ['codex']}}, names), 'Codex needs you');
+    assert.equal(O.observerLabel({state: 'working', bubble: {apps: ['codex', 'hermes']}}, names), 'Codex +1 working');
+    for (const state of ['need_now', 'need_soon', 'celebrate', 'idle', 'off'])
+        assert.equal(O.observerLabel({state, bubble: {apps: ['codex']}}, names), '');
+    assert.equal(O.observerLabel({state: 'working', bubble: {need: 'food'}}, names), '', 'owned job is not an observed client');
+    assert.equal(O.observerLabel({state: 'working', bubble: {apps: ['unknown']}}, names), '');
+    const now = 1700000000000, doc = fixture('idle-happy');
+    doc.agent = {apps: [{id: 'codex', state: 'working', since_ms: now - 10, stale_at_ms: now + 500}]};
+    assert.equal(O.observerLabel(P.currentPriority(doc, now, {}), names), 'Codex working');
+    assert.equal(O.observerLabel(P.currentPriority(doc, now + 500, {}), names), '', 'stale activity clears at its existing deadline');
+    doc.agent.apps = [];
+    assert.equal(O.observerLabel(P.currentPriority(doc, now, {}), names), '', 'completed activity clears');
 });

@@ -115,14 +115,14 @@ fn only_migrate_upgrades_and_every_other_command_refuses_a_v4_database_untouched
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
         format!(
-            "CodePet data upgraded from schema 4 to 5. Backup: {}\n",
+            "CodePet data upgraded from schema 4 to 6. Backup: {}\n",
             backup.display()
         )
     );
     let mode = std::fs::metadata(backup).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
     assert_eq!(testing::user_version(backup).unwrap(), 4);
-    assert_eq!(testing::user_version(&env.paths().db_path).unwrap(), 5);
+    assert_eq!(testing::user_version(&env.paths().db_path).unwrap(), 6);
     assert_eq!(
         env.bar_state().expect("migrate publishes")["life"]["name"],
         "Ginger"
@@ -132,13 +132,13 @@ fn only_migrate_upgrades_and_every_other_command_refuses_a_v4_database_untouched
     let state = env.run(&["state"]);
     assert_eq!(state.status.code(), Some(0), "{state:?}");
     let s: Value = serde_json::from_slice(&state.stdout).unwrap();
-    assert_eq!(s["schema_version"], 5);
+    assert_eq!(s["schema_version"], 6);
     assert_eq!(s["life"]["name"], "Ginger");
     assert_eq!(s["life"]["armed"], false);
     let again = env.run(&["migrate"]);
     assert_eq!(
         String::from_utf8(again.stdout).unwrap(),
-        "CodePet data is up to date (schema 5).\n"
+        "CodePet data is up to date (schema 6).\n"
     );
     assert_eq!(
         backups(&env),
@@ -151,13 +151,13 @@ fn only_migrate_upgrades_and_every_other_command_refuses_a_v4_database_untouched
 fn rpc_state_get_also_upgrades_a_v4_database() {
     let env = v4_env();
     let s = env.state();
-    assert_eq!(s["schema_version"], 5);
+    assert_eq!(s["schema_version"], 6);
     assert_eq!(s["life"]["name"], "Ginger");
     assert_eq!(s["life"]["origin"], "first_run");
     let taken = backups(&env);
     assert_eq!(taken.len(), 1, "{taken:?}");
     assert_eq!(testing::user_version(&taken[0]).unwrap(), 4);
-    assert_eq!(testing::user_version(&env.paths().db_path).unwrap(), 5);
+    assert_eq!(testing::user_version(&env.paths().db_path).unwrap(), 6);
 }
 
 /// The upgrade sequence (§6.6): the reloaded bar's `state.get` can race the installer's
@@ -184,13 +184,13 @@ fn migrate_racing_state_get_both_succeed_with_one_backup() {
         assert_eq!(b.status.code(), Some(0), "round {round}: {b:?}");
         let out = String::from_utf8(a.stdout).unwrap();
         assert!(
-            out.starts_with("CodePet data upgraded from schema 4 to 5. Backup: ")
-                || out == "CodePet data is up to date (schema 5).\n",
+            out.starts_with("CodePet data upgraded from schema 4 to 6. Backup: ")
+                || out == "CodePet data is up to date (schema 6).\n",
             "round {round}: {out}"
         );
         let r: Value = serde_json::from_slice(&b.stdout).unwrap();
         assert_eq!(r["ok"], true, "round {round}: {r}");
-        assert_eq!(r["result"]["schema_version"], 5);
+        assert_eq!(r["result"]["schema_version"], 6);
         let taken = backups(&env);
         assert_eq!(taken.len(), 1, "round {round}: {taken:?}");
         assert_eq!(testing::user_version(&taken[0]).unwrap(), 4);

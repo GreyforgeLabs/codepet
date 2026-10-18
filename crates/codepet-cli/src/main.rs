@@ -81,7 +81,13 @@ fn main() {
         (Some(Some("rpc")), 1) => rpc::run(),
         (Some(Some("work-rpc")), 1) => work::rpc(),
         (Some(Some("work-run")), 2) => args[1].to_str().map_or(2, work::run),
-        (Some(Some("work-sandbox")), 2) => args[1].to_str().map_or(2, work::sandbox),
+        (Some(Some("work-sandbox")), 2) => args[1]
+            .to_str()
+            .map_or(2, |kind| work::sandbox(kind, "codex")),
+        (Some(Some("work-sandbox")), 3) => match (args[1].to_str(), args[2].to_str()) {
+            (Some(kind), Some(client)) => work::sandbox(kind, client),
+            _ => 2,
+        },
         (Some(Some("state")), 1) => state(),
         // v0.3: the hook never reports a usage error (O2), whatever its arguments.
         (Some(Some("hook")), _) => hook::run(&args[1..]),

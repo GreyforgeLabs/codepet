@@ -27,6 +27,7 @@ fn export_writes_the_contract_shape_with_mode_0600() {
             "generated_at_ms",
             "app_version",
             "ruleset",
+            "care_rules",
             "life",
             "meters",
             "needs",
@@ -77,6 +78,8 @@ fn export_writes_the_contract_shape_with_mode_0600() {
             "mode",
             "armed",
             "pace",
+            "care_tempo",
+            "revision",
             "paused",
             "fainted",
             "death_pending"
@@ -429,10 +432,15 @@ fn the_export_has_the_v03_contract_shape() {
     let (mut a, mut b) = (BTreeSet::new(), BTreeSet::new());
     shape(&real, "", &mut a);
     shape(&fixture, "", &mut b);
-    // Preserve the frozen v0.3 fixture; the optional age field was added afterward.
+    // Preserve frozen v0.3. These explicitly tested additive fields arrived later.
     let missing: Vec<_> = a
         .difference(&b)
-        .filter(|k| k.as_str() != ".life.adopted_at_ms")
+        .filter(|k| {
+            !matches!(
+                k.as_str(),
+                ".life.adopted_at_ms" | ".life.care_tempo" | ".life.revision" | ".care_rules"
+            ) && !k.starts_with(".care_rules.")
+        })
         .collect();
     assert!(missing.is_empty(), "contract fixture lacks {missing:?}");
     // The fixture fills options a fresh export leaves empty (apps, test, client records).

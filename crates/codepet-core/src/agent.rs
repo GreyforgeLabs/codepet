@@ -959,6 +959,12 @@ pub fn apply_session_event(
 ) -> Transition {
     let at = ev.at_ms;
     let mut t = Transition::default();
+    let stale = at < s.last_event_ms;
+    // Separate spool scans can deliver older events after newer activity. Late
+    // tools and matching closers still count, but cannot replace a newer turn.
+    if stale && ev.kind != EventKind::Activity && !ev.kind.is_closer() {
+        return t;
+    }
     s.last_event_ms = s.last_event_ms.max(at);
     match ev.kind {
         EventKind::SessionStart | EventKind::IdlePrompt => s.set_state(SessionState::Idle, at),
@@ -977,7 +983,7 @@ pub fn apply_session_event(
             let open_matches = s
                 .open
                 .as_ref()
-                .is_some_and(|o| ev.turn.is_none_or(|k| k == o.key));
+                .is_some_and(|o| at >= o.started_ms && ev.turn.is_none_or(|k| k == o.key));
             let late_new_tool = match (&s.done, ev.tool, ev.turn) {
                 (Some(d), Some(tool), Some(key)) => {
                     key == d.key && !seen(&d.key, tool, d.started_ms)
@@ -992,7 +998,7 @@ pub fn apply_session_event(
                         t.counted_tool_turn = Some(o.key.clone());
                     }
                 }
-                if matches!(s.state, SessionState::Waiting | SessionState::Idle) {
+                if !stale && matches!(s.state, SessionState::Waiting | SessionState::Idle) {
                     s.set_state(SessionState::Working, at);
                 }
             } else if late_new_tool {
@@ -1011,7 +1017,7 @@ pub fn apply_session_event(
                             recheck: true,
                         });
                     }
-                } else {
+                } else if !stale {
                     // (c) continuation (e.g. a Stop veto): the turn reopens.
                     s.open = Some(OpenTurn {
                         key: d.key.clone(),
@@ -1020,21 +1026,29 @@ pub fn apply_session_event(
                     });
                     s.set_state(SessionState::Working, at);
                 }
-            } else if s.open.is_none() && s.state == SessionState::Waiting {
+            } else if !stale && s.open.is_none() && s.state == SessionState::Waiting {
                 // (d) the question was answered and nothing known is running.
                 s.set_state(SessionState::Idle, at);
             }
         }
         EventKind::TurnDone | EventKind::TurnFailed | EventKind::TurnCancelled => {
-            let matches = s.open.as_ref().is_some_and(|o| match ev.turn {
-                Some(k) => k == o.key,
-                None => o.started_ms < at,
+            let matches = s.open.as_ref().is_some_and(|o| {
+                at >= o.started_ms
+                    && match ev.turn {
+                        Some(k) => k == o.key,
+                        None => o.started_ms < at,
+                    }
             });
             if matches {
                 let o = s.open.take().expect("checked above");
+                // A later async activity can leave this same turn working. Close
+                // it, but preserve a newer approval/idle presentation.
+                let update_state = s.state == SessionState::Working || at >= s.state_since_ms;
                 match ev.kind {
                     EventKind::TurnDone => {
-                        s.set_state(SessionState::Idle, at);
+                        if update_state {
+                            s.set_state(SessionState::Idle, at);
+                        }
                         t.finished = true;
                         let tools = o.tools.saturating_add(ev.payload_tools);
                         let prev_earned =
@@ -1056,10 +1070,16 @@ pub fn apply_session_event(
                         });
                     }
                     EventKind::TurnFailed => {
-                        s.set_state(SessionState::Error, at);
-                        s.error_at_ms = Some(at);
+                        if update_state {
+                            s.set_state(SessionState::Error, at);
+                        }
+                        s.error_at_ms = Some(s.error_at_ms.map_or(at, |previous| previous.max(at)));
                     }
-                    _ => s.set_state(SessionState::Idle, at),
+                    _ => {
+                        if update_state {
+                            s.set_state(SessionState::Idle, at);
+                        }
+                    }
                 }
             }
         }
@@ -1250,6 +1270,196 @@ mod tests {
 
     fn vectors() -> Value {
         serde_json::from_str(VECTORS).expect("agent_vectors.json parses")
+    }
+
+    #[test]
+    fn delayed_events_do_not_replace_a_newer_turn_or_state() {
+        let mut s = Session::new(1_000);
+        let event = |kind, at_ms, turn| SessionEvent {
+            kind,
+            at_ms,
+            turn,
+            tool: None,
+            payload_tools: 1,
+        };
+        apply_session_event(
+            &mut s,
+            &event(EventKind::TurnStart, 2_000, Some("current")),
+            |_, _, _| false,
+        );
+        let current = s.clone();
+        for kind in [
+            EventKind::TurnStart,
+            EventKind::Waiting,
+            EventKind::IdlePrompt,
+            EventKind::SessionEnd,
+            EventKind::TurnDone,
+            EventKind::TurnFailed,
+            EventKind::TurnCancelled,
+        ] {
+            apply_session_event(&mut s, &event(kind, 1_500, Some("old")), |_, _, _| false);
+            assert_eq!(s, current, "{kind:?}");
+        }
+        let done = apply_session_event(
+            &mut s,
+            &event(EventKind::TurnDone, 2_500, Some("current")),
+            |_, _, _| false,
+        );
+        assert!(done.finished);
+        assert_eq!(s.state, SessionState::Idle);
+        assert_eq!(s.done.as_ref().unwrap().key, "current");
+        let late = SessionEvent {
+            kind: EventKind::Activity,
+            at_ms: 2_200,
+            turn: Some("current"),
+            tool: Some("late"),
+            payload_tools: 0,
+        };
+        assert!(apply_session_event(&mut s, &late, |_, _, _| false)
+            .counted_tool_turn
+            .is_some());
+        assert_eq!(s.state, SessionState::Idle);
+        assert_eq!(s.last_event_ms, 2_500);
+    }
+
+    #[test]
+    fn matching_closers_survive_out_of_order_async_activity_once() {
+        for (kind, state, earns) in [
+            (EventKind::TurnDone, SessionState::Idle, true),
+            (EventKind::TurnFailed, SessionState::Error, false),
+            (EventKind::TurnCancelled, SessionState::Idle, false),
+        ] {
+            for done_ms in [2_000, 31_000] {
+                for late_ms in [500, LATE_TOOL_MS] {
+                    for completion_first in [true, false] {
+                        let mut w = World::new(0);
+                        let start = serde_json::json!({
+                            "kind": "turn_start", "at": 1_000, "turn": "current"
+                        });
+                        let activity = serde_json::json!({
+                            "kind": "activity", "at": done_ms + late_ms,
+                            "turn": "current", "tool": "async"
+                        });
+                        let closer = serde_json::json!({
+                            "kind": kind.as_str(), "at": done_ms, "turn": "current"
+                        });
+                        w.apply("session", true, &start);
+                        let events = if completion_first {
+                            [&closer, &activity]
+                        } else {
+                            [&activity, &closer]
+                        };
+                        for event in events {
+                            w.apply("session", true, event);
+                        }
+                        let s = &w.sessions["session"];
+                        assert_eq!(s.state, state, "{kind:?}");
+                        assert_eq!(s.state_since_ms, done_ms);
+                        assert_eq!(s.last_event_ms, done_ms + late_ms);
+                        assert!(s.open.is_none());
+                        assert_eq!(
+                            s.error_at_ms,
+                            (kind == EventKind::TurnFailed).then_some(done_ms)
+                        );
+                        if earns {
+                            let done = s.done.as_ref().unwrap();
+                            assert_eq!(done.done_ms, done_ms);
+                            assert_eq!(done.tools, 1);
+                            assert!(done.earned);
+                        } else {
+                            assert!(s.done.is_none());
+                        }
+                        let settled = s.clone();
+                        // A repeated closer, including success after failure/cancel,
+                        // cannot earn again or publish another completion.
+                        assert!(!w.apply("session", true, &closer));
+                        assert!(!w.apply(
+                            "session",
+                            true,
+                            &serde_json::json!({
+                                "kind": "turn_done", "at": done_ms, "turn": "current"
+                            })
+                        ));
+                        assert_eq!(w.sessions["session"], settled);
+                        assert_eq!(w.jar, u32::from(earns));
+                        assert_eq!(w.earned.len(), usize::from(earns));
+                        assert_eq!(w.finished_seq, u32::from(earns));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn delayed_matching_closers_preserve_newer_waiting_presentation() {
+        for kind in [
+            EventKind::TurnDone,
+            EventKind::TurnFailed,
+            EventKind::TurnCancelled,
+        ] {
+            let mut w = World::new(0);
+            for event in [
+                serde_json::json!({"kind":"turn_start", "at":1_000, "turn":"current"}),
+                serde_json::json!({"kind":"waiting", "at":31_500, "turn":"current"}),
+                serde_json::json!({"kind":kind.as_str(), "at":31_000, "turn":"current"}),
+            ] {
+                w.apply("session", true, &event);
+            }
+            let s = &w.sessions["session"];
+            assert!(s.open.is_none());
+            assert_eq!(s.state, SessionState::Waiting);
+            assert_eq!(s.state_since_ms, 31_500);
+            assert_eq!(s.last_event_ms, 31_500);
+            assert_eq!(w.jar, u32::from(kind == EventKind::TurnDone));
+        }
+    }
+
+    #[test]
+    fn delayed_closers_require_the_current_turn_and_valid_start_time() {
+        for kind in [
+            EventKind::TurnDone,
+            EventKind::TurnFailed,
+            EventKind::TurnCancelled,
+        ] {
+            for (turn, at_ms, closes) in [
+                (Some("older"), 3_000, false),
+                (Some("current"), 1_999, false),
+                (Some("current"), 2_000, true),
+                (None, 2_000, false),
+                (None, 2_001, true),
+            ] {
+                let mut s = Session::new(2_000);
+                let event = |kind, at_ms, turn| SessionEvent {
+                    kind,
+                    at_ms,
+                    turn,
+                    tool: None,
+                    payload_tools: 0,
+                };
+                apply_session_event(
+                    &mut s,
+                    &event(EventKind::TurnStart, 2_000, Some("current")),
+                    |_, _, _| false,
+                );
+                apply_session_event(
+                    &mut s,
+                    &event(EventKind::Activity, 4_000, Some("current")),
+                    |_, _, _| false,
+                );
+                let before = s.clone();
+                let result =
+                    apply_session_event(&mut s, &event(kind, at_ms, turn), |_, _, _| false);
+                assert_eq!(s.open.is_none(), closes, "{kind:?}, {turn:?}, {at_ms}");
+                assert_eq!(s.last_event_ms, 4_000);
+                if closes {
+                    assert_eq!(result.finished, kind == EventKind::TurnDone);
+                    assert_eq!(result.treat.is_some(), kind == EventKind::TurnDone);
+                } else {
+                    assert_eq!(s, before);
+                    assert_eq!(result, Transition::default());
+                }
+            }
+        }
     }
 
     #[test]

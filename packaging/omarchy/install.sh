@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh: install or update CodePet for the current user on Omarchy (v0.4, schema 5).
+# install.sh: install or update CodePet for the current user on Omarchy (v0.5.0, schema 6).
 #
 #   packaging/omarchy/install.sh [--dry-run] [--no-plugin]
 #
@@ -11,7 +11,7 @@
 #   1. build the `codepet` binary (memory-capped), unless CODEPET_BIN_SOURCE names a
 #      prebuilt one or this is a release archive (its bin/codepet); before anything is
 #      replaced, that binary must report exactly `codepet <version>` of this tree, and this
-#      tree's plugin needs a matching 0.4.x backend (an older binary refuses schema 5 data);
+#      tree's plugin needs a matching 0.4.x backend (an older binary refuses schema 6 data);
 #   2. upgrade only: stop a running desktop overlay and any CodePet 0.2 task supervisor,
 #      each by its exact PID (never a pattern kill);
 #   3. install `codepet`, `codepet-overlay` `codepet-work` and `codepet-update` into ~/.local/bin atomically (temporary
@@ -26,7 +26,7 @@
 #      shell is asked to rescan its plugins; on a first install the plugin is enabled once
 #      (right section, before the tray) after the shell lists it (without a running shell
 #      the enable command is printed instead);
-#   6. run `codepet migrate` (creates the pet's data at schema 5, or upgrades a v0.2
+#   6. run `codepet migrate` (creates the pet's data at schema 6, or upgrades a v0.2
 #      database after a `VACUUM INTO …bak-v4-<ms>` backup; a newer or corrupt database is
 #      refused untouched);
 #   7. refresh the CodePet-owned files of already connected coding apps (`codepet
@@ -66,7 +66,7 @@ PROG=install.sh
 PLUGIN_ID=greyforge.codepet
 OMARCHY=${CODEPET_OMARCHY:-omarchy}
 QS=${CODEPET_QS:-qs}
-# The release series this tree's plugin and overlay speak to (schema 5, protocol v1).
+# The release series this tree's plugin and overlay speak to (schema 6, protocol v1).
 SERIES=0.4
 
 usage() {
@@ -148,6 +148,14 @@ case "$VERSION" in
     "$SERIES".*) ;;
     *) die "this tree ships the CodePet $SERIES bar plugin but its version is $VERSION" ;;
 esac
+command -v python3 >/dev/null 2>&1 || die "Python 3.11 or later is required for updates and the Work launcher"
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "Python 3.11 or later is required"
+BUILD_ID=$(python3 "$REPO/$UPDATER_SOURCE" _identity "$REPO") || die "could not identify the complete UI content"
+[[ "$BUILD_ID" =~ ^[0-9a-f]{64}$ ]] || die "invalid UI content identity"
+
+stage_build_info() {
+    printf '.pragma library\nvar identity = "%s"\n' "$BUILD_ID" > "$1"
+}
 
 # stage_runtime <dir>: <dir>/qml/{shell.qml,work.qml,shared,omarchy,assets}
 stage_runtime() {
@@ -157,12 +165,18 @@ stage_runtime() {
     for d in shared omarchy assets; do
         cp -R -- "$REPO/qml/$d" "$1/qml/$d"
     done
+    stage_build_info "$1/qml/shared/BuildInfo.js"
+    local plugin=true
+    [ "$NO_PLUGIN" -eq 0 ] || plugin=false
+    printf '{"schema":"codepet.build.v1","identity":"%s","plugin":%s}\n' "$BUILD_ID" "$plugin" > "$1/build.json"
+    chmod 600 "$1/build.json"
 }
-# stage_plugin <dir>: <dir> = omarchy-plugin/ plus LifeText.js (spec §14.1)
+# stage_plugin <dir>: <dir> = omarchy-plugin/ plus LifeText.js and generated BuildInfo.js
 stage_plugin() {
     mkdir -p -- "$1"
     cp -R -- "$REPO/omarchy-plugin/." "$1/"
     cp -- "$REPO/qml/shared/LifeText.js" "$1/LifeText.js"
+    stage_build_info "$1/BuildInfo.js"
 }
 # no_symlinks <dir>: the staged copy holds regular files and directories only.
 no_symlinks() {
@@ -218,8 +232,6 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
     "$OMARCHY" plugin validate --help >/dev/null 2>&1 ||
         die "this omarchy has no plugin support (Omarchy 4 or later is required); rerun with --no-plugin"
 fi
-command -v python3 >/dev/null 2>&1 || die "Python 3.11 or later is required for updates and the Work launcher"
-python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "Python 3.11 or later is required"
 # The pet sprites are WebP: without Qt's WebP image plugin they render blank.
 webp_plugin=0
 for d in /usr/lib/qt6/plugins /usr/lib64/qt6/plugins /usr/lib/x86_64-linux-gnu/qt6/plugins; do
@@ -267,16 +279,15 @@ prune_backups() {
     done
 }
 
-# overlay_pids: the pids of running CodePet overlays (qs instances whose config lives under
-# this runtime's current/ or releases/), from `qs list --all --json`.
+# overlay_pids: only the desktop shell.qml entry, never the separate Work window.
 overlay_pids() {
     command -v "$QS" >/dev/null 2>&1 || return 0
     "$QS" list --all --json 2>/dev/null | CP_DATA="$RUNTIME" awk '
-        BEGIN { cur = ENVIRON["CP_DATA"] "/current/"; rel = ENVIRON["CP_DATA"] "/releases/" }
+        BEGIN { cur = ENVIRON["CP_DATA"] "/current/qml/shell.qml"; rel = ENVIRON["CP_DATA"] "/releases/" }
         /^[ \t]*\{/ { path = ""; pid = "" }
         /"config_path"[ \t]*:/ { l = $0; sub(/^[^:]*:[ \t]*"/, "", l); sub(/",?[ \t]*$/, "", l); path = l }
         /"pid"[ \t]*:/ { l = $0; sub(/^[^:]*:[ \t]*/, "", l); sub(/,?[ \t]*$/, "", l); if (l ~ /^[0-9]+$/) pid = l }
-        /^[ \t]*\}/ { if (pid != "" && (index(path, cur) == 1 || index(path, rel) == 1)) print pid }'
+        /^[ \t]*\}/ { tail = substr(path, length(rel) + 1); if (pid != "" && (path == cur || (index(path, rel) == 1 && tail ~ /^[^/]+\/qml\/shell\.qml$/))) print pid }'
 }
 # supervisor_pids: CodePet 0.2 task supervisors, i.e. this user's processes running
 # `<~/.local/bin/codepet> rpc` (a v0.2 `rpc` that started a task stays on as its
@@ -408,7 +419,6 @@ discovered() {
     done
     return 1
 }
-RELOADED=0
 PLUGIN_BACKUP=
 if [ "$NO_PLUGIN" -eq 0 ]; then
     # Staged beside plugins/ (same filesystem, so every move below is one rename) but
@@ -433,7 +443,6 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
         prune_backups plugin-backup- "$WORK/plugin-backup-$TS"
         # Ask the running shell to rescan, so it reloads the swapped plugin now.
         if "$OMARCHY" shell shell rescanPlugins >/dev/null 2>&1; then
-            RELOADED=1
             echo "plugin: the running shell was asked to reload it"
         fi
     else
@@ -454,7 +463,7 @@ if [ "$NO_PLUGIN" -eq 0 ]; then
     fi
 fi
 
-# 6. the pet's data: create or upgrade (schema 5); a refusal leaves it untouched
+# 6. the pet's data: create or upgrade (schema 6); a refusal leaves it untouched
 FAILED=0
 if migrated=$("$BIN_DIR/codepet" migrate 2>&1); then
     echo "data: $migrated"
@@ -511,16 +520,18 @@ if [ "$OVERLAY_RUNNING" -eq 1 ]; then
     fi
 fi
 
-if [ "$UPDATE" -eq 1 ]; then
-    if [ "$NO_PLUGIN" -eq 0 ] && [ "$RELOADED" -eq 0 ]; then
-        echo "If the bar does not pick up the plugin by itself (never while the session is locked):"
-        if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-            echo "  HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE omarchy restart shell"
-        else
-            echo "  omarchy restart shell   # from a terminal inside your Hyprland session"
-        fi
+if [ "$FAILED" -eq 0 ] && [ "$NO_PLUGIN" -eq 0 ]; then
+    # Rescan acknowledges a request; only the loaded component can prove its bytes.
+    if ui=$("$BIN_DIR/codepet-update" _record-ui) &&
+        python3 -c 'import json,sys; sys.exit(json.load(sys.stdin).get("restart_required") is not False)' <<<"$ui"; then
+        echo "plugin: the running bar confirmed UI build $BUILD_ID"
+    else
+        echo "plugin: installed files are ready; the running bar has not confirmed this UI build"
+        echo "Open CodePet Updates and choose Restart bar to finish (only in an unlocked, idle session)."
+        echo "Or run: codepet-update restart-bar"
     fi
-else
+fi
+if [ "$UPDATE" -eq 0 ]; then
     if [ "$NO_PLUGIN" -eq 0 ]; then
         echo "Next: click CodePet on the bar (right section), pick a pet and tap Let's go!"
     else

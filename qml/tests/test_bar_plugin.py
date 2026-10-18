@@ -42,6 +42,7 @@ TIMERS = {
     "codepetBar.rpcWatchdog": ("BarRpc.qml", False),
     "codepetPopup.frames": ("PopupApp.qml", True),
     "codepetPopup.bubble": ("PopupApp.qml", False),
+    "codepetPopup.growthAccent": ("HomeScreen.qml", False),
     "codepetPopup.age": ("PetProgress.qml", True),
     "codepetUpdate.watchdog": ("UpdateController.qml", False),
     "codepetUpdate.poll": ("UpdateController.qml", True),
@@ -176,6 +177,10 @@ class SourceContract(unittest.TestCase):
             text = self.qml[file]
             timer = next(b for b in blocks(text, "Timer {") if f'objectName: "{name}"' in b)
             self.assertIn(f"repeat: {'true' if repeat else 'false'}", timer, name)
+        growth = next(b for b in blocks(self.qml["HomeScreen.qml"], "Timer {") if "codepetPopup.growthAccent" in b)
+        self.assertIn("interval: 1600", growth)
+        self.assertNotIn("onTriggered:", growth, "the expiry only hides its presentation")
+        self.assertNotIn("running: true", growth, "growth is explicitly triggered, never a background timer")
         rec = blocks(self.qml["PresenceRecorder.qml"], "Timer {")[0]
         self.assertIn("interval: 60000", rec)
         self.assertIn("running: recorder.eligible", rec)
@@ -211,8 +216,8 @@ class SourceContract(unittest.TestCase):
                     self.assertNotIn("request(", body, f"{name}: timer -> {called} sends a request")
                     self.assertNotIn("execDetached", body, f"{name}: timer -> {called} launches")
 
-    def test_state_get_only_on_startup_and_popup_open(self):
-        allowed = {"startup", "openPopup"}
+    def test_state_get_only_on_startup_popup_or_committed_presence(self):
+        allowed = {"startup", "openPopup", "settlePresence"}
         for name, text in self.qml.items():
             if name == "BarRpc.qml":
                 continue
@@ -236,13 +241,13 @@ class SourceContract(unittest.TestCase):
         model = self.src["CodePetBar.js"]
         allow = json.loads("[" + re.search(r"var ALLOWED_METHODS = \[([^\]]*)\]", model, re.S).group(1) + "]")
         proto = json.loads((CONTRACTS / "protocol.json").read_text())
-        known = set(proto["kept"]) | {m["method"] for m in proto["added"]}
+        known = set(proto["kept"]) | {m["method"] for m in proto["added"]} | {"pet.care_tempo"}
         self.assertTrue(set(allow) <= known, set(allow) - known)
         for gone in ("pet.adopt", "pet.configure_life", "hello", "lifecycle.rules"):
             self.assertNotIn(gone, allow)
         for name, text in self.qml.items():
             for method in re.findall(r"request\(\s*\"([^\"]+)\"", text):
-                self.assertIn(method, ["status", "check", "install"] if name == "UpdateController.qml" else allow,
+                self.assertIn(method, ["status", "check", "install", "restart-bar"] if name == "UpdateController.qml" else allow,
                               f"{name} sends {method}")
             self.assertNotRegex(text, r"\"task\.", f"{name} mentions a task method")
         rpc = self.qml["BarRpc.qml"]
@@ -268,7 +273,7 @@ class SourceContract(unittest.TestCase):
         self.assertLess(function_bodies(updater)["request"].index("if (!supported)"), function_bodies(updater)["request"].index("process.createObject"))
         self.assertIn('command: [updates.helper, verb]', updater)
         self.assertIn('environment: updates.childEnv', updater)
-        self.assertIn('["status", "check", "install"].indexOf(verb) < 0', updater)
+        self.assertIn('["status", "check", "install", "restart-bar"].indexOf(verb) < 0', updater)
         self.assertIn('command: [rpc.binary, "rpc"]', rpc)
         self.assertIn("environment: rpc.childEnv", rpc)
         for name, text in self.qml.items():
@@ -304,6 +309,7 @@ class SourceContract(unittest.TestCase):
         self.assertIn('target: "greyforge.codepet"', ipc)
         self.assertIn("enabled: root.leader", ipc)
         self.assertIn("function openHome(): void { root.open() }", ipc)
+        self.assertIn('function openUpdates(): void { root.openPage("updates") }', ipc)
         # `omarchy-shell shell summon|hide|toggle greyforge.codepet` (Bar.qml summonBarWidget)
         # calls open() / close() and reads `opened`; open() keeps the Off cell rule.
         self.assertIn("readonly property bool opened: root.menu", bw)
@@ -684,9 +690,28 @@ ShellRoot {
         function summon(): bool { w1.open(); return w1.opened }
         function close(): void { w1.close() }
         function page(name: string): void { w1.openPage(name) }
+        function commitPresence(): void {
+            for (var i = 0; i < w1.data.length; i++) {
+                var loader = w1.data[i]
+                if (!loader || !loader.item || typeof loader.item.tick !== "function") continue
+                var r = loader.item, now = Date.now()
+                r.ensureSession(now - 240000)
+                r.model.started_wall_ms = now - 240000
+                r.model.lastWall = now - 60000
+                r.model.pending = [{ at: now - 180000, credit: 60000 }]
+                r.tick()
+                return
+            }
+            throw new Error("presence recorder missing")
+        }
         function tap(name: string): void { var o = kit.find(shell.app(), name); if (o) o.tapped() }
         function toggle(name: string, on: bool): void { var o = kit.find(shell.app(), name); if (o) o.toggled(on) }
         function setting(key: string, on: bool): void { w1.setSetting(key, on) }
+        function queueCare(action: string): void {
+            for (var i = 0; i < w1.data.length; i++)
+                if (w1.data[i].objectName === "codepetBar.rpc")
+                    w1.data[i].request("pet.care", { action: action }, null)
+        }
         // Two requests on the transport, the first with a handler that throws.
         function throwing(): void {
             for (var i = 0; i < w1.data.length; i++)
@@ -885,6 +910,9 @@ p.write_text(json.dumps(s));print(json.dumps(s))
         self.harness("page", "updates")
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["updateState"] and self.dump()["w1"]["updateState"]["state"] == "available" and not self.dump()["w1"]["updateBusy"]))
         self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()], [["status"], ["check"]])
+        self.harness("close")
+        self.call("--", "greyforge.codepet", "openUpdates")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "updates" and not self.dump()["w1"]["updateBusy"]))
         self.harness("tap", "cp.updates.action")
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["updateState"]["state"] == "downloading" and not self.dump()["w1"]["updateBusy"]))
         self.harness("close")
@@ -892,7 +920,7 @@ p.write_text(json.dumps(s));print(json.dumps(s))
         time.sleep(1.5)
         self.assertEqual(len(calls.read_text().splitlines()), count)
 
-    def test_work_file_is_passive_and_food_opens_compact_card(self):
+    def test_work_file_is_passive_and_work_opens_compact_card(self):
         self.start(state=fixture("idle-happy", state_version=5))
         self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"]))
         before = len(self.rpc_log())
@@ -902,7 +930,7 @@ p.write_text(json.dumps(s));print(json.dumps(s))
         self.assertEqual(len(self.rpc_log()), before, "work export observation launches no request")
         self.harness("press", "1")
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]))
-        self.harness("tap", "cp.tile.food")
+        self.harness("tap", "cp.round.work")
         path = self.home / "launch.log"
         self.assertTrue(self.wait_for(path.exists))
         self.assertEqual(json.loads(path.read_text().splitlines()[0])["argv"], ["card"])
@@ -937,7 +965,13 @@ p.write_text(json.dumps(s));print(json.dumps(s))
         time.sleep(1)
         self.assertEqual(len(self.rpc_log()), 1, "file events never launch Rust")
         d = self.dump()
-        self.assertEqual(d["w2"]["cell"]["badge"], "bar/badge_hand")
+        self.assertEqual(d["w2"]["cell"]["badge"], "bar/badge_drop", "thirst remains visible while the agent waits")
+        waiting = fixture("waiting", state_version=51)
+        waiting["meters"] = {key: 10000 for key in waiting["meters"]}
+        waiting["needs"] = []
+        self.write_state(waiting)
+        self.assertTrue(self.wait_for(lambda: self.dump()["w2"]["version"] == 51))
+        self.assertEqual(self.dump()["w2"]["cell"]["badge"], "bar/badge_hand", "healthy waiting retains its activity badge")
 
         # Left click opens Home: one state.get; the popup's clock runs while open.
         self.write_state(fixture("idle-happy", state_version=60))
@@ -1091,8 +1125,8 @@ p.write_text(json.dumps(s));print(json.dumps(s))
 
     def test_a_timeout_with_the_popup_closed_frees_the_slot_and_keeps_order(self):
         """A care tap times out after the popup closed: the child is ended, the slot frees,
-        the presses queued behind it run in order, and two quick taps of one tile are two
-        requests (two ids), never one replayed receipt."""
+        transport requests queued behind it run in order with distinct ids. The Home
+        care controls themselves wait for confirmation before accepting another tap."""
         self.start(state=fixture("idle-happy", state_version=7))
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["version"] >= 8))
         self.harness("rpcTimeout", "1500")
@@ -1101,7 +1135,10 @@ p.write_text(json.dumps(s));print(json.dumps(s))
         self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "home" and not self.dump()["w1"]["busy"]))
         self.harness("tap", "cp.tile.play")
         self.harness("tap", "cp.tile.wash")
-        self.harness("tap", "cp.tile.wash")
+        self.assertFalse(any(e["params"].get("action") == "wash" for e in self.rpc_log()),
+                         "Home rejects another care tap while awaiting the first reply")
+        self.harness("queueCare", "wash")
+        self.harness("queueCare", "wash")
         self.harness("close")
         t0 = time.monotonic()
         self.assertTrue(self.wait_for(lambda: sum(e["params"].get("action") == "wash" for e in self.rpc_log()) == 2, 15),
@@ -1156,6 +1193,36 @@ p.write_text(json.dumps(s));print(json.dumps(s))
         self.assertNotEqual(self.dump()["w1"]["face"]["state"], "celebrate", "the star stops replaying")
         time.sleep(0.5)
         self.assertEqual(sum(e["method"] == "pet.events_seen" for e in self.rpc_log()), 1, "a finished turn sends nothing")
+
+    def test_closing_help_does_not_ack_unshown_growth(self):
+        self.start(state=fixture("grew-up", state_version=7))
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"]))
+        self.harness("page", "help")
+        self.assertTrue(self.wait_for(lambda: self.dump()["w1"]["screen"] == "help" and not self.dump()["w1"]["busy"]))
+        self.harness("close")
+        time.sleep(.4)
+        self.assertFalse(any(e["method"] == "pet.events_seen" for e in self.rpc_log()))
+        self.assertEqual(self.dump()["w1"]["face"]["line"], "grew")
+
+    def test_successful_owned_presence_commit_settles_once(self):
+        self.start(state=fixture("idle-happy", state_version=7))
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"]))
+        before = len(self.rpc_log())
+        self.harness("commitPresence")
+        self.assertTrue(self.wait_for(lambda: len(self.rpc_log()) == before + 1))
+        self.assertEqual(self.rpc_log()[-1]["method"], "state.get")
+        self.assertTrue(self.wait_for(lambda: not self.dump()["w1"]["busy"]))
+        time.sleep(.4)
+        self.assertEqual(len(self.rpc_log()), before + 1, "export watcher cannot start a refresh loop")
+        presence = self.state_dir / "presence.json"
+        presence.unlink()
+        presence.mkdir()
+        self.harness("commitPresence")
+        time.sleep(.4)
+        self.assertEqual(len(self.rpc_log()), before + 1, "failed presence write cannot settle")
+        presence.rmdir()
+        self.harness("commitPresence")
+        self.assertTrue(self.wait_for(lambda: len(self.rpc_log()) == before + 2), "retry happens on next real commit")
 
     def test_a_failed_power_switch_in_the_menu_says_so(self):
         """A failure off Home is shown where the kid is: the right-click menu's switch."""

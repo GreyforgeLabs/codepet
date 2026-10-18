@@ -1,6 +1,6 @@
-# Companion lifecycle (v0.4)
+# Companion lifecycle (v0.5)
 
-The numerical `lifecycle-v1` care rules below remain in force. v0.4 adds the
+The frozen `lifecycle-v1` rules remain the base for each life. v0.4 adds the
 [useful-work loop](work.md) alongside external-session treats. These rules supersede the historical
 v0.2 task/default descriptions retained below.
 
@@ -30,6 +30,47 @@ The bar records attended time; an overlay on its own does not. UI/presence
 mutations settle then finalize. Agent folds and read-only memories do neither.
 See [architecture](architecture.md), [privacy](security.md) and
 [validation](validation.md).
+
+## Care tempo (v0.5)
+
+**Lively** makes care visible during an ordinary desktop session. Each full meter
+holds for five attended minutes, then food drains 60, water 80, mood 40 and hygiene
+30 percentage points per attended hour. A full pet therefore has food 75%, water
+about 67%, mood about 83% and hygiene about 88% after 30 attended minutes. Early
+picture cues may appear at 60%; the lifecycle warning remains at 30%. Play fills
+mood, which must stay at least 25% to begin owned work. Free care grants no XP.
+
+Lively is available only for armed Gentle lives using the Steady base pace. New
+Gentle lives created with **Let's go!** start Lively. Existing lives and explicit
+adoption keep Steady until a deliberate tempo change. Steady retains the historical
+one-hour hold and base rates below. Hardcore requires selecting Steady first;
+its timing is unchanged. Playtest remains a separate historical preset.
+
+`pet.care_tempo` takes `life_id`, `expected_revision` and `tempo` (`steady` or
+`lively`), with the ordinary request id. It settles pending attended time using the
+old tempo before changing future rates. Off, an unarmed life, pending endings,
+active work, stale lives and stale revisions refuse the change. Replays return the
+saved receipt. Switching never grants care or XP, changes birth or history, clears
+fractional decay or critical clocks, or extends a remaining full hold. A shorter
+hold is clamped to the new maximum; only actual care starts a new full hold.
+
+Schema 6 adds `lives.care_tempo`, defaulting every migrated life to Steady. Frozen
+ruleset JSON/hash and stored base leniency remain untouched. Lively effective rates
+are integer-floor `base_rate × [6000,8000,4000,3000] / [1000,1250,600,500]`;
+`pet.configure_life` continues changing only the base, so existing leniency applies
+in either tempo and switching back restores it exactly. Snapshot `life.care_tempo`
+and `life.revision` identify the selection; `lifecycle.rules` shows effective rules.
+The passive bar export includes the same life fields and effective `care_rules`.
+Migration takes a recovery backup; older binaries refuse schema 6.
+
+Needs change only with eligible attended time: no offline, lock, suspend or Off
+catch-up. The bar settles after an eligible owned minute checkpoint so the desktop
+can display those changes without waiting for a click. External observer folds
+continue to leave care untouched.
+
+Treats are distinct from free snacks: a finite jar holds at most ten earned treats.
+Giving one consumes one and grants exactly five XP, without refilling food. The
+first growth boundary is 80 XP; a pet at 75 XP needs one more treat or accepted work.
 
 ## Historical v0.2 reference
 

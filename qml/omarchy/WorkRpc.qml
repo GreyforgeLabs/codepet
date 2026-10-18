@@ -26,7 +26,7 @@ Item {
     function fail(message) { return { ok: false, error: { code: "TRANSPORT", message: message } } }
     function request(method, params, callback) {
         if (rpc.busy) return false
-        if (["status", "start", "get", "cancel", "accept", "discard", "repos", "scout", "scout-settings", "fix"].indexOf(method) < 0) return false
+        if (["status", "start", "get", "cancel", "accept", "discard", "dismiss", "repos", "scout", "scout-settings", "client-select", "fix"].indexOf(method) < 0) return false
         var frame = JSON.stringify({ method: method, params: params || {} }) + "\n"
         if (bytes(frame) > 65536) { callback(fail("That request is too long.")); return false }
         var job = process.createObject(rpc, { frame: frame, callback: callback })

@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 /// One migration step. `at` is the single time sample `Store::migrate` takes before the
 /// transaction; v1–v3 use only `at.wall`, exactly where they used `now` before v0.2.
 pub(crate) type Migration = fn(&Transaction<'_>, &TimeMark) -> crate::Result<()>;
-pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3, v4, v5];
+pub(crate) const MIGRATIONS: &[Migration] = &[v1, v2, v3, v4, v5, v6];
 
 /// Slot-occupying states; must equal `State::occupies_slot` (checked by a test).
 pub(crate) const SLOT_STATES: &str = "('preparing','running','waiting_for_user','verifying',\
@@ -635,4 +635,13 @@ fn v5(tx: &Transaction<'_>, at: &TimeMark) -> crate::Result<()> {
         [],
     )?;
     Ok(())
+}
+
+/// Preserve every existing life and frozen base rule. Tempo changes are explicit;
+/// only newly started Gentle lives choose Lively during creation.
+fn v6(tx: &Transaction<'_>, _at: &TimeMark) -> crate::Result<()> {
+    Ok(tx.execute_batch(
+        "ALTER TABLE lives ADD COLUMN care_tempo TEXT NOT NULL DEFAULT 'steady'
+        CHECK (care_tempo IN ('steady','lively'));",
+    )?)
 }

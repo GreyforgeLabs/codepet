@@ -1,7 +1,8 @@
 # Updates
 
-Open **More → Updates** to check the latest stable release from
+Click the desktop pet, then **Updates**, to check the latest stable release from
 [GreyforgeLabs/codepet on GitHub](https://github.com/GreyforgeLabs/codepet/releases/latest).
+The bar's **More → Updates** and right-click menu open the same page.
 If a newer version is available, **Update** downloads, checks and installs it. No
 terminal, GitHub sign-in or administrator password is needed. Checks happen when
 you open this page or press **Check again**; there is no idle update daemon and no
@@ -16,7 +17,14 @@ slip between that check and installation. The updater never kills a coding job.
 The existing installer preserves the pet's life, age, XP, care, settings, saved
 work and optional app connections. It retains its usual binary/runtime/plugin
 recovery backups. A desktop pet that was visible returns after installation; the
-bar plugin is reloaded without restarting the shell. The update runs as one
+bar plugin is asked to reload. CodePet compares the actual loaded UI's content
+identity with the installed files, including changes made within the same version.
+If the shell still holds older components, Updates keeps a **Restart bar** button.
+**Check again** does not dismiss that pending restart. The explicit button restarts
+the Omarchy shell (bar, notifications and shell services), then confirms that the
+installed CodePet UI loaded. It refuses a locked or unconfirmed session and active
+work or a Work window. Installation never silently restarts the whole shell.
+The update runs as one
 bounded user-systemd service, so closing the page or reloading the plugin does not
 interrupt it. The restored desktop runs in its own user service, whose lifetime
 follows its child processes; finishing the updater cannot kill it. Reopen Updates
@@ -75,10 +83,17 @@ For a terminal or diagnostic integration, the installed helper accepts:
 codepet-update status   # local durable status only
 codepet-update check    # GitHub release metadata only
 codepet-update install  # explicit installation in an independent service
+codepet-update restart-bar  # explicit guarded shell restart, only when UI is pending
 ```
 
 Each command prints a single `codepet.update.v1` JSON object with `current`,
-`latest`, `state`, `message` and `checked_at`. Errors exit nonzero. The portable
+`latest`, `state`, `message` and `checked_at`. The independent `restart_required`,
+`expected_identity`, `loaded_identity`, `restart_state` and `restart_message` fields
+report whether the installed UI is running. Missing identity IPC on an older bar
+is not a successful reload. A restart that cannot confirm the identity keeps its
+pending receipt; details are in private `update/restart.log`. Both installation
+and explicit restart use the existing bounded updater service, outside the old
+shell's process group. Errors exit nonzero. The portable
 Updates screen treats all messages as plain text and polls local status only while
 an update is active and the screen is open. The helper refuses installation in a
 `CODEPET_TEST_STATE=1` UI session. Tests inject an offline network object into the

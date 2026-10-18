@@ -51,7 +51,7 @@ function animation(overlay) {
 
 // Owned jobs have a care icon; observed coding clients keep their app icon.
 function withWork(face, work) {
-    if (!face || ["off", "asleep", "fainted", "paused", "no_pet", "welcome"].indexOf(face.state) >= 0
+    if (!face || ["off", "asleep", "fainted", "paused", "no_pet", "welcome", "need_now", "need_soon", "celebrate"].indexOf(face.state) >= 0
             || !work || !work.task) return face
     var status = work.task.status
     if (["preparing", "running", "review", "applying", "scouted"].indexOf(status) < 0) return face
@@ -69,6 +69,16 @@ function careIconSet(species) {
     if (own(species, "careIconSet") && CARE_SETS.indexOf(species.careIconSet) >= 0)
         return species.careIconSet
     return own(species, "habitat") && species.habitat === "aquatic" ? "aquatic" : "floor"
+}
+
+// A care/owned-work bubble has no client ids, so it cannot borrow an observer label.
+function observerLabel(face, names) {
+    if (!face || ["working", "waiting", "testing"].indexOf(face.state) < 0
+            || !face.bubble || !Array.isArray(face.bubble.apps)) return ""
+    var apps = face.bubble.apps.filter(function (id) { return own(APP_TILES, id) && own(names, id) })
+    if (apps.length === 0) return ""
+    return names[apps[0]] + (apps.length > 1 ? " +" + (apps.length - 1) : "")
+        + (face.state === "waiting" ? " needs you" : face.state === "testing" ? " checking" : " working")
 }
 
 function appTile(id) {

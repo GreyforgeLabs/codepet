@@ -88,6 +88,7 @@ class Fixture:
         executable(self.bin / "codepet", "#!/bin/sh\n[ \"$1\" = --version ] && { echo 'codepet 0.3.0'; exit 0; }\nexit 0\n")
         executable(self.stubs / "qs", "#!/bin/sh\n[ \"$1\" = list ] && { echo 'No running instances.'; exit 0; }\nexit 1\n")
         executable(self.stubs / "omarchy", "#!/bin/sh\n[ \"$1 $2\" = 'plugin validate' ] && exit 0\nexit 1\n")
+        executable(self.stubs / "omarchy-shell", "#!/bin/sh\nexit 1\n")
         self.env = {"HOME": str(self.home), "PATH": str(self.stubs) + ":/usr/bin:/bin", "XDG_STATE_HOME": str(self.home / ".local/state"), "CODEPET_QS": str(self.stubs / "qs")}
         self.commands = []
         self.service_state = b"active\n"
@@ -130,6 +131,119 @@ class UpdaterTests(unittest.TestCase):
         for value in ("0.4", "v0.4.0", "0.4.0-rc.1", "01.0.0", "0.4.0+dev", None):
             with self.subTest(value=value), self.assertRaises(update.UpdateError):
                 update.version(value)
+
+    def installed_identity(self, identity="a" * 64):
+        current = self.u.data / "current"
+        current.mkdir(parents=True, exist_ok=True)
+        update.atomic_json(current / "build.json", {"schema": "codepet.build.v1", "identity": identity, "plugin": True})
+        return identity
+
+    def test_pending_bar_restart_survives_check_and_version_changes(self):
+        expected = self.installed_identity()
+        self.u.loaded_identity = lambda: "b" * 64
+        result = self.u.record_ui()
+        self.assertTrue(result["restart_required"])
+        self.assertEqual(result["expected_identity"], expected)
+        for operation in (self.u.status, self.u.check, self.u.status):
+            self.assertTrue(operation()["restart_required"])
+        self.u.loaded_identity = lambda: ""
+        old_ui = self.u.check()
+        self.assertTrue(old_ui["restart_required"], "old plugin without IPC is not fresh")
+        self.assertIn("codepet-update restart-bar", old_ui["message"], "old UI has an actionable recovery path in its existing message field")
+        self.assertIn(old_ui["state"], {"available", "current"}, "old state parser remains compatible")
+        self.u.loaded_identity = lambda: expected
+        fresh = self.u.status()
+        self.assertFalse(fresh["restart_required"])
+        self.assertNotIn("codepet-update restart-bar", fresh["message"])
+        self.assertFalse(json.loads((self.u.root / "ui.json").read_text())["restart_required"])
+
+    def test_restart_is_explicit_supervised_idle_unlocked_and_identity_verified(self):
+        expected = self.installed_identity()
+        self.u.loaded_identity = lambda: ""
+        self.u.ensure_unlocked = lambda: None
+        self.u.record_ui()
+        result = self.u.restart_bar()
+        self.assertEqual(result["restart_state"], "restarting")
+        command = next(c for c in self.fixture.commands if c[0] == "systemd-run")
+        self.assertIn("_restart", command)
+        self.assertIn("--property=RuntimeMaxSec=600", command)
+        self.assertFalse(any(c[:3] == ["omarchy", "restart", "shell"] for c in self.fixture.commands))
+        calls = []
+        def run(argv, **kwargs):
+            if argv == ["omarchy", "restart", "shell"]:
+                calls.append(argv)
+                self.u.loaded_identity = lambda: expected
+                return b""
+            return self.fixture.run(argv, **kwargs)
+        self.u.run = run
+        done = self.u.restart_worker(result["job"])
+        self.assertFalse(done["restart_required"])
+        self.assertEqual(done["restart_state"], "idle")
+        self.assertEqual(len(calls), 1)
+
+    def test_restart_refuses_unknown_or_locked_session_and_active_work(self):
+        self.installed_identity()
+        self.u.loaded_identity = lambda: ""
+        original = self.fixture.run
+        for lock_state, monitors in [({}, []), ({"secure": True, "requested": False}, [{"solitaryBlockedBy": []}]),
+                ({"locked": False, "requested": False, "pending": False, "sessionLocked": False, "secure": False}, [{"solitaryBlockedBy": ["LOCK"]}]),
+                ({"locked": False, "requested": False, "pending": False, "sessionLocked": False, "secure": False}, [{"solitaryBlockedBy": ["WORKSPACE"]}])]:
+            def run(argv, **kwargs):
+                if argv == ["omarchy-shell", "lock", "status"]:
+                    return json.dumps(lock_state).encode()
+                if argv == ["hyprctl", "-j", "monitors"]:
+                    return json.dumps(monitors).encode()
+                return original(argv, **kwargs)
+            self.u.run = run
+            with self.assertRaisesRegex(update.UpdateError, "unlock|locked|session"):
+                self.u.restart_bar()
+        self.u.ensure_unlocked = lambda: None
+        with update.lock(self.u.work / "control.lock"), self.assertRaisesRegex(update.UpdateError, "busy"):
+            self.u.restart_bar()
+        self.assertFalse(any(c[0] == "systemd-run" for c in self.fixture.commands))
+
+    def test_unconfirmed_restart_keeps_pending_receipt_and_failure(self):
+        self.installed_identity()
+        self.u.loaded_identity = lambda: ""
+        self.u.ensure_unlocked = lambda: None
+        self.u.record_ui()
+        result = self.u.restart_bar()
+        self.u.run = lambda argv, **kw: b"codepet 0.3.0\n" if argv[-1] == "--version" else b"[]" if "list" in argv else b""
+        with mock.patch.object(update.time, "monotonic", side_effect=[0, 21]), self.assertRaisesRegex(update.UpdateError, "could not be confirmed"):
+            self.u.restart_worker(result["job"])
+        self.assertEqual(self.u.load()["restart_state"], "error")
+        self.assertTrue(self.u.check()["restart_required"])
+
+    @unittest.skipUnless(os.environ.get("CODEPET_UPDATE_TEST_SYSTEMD") == "1", "optional user-systemd fixture not requested")
+    def test_real_service_restart_worker_with_only_fixture_shell_tools(self):
+        expected = self.installed_identity()
+        executable(self.fixture.stubs / "omarchy-shell", '''#!/usr/bin/python3
+import json,os,sys
+from pathlib import Path
+r=Path(os.environ['HOME'])
+if sys.argv[1:]==['lock','status']: print('{"locked":false,"requested":false,"pending":false,"sessionLocked":false,"secure":false}');raise SystemExit(0)
+if sys.argv[1:]==['greyforge.codepet','buildIdentity'] and (r/'restarted').exists():
+ print(json.loads((r/'.local/share/codepet/current/build.json').read_text())['identity']);raise SystemExit(0)
+raise SystemExit(1)
+''')
+        executable(self.fixture.stubs / "hyprctl", '#!/bin/sh\necho \'[{"solitaryBlockedBy":[]}]\'\n')
+        executable(self.fixture.stubs / "omarchy", '#!/bin/sh\n[ "$1 $2" = "restart shell" ] || exit 1\n: > "$HOME/restarted"\n')
+        env = self.fixture.env | {key: os.environ[key] for key in ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS") if key in os.environ}
+        u = update.Updater(env, self.network)
+        result = u.restart_bar()
+        try:
+            for _ in range(100):
+                saved = u.load()
+                if saved.get('restart_state') != 'restarting':
+                    break
+                time.sleep(.05)
+            self.assertEqual(saved.get('restart_state'), 'idle', saved)
+            self.assertFalse(u.status()['restart_required'])
+            self.assertEqual(u.ui_fields()['loaded_identity'], expected)
+            self.assertTrue((self.fixture.home / 'restarted').exists())
+            print('native restart proof: independent user service verified the fixture-only shell identity')
+        finally:
+            subprocess.run(['systemctl', '--user', 'stop', result['unit']], capture_output=True, timeout=5)
 
     def test_check_only_metadata_and_same_or_ahead_never_downgrades(self):
         self.assertEqual(self.u.check()["state"], "available")
@@ -349,6 +463,30 @@ class InstallerIntegration(unittest.TestCase):
         self.assertFalse((f.updater.root / job["job"] / "extracted").exists())
         self.assertEqual(f.updater.status()["state"], "succeeded")
         self.assertEqual(f.updater.check()["state"], "current")
+        self.assertTrue(f.updater.status()["restart_required"], "rescan acknowledgement is not loaded identity proof")
+        identity = f.updater.installed_identity()
+        self.assertEqual(identity, update.build_identity(self.tree))
+        for path in (f.updater.data / 'current/qml/shared/BuildInfo.js', f.home / '.config/omarchy/plugins/greyforge.codepet/BuildInfo.js'):
+            self.assertIn(identity, path.read_text())
+
+    def test_content_identity_changes_for_same_version_plugin_and_runtime_edits(self):
+        original = update.build_identity(self.tree)
+        for relative in ('omarchy-plugin/BuildInfo.js', 'qml/shared/BuildInfo.js'):
+            path = self.tree / relative
+            before = path.read_bytes()
+            try:
+                path.write_text('generated identity changes do not hash themselves')
+                self.assertEqual(update.build_identity(self.tree), original)
+            finally:
+                path.write_bytes(before)
+        for relative in ('omarchy-plugin/UpdatesScreen.qml', 'qml/shared/DesktopPet.qml', 'qml/assets/pets/registry.json'):
+            path = self.tree / relative
+            before = path.read_bytes()
+            try:
+                path.write_bytes(before + b'\n')
+                self.assertNotEqual(update.build_identity(self.tree), original)
+            finally:
+                path.write_bytes(before)
 
     def test_checksum_mismatch_and_duplicate_never_invoke_installer(self):
         name = "codepet-0.4.0-x86_64-linux.tar.gz"

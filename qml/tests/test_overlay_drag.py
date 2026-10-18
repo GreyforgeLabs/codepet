@@ -6,7 +6,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ['QT_FORCE_STDERR_LOGGING'] = '1'
 for key in ("WAYLAND_DISPLAY", "DISPLAY", "QT_QPA_PLATFORMTHEME"):
     os.environ.pop(key, None)
-from PySide6.QtCore import QObject, QPoint, QUrl
+from PySide6.QtCore import QObject, QPoint, QPointF, QUrl
 from PySide6.QtGui import QGuiApplication, Qt
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQml import QQmlApplicationEngine
@@ -32,6 +32,21 @@ def drag(dx, dy):
     QTest.mouseRelease(window, Qt.LeftButton, pos=start + QPoint(dx, dy))
     app.processEvents()
 
+def wheel_click(action):
+    todo = [window.contentItem()]
+    seen = []
+    while todo:
+        item = todo.pop()
+        if item in seen: continue
+        seen.append(item)
+        if item.objectName() == 'desktopPet.wheel.' + action:
+            p = item.mapToScene(QPointF(item.width()/2, item.height()/2))
+            QTest.mouseClick(window, Qt.LeftButton, pos=QPoint(round(p.x()), round(p.y())))
+            app.processEvents()
+            return
+        todo.extend(item.childItems())
+    raise AssertionError('wheel control missing: ' + action)
+
 start = scene.property('petHit')
 drag(230, -220)
 end = scene.property('petHit')
@@ -39,7 +54,10 @@ assert abs(end.x() - start.x() - 230) <= 2 and abs(end.y() - start.y() + 220) <=
 assert not home.property('visible'), 'drag release must not open Home'
 QTest.mouseClick(window, Qt.RightButton, pos=center())
 app.processEvents()
-assert scene.property('pinned') is True, 'right click pins pet'
+assert scene.property('wheelOpen') is True and not scene.property('pinned'), 'right click opens care without changing pin'
+wheel_click('pin')
+assert scene.property('pinned') is True, 'explicit Pin action pins pet'
+assert not scene.property('wheelOpen') and scene.property('wheelHit').width() == 0, 'Pin/Roam closes the wheel immediately'
 window.setProperty('reducedMotion', False)
 scene.setProperty('idleTicks', 0)
 QTest.qWait(400)
@@ -48,7 +66,10 @@ drag(120, -100)
 assert scene.property('pinned') is True and not home.property('visible'), 'manual drag works while pinned and keeps pin'
 QTest.mouseClick(window, Qt.RightButton, pos=center())
 app.processEvents()
-assert scene.property('pinned') is False, 'right click unpins pet'
+assert scene.property('wheelOpen') is True and scene.property('pinned'), 'reopening wheel preserves pin'
+wheel_click('pin')
+assert scene.property('pinned') is False, 'explicit Roam action unpins pet'
+assert not scene.property('wheelOpen') and scene.property('wheelHit').width() == 0, 'Pin/Roam closes the wheel immediately'
 window.setProperty('face', 'working')
 app.processEvents()
 assert scene.property('canRoam'), 'active coding must not park an unpinned pet indefinitely'

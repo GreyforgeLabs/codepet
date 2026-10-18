@@ -34,27 +34,29 @@ LAUNCHER = LAUNCHER_PATH.read_text()
 
 
 class HostContract(unittest.TestCase):
-    def test_surface_is_transparent_nonexclusive_and_never_focusable(self):
+    def test_surface_is_passive_except_explicit_interactive_islands(self):
         for token in ('color: "transparent"', 'exclusiveZone: 0',
                       'WlrLayershell.layer: WlrLayer.Top',
-                      'WlrLayershell.keyboardFocus: WlrKeyboardFocus.None',
+                      'WlrLayershell.keyboardFocus: shell.surfaceActive && pet.interactiveOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None',
                       'anchors { left: true; right: true; top: true; bottom: true }'):
             self.assertIn(token, CODE)
-        self.assertNotIn('WlrKeyboardFocus.OnDemand', CODE)
+        self.assertIn('readonly property bool interactiveOpen: active && (card.visible || wheel.visible)', PET)
         self.assertNotIn('WlrKeyboardFocus.Exclusive', CODE)
 
-    def test_hit_mask_is_only_the_pet_and_visible_card(self):
+    def test_hit_mask_is_only_the_pet_visible_card_and_wheel(self):
         mask = block(CODE, 'mask: Region {')
-        self.assertEqual(mask.count('Region {'), 2)
-        self.assertEqual(mask.count('intersection: Intersection.Combine'), 1)
+        self.assertEqual(mask.count('Region {'), 3)
+        self.assertEqual(mask.count('intersection: Intersection.Combine'), 2)
         self.assertNotIn('item:', mask)
         self.assertNotIn('mask: null', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.cardHit, width, height, shell.surfaceActive)', CODE)
+        self.assertIn('OverlayPolicy.clipHit(pet.wheelHit, width, height, shell.surfaceActive)', CODE)
         self.assertIn('card.visible ? Qt.rect(card.x, card.y, card.width, card.height) : Qt.rect(0, 0, 0, 0)', PET)
         for axis in ('x', 'y', 'width', 'height'):
             self.assertIn(f'{axis}: overlay.petInput.{axis}', mask)
             self.assertIn(f'{axis}: overlay.cardInput.{axis}', mask)
+            self.assertIn(f'{axis}: overlay.wheelInput.{axis}', mask)
         # The thought bubble is decorative: no menu or prop region would be a dead click zone.
         for gone in ('menuHit', 'menuInput', 'propsHit', 'propsInput'):
             self.assertNotIn(gone, CODE)
@@ -62,6 +64,13 @@ class HostContract(unittest.TestCase):
         bubble = block(PET[bubble_start:], 'Rectangle {')
         self.assertIn('objectName: "desktopPet.bubble"', bubble)
         self.assertNotIn('MouseArea', bubble)
+        feedback_start = PET.rfind('Rectangle {', 0, PET.index('id: careFeedback\n'))
+        feedback = block(PET[feedback_start:], 'Rectangle {')
+        self.assertNotIn('MouseArea', feedback)
+        self.assertNotIn('forceActiveFocus', feedback)
+        self.assertIn('Accessible.role: Accessible.StaticText', feedback)
+        self.assertIn('Accessible.name: root.careMessage', feedback)
+        self.assertNotIn('feedback', mask.lower(), 'decorative feedback never expands the input region')
         self.assertEqual(PET.count('MouseArea {'), 1, 'one input area: the pet hit box')
 
     def test_single_screen_one_window_no_task_window(self):
@@ -78,8 +87,12 @@ class HostContract(unittest.TestCase):
         self.assertIn('repeat: false', settle)
         self.assertIn('interval: OverlayFlow.SETTLE_MS', settle)
         self.assertNotIn('running:', settle)
-        for forbidden in ('task.', 'pet.care', 'pet.events_seen', 'destroy(', 'Qt.exit('):
+        for forbidden in ('task.', 'pet.events_seen', 'destroy(', 'Qt.exit('):
             self.assertNotIn(forbidden, CODE)
+        care = block(CODE, 'function careAction(action) {')
+        self.assertIn('["food", "water", "play", "wash", "sleep", "wake"].indexOf(action)', care)
+        self.assertIn('hostAdapter.request(method, params', care)
+        self.assertIn('onCareRequested: action => shell.careAction(action)', CODE)
         self.assertNotIn('parentWindow:', CODE)
 
     def test_exits_only_on_off_or_desktop_pet_off(self):
@@ -222,7 +235,7 @@ def stage_without_layer_shell(root):
     for line in ("anchors { left: true; right: true; top: true; bottom: true }",
                  "exclusiveZone: 0", "WlrLayershell.namespace: \"codepet-overlay\"",
                  "WlrLayershell.layer: WlrLayer.Top",
-                 "WlrLayershell.keyboardFocus: WlrKeyboardFocus.None"):
+                 "WlrLayershell.keyboardFocus: shell.surfaceActive && pet.interactiveOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None"):
         assert text.count(line) == 1, line
         text = text.replace(line, "")
     (stage / "shell.qml").write_text(text)
@@ -378,7 +391,7 @@ class HostContractV03(unittest.TestCase):
         self.assertIn('if (!hostAdapter.busy)', fn)
         self.assertEqual(fn.count('request('), 1)
         self.assertIn('function refresh(): void { shell.refresh() }', CODE)
-        self.assertEqual(CODE.count('request('), 2, 'only startupRead and refresh talk to codepet')
+        self.assertEqual(CODE.count('request('), 3, 'startup, explicit refresh and explicit wheel care are the only pet RPC paths')
 
     def test_bar_state_watcher_is_passive(self):
         self.assertIn('watchChanges: true', WATCHER)

@@ -6,6 +6,7 @@ Rectangle {
     id: speech
     required property var t
     property string text: ""
+    property bool statistic: false
     visible: text !== ""
     implicitWidth: Math.min(t.u(260), label.implicitWidth + t.u(28))
     implicitHeight: label.implicitHeight + t.u(16)
@@ -13,6 +14,7 @@ Rectangle {
     color: t.accent
     Text {
         id: label
+        readonly property bool cpStatistic: speech.statistic
         anchors.centerIn: parent
         width: Math.min(implicitWidth, speech.t.u(232))
         text: speech.text

@@ -42,6 +42,7 @@ ShellRoot {
     property real lastHomeMs: 0
     property var placement: null
     property string pendingPlacement: ""
+    property var careRetries: ({})
     readonly property string exitReason: OverlayFlow.exitReason(shell.barState, shell.desktopPet)
 
     // Integration inputs, NOT detectors. Bind these to trustworthy host events
@@ -61,7 +62,7 @@ ShellRoot {
     onCalmSettingChanged: shell.reducedMotionOverride = null
 
     // Explicit reads only: the startup read when bar-state.json is missing or unreadable,
-    // and the `refresh` verb. A file event never launches codepet.
+    // the `refresh` verb, and explicit wheel care. A file event never launches codepet.
     HostAdapter {
         id: hostAdapter
         clientTag: "overlay"
@@ -184,6 +185,22 @@ ShellRoot {
         if (!hostAdapter.busy)
             hostAdapter.request("state.get", {}, null)
     }
+    function careAction(action) {
+        if (!shell.surfaceActive || ["food", "water", "play", "wash", "sleep", "wake"].indexOf(action) < 0) return
+        if (hostAdapter.busy) { pet.careAnswered(action, { ok: false }); return }
+        var life = shell.barState ? shell.barState.life : null
+        var method = action === "sleep" ? "pet.sleep" : action === "wake" ? "pet.wake" : "pet.care"
+        var params = method === "pet.care" ? { action: action } : {}
+        if (action === "wake" && life && life.paused) { method = "pet.pause"; params = { paused: false } }
+        var signature = String(life ? life.life_id : "") + ":" + action
+        var retry = shell.careRetries[signature]
+        var key = retry && retry.until > Date.now() ? retry.id : hostAdapter.newId()
+        shell.careRetries[signature] = { id: key, until: Date.now() + 120000 }
+        hostAdapter.request(method, params, function (response) {
+            if (response.ok) delete shell.careRetries[signature]
+            pet.careAnswered(action, response)
+        }, key)
+    }
     // Opens the bar popup at Home (the bar plugin's `open()` through Omarchy's IPC). A burst
     // of clicks sends one call: requests within a second of the last one are dropped (the
     // pet still hops and shows its heart for every click).
@@ -289,13 +306,14 @@ ShellRoot {
         exclusiveZone: 0
         WlrLayershell.namespace: "codepet-overlay"
         WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: shell.surfaceActive && pet.interactiveOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
         readonly property var petInput: OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)
 
         readonly property var cardInput: OverlayPolicy.clipHit(pet.cardHit, width, height, shell.surfaceActive)
+        readonly property var wheelInput: OverlayPolicy.clipHit(pet.wheelHit, width, height, shell.surfaceActive)
 
-        // Pet and visible card are separate input islands; the thought bubble is decorative and
+        // Pet, visible card and wheel are separate input islands; the thought bubble is decorative and
         // stays click-through. Never use the full scene Item as a mask, or a null mask
         // while hidden (an empty region is click-through everywhere).
         mask: Region {
@@ -306,6 +324,12 @@ ShellRoot {
                 x: overlay.cardInput.x; y: overlay.cardInput.y
                 width: overlay.cardInput.width; height: overlay.cardInput.height
                 radius: 16
+            }
+            Region {
+                intersection: Intersection.Combine
+                x: overlay.wheelInput.x; y: overlay.wheelInput.y
+                width: overlay.wheelInput.width; height: overlay.wheelInput.height
+                radius: 24
             }
         }
 
@@ -319,7 +343,9 @@ ShellRoot {
             surfaceActive: shell.surfaceActive && overlay.visible
             reducedMotion: shell.reducedMotion
             onHomeRequested: shell.openHome()
+            onUpdatesRequested: Quickshell.execDetached(OverlayFlow.openUpdatesArgv(Quickshell.env("OMARCHY_PATH")))
             onPlacementRequested: (x, y, pinned) => shell.savePlacement(x, y, pinned)
+            onCareRequested: action => shell.careAction(action)
             onWidthChanged: if (shell.placement) Qt.callLater(() => pet.restorePlacement(shell.placement))
             onHeightChanged: if (shell.placement) Qt.callLater(() => pet.restorePlacement(shell.placement))
         }

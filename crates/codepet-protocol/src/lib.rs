@@ -212,9 +212,10 @@ pub enum Method {
     ClientsDisconnect,
     ClientsTest,
     PetMemories,
+    PetCareTempo,
 }
 impl Method {
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 43] = [
         Self::Hello,
         Self::StateGet,
         Self::EventsSubscribe,
@@ -257,6 +258,7 @@ impl Method {
         Self::ClientsDisconnect,
         Self::ClientsTest,
         Self::PetMemories,
+        Self::PetCareTempo,
     ];
     /// The v0.3 methods (spec §6.2 "Added"), in `ALL` order.
     pub const V03_ADDED: [Self; 11] = [
@@ -324,6 +326,7 @@ impl Method {
             Self::PetAdopt => "pet.adopt",
             Self::PetRules => "pet.rules",
             Self::PetConfigureLife => "pet.configure_life",
+            Self::PetCareTempo => "pet.care_tempo",
             Self::PetRetire => "pet.retire",
             Self::PetEventsSeen => "pet.events_seen",
             Self::PetMemorial => "pet.memorial",
@@ -393,6 +396,7 @@ impl Method {
             | Self::PetAdopt
             | Self::PetRules
             | Self::PetConfigureLife
+            | Self::PetCareTempo
             | Self::PetRetire
             | Self::PetEventsSeen
             // `clients.status` writes `client_hooks` and re-exports; the clients methods

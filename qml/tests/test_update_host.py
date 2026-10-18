@@ -2,6 +2,7 @@
 """Real updater controller offscreen; fixture HOME/helper only, never GitHub/install."""
 from pathlib import Path
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -15,7 +16,9 @@ QS = shutil.which("qs")
 @unittest.skipUnless(QS, "Quickshell unavailable")
 class UpdateHost(unittest.TestCase):
     def test_open_check_install_reconnect_poll_and_transport_errors(self):
-        with tempfile.TemporaryDirectory(prefix="cpupdate") as td:
+        # Unix sockets have a short path limit. Keep only ephemeral IPC sockets in
+        # XDG_RUNTIME_DIR; fixture HOME, state and logs remain under the test run.
+        with tempfile.TemporaryDirectory(prefix="cpupdate") as td, tempfile.TemporaryDirectory(prefix="cpu", dir=os.environ.get("XDG_RUNTIME_DIR", "/tmp")) as ipcdir:
             root = Path(td)
             for name in ("home", "run", "qml"):
                 (root / name).mkdir(mode=0o700)
@@ -33,6 +36,7 @@ ShellRoot {
         function close(): void { ctl.opened = false }
         function check(): void { ctl.check() }
         function install(): void { ctl.install() }
+        function restart(): void { ctl.restartBar() }
         function unsupported(): void { ctl.supported = false; ctl.open(); ctl.check(); ctl.install() }
         function missing(): void { ctl.helper = Quickshell.env("HOME") + "/not-installed"; ctl.check() }
         function status(): string { return JSON.stringify({busy:ctl.busy,opened:ctl.opened,state:ctl.snapshot}) }
@@ -47,7 +51,7 @@ ShellRoot {
 import json,os,sys,time
 from pathlib import Path
 root=Path(os.environ['FIXTURE_ROOT']);command=sys.argv[1:]
-assert len(command)==1 and command[0] in ['status','check','install']
+assert len(command)==1 and command[0] in ['status','check','install','restart-bar']
 with (root/'calls.jsonl').open('a') as f:f.write(json.dumps(command)+'\\n')
 mode=root/'mode'
 if mode.exists() and command[0]=='check':
@@ -60,11 +64,14 @@ if command[0]=='check':s.update(state='available',latest='0.4.1',checked_at=123,
 if command[0]=='install':
     assert s['state']=='available'
     s.update(state='downloading',message='Downloading the release.')
+if command[0]=='restart-bar':
+    assert s['restart_required'] is True
+    s.update(restart_state='restarting',restart_message='Restarting the bar.')
 (root/'snapshot.json').write_text(json.dumps(s))
 print(json.dumps(s),flush=True)
 ''')
             helper.chmod(0o700)
-            env = {"HOME": str(root / "home"), "PATH": "/usr/bin:/bin", "XDG_RUNTIME_DIR": str(root / "run"),
+            env = {"HOME": str(root / "home"), "PATH": "/usr/bin:/bin", "XDG_RUNTIME_DIR": ipcdir,
                    "XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"),
                    "QT_QPA_PLATFORM": "offscreen", "QT_FORCE_STDERR_LOGGING": "1",
                    "FIXTURE_ROOT": str(root), "FIXTURE_HELPER": str(helper)}
@@ -131,6 +138,20 @@ print(json.dumps(s),flush=True)
                 ipc("close"); ipc("open")
                 wait(lambda: not status()["busy"])
                 self.assertEqual(calls().count("check"), 1, "reopening preserves success receipt")
+                finished.update(restart_required=True, restart_state='idle')
+                snapshot.write_text(json.dumps(finished))
+                ipc('close'); ipc('open')
+                wait(lambda: status()['state'].get('restart_required') and not status()['busy'])
+                ipc('restart')
+                wait(lambda: status()['state'].get('restart_state') == 'restarting' and not status()['busy'])
+                ipc('restart')
+                self.assertEqual(calls().count('restart-bar'), 1)
+                stop(); start(); ipc('open')
+                wait(lambda: status()['state'].get('restart_state') == 'restarting' and not status()['busy'])
+                finished.update(restart_required=False, restart_state='idle')
+                snapshot.write_text(json.dumps(finished))
+                wait(lambda: status()['state'].get('restart_required') is False and not status()['busy'])
+                self.assertEqual(calls().count('restart-bar'), 1, 'reconnect never repeats restart')
                 for mode in ("garbled", "oversize", "timeout"):
                     (root / "mode").write_text(mode)
                     ipc("check")

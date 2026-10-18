@@ -56,6 +56,23 @@ Window {
             } else if (win.phase === 9) {
                 kit.check(!win.find("cp.updates.action").visible, "test/custom backend page offers no production install")
                 kit.check(win.find("cp.updates.message").text.indexOf("unavailable") >= 0, "test mode refusal is explained")
+                ctl.updateSupported = true
+                ctl.updateState = {schema:"codepet.update.v1",current:"0.4.1",latest:"0.4.1",state:"current",message:"Latest version installed.",checked_at:123,restart_required:true,restart_state:"idle"}
+            } else if (win.phase === 10) {
+                kit.all(app,"Updates pending restart")
+                kit.check(win.find("cp.updates.restart").visible && win.find("cp.updates.restart").text === "Restart bar", "same version pending restart remains visible")
+                win.find("cp.updates.restart").tapped()
+                kit.check(ctl.updateCalls[ctl.updateCalls.length - 1] === "restart-bar", "only explicit Restart bar asks the host")
+                ctl.updateState = Object.assign({},ctl.updateState,{restart_state:"restarting"})
+            } else if (win.phase === 11) {
+                kit.check(!win.find("cp.updates.restart").visible && !win.find("cp.updates.action").visible, "restart cannot duplicate update or restart")
+                kit.check(win.find("cp.updates.heading").text === "Restarting the bar…", "restart has clear progress")
+                ctl.updateState = Object.assign({},ctl.updateState,{restart_state:"error",restart_message:"Unlock the desktop first."})
+            } else if (win.phase === 12) {
+                kit.check(win.find("cp.updates.restart").visible && win.find("cp.updates.restartMessage").text === "Unlock the desktop first.", "refused restart keeps the action and reason")
+                ctl.updateState = Object.assign({},ctl.updateState,{restart_required:false,restart_state:"idle",restart_message:""})
+            } else if (win.phase === 13) {
+                kit.check(!win.find("cp.updates.restart").visible, "verified loaded identity clears the pending action")
                 kit.finish()
             }
             win.phase++

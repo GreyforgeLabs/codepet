@@ -7,6 +7,7 @@ import Quickshell.Io
 // reads one response line from its stdout. No timers poll and nothing here reacts to a
 // file event: the overlay draws from bar-state.json (BarStateWatcher.qml) and asks for a
 // `state.get` only when that file is missing at startup or on the explicit `refresh` verb.
+// Explicit wheel care uses this same transport; file events never send care.
 //
 // Quickshell 0.3.1 API used (verified in /usr/lib/qt6/qml/Quickshell/Io/quickshell-io.qmltypes):
 //   Process: command (list<string>), running, stdinEnabled, stdout/stderr (DataStreamParser),

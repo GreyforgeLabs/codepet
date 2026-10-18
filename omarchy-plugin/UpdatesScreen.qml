@@ -11,7 +11,8 @@ Item {
     readonly property bool supported: !app.ctl || app.ctl.updateSupported !== false
     readonly property bool busy: !!(app.ctl && app.ctl.updateBusy)
     readonly property bool active: Updates.active(snapshot)
-    readonly property string phase: busy && app.ctl.updateOperation === "check" ? "checking"
+    readonly property string phase: (snapshot && snapshot.restart_state === "restarting") || (busy && app.ctl.updateOperation === "restart-bar") ? "restarting"
+        : busy && app.ctl.updateOperation === "check" ? "checking"
         : busy && app.ctl.updateOperation === "install" ? "starting"
         : snapshot ? snapshot.state : "loading"
     implicitWidth: t.u(448)
@@ -63,6 +64,20 @@ Item {
                 wrapMode: Text.WrapAnywhere
             }
             Copy { visible: ["downloading", "verifying", "installing", "starting"].indexOf(page.phase) >= 0; text: page.app.s("updates.progress_note"); color: page.t.muted }
+            Copy {
+                objectName: "cp.updates.restartMessage"
+                visible: !!page.snapshot && (page.snapshot.restart_required === true || page.snapshot.restart_state === "error")
+                text: page.snapshot && page.snapshot.restart_message ? page.snapshot.restart_message : page.app.s("updates.restart_required")
+                color: page.snapshot && page.snapshot.restart_state === "error" ? page.t.urgent : page.t.text
+            }
+            BigButton {
+                objectName: "cp.updates.restart"
+                t: page.t
+                width: parent.width
+                visible: page.supported && Updates.canRestart(page.snapshot, page.busy)
+                text: page.app.s("updates.restart_bar")
+                onTapped: if (page.app.ctl) page.app.ctl.restartBar()
+            }
             BigButton {
                 objectName: "cp.updates.action"
                 t: page.t

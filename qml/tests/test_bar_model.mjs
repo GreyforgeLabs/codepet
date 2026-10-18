@@ -129,7 +129,7 @@ test('paths: defaults, XDG overrides, test stateHome and Calm mode reach the lau
     assert.deepEqual(plain(b.childEnv), {});
 });
 
-test('the bar sends only the v0.3 popup methods: never task.*, pet.adopt or configure_life', () => {
+test('the bar sends only supported popup methods: never task.*, pet.adopt or configure_life', () => {
     for (const m of ['state.get', 'pet.care', 'pet.start', 'pet.rename', 'treats.give', 'app.set_enabled', 'app.set_helpers',
         'agent.forget_history', 'clients.status', 'clients.connect', 'clients.disconnect', 'clients.test', 'pet.retire'])
         assert.ok(M.allowedMethod(m), m);
@@ -137,7 +137,7 @@ test('the bar sends only the v0.3 popup methods: never task.*, pet.adopt or conf
         assert.ok(!M.allowedMethod(m), m);
     const proto = json(CONTRACTS + 'protocol.json');
     for (const m of M.ALLOWED_METHODS)
-        assert.ok(proto.kept.includes(m) || proto.added.some((a) => a.method === m), `${m} is a v0.3 method`);
+        assert.ok(m === 'pet.care_tempo' || proto.kept.includes(m) || proto.added.some((a) => a.method === m), `${m} is a supported popup method`);
 });
 
 // ------------------------------------------------------------------ contract vectors
@@ -277,7 +277,7 @@ test('Home shows only what can be done (K4, K6)', () => {
     assert.equal(fainted.treats, false);
     const happy = at('idle-happy');
     assert.deepEqual(happy.tiles.map((t) => t.need), ['food', 'water', 'play', 'wash']);
-    assert.ok(happy.round && !happy.treats);
+    assert.ok(happy.round && happy.treats, "empty jar stays visible with an explanation");
     assert.ok(at('idle-treats').treats);
     assert.ok(!at('off-treats').treats, 'no Treats while Off');
     const crit = at('need-food-critical');

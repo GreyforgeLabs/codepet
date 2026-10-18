@@ -20,7 +20,7 @@ var MAX_REGISTRY_BYTES = 262144
 // The only methods the bar may send (SPEC-v0.3 §6.2). Task methods, pet.adopt and
 // pet.configure_life are never sent from the shell process.
 var ALLOWED_METHODS = [
-    "state.get", "pet.care", "pet.sleep", "pet.wake", "pet.pause", "pet.events_seen",
+    "state.get", "pet.care", "pet.care_tempo", "pet.sleep", "pet.wake", "pet.pause", "pet.events_seen",
     "pet.start", "pet.rename", "pet.select", "pet.rules", "pet.retire", "pet.memorial", "pet.memories",
     "treats.give", "app.set_enabled", "app.set_helpers", "agent.forget_history",
     "clients.status", "clients.connect", "clients.disconnect", "clients.test"
@@ -509,14 +509,14 @@ function homeControls(doc, face) {
     if (st === "asleep") { out.wake = "pet.wake"; return out }
     if (st === "paused") { out.wake = "pet.pause"; return out }
     if (st === "no_pet" || st === "welcome" || !doc || !isObject(doc.life)) return out
-    var levels = needLevels(doc)
+    var levels = face && isObject(face.need_levels) ? face.need_levels : needLevels(doc)
     var needs = st === "fainted" ? ["food", "water"] : CARE_NEEDS
     for (var i = 0; i < needs.length; i++) {
         var lv = levels[needs[i]]
         out.tiles.push({ need: needs[i], glow: lv === "now" || lv === "critical" ? "now" : lv === "soon" ? "soon" : "" })
     }
     out.round = st !== "fainted"
-    out.treats = !!(face && face.treats_visible === true)
+    out.treats = st !== "fainted"
     return out
 }
 

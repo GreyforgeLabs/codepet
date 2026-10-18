@@ -1,6 +1,6 @@
-# Architecture (v0.4)
+# Architecture (v0.5)
 
-CodePet combines a desktop companion, bounded pet-owned Codex work, and optional
+CodePet combines a desktop companion, bounded pet-owned coding work, and optional
 metadata-only observation of coding sessions started outside CodePet. These are
 separate pipelines with separate privacy and reward rules.
 
@@ -8,10 +8,13 @@ separate pipelines with separate privacy and reward rules.
 
 - `codepet-core`: pure care, lifecycle, growth, agent normalization and priority rules.
 - `codepet-protocol`: bounded, versioned pet/observer JSON requests and typed parameters.
-- `codepet-storage`: SQLite schema 5, immutable life history, durable reward receipts,
+- `codepet-storage`: SQLite schema 6, immutable life history, durable reward receipts,
   bounded observer state and atomic bar exports.
 - `codepet` CLI: short-lived pet RPC, migration, hook/fold and client jobs;
   `work-rpc` controls owned jobs, and a bounded `work-run` process supervises execution.
+- `work/{filesystem,review,runtime}.rs`: bounded source handling, sealed review/application,
+  and contained provider supervision. RPC orchestration builds one status snapshot
+  and derives its private-data-free export from the same result.
 - `omarchy-plugin/`: bar cell, care/stats popup and attended-presence recorder.
 - `qml/shell.qml`: desktop pet and compact work card.
 - `qml/work.qml`: compact fallback and explicit native task/review window.
@@ -20,7 +23,7 @@ separate pipelines with separate privacy and reward rules.
 
 ```text
 bounded local repo metadata discovery → cooldown/readiness checks
-    → bounded source preflight → isolated read-only Codex scout
+    → bounded source preflight → isolated read-only scout with the selected client
     → suspected finding → explicit Fix → isolated code candidate
     → explicit Review/Apply → conflict-checked writes + one durable reward
 ```
@@ -74,7 +77,7 @@ scouts also require a started life. Turning Off, changing life or starting a nap
 while owned execution/application is active is refused until that work is stopped
 or recovered. Cancel and review recovery do not depend on new-job readiness.
 
-Only `codepet migrate` and pet RPC `state.get` migrate. SQLite remains schema 5;
+Only `codepet migrate` and pet RPC `state.get` migrate. SQLite uses schema 6 (per-life care tempo);
 existing lives, birth timestamps, care, XP and observer connections are preserved.
 Pet mutations use one `BEGIN IMMEDIATE`, settle/body/finalize ordering and durable
 request IDs. The work controller serializes its slot separately and freezes

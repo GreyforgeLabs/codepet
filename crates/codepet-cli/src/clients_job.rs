@@ -8,7 +8,7 @@
 //! - records its pid and start time in the journal and counts its attempts;
 //! - per client, in client order and idempotently: detect, shim, artifact, settings check
 //!   (inside the client modules), record; then the ready check through the exact stored
-//!   commands; then clears its running mark, marks the journal done and exports.
+//!   commands; then clears its running mark, finishes publication and marks the journal done.
 //!
 //! Kill safety: every step re-checks what it changes. A journal whose process is dead is
 //! resumed by the next `state.get` or `clients.*` call ([`recover`]); after
@@ -444,10 +444,26 @@ fn parse_clients(j: &Journal) -> Vec<ClientId> {
 }
 
 fn finish(store: &mut Store, paths: &StatePaths, j: &mut Journal) -> i32 {
-    let _ = store.finish_clients_job(&j.id);
+    finish_with_publish(store, paths, j, crate::rpc::publish_bar_state)
+}
+
+fn finish_with_publish(
+    store: &mut Store,
+    paths: &StatePaths,
+    j: &mut Journal,
+    publish: impl FnOnce(&Store),
+) -> i32 {
+    if store.finish_clients_job(&j.id).is_err() {
+        return 1;
+    }
+    // CLI waiters use done as their completion barrier. Export must finish before
+    // they can return; a crash here leaves the idempotent job recoverable.
+    publish(store);
     j.done = true;
-    let _ = write_journal(paths, j);
-    crate::rpc::publish_bar_state(store);
+    if write_journal(paths, j).is_err() {
+        j.done = false;
+        return 1;
+    }
     0
 }
 
@@ -915,6 +931,58 @@ pub fn ready_check(store: &mut Store, ctx: &Ctx, tested: &[ClientId]) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn done_receipt_waits_for_publication_and_interrupted_publication_is_recoverable() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = StatePaths::resolve(|key| {
+            (key == "XDG_STATE_HOME").then(|| dir.path().as_os_str().to_owned())
+        })
+        .unwrap();
+        let mut store = Store::open(&paths, Arc::new(SystemClock)).unwrap();
+        let id = new_job_id().unwrap();
+        create_journal(
+            &paths,
+            &id,
+            "disconnect",
+            &[ClientId::GrokCli],
+            Path::new("/fixture/codepet"),
+            false,
+        )
+        .unwrap();
+        let mut journal = read_journal(&paths, &id).unwrap();
+        let interrupted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            finish_with_publish(&mut store, &paths, &mut journal, |_| {
+                assert!(
+                    !read_journal(&paths, &id).unwrap().done,
+                    "completion must not race its final export"
+                );
+                panic!("simulated interrupted publisher");
+            });
+        }));
+        assert!(interrupted.is_err());
+        assert!(
+            !read_journal(&paths, &id).unwrap().done,
+            "an interrupted publisher must leave a recoverable journal"
+        );
+        assert_eq!(
+            finish_with_publish(&mut store, &paths, &mut journal, |s| {
+                assert!(!read_journal(&paths, &id).unwrap().done);
+                s.export_bar_state().unwrap();
+            }),
+            0
+        );
+        assert!(read_journal(&paths, &id).unwrap().done);
+        assert!(paths.bar_state_path().is_file());
+        let before = fs::read(paths.bar_state_path()).unwrap();
+        assert_eq!(
+            finish_with_publish(&mut store, &paths, &mut journal, |s| {
+                s.export_bar_state().unwrap();
+            }),
+            0
+        );
+        assert_eq!(fs::read(paths.bar_state_path()).unwrap(), before);
+    }
 
     #[test]
     fn ready_check_payloads_match_frozen_contract() {

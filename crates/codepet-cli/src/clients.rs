@@ -56,7 +56,11 @@ pub fn detect_update(ctx: &Ctx, c: ClientId) -> StatusUpdate {
         client: c,
         installed: d.installed(),
         version: d.version,
-        connected: Some(!flagged && artifact == Artifact::Current),
+        connected: Some(
+            !flagged
+                && artifact == Artifact::Current
+                && (c != ClientId::Hermes || install::hermes::enabled(ctx)),
+        ),
         needs_step,
     }
 }

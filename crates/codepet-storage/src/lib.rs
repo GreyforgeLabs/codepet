@@ -80,7 +80,7 @@ pub use spool::{
 };
 
 /// Current SQLite `user_version`.
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 pub const DB_FILE: &str = "codepet.sqlite3";
 pub const TOKEN_TTL_MS: i64 = 5 * 60 * 1000;
 /// Responses must fit one 64 KiB frame, so stored text is bounded by its JSON-encoded size

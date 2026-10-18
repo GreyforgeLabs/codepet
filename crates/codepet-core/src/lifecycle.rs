@@ -61,6 +61,54 @@ impl Pace {
     }
 }
 
+/// A mutable care cadence layered over the frozen lifecycle-v1 base rules.
+/// Lively is deliberately restricted to Gentle lives with the Steady base pace.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CareTempo {
+    #[default]
+    Steady,
+    Lively,
+}
+impl CareTempo {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Steady => "steady",
+            Self::Lively => "lively",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "steady" => Some(Self::Steady),
+            "lively" => Some(Self::Lively),
+            _ => None,
+        }
+    }
+    pub fn effective_rules(
+        self,
+        base: &Rules,
+        mode: Mode,
+        pace: Pace,
+    ) -> Result<Rules, &'static str> {
+        base.validate()?;
+        let mut effective = base.clone();
+        if self == Self::Lively {
+            if mode != Mode::Gentle || pace != Pace::Steady {
+                return Err("Lively care requires Gentle mode and Steady pace");
+            }
+            for (i, rate) in [6000_u32, 8000, 4000, 3000].into_iter().enumerate() {
+                effective.decay_per_hour[i] = u32::try_from(
+                    u64::from(base.decay_per_hour[i]) * u64::from(rate)
+                        / u64::from(RULES_V1.steady.decay_per_hour[i]),
+                )
+                .map_err(|_| "care tempo decay out of range")?;
+            }
+            effective.full_hold_ms = 300_000;
+        }
+        effective.validate()?;
+        Ok(effective)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LifeStatus {
     Healthy,

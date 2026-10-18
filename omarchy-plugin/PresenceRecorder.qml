@@ -29,6 +29,8 @@ Item {
     property int revision: 0
     property var model: null
     property string writeError: ""
+    property string savingLifeId: ""
+    signal committed(string lifeId)
 
     readonly property var presence: barState && barState.presence && typeof barState.presence === "object" ? barState.presence : null
     readonly property string lifeId: presence && Presence.validLifeId(presence.life_id) ? presence.life_id : ""
@@ -59,7 +61,10 @@ Item {
         var committed = Presence.onTick(recorder.model, now, recorder.eligible, recorder.idle)
         if (committed > 0) {
             recorder.revision += 1
-            if (Presence.valid(recorder.model, now)) presenceFile.setText(Presence.payload(recorder.model))
+            if (Presence.valid(recorder.model, now)) {
+                recorder.savingLifeId = recorder.lifeId
+                presenceFile.setText(Presence.payload(recorder.model))
+            }
         }
     }
 
@@ -100,6 +105,11 @@ Item {
         atomicWrites: true
         printErrors: false
         onSaveFailed: error => recorder.writeError = "presence.json could not be written; time is frozen."
-        onSaved: recorder.writeError = ""
+        onSaved: {
+            recorder.writeError = ""
+            if (recorder.eligible && recorder.savingLifeId === recorder.lifeId)
+                recorder.committed(recorder.savingLifeId)
+            recorder.savingLifeId = ""
+        }
     }
 }

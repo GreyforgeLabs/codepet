@@ -19,8 +19,8 @@ use codepet_core::evolution::{
     level_for_xp, next_level_xp, next_stage, stage_for_xp, stage_key, stages_crossed,
 };
 use codepet_core::lifecycle::{
-    self as lc, LifeStatus, Mode, Pace, Rules, Vitals, HOUR_MS, IDLE_TIMEOUT_S, RULESET_V1,
-    RULES_V1, SETTLE_CAP_MS, TICK_MS,
+    self as lc, CareTempo, LifeStatus, Mode, Pace, Rules, Vitals, HOUR_MS, IDLE_TIMEOUT_S,
+    RULESET_V1, RULES_V1, SETTLE_CAP_MS, TICK_MS,
 };
 use codepet_core::species::{default_name, is_species, normalize_pet_name};
 use codepet_core::{Category, METER_START};
@@ -74,6 +74,8 @@ pub(crate) struct LifeRow {
     pub mode: Mode,
     pub armed: bool,
     pub pace: Pace,
+    pub care_tempo: CareTempo,
+    pub base_rules: Rules,
     pub rules: Rules,
     pub revision: i64,
     pub adopted_at_ms: i64,
@@ -81,7 +83,7 @@ pub(crate) struct LifeRow {
 
 const LIFE_COLS: &str = "life_id, ordinal, name, species, appearance, origin, status, mode, \
     armed, pace, ruleset, decay_hunger, decay_thirst, decay_mental_health, decay_hygiene, \
-    full_hold_ms, warning_at, critical_after_ms, grace_ms, revision, adopted_at_ms";
+    full_hold_ms, warning_at, critical_after_ms, grace_ms, revision, adopted_at_ms, care_tempo";
 
 impl LifeRow {
     fn from_row(r: &Row<'_>) -> rusqlite::Result<Result<Self>> {
@@ -107,9 +109,13 @@ impl LifeRow {
             grace_ms: r.get(18)?,
             ..base.clone()
         };
-        if rules.validate().is_err() {
+        let Some(care_tempo) = CareTempo::parse(&text(21)?) else {
             return Ok(Err(StorageError::Corrupt));
-        }
+        };
+        let effective = match care_tempo.effective_rules(&rules, mode, pace) {
+            Ok(rules) => rules,
+            Err(_) => return Ok(Err(StorageError::Corrupt)),
+        };
         Ok(Ok(Self {
             life_id: r.get(0)?,
             ordinal: r.get(1)?,
@@ -121,7 +127,9 @@ impl LifeRow {
             mode,
             armed: r.get(8)?,
             pace,
-            rules,
+            care_tempo,
+            base_rules: rules,
+            rules: effective,
             revision: r.get(19)?,
             adopted_at_ms: r.get(20)?,
         }))
@@ -530,6 +538,7 @@ fn life_view(c: &Connection, l: &LifeRow, row: &VitalsRow, paused: bool) -> Resu
         mode: l.mode.as_str().to_owned(),
         armed: l.armed,
         pace: l.pace.as_str().to_owned(),
+        care_tempo: l.care_tempo.as_str().to_owned(),
         paused,
         fainted: row.vitals.fainted,
         death_pending: row.death_pending,
@@ -771,6 +780,7 @@ fn insert_adopted_life(
     request_id: &str,
     req: &AdoptRequest<'_>,
     name: &str,
+    care_tempo: CareTempo,
 ) -> Result<String> {
     let now = at.wall;
     let rules = RULES_V1.for_pace(req.pace);
@@ -783,9 +793,9 @@ fn insert_adopted_life(
                 status, mode, armed, armed_at_ms, pace, ruleset, decay_hunger,
                 decay_thirst, decay_mental_health, decay_hygiene, full_hold_ms,
                 warning_at, critical_after_ms, grace_ms, adopted_at_ms,
-                adoption_request_id)
+                adoption_request_id, care_tempo)
              VALUES (?1, ?2, ?3, ?4, ?4, 'adopted', 'healthy', ?5, 1, ?6, ?7, ?8, ?9,
-                ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?6, ?17)",
+                ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?6, ?17, ?18)",
         params![
             life_id,
             ordinal,
@@ -803,7 +813,8 @@ fn insert_adopted_life(
             rules.warning_at,
             rules.critical_after_ms,
             rules.grace_ms,
-            request_id
+            request_id,
+            care_tempo.as_str()
         ],
     );
     match inserted {
@@ -844,7 +855,7 @@ fn insert_adopted_life(
         "born",
         None,
         &json!({"origin": "adopted", "species": req.species,
-                "mode": req.mode.as_str(), "pace": req.pace.as_str()}),
+                "mode": req.mode.as_str(), "pace": req.pace.as_str(), "care_tempo": care_tempo.as_str()}),
         None,
         Some(request_id),
         now,
@@ -962,7 +973,7 @@ impl Store {
             // Off (`pet.select` and `pet.events_seen` stay allowed).
             if matches!(
                 method,
-                "pet.adopt" | "pet.rules" | "pet.configure_life" | "pet.retire"
+                "pet.adopt" | "pet.rules" | "pet.configure_life" | "pet.care_tempo" | "pet.retire"
             ) {
                 crate::app::ensure_on(&tx)?;
             }
@@ -1059,7 +1070,7 @@ impl Store {
                 if !req.acknowledge_rules {
                     return Err(StorageError::AcknowledgementRequired);
                 }
-                insert_adopted_life(c, at, request_id, req, &name)?;
+                insert_adopted_life(c, at, request_id, req, &name, CareTempo::Steady)?;
                 Ok(true)
             },
         )
@@ -1093,6 +1104,11 @@ impl Store {
             let arming = !life.armed;
             let switching = life.mode != mode;
             let hardcore_on = switching && mode == Mode::Permadeath;
+            if mode == Mode::Permadeath && life.care_tempo != CareTempo::Steady {
+                return Err(StorageError::InvalidState(
+                    "select Steady care before turning on Hardcore",
+                ));
+            }
             if (arming || hardcore_on) && !acknowledge_rules {
                 return Err(StorageError::AcknowledgementRequired);
             }
@@ -1147,6 +1163,64 @@ impl Store {
         })
     }
 
+    /// Changes the care cadence after settling previous presence under the old rules.
+    /// Switching is never care: meters, fractional decay and critical clocks survive.
+    pub fn set_care_tempo(
+        &mut self,
+        request_id: &str,
+        life_id: &str,
+        expected_revision: i64,
+        tempo: CareTempo,
+    ) -> Result<LifeOutcome> {
+        let params = canonical(&[
+            ("expected_revision", expected_revision.into()),
+            ("life_id", life_id.into()),
+            ("tempo", tempo.as_str().into()),
+        ]);
+        self.life_command(request_id, "pet.care_tempo", &params, None, |c, at| {
+            let (life, mut row) = living_target(c, life_id)?;
+            if life.revision != expected_revision {
+                return Err(StorageError::StaleRevision);
+            }
+            if !life.armed {
+                return Err(StorageError::InvalidState(
+                    "start the companion before changing care tempo",
+                ));
+            }
+            if slot_busy(c)? {
+                return Err(StorageError::InvalidState(
+                    "finish the current work before changing care tempo",
+                ));
+            }
+            let next = tempo
+                .effective_rules(&life.base_rules, life.mode, life.pace)
+                .map_err(StorageError::InvalidParams)?;
+            if tempo == life.care_tempo {
+                return Ok(false);
+            }
+            c.execute(
+                "UPDATE lives SET care_tempo = ?1, revision = revision + 1
+                WHERE life_id = ?2 AND revision = ?3",
+                params![tempo.as_str(), life_id, expected_revision],
+            )?;
+            for hold in &mut row.vitals.hold_ms {
+                *hold = (*hold).min(next.full_hold_ms);
+            }
+            lifecycle_store::save(c, &row, at.wall)?;
+            journal(
+                c,
+                life_id,
+                "configured",
+                None,
+                &json!({"care_tempo": {"from": life.care_tempo.as_str(), "to": tempo.as_str()}}),
+                None,
+                Some(request_id),
+                at.wall,
+            )?;
+            Ok(true)
+        })
+    }
+
     /// `pet.configure_life`: leniency-only per-life settings (D7c). A stricter value is
     /// refused; a running frozen grace becomes `max(frozen, new)`.
     pub fn configure_life(
@@ -1180,7 +1254,7 @@ impl Store {
                 return Err(StorageError::StaleRevision);
             }
             let next = life
-                .rules
+                .base_rules
                 .with_leniency(
                     hours(l.grace_hours),
                     hours(l.critical_after_hours),
@@ -1191,7 +1265,7 @@ impl Store {
                         "settings can only become more lenient for a living companion",
                     )
                 })?;
-            if next == life.rules {
+            if next == life.base_rules {
                 return Ok(false);
             }
             c.execute(
@@ -1209,7 +1283,11 @@ impl Store {
                     life.revision
                 ],
             )?;
-            row.vitals = lc::on_leniency(&row.vitals, &next);
+            let effective = life
+                .care_tempo
+                .effective_rules(&next, life.mode, life.pace)
+                .map_err(StorageError::InvalidParams)?;
+            row.vitals = lc::on_leniency(&row.vitals, &effective);
             lifecycle_store::save(c, &row, at.wall)?;
             journal(
                 c,
@@ -1359,7 +1437,12 @@ impl Store {
                             pace: Pace::Steady,
                             acknowledge_rules: true,
                         };
-                        insert_adopted_life(c, at, request_id, &adopt, name)?;
+                        let tempo = if req.mode == Mode::Gentle {
+                            CareTempo::Lively
+                        } else {
+                            CareTempo::Steady
+                        };
+                        insert_adopted_life(c, at, request_id, &adopt, name, tempo)?;
                         point = Some("adopt_before_commit");
                     }
                     Some(life) => {

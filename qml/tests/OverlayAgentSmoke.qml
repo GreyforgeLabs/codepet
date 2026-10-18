@@ -107,6 +107,7 @@ Item {
         show({agent: agent({state: "working", apps: [app("claude-code", "working")], stale_at_ms: now + 540000})})
         check(pet.face.state === "working" && pet.displayState === "working", "an app working: the working loop")
         check(icons(pet) === "apps/app_claude_code.webp" && iconsLoad(pet), "bubble = the app tile")
+        check(pet.observerLabel === "Claude Code working", "observed coding bubble explains the client activity")
         check(pet.canRoam, "an unpinned working pet can wander")
         show({agent: agent({state: "working", stale_at_ms: now + 540000,
                             apps: [app("claude-code", "working", now - 9000), app("codex", "working", now - 8000),
@@ -115,8 +116,11 @@ Item {
         var busy = {state: "waiting", stale_at_ms: now + 540000,
                     apps: [app("claude-code", "working"), app("codex", "waiting")]}
         show({agent: agent(busy), needs: needs("food", "empty")})
-        check(pet.face.state === "waiting" && pet.displayState === "waiting", "an app needs you beats a need at now and working")
-        check(icons(pet) === "status/bubble_wait.webp,apps/app_codex.webp" && iconsLoad(pet), "a ! bubble with the waiting app's tile")
+        check(pet.face.state === "need_now" && pet.displayState === "needs_care", "urgent care stays visible over a waiting app")
+        check(icons(pet) === "care-floor/food.webp" && iconsLoad(pet), "urgent food icon remains visible")
+        show({agent: agent(busy)})
+        check(icons(pet) === "status/bubble_wait.webp,apps/app_codex.webp", "waiting app remains discoverable when care is healthy")
+        check(pet.observerLabel === "Codex needs you", "waiting bubble names who needs attention")
         var bobs = {}
         for (var i = 0; i < 6; i++) { pet.cosmeticTick(); bobs[pet.bobOffset] = true }
         check(bobs["-3"] === true && bobs["0"] === true, "the waiting pet bobs gently")
@@ -127,6 +131,7 @@ Item {
                                                           stale_at_ms: now + 540000})})
         check(pet.face.state === "need_now" && pet.displayState === "needs_care", "a need at now beats working")
         check(icons(pet) === "care-floor/food.webp" && iconsLoad(pet), "bubble = the need's care icon")
+        check(pet.observerLabel === "", "urgent care is never labelled as observer activity")
         show({life: lifeWith({appearance: "robot", name: "Bolt"}), needs: needs("food", "critical")})
         check(icons(pet) === "care-robot/food.webp" && iconsLoad(pet), "a robot's need uses the robot icons")
         show({life: lifeWith({appearance: "goldfish"}), needs: needs("wash", "low")})
@@ -221,6 +226,14 @@ Item {
         later.start()
     }
     Timer {
+        id: staleCheck; interval: 500
+        onTriggered: {
+            test.check(live.observerLabel === "" && !test.find(live, "desktopPet.bubble").visible, "real wake clears the stale observer label and icon")
+            console.log("Overlay agent smoke: " + test.checks + " checks, " + test.failures + " failures")
+            Qt.exit(test.failures > 0 ? 1 : 0)
+        }
+    }
+    Timer {
         id: later
         interval: 900
         onTriggered: {
@@ -243,8 +256,10 @@ Item {
             live.reducedMotion = false
             live.barState = test.doc({enabled: false})
             test.check(!wake.running && !test.find(live, "desktopPet.cosmeticTimer").running, "Off stops both timers (K9)")
-            console.log("Overlay agent smoke: " + test.checks + " checks, " + test.failures + " failures")
-            Qt.exit(test.failures > 0 ? 1 : 0)
+            var expiry = Date.now() + 300
+            live.barState = test.doc({agent: test.agent({apps: [{id: "codex", state: "working", since_ms: expiry - 1000, stale_at_ms: expiry}]})})
+            test.check(live.observerLabel === "Codex working" && wake.running, "observed label uses the existing stale wake deadline")
+            staleCheck.start()
         }
     }
 }

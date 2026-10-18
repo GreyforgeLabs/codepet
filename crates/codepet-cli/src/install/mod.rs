@@ -27,7 +27,7 @@ use codepet_core::agent::ClientId;
 use codepet_storage::StatePaths;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
-use std::io::{self, ErrorKind, Write};
+use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -278,19 +278,62 @@ pub fn ensure_private_dir(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
+// Inspect the opened descriptor: a path check alone can race a FIFO or symlink swap.
+fn open_regular_file(path: &Path) -> io::Result<fs::File> {
+    use rustix::fs::{Mode, OFlags};
+    let file = fs::File::from(rustix::fs::open(
+        path,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+        Mode::empty(),
+    )?);
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::other("not a regular file"));
+    }
+    Ok(file)
+}
+
+/// Reads a small owned-artifact candidate without following a foreign leaf or waiting
+/// on a FIFO. The read limit also applies if a regular file grows after it is opened.
+pub fn read_artifact(path: &Path) -> io::Result<String> {
+    const MAX_BYTES: u64 = 1024 * 1024;
+    let file = open_regular_file(path)?;
+    if file.metadata()?.len() > MAX_BYTES {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "artifact is too large",
+        ));
+    }
+    let mut text = String::new();
+    file.take(MAX_BYTES + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_BYTES {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "artifact is too large",
+        ));
+    }
+    Ok(text)
+}
+
 /// Writes `bytes` to `path` through `<dir>/<tmp_name>` (exclusive create, fsync, rename),
 /// with `mode`. Rewrites nothing when the bytes are already equal. Returns whether it wrote.
 pub fn write_file(path: &Path, tmp_name: &str, bytes: &[u8], mode: u32) -> io::Result<bool> {
-    if let Ok(m) = fs::symlink_metadata(path) {
-        if m.is_file() && fs::read(path).is_ok_and(|old| old == bytes) {
-            if m.permissions().mode() & 0o777 != mode {
-                fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+    match fs::symlink_metadata(path) {
+        Ok(m) if m.is_file() => {
+            let mut file = open_regular_file(path)?;
+            let mut old = Vec::new();
+            (&mut file)
+                .take(bytes.len() as u64 + 1)
+                .read_to_end(&mut old)?;
+            if old == bytes {
+                if file.metadata()?.permissions().mode() & 0o777 != mode {
+                    file.set_permissions(fs::Permissions::from_mode(mode))?;
+                }
+                return Ok(false);
             }
-            return Ok(false);
         }
-        if m.is_dir() {
-            return Err(io::Error::other("a directory is in the way"));
-        }
+        Ok(_) => return Err(io::Error::other("a non-regular file is in the way")),
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
     }
     let dir = path.parent().ok_or_else(|| io::Error::other("no parent"))?;
     let tmp = dir.join(tmp_name);
@@ -734,6 +777,98 @@ mod tests {
         assert_eq!(fs::read(target.join("a.txt")).unwrap(), b"three");
         assert!(!target.join("d").exists());
         assert_eq!(fs::read_dir(&staging).unwrap().count(), 0, "no stage left");
+    }
+
+    #[test]
+    fn foreign_artifact_reads_are_bounded_and_preserved() {
+        use std::os::unix::fs::{FileTypeExt, MetadataExt};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        for client in [ClientId::GrokCli, ClientId::OpenCode] {
+            for kind in ["fifo", "fifo-link", "malformed", "non-utf8", "oversized"] {
+                let (send, recv) = mpsc::channel();
+                let worker = std::thread::spawn(move || {
+                    let t = tempfile::tempdir().unwrap();
+                    let env = Env::resolve(|k| match k {
+                        "HOME" => Some(t.path().as_os_str().to_owned()),
+                        "PATH" => Some(OsString::from("/usr/bin")),
+                        _ => None,
+                    })
+                    .unwrap();
+                    let paths = StatePaths::resolve(|k| {
+                        (k == "HOME").then(|| t.path().as_os_str().to_owned())
+                    })
+                    .unwrap();
+                    let ctx = Ctx::new(env, paths, t.path().join("codepet")).unwrap();
+                    let path = match client {
+                        ClientId::GrokCli => grok::file_path(&ctx),
+                        _ => opencode::file_path(&ctx),
+                    };
+                    fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    let target = t.path().join("foreign-fifo");
+                    match kind {
+                        "fifo" => rustix::fs::mkfifoat(
+                            rustix::fs::CWD,
+                            &path,
+                            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+                        )
+                        .unwrap(),
+                        "fifo-link" => {
+                            rustix::fs::mkfifoat(
+                                rustix::fs::CWD,
+                                &target,
+                                rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+                            )
+                            .unwrap();
+                            std::os::unix::fs::symlink(&target, &path).unwrap();
+                        }
+                        "malformed" => fs::write(&path, "foreign {broken").unwrap(),
+                        "non-utf8" => fs::write(&path, b"foreign\xff\xfe").unwrap(),
+                        _ => {
+                            // Ownership-looking content must not bypass the size bound.
+                            let body = ctx
+                                .render(match client {
+                                    ClientId::GrokCli => grok::TEMPLATE,
+                                    _ => opencode::TEMPLATE,
+                                })
+                                .unwrap();
+                            fs::write(&path, format!("{body}{}", " ".repeat(1024 * 1024))).unwrap();
+                        }
+                    }
+                    let before = fs::symlink_metadata(&path).unwrap();
+                    let bytes = before.is_file().then(|| fs::read(&path).unwrap());
+                    assert_eq!(status(&ctx, client), Artifact::Missing, "{client:?}/{kind}");
+                    let connect = match client {
+                        ClientId::GrokCli => grok::connect(&ctx),
+                        _ => opencode::connect(&ctx),
+                    };
+                    assert_eq!(connect.unwrap_err().reason, Reason::Blocked);
+                    assert!(!refresh(&ctx, client).unwrap());
+                    let disconnect = match client {
+                        ClientId::GrokCli => grok::disconnect(&ctx),
+                        _ => opencode::disconnect(&ctx),
+                    };
+                    assert_eq!(disconnect.unwrap_err().reason, Reason::Blocked);
+                    let after = fs::symlink_metadata(&path).unwrap();
+                    assert_eq!(after.ino(), before.ino());
+                    assert_eq!(after.mode(), before.mode());
+                    if let Some(bytes) = bytes {
+                        assert_eq!(fs::read(&path).unwrap(), bytes);
+                    }
+                    if kind == "fifo-link" {
+                        assert_eq!(fs::read_link(&path).unwrap(), target);
+                        assert!(fs::symlink_metadata(target).unwrap().file_type().is_fifo());
+                    }
+                    send.send(()).unwrap();
+                });
+                assert!(
+                    recv.recv_timeout(Duration::from_secs(2)).is_ok(),
+                    "artifact operation blocked or failed: {client:?}/{kind}"
+                );
+                worker.join().unwrap();
+            }
+        }
     }
 
     #[test]

@@ -32,7 +32,7 @@ use std::time::Duration;
 pub const RETENTION_RUN: Duration = Duration::from_secs(1);
 
 /// The schema the fold, the agent export and the treat jar need (= [`crate::SCHEMA_VERSION`]).
-pub const AGENT_SCHEMA_VERSION: i64 = 5;
+pub const AGENT_SCHEMA_VERSION: i64 = crate::SCHEMA_VERSION;
 
 /// The living companion's statuses (the `lives_one_living` index).
 const LIVING: &str = "('healthy','warning','critical')";
@@ -114,7 +114,7 @@ impl Store {
         })
     }
 
-    /// The database can be folded into (schema v5).
+    /// The database can be folded into (the current schema).
     pub fn agent_ready(&self) -> Result<bool> {
         Ok(user_version(&self.conn)? == AGENT_SCHEMA_VERSION)
     }
@@ -398,7 +398,8 @@ fn fold_one(c: &Connection, ctx: &FoldCtx, rec: &InboxRecord) -> Result<bool> {
                    state_since_ms = CASE WHEN state = excluded.state THEN state_since_ms
                                          ELSE excluded.state_since_ms END,
                    state = excluded.state,
-                   last_event_ms = MAX(last_event_ms, excluded.last_event_ms)",
+                   last_event_ms = excluded.last_event_ms
+                 WHERE excluded.last_event_ms >= agent_sessions.last_event_ms",
                 params![key, cid, state.as_str(), at],
             )?;
         }

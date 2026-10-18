@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — Unreleased local development
+
+- Desktop card exposes Updates directly; right-click opens a compact care wheel.
+- Needs stay visible during work; confirmed care/treat feedback, jar count and
+  repeatable Play/petting reactions clarify the loop. Pinning keeps expressions.
+- Care tempo and life revision are available for explicit Gentle Lively/Steady
+  choices. Existing lives retain their identity, XP, age and stored leniency.
+- Requires the matching schema-6 backend; public downloads remain v0.4.0 until a
+  separately qualified release is published.
+
 ## 0.4.0 — 2026-10-17
 
 - Exact level, XP, evolution progress, care percentages and current-life age on Home.

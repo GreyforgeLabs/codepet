@@ -20,7 +20,9 @@
     "pace": "steady",
     "paused": false,
     "fainted": false,
-    "death_pending": false
+    "death_pending": false,
+    "care_tempo": "steady",
+    "revision": 1
   },
   "meters": {
     "hunger": 10000,
@@ -106,5 +108,24 @@
     "jar": 0,
     "full": false
   },
-  "clients": {}
+  "clients": {},
+  "care_rules": {
+    "decay_per_hour": [
+      1000,
+      1250,
+      600,
+      500
+    ],
+    "full_hold_ms": 3600000,
+    "warning_at": 3000,
+    "lethal": [
+      "hunger",
+      "thirst"
+    ],
+    "critical_after_ms": 7200000,
+    "grace_ms": 21600000,
+    "tick_ms": 60000,
+    "idle_timeout_s": 180,
+    "settle_cap_ms": 28800000
+  }
 }

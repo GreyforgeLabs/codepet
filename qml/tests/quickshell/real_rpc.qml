@@ -41,7 +41,7 @@ ShellRoot {
         offFlag.waitForJob()
         return offFlag.loaded
     }
-    function face(doc) { return PetState.sharedPriority(doc, Date.now(), shell.seen) }
+    function face(doc) { return PetState.currentPriority(doc, Date.now(), shell.seen) }
 
     Component.onCompleted: {
         check(root.length > 0 && Quickshell.env("CODEPET_BIN").length > 0, "harness environment set")

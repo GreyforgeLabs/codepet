@@ -46,10 +46,25 @@ Window {
         kit.sizes(app, label)
         kit.fits(app, label)
         var t = win.allText()
-        for (var k of ["help.rules", "help.grownup", "help.apps", "help.privacy", "help.rules.body", "help.apps.body", "help.privacy.body",
+        for (var k of ["help.rules", "help.grownup", "help.apps", "help.privacy", "help.current_rules_body", "help.current_apps_body", "help.current_privacy_body",
                        "help.forget.body", "help.helpers.body"])
             kit.check(t.indexOf(app.s(k)) >= 0, label + ": shows " + k)
     }).concat([
+        function () {
+            win.load("idle-happy", function (d) { d.life.care_tempo = "steady"; d.life.revision = 7 })
+        },
+        function () {
+            win.find("cp.help.tempo").toggled(true)
+            var request = ctl.last("pet.care_tempo")
+            kit.check(request && request.params.expected_revision === 7 && request.params.tempo === "lively", "tempo uses exact life revision")
+            win.load("idle-happy", function (d) { d.life.care_tempo = "lively"; d.life.revision = 8 })
+        },
+        function () {
+            var before = ctl.count("pet.rules")
+            win.find("cp.help.hardcore").toggled(true)
+            kit.check(!win.shown("cp.help.hardcoreAsk") && ctl.count("pet.rules") === before, "Hardcore waits for explicit Steady tempo")
+            kit.check(win.hasText("Choose Steady care tempo before Hardcore."), "tempo restriction explains recovery")
+        },
         // ---- Hardcore on: warning, typed name, then pet.rules permadeath
         function () { win.load("idle-happy") },
         function () {

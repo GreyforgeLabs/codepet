@@ -28,12 +28,13 @@ QtObject {
     }
     function check() { if (!busy) request("check") }
     function install() { if (Updates.canInstall(snapshot, busy)) request("install") }
+    function restartBar() { if (Updates.canRestart(snapshot, busy)) request("restart-bar") }
     function request(verb) {
         if (!supported) {
             failed("Updates are unavailable with a test state or custom backend. Open the normal installed CodePet to update.")
             return false
         }
-        if (busy || ["status", "check", "install"].indexOf(verb) < 0) return false
+        if (busy || ["status", "check", "install", "restart-bar"].indexOf(verb) < 0) return false
         var job = process.createObject(updates, { verb: verb })
         if (!job) { failed("Could not open the update helper. Reinstall CodePet 0.4 or later."); return false }
         current = job
@@ -50,6 +51,7 @@ QtObject {
         if (job.answer) snapshot = job.answer
         else failed(job.failure || "Could not open the update helper. Reinstall CodePet 0.4 or later.")
         var shouldCheck = initialStatus && job.verb === "status" && !!job.answer
+            && !Updates.active(snapshot)
             && ["idle", "current", "available"].indexOf(snapshot.state) >= 0
         initialStatus = false
         current = null

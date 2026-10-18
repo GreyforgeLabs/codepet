@@ -32,6 +32,8 @@ jobs:
           python3 qml/tests/test_overlay_host.py
           python3 qml/tests/test_work_host.py
           python3 qml/tests/test_update_host.py
+          python3 qml/tests/test_pet_life_native.py --output "$RUNNER_TEMP/codepet-life-native"
+          python3 qml/tests/test_work_card_native.py --output "$RUNNER_TEMP/codepet-work-card-native"
           python3 qml/tests/test_quickshell_host.py
           python3 qml/tests/test_bar_plugin.py
       - name: Pet assets (legacy sprites, v0.2 packs, invalid-pack fixtures, distinctness)
@@ -60,6 +62,7 @@ jobs:
         run: |
           python3 qml/tests/test_install_scripts.py
           python3 qml/tests/test_update.py
+          python3 qml/tests/test_runtime_regressions.py
       # Calm copy, and the v0.3 kid copy rules K1/K2/K8 over the plugin's strings, its
       # kid-facing QML and the species fields that reach the screen; the plugin's copy table
       # must be the contract plus the WP5 additions.

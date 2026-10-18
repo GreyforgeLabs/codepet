@@ -12,14 +12,15 @@ ShellRoot {
     id: work
     property var state: null
     property var pet: null
+    property var meters: null
     FileView {
         path: BarState.statePath(Quickshell.env("XDG_STATE_HOME"), Quickshell.env("HOME"))
         watchChanges: true
         printErrors: false
         onLoaded: {
-            try { work.pet = JSON.parse(text()).life || null } catch (e) { work.pet = null }
+            try { var parsed = JSON.parse(text()); work.pet = parsed.life || null; work.meters = parsed.meters || null } catch (e) { work.pet = null; work.meters = null }
         }
-        onLoadFailed: work.pet = null
+        onLoadFailed: { work.pet = null; work.meters = null }
         onFileChanged: reload()
     }
     property bool compact: Quickshell.env("CODEPET_WORK_MODE") === "compact"
@@ -84,9 +85,11 @@ ShellRoot {
                 x: 10; y: 80; width: parent.width - 20
                 height: Math.min(implicitHeight, parent.height - 90)
                 controller: workController
+                meters: work.meters
                 closable: false
                 onReviewRequested: { work.compact = false; window.width = 820; window.height = 820 }
                 onHomeRequested: Quickshell.execDetached(OverlayFlow.openHomeArgv(Quickshell.env("OMARCHY_PATH")))
+                onUpdatesRequested: Quickshell.execDetached(OverlayFlow.openUpdatesArgv(Quickshell.env("OMARCHY_PATH")))
             }
         }
         WorkPanel {

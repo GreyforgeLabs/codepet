@@ -3,7 +3,6 @@
 //! never touched. OpenCode loads `{plugin,plugins}/*.{ts,js}` including dotfiles, so the
 //! temporary name is `.codepet.js.partial`. Uninstall deletes the file.
 use super::{write_file, Artifact, Connected, Ctx, Failed, MARKER};
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 
@@ -21,7 +20,7 @@ fn ours(text: &str) -> bool {
 }
 
 pub fn status(ctx: &Ctx) -> Artifact {
-    let Ok(text) = fs::read_to_string(file_path(ctx)) else {
+    let Ok(text) = super::read_artifact(&file_path(ctx)) else {
         return Artifact::Missing;
     };
     match ctx.render(TEMPLATE) {
@@ -37,12 +36,14 @@ pub fn connect(ctx: &Ctx) -> Result<Connected, Failed> {
     let dir = path.parent().expect("plugins dir");
     super::ensure_dir(dir, 0o755)?;
     super::sweep_temps(dir);
-    if let Ok(old) = fs::read_to_string(&path) {
-        if old != body && !ours(&old) {
+    match super::read_artifact(&path) {
+        Ok(old) if old == body || ours(&old) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        _ => {
             return Err(Failed::new(
                 super::Reason::Blocked,
-                "a codepet.js that is not CodePet's",
-            ));
+                "codepet.js is unreadable or is not CodePet's",
+            ))
         }
     }
     write_file(&path, TMP, body.as_bytes(), 0o644)?;
@@ -54,14 +55,17 @@ pub fn connect(ctx: &Ctx) -> Result<Connected, Failed> {
 
 pub fn disconnect(ctx: &Ctx) -> Result<(), Failed> {
     let path = file_path(ctx);
-    if let Ok(text) = fs::read_to_string(&path) {
-        if !ours(&text) {
+    match super::read_artifact(&path) {
+        Ok(text) if ours(&text) => {
+            super::remove_file(&path)?;
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        _ => {
             return Err(Failed::new(
                 super::Reason::Blocked,
-                "codepet.js is not CodePet's",
-            ));
+                "codepet.js is unreadable or is not CodePet's",
+            ))
         }
-        super::remove_file(&path)?;
     }
     if let Some(dir) = path.parent() {
         super::sweep_temps(dir);
@@ -71,7 +75,7 @@ pub fn disconnect(ctx: &Ctx) -> Result<(), Failed> {
 
 pub fn refresh(ctx: &Ctx) -> io::Result<bool> {
     let path = file_path(ctx);
-    let Ok(text) = fs::read_to_string(&path) else {
+    let Ok(text) = super::read_artifact(&path) else {
         return Ok(false);
     };
     let Ok(want) = ctx.render(TEMPLATE) else {

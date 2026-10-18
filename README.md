@@ -1,100 +1,128 @@
 <p align="center">
-  <img src="docs/screenshots/codepet-cover.jpg" alt="CodePet — fifteen animated companions for your Omarchy desktop" width="100%">
+  <img src="docs/screenshots/codepet-cat-states.gif" alt="A CodePet cat eating, playing and resting" width="220">
+</p>
+<h1 align="center">CodePet</h1>
+<p align="center"><strong>Good work. Better company.</strong><br>A little desktop companion that grows with the code you care for.</p>
+<p align="center">
+  <a href="https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0"><strong>Download 0.5</strong></a> ·
+  <a href="#quick-start">Get started</a> ·
+  <a href="#see-it-work">Watch a real repair</a> ·
+  <a href="docs/work.md">How it works</a> · <a href="LICENSE">MIT</a>
 </p>
 
-# CodePet
+CodePet lives beside your work on **Omarchy + Hyprland**. It finds local repositories,
+checks for a suspected bug, and offers a fix. You review the changes and choose what
+to apply. Accepted work feeds your companion and earns XP. Between jobs, give it
+some attention, let it wander, or tuck it in for a nap.
 
-**A desktop coding companion that grows through useful work.**
+**Find → Fix → Review → Grow.** Fifteen companions. Three growth stages.
 
-Your pet finds local repositories and looks for a suspected bug. Click **Fix** to
-prepare a repair, then **Review** and apply it when you're satisfied. Accepted work
-feeds the pet and earns XP. Play keeps it happy; naps restore its energy.
+## What's new in 0.5
 
-[**Download v0.4.0**](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.4.0)
- · [Get started](#quick-start)
- · [Meet the pets](#meet-your-companion)
- · [Work and limits](docs/work.md)
- · [MIT license](LICENSE)
+| A better companion | A better workflow |
+| --- | --- |
+| Painted care wheel with Pet, Snack, Drink, Play, Bath and Nap/Wake | Pick your coding client directly on the pet |
+| Lively care pacing and playful pinned expressions | Keep each job tied to the client that started it |
+| Exact XP, age, needs and energy at a glance | See setup reasons and client capability limits |
+| Visible care feedback and keyboard navigation | Updates on the pet, with progress preserved |
 
-Built for **Omarchy 4 + Hyprland**. `codepet --version` prints `codepet 0.4.0`.
-See the [changelog](CHANGELOG.md) and [qualification record](docs/validation.md).
+The core is **Rust**, the interface is **native Qt Quick/QML**, and there is no
+resident Rust daemon. See the [changelog](CHANGELOG.md) and [qualification](docs/validation.md).
 
-![Illustrative CodePet card states](docs/screenshots/codepet-v0.4-cards.png)
+## See it work
 
-*Illustrative states rendered from the real UI with synthetic data. The suspected
-bug, project context and stats shown here are examples, not an actual finding.*
+[![A real CodePet repair: inspect the complete before-and-after change](docs/screenshots/codepet-repair-demo.png)](https://github.com/GreyforgeLabs/codepet/releases/download/v0.5.0/codepet-repair-demo.mp4)
 
-## Features
-
-- **A small desktop pet:** click for its work card, drag to move, pin in place, or
-  hide/show it without losing its placement. Calm mode reduces motion.
-- **Find → Fix → Review:** bounded automatic checks inspect a read-only source copy.
-  Fix prepares a candidate; only explicit reviewed Apply changes the original repo.
-  Research and custom coding tasks are available in the advanced window.
-- **Useful work feeds it:** accepted fixes fill food, research fills water, and
-  builds lift mood. Each accepted job gives 20 XP once. Scouts, failed jobs and
-  cancellations earn nothing. Free snacks, drinks, Play and Bath remain available.
-- **Visible progress:** care percentages and bars, level, exact XP, growth progress
-  and current-life age. A happy, awake pet with energy can work; after three accepted
-  jobs or 45 minutes of accepted work, a two-minute nap restores energy.
-- **Fifteen companions**, each with three growth stages. Change appearance without
-  resetting your pet's name, age, care or growth.
-- **Coding friends:** optional connections to Claude Code, Codex, OpenCode, Hermes
-  and Grok observe sessions you start separately. Qualifying turns earn treats;
-  giving them remains your choice. These sessions are independent of the pet's jobs.
-- **One On/Off switch:** freezes care and earning and exits the desktop pet. Stop an
-  active owned job before turning Off or starting a nap. Gentle mode is the default;
-  Hardcore remains an explicit choice in Help.
+**[Watch the 26-second repair demo](https://github.com/GreyforgeLabs/codepet/releases/download/v0.5.0/codepet-repair-demo.mp4).**
+A deliberately seeded cart-total bug, a real prepared repair, and three independent
+tests passing after Apply. The video replays the saved review; Apply happened
+separately. Captured on the preceding development build with the same review loop.
 
 ## Meet your companion
 
-![The fifteen CodePet companions at their three stages](docs/screenshots/codepet-v0.2-roster.webp)
+![All fifteen companions at their three growth stages](docs/screenshots/codepet-v0.2-roster.webp)
 
 Cat, dog, capybara, penguin, robot, iguana, spider, snake, goldfish, rabbit, turtle,
-frog, owl, red panda and axolotl. Aquatic companions stay in their habitat.
+frog, owl, red panda and axolotl. Aquatic pets bring their own habitat. Changing
+appearance keeps your companion's name, age, care and growth.
 
-## Requirements
+Accepted fixes fill **food**, research fills **water**, and builds lift **mood**.
+Each accepted job grants **20 XP once**. Snacks, drinks, Play and Bath are free
+and grant no XP. Scouts and unsuccessful jobs grant nothing.
 
-- Omarchy 4 + Hyprland; developed against Omarchy 4.0.4's plugin API.
-- Quickshell 0.3.1 (`qs`, or `CODEPET_QS`) and Qt WebP support (`qt6-imageformats` on Arch).
-- For pet-owned work: **Codex 0.163.0**, signed in with an existing ChatGPT subscription;
-  Linux user systemd with enforced memory/process limits, Bubblewrap and `prlimit`.
-  Other Codex versions are refused by this qualified adapter. API-key billing is not used.
-- Release archive: x86_64 Linux with **glibc 2.39 or later**.
-- In-app updates and the Work-window launcher: **Python 3.11 or later**; updates also
-  need a working user-systemd session.
-- Source build: Rust 1.85 or later, Cargo and a C compiler for bundled SQLite.
-
-**Automatic checks are enabled by default after Let's go!** When the pet is ready,
-they discover repositories under `~/Projects`, `~/Work/workspaces`, `~/Code`,
-`~/code`, `~/src`, `~/repos` and `~/Developer`. A scout may send selected source
-context to your signed-in Codex provider and can use the network. It omits known
-credentials, build caches and binary media; this is not a general secret detector.
-Pause future checks with **Details → Checks off**. There are no automatic fixes,
-applications, commits or pushes. See [scope and containment](docs/work.md).
-
-Other Linux desktops remain a portability goal. Offscreen Qt tests do not qualify
-actual compositor pointer/focus behavior; see [validation](docs/validation.md).
+A happy, awake pet with energy can work; food and water do not need to be full.
+After three accepted jobs or 45 minutes of accepted work, a two-minute nap restores
+energy. Gentle mode is the default. **Help → Care tempo** offers Steady and Lively;
+existing companions keep their tempo, while new Gentle starts use Lively.
+Needs change with attended desktop time, without offline catch-up.
 
 ## Quick start
 
-Download **`codepet-0.4.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
-[the latest release](https://github.com/GreyforgeLabs/codepet/releases/latest),
-then run these commands in the download directory:
+Download **`codepet-0.5.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
+[the 0.5 release](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0).
+In the download directory:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-tar xzf codepet-0.4.0-x86_64-linux.tar.gz
-cd codepet-0.4.0-x86_64-linux
+tar xzf codepet-0.5.0-x86_64-linux.tar.gz
+cd codepet-0.5.0-x86_64-linux
 packaging/omarchy/install.sh --dry-run
 packaging/omarchy/install.sh
 ```
 
-The archive includes the binary; nothing is compiled. The installer adds the
-bar plugin, desktop pet and native review window, asks Omarchy to rescan its
-plugins, and upgrades saved state with recovery backups. It never restarts your
-shell or starts your pet's life. Use the installer so binary and UI versions match.
-Finish or cancel active owned work and close Work before upgrading.
+The archive includes the binary. Installation adds the bar plugin, desktop pet and
+review window, rescans plugins, and upgrades saved state with recovery backups.
+It does not restart your shell or start your pet's life. Use the installer to keep
+binary and UI versions together. `codepet --version` prints `codepet 0.5.0`.
+
+### First run
+
+1. Click CodePet on the bar, choose your companion, and tap **Let's go!**
+2. Left-click the desktop pet for its status, care numbers and **Client** chooser.
+3. A suspected bug offers **Fix**; a finished candidate offers **Review**. Only
+   explicit reviewed Apply changes your original project.
+4. Right-click for quick care. Drag to move; **Pin/Roam** controls wandering.
+   **Care** opens full meters, and **Details** opens longer work status.
+
+**Automatic checks are enabled after Let's go!** Bounded scouts search conventional
+development folders such as `~/Projects`, `~/Code` and `~/Work/workspaces` when the
+pet is ready. Selected source context can reach your provider, and jobs can use
+the network. Pause future checks with **Details → Checks off**. There are no
+automatic fixes, applications, commits or pushes. [Scope and limits](docs/work.md).
+
+### Choose a client
+
+![Inline client selection, with illustrative availability](docs/screenshots/codepet-client-chooser.png)
+
+*Real native UI with synthetic data for the availability example. A catalog entry
+does not mean its executor is configured or qualified.*
+
+| Client for pet-owned work | Current adapter |
+| --- | --- |
+| **Codex 0.163.0** | Existing ChatGPT subscription; isolated commands and reviewed edits |
+| **Claude Code 2.1.294** | Pro/Max access token; restricted file tools and WebSearch; no command-based tests |
+| **OpenCode 1.19.0** | Pinned `opencode/big-pickle` route; isolated commands and reviewed edits |
+| Muse, Grok, Hermes, pi | Detected choices with explanations; execution unavailable |
+
+Selection is saved for the **next** job. It never starts work, changes an existing
+job, resets cooldowns or falls back to another client. See [provider support](docs/providers.md).
+
+### Keep it up to date
+
+Open **Updates** on the pet or **More → Updates** on the bar. CodePet checks GitHub,
+verifies the download, and installs the newer stable release while preserving age,
+XP, settings and saved work. Finish or discard active work and pending review,
+then close Work before upgrading. [Update and recovery details](docs/updates.md).
+
+## Requirements
+
+- **Omarchy 4 + Hyprland**, developed against Omarchy 4.0.4's plugin API.
+- **Quickshell 0.3.1** (`qs`, or `CODEPET_QS`) and Qt WebP support (`qt6-imageformats` on Arch).
+- **Pet-owned jobs:** a supported coding client, Linux user systemd with enforced
+  memory/process limits, Bubblewrap and `prlimit`.
+- Release archive: x86_64 Linux with **glibc 2.39 or later**.
+- **Updates and Work launcher:** Python 3.11 or later; updates need user systemd.
+- Source build: Rust 1.85 or later, Cargo and a C compiler for bundled SQLite.
 
 <details>
 <summary>Build and install from source</summary>
@@ -108,54 +136,26 @@ packaging/omarchy/install.sh
 
 </details>
 
-### Update from CodePet
+## Coding friends and treats
 
-Open **More → Updates**. CodePet checks GitHub and offers one **Update** button when
-there is a newer stable release. It verifies the download and installs it while
-keeping your pet's age, XP, settings and saved work. Finish or discard active work
-and pending review, then close Work first. The update continues if the plugin
-reloads; reopen Updates for its result. See [update checks and recovery](docs/updates.md).
+**Helpers** connects to Claude Code, Codex, OpenCode, Hermes and Grok sessions you
+start separately. These observers are independent of the **Client** chosen for
+pet-owned jobs. Qualifying finished turns earn treats; giving one grants **5 XP**.
+The finite jar holds ten.
 
-### First run
+Connect is explicit. A local ready check makes no model call and earns no treat.
+Hooks retain bounded metadata, never chats or code. Claude and Hermes manage
+plugin settings through their CLIs. Codex hook entries require your review in
+`/hooks`; CodePet never grants trust. [Connection and privacy details](docs/security.md).
 
-1. Click the pet on the bar and choose a companion.
-2. Tap **Let's go!** to start its gentle life and show it on the desktop. Automatic
-   checks become eligible when Codex is signed in and the pet is ready.
-3. Click the desktop pet to open its compact card. **Details** includes the checks
-   toggle. A suspected bug offers **Fix**; a finished repair offers **Review**.
-4. Use **Care** for meters and free care, or **More** for sleep, pinning, Calm mode,
-   Help and Memories. Optional **Helpers** connections watch other coding sessions.
-
-The bar's left click opens Home; right click opens its small menu. Drag the desktop
-pet to move it; right-click it to pin/unpin. Pinning stops wandering but still lets
-you deliberately drag. Upgrades preserve existing lives, looks, XP and birth dates.
-
-## Connect your coding apps
-
-These optional observer connections are separate from pet-owned Codex work.
-Connect is explicit. A local ready check makes no model call and earns no treat;
-a real app event confirms the connection.
-
-| App | Connection |
-|---|---|
-| Claude Code | Installs CodePet's local plugin through Claude's CLI; existing sessions may need `/reload-plugins`. |
-| Grok CLI | Adds CodePet's own hook file. |
-| OpenCode | Adds CodePet's plugin file. |
-| Hermes | Adds CodePet's plugin and enables it through Hermes's CLI. |
-| Codex | Adds hook groups while preserving other groups; review them yourself in `/hooks`. CodePet never grants trust. |
-
-Claude and Hermes record plugin settings using their own CLIs. CodePet checks that
-unrelated hooks and permission settings were preserved. **Stop watching** disconnects
-one app. Observer hooks retain only bounded metadata, never chats or code.
-See [security](docs/security.md) for the separate observer and owned-work boundaries.
-
-Codex starts its own login shell before the observer hook. Off cannot eliminate
-that shell's cost; disconnect Codex to remove CodePet's hooks from its event path.
+**Off** freezes care and earning and exits the desktop pet. Stop active owned work
+before turning Off or taking a nap. Codex starts its own login shell before its
+observer hook; disconnect that Helpers connection to remove the hook path entirely.
 
 ### Uninstall
 
-Finish or cancel any running CodePet job, finish any pending application recovery,
-and close the Work window first. Closing the window alone does not stop its job. Then:
+Finish or cancel owned work, resolve pending application recovery, and close Work.
+Closing its window alone does not stop a job. Then run:
 
 ```sh
 codepet-overlay quit
@@ -163,9 +163,8 @@ packaging/omarchy/uninstall.sh --dry-run
 packaging/omarchy/uninstall.sh
 ```
 
-The uninstaller disconnects supported apps, disables and backs up the plugin and
-runtime, and preserves pet data. A silent shim may remain where another app still
-references it. Do not remove a referenced shim by hand.
+Uninstall disconnects supported apps, backs up the plugin/runtime, and preserves
+pet data. A silent shim may remain while a client still references it.
 
 ## Development
 
@@ -178,36 +177,24 @@ cargo clippy --workspace --all-targets --locked --features legacy-tasks -- -D wa
 python3 docs/v0.3/contracts/check_contracts.py
 ```
 
-QML, integration and asset checks are in [.github/workflows/qml.yml](.github/workflows/qml.yml).
-Use a throwaway `HOME` and `XDG_STATE_HOME` for experiments. The installed pet is
-never a test fixture. `CODEPET_TEST_STATE=1` refuses observer Connect/Disconnect/test
-jobs; it is not a substitute for isolating work-runner fixtures.
+[QML CI](.github/workflows/qml.yml) covers offscreen interactions, models, integrations
+and assets. Use disposable `HOME` and `XDG_STATE_HOME`; the installed pet is never a
+test fixture. Schema 6 preserves lives/history with a migration backup; older
+binaries refuse it. The retired `legacy-tasks` pipeline is non-default compatibility
+code; real jobs use the current work controller.
 
-The default build's real-work controller is independent of the retired mock
-pipeline. `legacy-tasks` retains non-default compatibility tests and historical
-data; it is not used for real provider work. SQLite remains schema 5.
+## Art and documentation
 
-## Pet art and source-art catalog
+Pet frames come from GPT Image 2 source sheets with reproducible extraction and
+recorded provenance. Explore the [art library](docs/art-library/README.md),
+[raster-art decision](docs/decisions/0002-v0.2-raster-pet-art.md), and
+[source archive](https://github.com/GreyforgeLabs/codepet/releases/download/v0.3.0/codepet-art-sources-v0.2.tar).
 
-Pets use 192×192 WebP frames extracted from GPT Image 2 source sheets. The fifteen
-original concept sheets are preserved in the [art library](docs/art-library/README.md).
-The extraction sources are the historical release asset
-[`codepet-art-sources-v0.2.tar`](https://github.com/GreyforgeLabs/codepet/releases/download/v0.3.0/codepet-art-sources-v0.2.tar).
-See [reproduction instructions](docs/pets.md#reproducing-the-frames),
-[provenance](qml/assets/pets/PROVENANCE.md) and the
-[raster-art decision](docs/decisions/0002-v0.2-raster-pet-art.md).
+[Companions](docs/pets.md) · [Lifecycle](docs/lifecycle.md) ·
+[Architecture](docs/architecture.md) · [Security and privacy](docs/security.md) ·
+[Desktop controls](docs/desktop-overlay.md) · [Validation](docs/validation.md) ·
+[Licences](docs/licenses.md) · [Third-party notices](THIRD-PARTY-LICENSES.md)
 
-## Documentation
-
-- [Companions](docs/pets.md) and [lifecycle](docs/lifecycle.md)
-- [Architecture](docs/architecture.md) and [security](docs/security.md)
-- [Bar plugin](docs/omarchy-plugin.md) and [desktop overlay](docs/desktop-overlay.md)
-- [Updates and recovery](docs/updates.md)
-- [Validation and remaining checks](docs/validation.md)
-- [v0.3 frozen contracts](docs/v0.3/contracts/README.md)
-- [Licences](docs/licenses.md) and [third-party notices](THIRD-PARTY-LICENSES.md)
-
-The [original implementation specification](docs/implementation-spec.md) and
-[v0.2 lifecycle decisions](docs/decisions/0001-v0.2-lifecycle.md) preserve design
-history. Their historical task and default-mode descriptions are superseded by the
-[current work loop](docs/work.md).
+Other Linux desktops remain a portability goal. The [original specification](docs/implementation-spec.md)
+and [v0.3 contracts](docs/v0.3/contracts/README.md) preserve design history;
+[the current work loop](docs/work.md) describes today's behavior.

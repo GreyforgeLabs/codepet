@@ -59,7 +59,7 @@ Window {
         var tiles = win.count("tile"), rounds = win.count("round"), treats = win.count("treats")
         kit.check(tiles <= 4 && rounds <= 3 && treats <= 1, label + ": K4 at most 4 tiles, 3 round, 1 Treats")
         var face = ctl.face
-        kit.check(treats === (face.treats_visible ? 1 : 0), label + ": Treats only when the jar can be given")
+        kit.check(treats === (["off", "asleep", "paused", "fainted"].indexOf(face.state) < 0 ? 1 : 0), label + ": finite jar remains visible including zero")
         var pet = kit.find(app, "cp.pet")
         kit.check(pet && kit.px16(pet.height) >= 159.5, label + ": the pet is 160 px")
         if (face.state === "off") kit.check(tiles === 0 && rounds === 0 && kit.find(app, "cp.turnOn").visible, label + ": Off shows Turn on only")
@@ -99,7 +99,7 @@ Window {
             ctl.workState = { readiness: { ready: true, energy: 67 }, task: null }
         },
         function () {
-            kit.check(text("cp.statusLine") === "Energy 67% · Ready to work", "Home shows numeric energy and readiness")
+            kit.check(text("cp.energyLine") === "Energy 67% · Ready to work", "Home shows numeric energy and readiness as secondary text")
             kit.all(app, "Home with work readiness")
             ctl.workState = { readiness: { ready: false, energy: 67 }, task: { status: "review" } }
         },
@@ -167,8 +167,8 @@ Window {
         function () {
             var before = ctl.calls.length
             tile("food").tapped()
-            kit.check(ctl.workLaunches[ctl.workLaunches.length - 1] === "compact", "food opens compact bug card")
-            kit.check(ctl.calls.length === before, "opening bug fixing grants no care or XP")
+            kit.check(ctl.last("pet.care").params.action === "food", "Snack sends free care")
+            kit.check(ctl.calls.length === before + 1, "Snack sends exactly one care request")
         },
         function () {
             var doc = kit.fixture("idle-happy")
@@ -176,11 +176,9 @@ Window {
             ctl.barState = doc
         },
         function () {
-            tile("food").tapped()
-            kit.check(ctl.workLaunches[ctl.workLaunches.length - 1] === "compact", "full food never blocks bug card")
             ctl.responses = { "pet.care": { changed: false } }
             tile("play").tapped()
-            kit.check(app.bubbleText.indexOf("Wheee!") === 0, "play reacts: " + app.bubbleText)
+            kit.check(app.bubbleText === "One moment…", "Play waits for confirmation")
         },
         function () {
             kit.check(app.bubbleText === "Ginger played already!", "changed:false swaps to the full line: " + app.bubbleText)
@@ -192,7 +190,7 @@ Window {
             ctl.responses = {}
             ctl.hold = true
             tile("play").tapped()
-            kit.check(app.bubbleText.indexOf("Wheee!") === 0, "play reacts while the request is still running")
+            kit.check(app.bubbleText === "One moment…", "Play does not claim success while pending")
             ctl.hold = false
             ctl.release()
         },
@@ -207,13 +205,13 @@ Window {
             var t = tile("water"), w = tile("wash")
             kit.check(t.text === "Fresh water" && t.detail === "" && w.text === "Clean tank", "goldfish work and care labels")
             kit.check(tile("food").icon === "care-aquatic/food", "goldfish uses the aquatic icons")
-            kit.check(text("cp.statusLine") === "Ginger's tank is a bit dirty.", "goldfish line: " + text("cp.statusLine"))
+            kit.check(text("cp.statusLine") === "Ginger's tank is dirty!", "goldfish line: " + text("cp.statusLine"))
             tile("water").tapped()
             kit.check(ctl.last("pet.care").params.action === "water", "water is free recovery care")
         },
         function () { win.load("robot-bolt") },
         function () {
-            kit.check(tile("food").detail === "Charge" && tile("water").text === "Cool down" && tile("wash").text === "Polish",
+            kit.check(tile("food").text === "Charge" && tile("food").detail === "" && tile("water").text === "Cool down" && tile("wash").text === "Polish",
                       "robot tiles: " + tile("food").text + " / " + tile("water").text + " / " + tile("wash").text)
             kit.check(tile("food").icon === "care-robot/food", "robot uses the robot icons")
         },
@@ -227,7 +225,7 @@ Window {
         function () {
             var c = ctl.last("treats.give")
             kit.check(c && c.params.life_id === ctl.barState.life.life_id, "Treats sends treats.give for the life")
-            kit.check(app.bubbleText === "Yum! Ginger is growing!", "Treats bubble: " + app.bubbleText)
+            kit.check(app.bubbleText === "Yum! +5 XP", "Treats bubble: " + app.bubbleText)
         },
         function () { win.load("jar-full") },
         function () { kit.check(kit.find(app, "cp.treats").visible, "a full jar still offers Treats") },

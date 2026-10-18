@@ -16,3 +16,18 @@ test('only known available release enables install; busy phases poll and termina
   for (const phase of ['checking','downloading','verifying','installing']) assert.equal(M.active({...state,state:phase}),true);
   for (const phase of ['idle','available','current','succeeded','error']) assert.equal(M.active({...state,state:phase}),false);
 });
+test('pending restart is independent of release comparison and only explicit restart starts it',()=>{
+  for (const phase of ['available','current','succeeded','error']) {
+    const pending={...state,state:phase,restart_required:true,restart_state:'idle'};
+    assert.equal(M.canRestart(M.parse(JSON.stringify(pending)),false),true);
+    assert.equal(M.canRestart(pending,true),false);
+    assert.equal(M.active(pending),false);
+  }
+  assert.equal(M.canRestart({...state,restart_required:false},false),false);
+  const running={...state,restart_required:true,restart_state:'restarting'};
+  assert.equal(M.active(running),true);
+  assert.equal(M.canRestart(running,false),false);
+  assert.equal(M.canInstall(running,false),false);
+  for (const bad of [{restart_required:'true'},{restart_state:'random'},{restart_message:42}])
+    assert.equal(M.parse(JSON.stringify({...state,...bad})),null);
+});
