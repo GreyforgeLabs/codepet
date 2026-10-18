@@ -2,7 +2,7 @@
 use super::filesystem::read_beneath;
 use super::review::{check_destination, collect_changes, seal_scout};
 use super::runtime::{
-    base_sandbox, import_workspace, job_instruction, parse_event, permission_args,
+    base_sandbox, drain_after_exit, import_workspace, job_instruction, parse_event, permission_args,
 };
 use super::*;
 use std::os::unix::fs::symlink;
@@ -120,6 +120,81 @@ fn staging_excludes_credentials_and_refuses_links() {
     assert!(files.contains_key("main.py"));
     symlink("/etc/passwd", dir.path().join("linked")).unwrap();
     assert!(walk(dir.path()).unwrap_err().contains("links"));
+}
+#[test]
+fn staging_refuses_hardlinked_source_before_reading_or_copying() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    private_dir(&source).unwrap();
+    let outside = root.path().join("outside-secret");
+    fs::write(&outside, "PRIVATE_OUTSIDE_CANARY").unwrap();
+    fs::hard_link(&outside, source.join("main.rs")).unwrap();
+    assert!(walk(&source).unwrap_err().contains("links"));
+    assert!(read_beneath(&source, Path::new("main.rs"), MAX_FILE)
+        .unwrap_err()
+        .contains("hard-linked"));
+}
+#[test]
+fn copy_tree_refuses_source_replaced_by_same_content_hardlink() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    private_dir(&source).unwrap();
+    let input = source.join("main.rs");
+    fs::write(&input, "fn main() {}\n").unwrap();
+    let baseline = walk(&source).unwrap();
+    let outside = root.path().join("outside");
+    fs::write(&outside, "fn main() {}\n").unwrap();
+    fs::remove_file(&input).unwrap();
+    fs::hard_link(&outside, &input).unwrap();
+    let destination = root.path().join("copy");
+    assert!(copy_tree(&source, &destination, &baseline)
+        .unwrap_err()
+        .contains("hard-linked"));
+    assert!(!destination.join("main.rs").exists());
+}
+#[test]
+fn project_scope_refuses_state_storage_in_either_direction() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let project = home.join("Projects/repo");
+    let sibling = home.join("Projects/other");
+    let paths = StatePaths::resolve(|key| match key {
+        "HOME" => Some(home.clone().into()),
+        "XDG_STATE_HOME" => Some(project.join("state").into()),
+        _ => None,
+    })
+    .unwrap();
+    fs::create_dir_all(paths.state_dir.join("work")).unwrap();
+    fs::create_dir_all(&sibling).unwrap();
+    let private = paths.state_dir.join("private-task.json");
+    fs::write(&private, "PRIVATE_WORK_SENTINEL").unwrap();
+
+    for scope in [
+        project.as_path(),
+        paths.state_dir.as_path(),
+        paths.state_dir.join("work").as_path(),
+    ] {
+        assert!(
+            validate_project(&paths, scope).is_err(),
+            "project scope must not overlap private state: {}",
+            scope.display()
+        );
+    }
+    assert_eq!(validate_project(&paths, &sibling).unwrap(), sibling);
+
+    // XDG state ancestors may be symlinks even though the state directory is not.
+    let alias = root.path().join("state-alias");
+    symlink(project.join("state"), &alias).unwrap();
+    let mut aliased_paths = paths.clone();
+    aliased_paths.state_dir = alias.join("codepet");
+    assert!(validate_project(&aliased_paths, &project).is_err());
+    assert_eq!(validate_project(&aliased_paths, &sibling).unwrap(), sibling);
+    aliased_paths.state_dir = root.path().join("missing-state");
+    assert!(validate_project(&aliased_paths, &sibling).is_err());
+    assert_eq!(
+        fs::read_to_string(private).unwrap(),
+        "PRIVATE_WORK_SENTINEL"
+    );
 }
 #[test]
 fn apply_conflicts_and_symlink_parents_preserve_original_files() {
@@ -496,6 +571,85 @@ fn cancellation_wins_over_stale_start_and_fast_completion_snapshots() {
         save(root.path(), &stale).unwrap();
         assert_eq!(load(root.path(), &stale.id).unwrap().status, "cancelled");
     }
+}
+#[test]
+fn final_drain_waits_for_delayed_workspace_export_and_eof() {
+    struct DelayedRead<R>(R, bool);
+    impl<R: Read> Read for DelayedRead<R> {
+        fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+            if !self.1 {
+                self.1 = true;
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            self.0.read(output)
+        }
+    }
+    let bytes = b"{\"type\":\"codepet.workspace\",\"changes\":[]}\n".to_vec();
+    let (tx, rx) = mpsc::sync_channel(16);
+    runtime::reader(
+        DelayedRead(std::io::Cursor::new(bytes.clone()), false),
+        true,
+        tx,
+    );
+    let mut pending = Vec::new();
+    let mut total = 0;
+    let mut failure = None;
+    drain_after_exit(
+        &rx,
+        &mut pending,
+        &mut total,
+        &mut failure,
+        Duration::from_secs(3),
+    );
+    assert!(failure.is_none());
+    assert_eq!(pending, bytes);
+    assert_eq!(total, bytes.len());
+    let mut task = task_fixture();
+    let mut completed = true;
+    let mut workspace = None;
+    parse_event(
+        &pending,
+        &mut task,
+        &mut completed,
+        &mut workspace,
+        &mut failure,
+    );
+    assert!(failure.is_none());
+    assert!(workspace.unwrap().is_empty());
+}
+#[test]
+fn final_drain_refuses_unclosed_streams_and_preserves_output_budget() {
+    let (held_sender, rx) = mpsc::sync_channel(16);
+    let mut pending = Vec::new();
+    let mut total = 0;
+    let mut failure = None;
+    drain_after_exit(
+        &rx,
+        &mut pending,
+        &mut total,
+        &mut failure,
+        Duration::from_millis(20),
+    );
+    assert!(failure.unwrap().contains("streams did not close"));
+    assert!(pending.is_empty());
+    drop(held_sender);
+
+    let (tx, rx) = mpsc::sync_channel(16);
+    runtime::reader(
+        std::io::Cursor::new(vec![b'x'; MAX_PROVIDER_OUTPUT + 1]),
+        true,
+        tx,
+    );
+    let mut failure = None;
+    drain_after_exit(
+        &rx,
+        &mut pending,
+        &mut total,
+        &mut failure,
+        Duration::from_secs(3),
+    );
+    assert!(failure.unwrap().contains("output limit"));
+    assert!(pending.len() <= MAX_PROVIDER_OUTPUT);
 }
 #[test]
 fn oversized_reports_fail_and_private_errors_never_enter_display_export() {

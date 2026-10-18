@@ -87,9 +87,22 @@ class ReleaseDocs(unittest.TestCase):
             self.assertIn(required, " ".join(readme.split()), required)
         self.assertIn(f"{version}, unreleased local development", readme)
         self.assertNotIn(f"releases/tag/v{version}", readme)
+        self.assertNotIn(f"releases/download/v{version}/", readme)
         self.assertIn(f"## {version} — Unreleased local development", read("CHANGELOG.md"))
         self.assertNotIn("for v0.3.0 only", readme)
         self.assertTrue((DOCS / "screenshots/codepet-v0.4-cards.png").is_file())
+
+    def test_candidate_qualification_is_separate_from_historical_passes(self):
+        version = tomllib.loads(read("Cargo.toml"))["workspace"]["package"]["version"]
+        validation = read("docs/validation.md")
+        self.assertTrue(validation.startswith(f"# v{version} candidate qualification"))
+        current = validation.split("\n---\n", 1)[0]
+        for phrase in ("not release-qualified", "Quickshell", "containment", "offscreen"):
+            self.assertIn(phrase, current)
+        self.assertIn("release-0.5.md", current)
+        checklist = read("docs/release-0.5.md")
+        for phrase in ("No tag", "exact commit", "existing companion", "announcement"):
+            self.assertIn(phrase, checklist)
 
     def test_archive_libc_requirement_is_separate_from_source_msrv(self):
         readme = read("README.md")

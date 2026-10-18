@@ -171,7 +171,7 @@ Rectangle {
             Words {
                 objectName: "work.error"
                 Layout.fillWidth: true
-                visible: text !== ""
+                visible: text !== "" && !panel.reviewing
                 color: "#ffc2a8"
                 text: panel.controller.error
                 Accessible.role: Accessible.AlertMessage
@@ -322,6 +322,14 @@ Rectangle {
                     checked: panel.verificationAcknowledged
                     onToggled: panel.verificationAcknowledged = checked
                     palette.windowText: panel.ink
+                }
+                Words {
+                    objectName: "work.reviewError"
+                    Layout.fillWidth: true
+                    visible: panel.reviewing && text !== ""
+                    color: "#ffc2a8"
+                    text: panel.controller.error
+                    Accessible.role: Accessible.AlertMessage
                 }
                 RowLayout {
                     Layout.fillWidth: true

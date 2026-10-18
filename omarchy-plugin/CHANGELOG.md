@@ -1,12 +1,14 @@
 # Changelog
 
-## 0.4.1 — Unreleased local development
+## 0.5.0 — Unreleased local development
 
 - Desktop card exposes Updates directly; right-click opens a compact care wheel.
 - Needs stay visible during work; confirmed care/treat feedback, jar count and
   repeatable Play/petting reactions clarify the loop. Pinning keeps expressions.
 - Care tempo and life revision are available for explicit Gentle Lively/Steady
   choices. Existing lives retain their identity, XP, age and stored leniency.
+- Client selection stays separate from current work; interrupted Apply retains
+  actionable feedback while waiting for an explicit recovery retry.
 - Requires the matching schema-6 backend; public downloads remain v0.4.0 until a
   separately qualified release is published.
 

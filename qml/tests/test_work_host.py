@@ -101,6 +101,9 @@ elif method=='fix':
     print(json.dumps({'ok':False,'error':{'message':'Fixture rejected repair before starting'}}));sys.exit(0)
 elif method=='accept':
     assert p=={'task_id':'job-fixture','review_digest':'digest-fixture','acknowledge_unverified':True}
+    if (root/'reject-accept').exists():
+        (root/'reject-accept').unlink()
+        print(json.dumps({'ok':False,'error':{'message':'Destination changed: a.txt'}}));sys.exit(0)
     s['task']['status']='accepted'
 elif method=='cancel': s['task']['status']='cancelled'
 elif method=='dismiss':
@@ -260,6 +263,26 @@ print(json.dumps({'ok':True,'result':s}))
                     wait(lambda: bool(status()["error"]) and not status()["busy"])
                     ipc("testRefresh")
                     wait(lambda: not status()["error"] and not status()["busy"])
+                saved = json.loads(state.read_text())
+                saved["task"] = {"id": "job-fixture", "status": "applying", "kind": "bug",
+                                 "review_digest": "digest-fixture", "changes": [{"path": "a.txt", "before": "old", "after": "new"}]}
+                state.write_text(json.dumps(saved)); ipc("testRefresh")
+                wait(lambda: status()["task"] == "applying" and not status()["busy"])
+
+                def get_count():
+                    return sum(json.loads(line)["method"] == "get" for line in (root / "calls.jsonl").read_text().splitlines())
+
+                reads = get_count()
+                time.sleep(2.6)
+                self.assertEqual(get_count(), reads, "awake application recovery must not poll")
+                (root / "reject-accept").touch(); ipc("testAccept")
+                wait(lambda: status()["error"] == "Destination changed: a.txt" and not status()["busy"])
+                reads = get_count()
+                time.sleep(2.6)
+                self.assertEqual(status()["error"], "Destination changed: a.txt", "failed recovery feedback remains visible")
+                self.assertEqual(get_count(), reads, "failed recovery hydrates once, then waits for the user")
+                ipc("testAccept")
+                wait(lambda: status()["task"] == "accepted" and not status()["error"] and not status()["busy"])
                 ipc("open", "compact")
                 wait(lambda: status()["compact"] and not status()["busy"])
                 ipc("open", "research")

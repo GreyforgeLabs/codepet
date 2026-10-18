@@ -2,7 +2,7 @@
 
 All notable changes to CodePet.
 
-## 0.4.1 — Unreleased local development
+## 0.5.0 — Unreleased local development
 
 - Adds an explicit Gentle care tempo: Lively uses a five-minute full hold and
   noticeable attended-time care needs. Existing lives keep Steady until changed;
@@ -17,8 +17,25 @@ All notable changes to CodePet.
 - Need cues survive work status, attended minute checkpoints refresh settled care,
   and repeated Play restarts its reaction. Treats shows the finite jar count and
   confirms the actual grant; growth feedback follows saved evolution.
+- The compact card and Work window share client selection. Each job stays bound to
+  its selected adapter; changing the next client never retries or launches work.
+  Codex, Claude Code and OpenCode have separate execution and verification limits.
+- The work controller is split into filesystem, review and runtime modules while
+  keeping private prompts, paths, reports and errors out of display exports.
+  Bounded stream completion and nonblocking private-file reads retain the earlier
+  delayed-completion and unsafe-read corrections.
+- Recovery status checks preserve failed Apply feedback and stop fast polling when
+  an interrupted application is waiting for a reviewed retry.
+- Source preparation refuses repositories overlapping CodePet's private state in
+  either direction, before any provider can receive a staged copy. Source hardlinks
+  are rejected during traversal and again on the opened file before copying.
+- Final provider output waits for actual stream completion within a five-second
+  drain budget; a stuck stream fails explicitly instead of losing a late export.
+- Sprite decode size uses Qt's supported screen pixel ratio with a finite fallback,
+  including fractional scaling.
 - This source version is not a published GitHub release. Local qualification is
-  separate from the v0.4.0 download; see [lifecycle rules](docs/lifecycle.md).
+  separate from the v0.4.0 download; see [lifecycle rules](docs/lifecycle.md),
+  [provider boundaries](docs/providers.md) and [candidate qualification](docs/validation.md).
 
 ## 0.4.0 — 2026-10-17
 

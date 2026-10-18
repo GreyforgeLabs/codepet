@@ -815,12 +815,14 @@ fn validate_project(p: &StatePaths, project: &Path) -> Result<PathBuf> {
         return Err("Choose an absolute project folder".into());
     }
     let canonical = fs::canonicalize(project).map_err(io)?;
+    let state_dir = fs::canonicalize(&p.state_dir).map_err(io)?;
     if canonical != project
         || !canonical.is_dir()
         || canonical.components().count() < 4
         || p.homes()
             .any(|h| canonical == *h || h.starts_with(&canonical))
-        || canonical.starts_with(&p.state_dir)
+        || canonical.starts_with(&state_dir)
+        || state_dir.starts_with(&canonical)
         || fs::metadata(&canonical).map_err(io)?.uid() != rustix::process::geteuid().as_raw()
         || p.homes().any(|h| {
             [".codex", ".ssh", ".aws", ".gnupg", ".config", ".local"]
