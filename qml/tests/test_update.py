@@ -4,6 +4,10 @@
 The integration fixture executes the real install.sh with a temporary HOME and stub
 shell tools. CODEPET_UPDATE_TEST_BINARY optionally selects a qualified real backend
 for an additional migrate/SQLite-preservation install; it is not an updater override.
+CODEPET_UPDATE_TEST_ARCHIVE optionally replaces the synthetic integration archive
+with a locally built candidate archive; all network and shell tools remain fixtures.
+CODEPET_UPDATE_TEST_PREVIOUS_BINARY additionally tests an actual older release's
+companion data, schema backup and post-migration refusal by that older binary.
 """
 import contextlib
 import hashlib
@@ -416,6 +420,12 @@ class InstallerIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix="codepet-update-archive-")
+        candidate = os.environ.get("CODEPET_UPDATE_TEST_ARCHIVE")
+        if candidate:
+            path = Path(candidate)
+            cls.tree = update.unpack(path, update.private_dir(Path(cls.tmp.name) / "extracted"), VERSION)
+            cls.archive = path.read_bytes()
+            return
         cls.tree = Path(cls.tmp.name) / f"codepet-{VERSION}-x86_64-linux"
         cls.tree.mkdir()
         for relative in ("packaging/omarchy", "omarchy-plugin", "qml/shared", "qml/omarchy", "qml/assets"):
@@ -638,6 +648,67 @@ raise SystemExit(1)
             self.assertEqual(connection.execute("SELECT adopted_at_ms FROM lives WHERE life_id = ?", (life_id,)).fetchone()[0], birth)
             self.assertEqual(connection.execute("SELECT SUM(amount) FROM activity_xp WHERE life_id = ?", (life_id,)).fetchone()[0], 5)
         self.assertEqual(subprocess.check_output([str(f.bin / "codepet"), "--version"]).decode().strip(), f"codepet {VERSION}")
+
+    @unittest.skipUnless(os.environ.get("CODEPET_UPDATE_TEST_ARCHIVE") and os.environ.get("CODEPET_UPDATE_TEST_PREVIOUS_BINARY"), "optional candidate archive and previous release binary not supplied")
+    def test_previous_release_upgrade_preserves_companion_and_backup(self):
+        previous = Path(os.environ["CODEPET_UPDATE_TEST_PREVIOUS_BINARY"])
+        previous_version = subprocess.check_output([str(previous), "--version"], text=True, timeout=5).strip().removeprefix("codepet ")
+        self.assertLess(update.version(previous_version), update.version(VERSION))
+        f = self.fixture()
+        shutil.copy2(previous, f.bin / "codepet")
+
+        def rpc(method, params):
+            frame = {"v": 1, "id": "upgrade-" + method, "method": method, "params": params}
+            result = subprocess.run([str(f.bin / "codepet"), "rpc"], env=f.env,
+                                    input=json.dumps(frame) + "\n", text=True, capture_output=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            return json.loads(result.stdout)["result"]
+
+        subprocess.run([str(previous), "migrate"], env=f.env, check=True, capture_output=True, timeout=15)
+        life = rpc("pet.adopt", {"species": "penguin", "mode": "gentle", "pace": "steady", "acknowledge_rules": True})["life"]
+        rpc("pet.rename", {"life_id": life["life_id"], "name": "Upgrade Fixture"})
+        database = f.updater.state / "codepet.sqlite3"
+        tables = ("lives", "life_vitals", "pet_care", "activity_turns", "activity_xp", "client_hooks", "life_events")
+
+        def rows(connection, table, names):
+            projection = ','.join('"' + name + '"' for name in names)
+            return connection.execute('SELECT ' + projection + ' FROM ' + table + ' ORDER BY ' + projection).fetchall()
+
+        with contextlib.closing(sqlite3.connect(database)) as connection:
+            old_schema = connection.execute("PRAGMA user_version").fetchone()[0]
+            # Only synthetic records in this fixture: no real coding client is run.
+            row = connection.execute("INSERT INTO activity_turns (session_key, turn_key, client, life_id, earned_at_ms, given_at_ms) VALUES (?, ?, 'codex', ?, 5, 9)", ("a" * 32, "b" * 32, life["life_id"])).lastrowid
+            connection.execute("INSERT INTO activity_xp (life_id, turn_row_id, amount, granted_at_ms) VALUES (?, ?, 5, 9)", (life["life_id"], row))
+            connection.execute("INSERT OR REPLACE INTO client_hooks (client, installed, connected, installed_version, installed_at_ms, last_outcome) VALUES ('codex', 1, 1, 'fixture', 123, 'connected')")
+            connection.commit()
+            columns = {table: [r[1] for r in connection.execute(f"PRAGMA table_info({table})")] for table in tables}
+            before = {table: rows(connection, table, columns[table]) for table in tables}
+
+        job = f.updater.install()
+        self.assertEqual(f.updater.worker(job["job"])["state"], "succeeded")
+        with contextlib.closing(sqlite3.connect(database)) as connection:
+            new_schema = connection.execute("PRAGMA user_version").fetchone()[0]
+            self.assertEqual(new_schema, 6)
+            for table in tables:
+                self.assertEqual(rows(connection, table, columns[table]), before[table], table)
+            self.assertEqual(connection.execute("SELECT care_tempo FROM lives").fetchone()[0], "steady")
+            self.assertEqual(connection.execute("SELECT SUM(amount) FROM activity_xp").fetchone()[0], 5)
+
+        backups = list(f.updater.state.glob("*.bak-*"))
+        if old_schema < new_schema:
+            self.assertEqual(len(backups), 1)
+            with contextlib.closing(sqlite3.connect(backups[0])) as connection:
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], old_schema)
+                for table in tables:
+                    self.assertEqual(rows(connection, table, columns[table]), before[table], table)
+            original = database.read_bytes()
+            refused = subprocess.run([str(previous), "migrate"], env=f.env, capture_output=True, timeout=15)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"SCHEMA_UNSUPPORTED", refused.stderr)
+            self.assertEqual(database.read_bytes(), original)
+        else:
+            self.assertEqual(backups, [])
+        self.assertEqual(subprocess.check_output([str(f.bin / "codepet"), "--version"], text=True, timeout=5).strip(), f"codepet {VERSION}")
 
 
 if __name__ == "__main__":
