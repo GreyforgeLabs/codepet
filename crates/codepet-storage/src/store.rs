@@ -71,6 +71,7 @@ pub(crate) enum Fresh {
     NoPet,
     /// The v0.2 shape: the unarmed first-run life #1 "Ginger" that schema v4 creates. Only
     /// tests use it, to model an upgraded install.
+    #[cfg(any(test, feature = "test-support"))]
     FirstRunPlaceholder,
 }
 

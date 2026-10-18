@@ -35,62 +35,54 @@ Six concrete issues were reproduced and corrected:
 
 ## Executed evidence
 
-Cloud Linux: Debian 13, Rust/Cargo 1.85.0, PySide6/Qt 6.8.3 and Pillow 11.1.0.
-All tests used disposable state or fixture data. No real model turn, installed-user
-pet, public release or announcement was used as a test fixture.
+The expanded cloud qualification and exact test boundaries are recorded in
+[the cloud report](qualification-0.5-cloud.md). The smallest remaining capable-host
+and desktop checks are in [the native handoff](qualification-0.5-native.md).
 
-| Gate | Result and boundary |
-|---|---|
-| Rust default workspace, locked, all targets continued after failures | 480 passed, 2 failed, 3 ignored. Both failures are the target-specific sandbox tests described below; this is **not a full pass** |
-| Rust `legacy-tasks` workspace | 633 passed, 2 failed, 3 ignored; the same two sandbox failures. This is **not a full pass** |
-| Formatting and strict Clippy, default and legacy | All passed after the final backend changes (`-D warnings`); no relaxation of warnings or containment |
-| New backend regressions | State overlap/alias, source hardlink/replacement, delayed final export, stuck-stream deadline and output cap pass; focused work suite 33/33 in both builds with the three native/sandbox cases explicitly excluded |
-| Node UI models/controllers | 193 passed, zero failures |
-| Qt offscreen smokes | 19 suites, 3,475 passing checks, zero failures |
-| Native offscreen companion life | 114 checks passed: care, reactions, wheel, growth, pinned/aquatic motion and saved-stage reopen |
-| Native offscreen compact card | Four render states plus seven-client pointer/keyboard/pending/failure/reopen checks passed; no captured QML warnings |
-| Sprite DPR regression | Reproduced failure first; 23 checks pass at scale factors 1, 1.5 and 2. These are offscreen scales, not physical-display acceptance |
-| Portable QML lint | Exit 0; one unchanged test-only `FirstRunSmoke.qml` unqualified-access warning remains |
-| Installer/update fixtures | Install suite: 32 tests, one shellcheck skip. Updater: 29 tests, two user-systemd skips; the optional real-backend SQLite/life/XP preservation case was enabled and passed |
-| Assets | Runtime pet/icon integrity, invalid-asset and distinctness checks pass. All 15 source PNGs (30,327,657 bytes) pass dimensions/path/SHA-256 verification; 22 source-art corruption tests pass |
-| Contracts/copy/integrations | 267 agent vectors, 37 bar fixtures, 4 client-status fixtures and schema/command checks pass; copy lint has zero findings. Hermes and OpenCode fixture plugin suites pass; no live provider qualification is implied |
-| Quickshell and Omarchy host tests | Static/fake-host checks pass; real host cases skip because Quickshell and the Omarchy shell are unavailable. The new host-level recovery test remains unexecuted |
+- Rust default and `legacy-tasks`: **479 / 632 passed, zero failed**, three ignored
+  and three explicitly filtered native-client gates per build. The unchanged
+  sandbox tests now execute successfully inside a test-only Arch-loader-layout
+  namespace over the Debian runtime; this is not Arch distribution acceptance
+- Formatting and strict Clippy pass in both configurations. A release-only unused
+  enum variant is now gated identically to its test-only constructors
+- Native offline Claude Code 2.1.294 and OpenCode 1.19.0 gates pass in both builds.
+  Native Codex 0.163.0 is present and version-verified, but its network-isolated
+  sandbox is blocked by the host's NETLINK_ROUTE denial before credential assertions
+- Node: 193 checks. Qt 6.8.3: 19 suites / 3,475 checks. Native offscreen companion
+  life: 114 checks. Card/client interactions and sprite scales 1, 1.5 and 2 pass
+- Real Quickshell 0.3.1 loading was attempted with a private official-package
+  runtime. IPC-dependent tests remain separately classified in the cloud report
+- Real candidate archive install/update tests preserve existing companion data
+  from actual published 0.3.0 and 0.4.0 binaries, including schema backups and older
+  binary refusal. Extracted install/uninstall and failure recovery pass with shell
+  and network fixtures; two user-systemd lifecycle cases remain unexecuted
+- All 1,147 generated pet files reproduce byte-for-byte from the verified official
+  source archive with the documented libwebp 1.6.0 environment. Runtime icon
+  integrity passes; the nine original icon PNGs remain unavailable
+- Contract, copy, plugin, runtime asset and invalid-source checks pass. Prior CI
+  at `6ce78df0cf5435b01a2859b3b6af1694f373ee36` had four successful checks;
+  the private PR records the exact final commit's CI and archive checksums
 
-The two aggregate Rust failures are
-`work::tests::sandbox_home_is_private_writable_and_independent_of_host_home_paths`
-and `work::tests::namespace_kills_setsid_descendants_and_tmpfs_has_a_hard_size_limit`.
-The exact production sandbox maps `/lib64` to `/usr/lib`, matching its Arch/Omarchy
-target; Debian's loader lives under `/usr/lib/x86_64-linux-gnu`. In this cloud
-container that command fails with `bwrap: execvp /bin/sh: No such file or directory`.
-Bubblewrap itself is present. The production sandbox was not weakened or rewritten
-to obtain a green result on this other distribution. Rerun these containment gates
-on the supported target before qualification.
-
-Optional native Claude/OpenCode gates were unset, and the ambient Codex executable
-was excluded from the aggregate test PATH. Those test functions can return early;
-the aggregate pass count does not establish their native execution. Ignored latency
-and opt-in resource tests are likewise not measured results.
-
-The first private-PR CI run exposed a fixture assumption: scout cooldown tests
-expected the missing-Codex error even on hosts missing containment tools. The tests
-now require the exact applicable prerequisite refusal and still verify durable
-cooldowns, no active work and no reward. Minimal CI hosts can skip the native
-sandbox checks when Bubblewrap is absent; a green CI result would not qualify
-containment on the supported desktop target.
+All tests use synthetic/disposable data. No live inference, installed-user pet or
+production updater was used. Aggregate success never substitutes for an optional
+native gate that silently returns when its executable is absent.
 
 ## Visual review and remaining gates
 
 Common/narrow card, care-wheel, failure feedback, growth and Apply-recovery captures
-were inspected. No blocking clipping or overlap was found in the sampled layouts,
+were inspected. No blocking clipping or overlap was found in sampled layouts,
 including recovery at 820×820 and 480×400. Small fixed compact-card typography and
-word-breaking remain polish opportunities; they were not redesigned in this audit.
+word-breaking remain polish opportunities; this audit did not redesign them.
 
-Still unqualified: actual Quickshell/Omarchy/Hyprland pointer pass-through and focus,
-monitor hotplug, real fractional display scaling, whole-desktop resource usage,
-user-systemd update lifecycle, native adapter qualification and a final clean
-release archive/download/install gate. These need evidence for the exact final
-commit. Offscreen tests and historical demonstrations cannot substitute for them.
-No 0.5 tag, public push, release asset or announcement is claimed by this record.
+Still unqualified: user-systemd/cgroup resource and updater lifecycle; Codex's
+network-isolated credential gate; Quickshell IPC-dependent host tests; actual
+Omarchy/Hyprland pointer/focus, physical fractional scaling, monitor hotplug and
+desktop resource use; missing icon source reconstruction. The first three can run
+on a suitably capable cloud Linux host and are not inherently desktop-only. Only
+actual compositor/physical-display checks need the supported desktop environment.
+
+No host security setting or production containment policy was weakened. No 0.5
+tag, public push, release asset or announcement is claimed by this record.
 
 ---
 

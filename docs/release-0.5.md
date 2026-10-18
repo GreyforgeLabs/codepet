@@ -31,27 +31,36 @@ See [validation](validation.md) for executed checks and remaining limitations.
 
 ## Before a release decision
 
-- [ ] Run default and `legacy-tasks` workspace tests, formatting and strict Clippy
-  on the exact commit proposed for release; resolve every failure or record an
-  explicitly accepted qualification exception
-- [ ] Run containment gates where Bubblewrap, Linux namespaces and user-systemd
-  limits actually work; check cancellation, deadline, detached children, memory,
-  credential aliases, source exclusions and interrupted application recovery
-- [ ] Run Quickshell host tests and real Omarchy/Hyprland interaction checks:
-  show/hide, drag/pin, pointer pass-through, focus, keyboard navigation, repeated
-  care, client choice, review, failed Apply, recovery, Off and restart
-- [ ] Test a disposable upgrade with an existing companion: preserve life identity,
-  name, birth timestamp, XP, appearance, care tempo and observer connections; verify
-  schema-6 backup/recovery and refusal by older binaries
-- [ ] Review common, narrow and scaled UI captures; measure actual fractional-DPR
-  rendering, monitor hotplug and desktop resource use separately from offscreen tests
-- [ ] Recheck supported adapter versions with native offline dummy-provider gates.
-  Any paid/live inference requires its own authorization and evidence; a provider's
-  claimed tests are not independent verification
-- [ ] Revalidate all source-art inputs and extraction, including source sheets that
-  are separate from the committed runtime frames; do not infer this from frame hashes
-- [ ] Build the candidate archive from a clean exact commit, verify checksums,
-  third-party notices, ABI, relative links, and extracted install/uninstall/rollback
+See the [cloud qualification report](qualification-0.5-cloud.md) for terminal
+results and the [minimal host handoff](qualification-0.5-native.md) for the remaining
+commands. The exact commit, archive checksum and CI links are recorded in the
+private PR; repeat affected checks if that commit changes.
+
+- [x] Default and `legacy-tasks` workspace tests, format and strict Clippy pass;
+  the three native gates are explicitly separated, not counted as silent passes
+- [x] Real namespace/tmpfs/read-only mounts/environment/detached-child checks pass
+  with the documented test-only loader alias; production containment is unchanged
+- [x] Actual existing companion upgrade from published 0.3.0 and 0.4.0 preserves
+  data and backup contents; old binaries refuse the migrated database
+- [x] Common/narrow/offscreen scaled UI and Apply-recovery captures reviewed
+- [x] Native offline Claude and OpenCode gates pass in both feature builds
+- [x] Pet source integrity and all 1,147 generated files reproduce byte-for-byte
+  with the recorded libwebp 1.6.0 environment
+- [x] Clean exact-commit archive, checksum repeatability, notices, ABI, links,
+  extracted install/uninstall and component/data recovery exercised
+- [ ] Complete IPC-dependent Quickshell host tests on a host allowing Unix sockets
+- [ ] Complete user-systemd/cgroup limits and two updater service-lifecycle tests
+- [ ] Complete native Codex 0.163.0 credential gate with working isolated-network
+  Bubblewrap; do not relax its isolation to make the test pass
+- [ ] Complete one isolated supported Omarchy/Hyprland session for pointer/focus,
+  placement/care/recovery/Off, physical scale/hotplug and resource measurements
+- [ ] Recover nine original icon sheets and re-extract, or explicitly accept the
+  existing source-reproducibility exception; runtime pixels are unchanged
+
+The first three outstanding gates can run on a capable cloud Linux host. Physical
+compositor/display acceptance needs the supported desktop; missing icon sources
+need artifact recovery, not access to the installed companion. No tag is qualified
+by an unchecked item or by a historical pass elsewhere in the documentation.
 
 ## Publication handoff
 
