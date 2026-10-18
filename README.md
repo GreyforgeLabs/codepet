@@ -4,9 +4,9 @@
 <h1 align="center">CodePet</h1>
 <p align="center"><strong>Good work. Better company.</strong><br>A little desktop companion that grows with the code you care for.</p>
 <p align="center">
-  <a href="https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0"><strong>Download 0.5</strong></a> ·
+  <a href="https://github.com/GreyforgeLabs/codepet/releases/tag/v0.4.0"><strong>Download stable 0.4</strong></a> ·
   <a href="#quick-start">Get started</a> ·
-  <a href="#see-it-work">Watch a real repair</a> ·
+  <a href="#see-it-work">See a real repair</a> ·
   <a href="docs/work.md">How it works</a> · <a href="LICENSE">MIT</a>
 </p>
 
@@ -17,7 +17,12 @@ some attention, let it wander, or tuck it in for a nap.
 
 **Find → Fix → Review → Grow.** Fifteen companions. Three growth stages.
 
-## What's new in 0.5
+**Source status: 0.5.0, unreleased local development.** The features below describe
+the 0.5 candidate. The published download remains 0.4.0; no 0.5 archive or release
+video is available yet. See the [0.5 qualification record](docs/validation.md#v050-candidate-qualification-2026-10-18)
+for completed checks and remaining release gates.
+
+## In the 0.5 candidate
 
 | A better companion | A better workflow |
 | --- | --- |
@@ -31,12 +36,13 @@ resident Rust daemon. See the [changelog](CHANGELOG.md) and [qualification](docs
 
 ## See it work
 
-[![A real CodePet repair: inspect the complete before-and-after change](docs/screenshots/codepet-repair-demo.png)](https://github.com/GreyforgeLabs/codepet/releases/download/v0.5.0/codepet-repair-demo.mp4)
+![A real CodePet repair: inspect the complete before-and-after change](docs/screenshots/codepet-repair-demo.png)
 
-**[Watch the 26-second repair demo](https://github.com/GreyforgeLabs/codepet/releases/download/v0.5.0/codepet-repair-demo.mp4).**
-A deliberately seeded cart-total bug, a real prepared repair, and three independent
-tests passing after Apply. The video replays the saved review; Apply happened
-separately. Captured on the preceding development build with the same review loop.
+This still shows a deliberately seeded cart-total bug, a real prepared repair, and
+three independent tests passing after Apply on the preceding development build.
+The saved review was replayed for the capture; Apply happened separately. It is
+historical demonstration evidence, not qualification of the 0.5 candidate. The
+release video will be linked after an approved release publishes it.
 
 ## Meet your companion
 
@@ -58,14 +64,14 @@ Needs change with attended desktop time, without offline catch-up.
 
 ## Quick start
 
-Download **`codepet-0.5.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
-[the 0.5 release](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0).
+Download the published **`codepet-0.4.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
+[the 0.4 release](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.4.0).
 In the download directory:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-tar xzf codepet-0.5.0-x86_64-linux.tar.gz
-cd codepet-0.5.0-x86_64-linux
+tar xzf codepet-0.4.0-x86_64-linux.tar.gz
+cd codepet-0.4.0-x86_64-linux
 packaging/omarchy/install.sh --dry-run
 packaging/omarchy/install.sh
 ```
@@ -73,7 +79,9 @@ packaging/omarchy/install.sh
 The archive includes the binary. Installation adds the bar plugin, desktop pet and
 review window, rescans plugins, and upgrades saved state with recovery backups.
 It does not restart your shell or start your pet's life. Use the installer to keep
-binary and UI versions together. `codepet --version` prints `codepet 0.5.0`.
+binary and UI versions together. The published archive reports `codepet 0.4.0`.
+For this unreleased source candidate, `codepet --version` prints `codepet 0.5.0`.
+The current source features below are not all present in the published archive.
 
 ### First run
 

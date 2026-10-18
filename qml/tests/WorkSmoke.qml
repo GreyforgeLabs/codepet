@@ -66,16 +66,23 @@ Window {
                 win.check(win.find(panel, "work.accept").enabled, "review acknowledgement enables acceptance even if tired")
                 panel.accept()
                 win.check(ctl.calls[2].method === "accept" && ctl.calls[2].params.review_digest === "digest-a", "accept binds the reviewed digest")
+                ctl.error = "Destination changed: hello.js"
                 ctl.state = Object.assign({}, ctl.state, { task: Object.assign({}, ctl.state.task, { review_digest: "digest-b" }) })
             } else if (win.phase === 6) {
                 win.check(!panel.verificationAcknowledged && !win.find(panel, "work.accept").enabled, "changed review resets acknowledgement")
-                ctl.state = Object.assign({}, ctl.state, { task: Object.assign({}, ctl.state.task, { status: "failed", started_at_ms: 1800000000000, error: "Provider stopped before a result." }) })
+                var reviewError = win.find(panel, "work.reviewError")
+                win.check(reviewError.visible && reviewError.text === ctl.error && !win.find(panel, "work.error").visible, "failed Apply feedback is beside review actions rather than above the long result")
+                win.check(reviewError.y < win.find(panel, "work.accept").parent.y, "review error appears immediately before the action row")
+                ctl.state = Object.assign({}, ctl.state, { task: Object.assign({}, ctl.state.task, { status: "applying" }) })
             } else if (win.phase === 7) {
+                win.check(win.find(panel, "work.reviewError").visible && win.find(panel, "work.reviewError").text === ctl.error, "reopened application recovery retains actionable feedback")
+                ctl.state = Object.assign({}, ctl.state, { task: Object.assign({}, ctl.state.task, { status: "failed", started_at_ms: 1800000000000, error: "Provider stopped before a result." }) })
+            } else if (win.phase === 8) {
                 win.check(win.find(panel, "work.new").text === "Dismiss result" && win.find(panel, "work.new").visible && !win.find(panel, "work.accept").visible, "failed jobs show recovery, not acceptance")
                 win.check(win.find(panel, "work.previousTime").text === "Started " + new Date(1800000000000).toLocaleString(), "advanced result uses a stable absolute start date")
                 win.width = 480; win.height = 400
                 ctl.state = Object.assign({}, ctl.state, { task: null })
-            } else if (win.phase === 8) {
+            } else if (win.phase === 9) {
                 var scroll = win.find(panel, "work.scroll")
                 win.check(scroll.contentHeight > scroll.height, "short window scrolls to keep every control reachable")
                 win.check(scroll.contentWidth <= scroll.width, "narrow window keeps content within its viewport")

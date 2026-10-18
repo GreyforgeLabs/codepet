@@ -112,7 +112,9 @@ the slot for a later eligible attempt and does not assert that all code is corre
   are not loaded. Requested escalations are denied; no permission is silently granted.
 - The selected project is copied without `.git`, dependency/build caches and known
   credential files/directories (`.env*`, private-key files, `.ssh`, `.aws`, etc.).
-  Links, mount crossings and special files are refused. Scout and scout-fix source
+  Symbolic links, hard-linked source files, mount crossings and special files are
+  refused. A project must not contain or lie inside CodePet's private state.
+  Scout and scout-fix source
   copies additionally omit known binary media/art, fonts and archives by extension;
   omitted original assets are never deleted as a consequence. This is limited source
   coverage, not a full repository audit. Generated output still receives the full

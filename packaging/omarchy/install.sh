@@ -11,7 +11,7 @@
 #   1. build the `codepet` binary (memory-capped), unless CODEPET_BIN_SOURCE names a
 #      prebuilt one or this is a release archive (its bin/codepet); before anything is
 #      replaced, that binary must report exactly `codepet <version>` of this tree, and this
-#      tree's plugin needs a matching 0.4.x backend (an older binary refuses schema 6 data);
+#      tree's plugin needs a matching 0.5.x backend (an older binary refuses schema 6 data);
 #   2. upgrade only: stop a running desktop overlay and any CodePet 0.2 task supervisor,
 #      each by its exact PID (never a pattern kill);
 #   3. install `codepet`, `codepet-overlay` `codepet-work` and `codepet-update` into ~/.local/bin atomically (temporary
@@ -67,7 +67,7 @@ PLUGIN_ID=greyforge.codepet
 OMARCHY=${CODEPET_OMARCHY:-omarchy}
 QS=${CODEPET_QS:-qs}
 # The release series this tree's plugin and overlay speak to (schema 6, protocol v1).
-SERIES=0.4
+SERIES=0.5
 
 usage() {
     echo "usage: $PROG [--dry-run] [--no-plugin]"

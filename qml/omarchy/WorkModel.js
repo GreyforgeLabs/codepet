@@ -9,6 +9,7 @@ function taskClientName(task) {
 }
 function kind(value) { return KINDS.indexOf(value) >= 0 ? value : "build" }
 function active(task) { return !!task && ["preparing", "running", "applying"].indexOf(task.status) >= 0 }
+function executing(task) { return !!task && ["preparing", "running"].indexOf(task.status) >= 0 }
 function review(task) { return !!task && ["review", "applying"].indexOf(task.status) >= 0 }
 function finished(task) { return !!task && (["accepted", "cancelled", "failed", "discarded"].indexOf(task.status) >= 0 || (task.status === "scouted" && !task.has_finding)) }
 function title(value) { return { bug: "Fix a bug", research: "Research", build: "Build something" }[kind(value)] }

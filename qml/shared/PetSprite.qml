@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import "PetCatalog.js" as PetCatalog
 
 // All animation timing belongs to the scene's single scheduler. This component is
@@ -63,7 +64,8 @@ Item {
 
     // Decode no larger than the canvas, and no larger than twice the displayed size.
     function decodeSize() {
-        var dpr = root.Window.window ? root.Window.window.devicePixelRatio : 1
+        var dpr = Number(root.Screen.devicePixelRatio)
+        if (!isFinite(dpr) || dpr <= 0) dpr = 1
         var shown = Math.max(root.width, root.height, 1) * Math.max(1, dpr) * 2
         return Math.max(16, Math.min(root.canvasSize, Math.ceil(shown)))
     }

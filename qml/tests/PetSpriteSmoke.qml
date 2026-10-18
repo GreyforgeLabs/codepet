@@ -1,13 +1,15 @@
 // PetSprite renderer smoke (T5, SPEC §17.6) against the generated fixture pack.
 // Run: QT_QPA_PLATFORM=offscreen python3 qml/tests/run_qml.py qml/tests/PetSpriteSmoke.qml
 import QtQuick
+import QtQuick.Window
 import "../shared"
 import "../shared/PetCatalog.js" as PetCatalog
 import "fixtures/pets/PetRegistry.js" as FixtureRegistry
 
-Item {
+Window {
     id: top
     width: 400; height: 300
+    visible: true
     property int step: 0
     property int failures: 0
     property int checks: 0
@@ -37,6 +39,13 @@ Item {
                 sprite.semanticState = "idle"; sprite.frame = 2
                 break
             case 2:
+                top.check(sprite.Window.window !== null && isFinite(sprite.decodeSize())
+                          && sprite.decodeSize() >= 16 && sprite.decodeSize() <= sprite.canvasSize,
+                          "a window-hosted sprite has a finite, bounded decode size")
+                sprite.width = 20; sprite.height = 30
+                top.check(sprite.decodeSize() === Math.min(sprite.canvasSize, Math.ceil(60 * Math.max(1, sprite.Screen.devicePixelRatio))),
+                          "small sprite decode size follows the screen pixel ratio")
+                sprite.width = 112; sprite.height = 112
                 top.check(top.ends("/cat/s1/b01.webp") && sprite.loadStatus === Image.Ready, "cat idle frame 2 loads b01 from the s1 pack: " + top.src())
                 top.check(!sprite.showingPlaceholder && !sprite.mirrored, "real frame, not mirrored")
                 sprite.semanticState = "dance"

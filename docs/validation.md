@@ -1,3 +1,99 @@
+# v0.5.0 candidate qualification (2026-10-18)
+
+**Status: unreleased and not release-qualified.** This audit resumes the recovery
+snapshot `802c6cee29600fdc6b05f96e3f91b6745f1f132b`; its full source/asset tree was
+verified against Git tree `1c840d14b4576525135e231388b326733a921604` before editing.
+The records below concern the candidate fixes, not an already published 0.5 release.
+Historical passes farther down this page do not qualify the current candidate.
+See the [release decision and remaining checklist](release-0.5.md).
+
+## Audit outcome
+
+Keep the existing Rust core/controller and Qt Quick interface. The work loop has
+explicit repair/application, durable exactly-once rewards and free recovery care;
+no evidence from this audit justifies a rewrite. The earlier nonblocking file-read,
+late-event, work-controller split, show/hide, placement and privacy work is preserved.
+
+Six concrete issues were reproduced and corrected:
+
+1. A project could contain CodePet's private state, including through a symlinked
+   XDG state ancestor. Scope validation now refuses overlap in either direction.
+2. A source hardlink could copy a file outside the allowed project into staging.
+   Traversal and opened-file checks now refuse hardlinks, including a replacement
+   between baseline capture and copying.
+3. A final export delayed by reader scheduling could arrive after the former
+   100 ms post-exit drain stopped. Completion now requires stream EOF within a
+   five-second overall drain limit; stuck streams fail with an explicit error.
+4. A failed Apply/recovery message disappeared on the next status poll. Automatic
+   reads retain feedback, one read hydrates a failed Apply, and awake recovery stops
+   fast polling. The error sits beside Apply; successful retry clears it.
+5. The QML sprite read an undefined window DPR, producing `NaN` decode dimensions.
+   It now uses the supported screen DPR with a finite fallback.
+6. The 0.5.0 tree's installer still required the 0.4 series and refused itself.
+   Installer, changelogs and updater integration fixtures now use the candidate's
+   version; the README does not advertise unpublished release downloads or video.
+
+## Executed evidence
+
+Cloud Linux: Debian 13, Rust/Cargo 1.85.0, PySide6/Qt 6.8.3 and Pillow 11.1.0.
+All tests used disposable state or fixture data. No real model turn, installed-user
+pet, public release or announcement was used as a test fixture.
+
+| Gate | Result and boundary |
+|---|---|
+| Rust default workspace, locked, all targets continued after failures | 480 passed, 2 failed, 3 ignored. Both failures are the target-specific sandbox tests described below; this is **not a full pass** |
+| Rust `legacy-tasks` workspace | 633 passed, 2 failed, 3 ignored; the same two sandbox failures. This is **not a full pass** |
+| Formatting and strict Clippy, default and legacy | All passed after the final backend changes (`-D warnings`); no relaxation of warnings or containment |
+| New backend regressions | State overlap/alias, source hardlink/replacement, delayed final export, stuck-stream deadline and output cap pass; focused work suite 33/33 in both builds with the three native/sandbox cases explicitly excluded |
+| Node UI models/controllers | 193 passed, zero failures |
+| Qt offscreen smokes | 19 suites, 3,475 passing checks, zero failures |
+| Native offscreen companion life | 114 checks passed: care, reactions, wheel, growth, pinned/aquatic motion and saved-stage reopen |
+| Native offscreen compact card | Four render states plus seven-client pointer/keyboard/pending/failure/reopen checks passed; no captured QML warnings |
+| Sprite DPR regression | Reproduced failure first; 23 checks pass at scale factors 1, 1.5 and 2. These are offscreen scales, not physical-display acceptance |
+| Portable QML lint | Exit 0; one unchanged test-only `FirstRunSmoke.qml` unqualified-access warning remains |
+| Installer/update fixtures | Install suite: 32 tests, one shellcheck skip. Updater: 29 tests, two user-systemd skips; the optional real-backend SQLite/life/XP preservation case was enabled and passed |
+| Assets | Runtime pet/icon integrity, invalid-asset and distinctness checks pass. All 15 source PNGs (30,327,657 bytes) pass dimensions/path/SHA-256 verification; 22 source-art corruption tests pass |
+| Contracts/copy/integrations | 267 agent vectors, 37 bar fixtures, 4 client-status fixtures and schema/command checks pass; copy lint has zero findings. Hermes and OpenCode fixture plugin suites pass; no live provider qualification is implied |
+| Quickshell and Omarchy host tests | Static/fake-host checks pass; real host cases skip because Quickshell and the Omarchy shell are unavailable. The new host-level recovery test remains unexecuted |
+
+The two aggregate Rust failures are
+`work::tests::sandbox_home_is_private_writable_and_independent_of_host_home_paths`
+and `work::tests::namespace_kills_setsid_descendants_and_tmpfs_has_a_hard_size_limit`.
+The exact production sandbox maps `/lib64` to `/usr/lib`, matching its Arch/Omarchy
+target; Debian's loader lives under `/usr/lib/x86_64-linux-gnu`. In this cloud
+container that command fails with `bwrap: execvp /bin/sh: No such file or directory`.
+Bubblewrap itself is present. The production sandbox was not weakened or rewritten
+to obtain a green result on this other distribution. Rerun these containment gates
+on the supported target before qualification.
+
+Optional native Claude/OpenCode gates were unset, and the ambient Codex executable
+was excluded from the aggregate test PATH. Those test functions can return early;
+the aggregate pass count does not establish their native execution. Ignored latency
+and opt-in resource tests are likewise not measured results.
+
+The first private-PR CI run exposed a fixture assumption: scout cooldown tests
+expected the missing-Codex error even on hosts missing containment tools. The tests
+now require the exact applicable prerequisite refusal and still verify durable
+cooldowns, no active work and no reward. Minimal CI hosts can skip the native
+sandbox checks when Bubblewrap is absent; a green CI result would not qualify
+containment on the supported desktop target.
+
+## Visual review and remaining gates
+
+Common/narrow card, care-wheel, failure feedback, growth and Apply-recovery captures
+were inspected. No blocking clipping or overlap was found in the sampled layouts,
+including recovery at 820×820 and 480×400. Small fixed compact-card typography and
+word-breaking remain polish opportunities; they were not redesigned in this audit.
+
+Still unqualified: actual Quickshell/Omarchy/Hyprland pointer pass-through and focus,
+monitor hotplug, real fractional display scaling, whole-desktop resource usage,
+user-systemd update lifecycle, native adapter qualification and a final clean
+release archive/download/install gate. These need evidence for the exact final
+commit. Offscreen tests and historical demonstrations cannot substitute for them.
+No 0.5 tag, public push, release asset or announcement is claimed by this record.
+
+---
+
 # v0.4.0 qualification (2026-10-17)
 
 This entry covers the useful-work and compact-card implementation. It distinguishes

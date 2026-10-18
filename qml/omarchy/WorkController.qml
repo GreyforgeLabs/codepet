@@ -25,6 +25,7 @@ QtObject {
     property string selectingClient: ""
     property string summaryTaskKey: ""
     property bool refreshPending: false
+    property bool refreshPendingPreserveError: false
     readonly property bool busy: rpc.busy || careRpc.busy
     readonly property var task: state ? state.task : null
     readonly property var scheduleState: summary || state
@@ -35,21 +36,36 @@ QtObject {
             next = Object.assign({}, next, { scout: Object.assign({}, next.scout, { notice: "", last_error: "" }) })
         return next
     }
-    function consume(response) {
+    function consume(response, preserveError) {
         if (!response.ok) { error = String((response.error || {}).message || "Something went wrong."); return }
         var next = response.result
         if (!next || !next.readiness || !next.provider) { error = "CodePet returned an incomplete answer."; return }
         observeClient(next)
         state = visibleState(next)
         // Saved preparation failures belong to Previous check, not a fresh action error.
-        error = ""
+        if (!preserveError) error = ""
     }
-    function refresh() {
-        if (busy) { refreshPending = true; return }
+    function refresh(preserveError) {
+        preserveError = preserveError === true
+        if (busy) {
+            // Coalesce reads, but retain an explicit Refresh's request to clear a
+            // previous error even if a timer also asked for a read.
+            refreshPendingPreserveError = refreshPending ? refreshPendingPreserveError && preserveError : preserveError
+            refreshPending = true
+            return
+        }
         refreshPending = false
-        rpc.request("get", {}, consume)
+        refreshPendingPreserveError = false
+        rpc.request("get", {}, function(response) { controller.consume(response, preserveError) })
     }
-    function action(method, params) { if (!busy) rpc.request(method, params, consume) }
+    function action(method, params) {
+        if (!busy) rpc.request(method, params, function(response) {
+            controller.consume(response)
+            // Apply may have saved a recovery state before failing. Read it once,
+            // retaining the refusal so the user can resolve it before retrying.
+            if (method === "accept" && !response.ok) controller.refresh(true)
+        })
+    }
     function observeClient(next) {
         var id = Work.clientId(next)
         // A choice made in either window must not turn a due check into a launch.
@@ -149,7 +165,7 @@ QtObject {
             state = visibleState(Object.assign({}, state || summary, {
                 readiness: summary.readiness, provider: summary.provider, clients: summary.clients, scout: scout
             }))
-            if (changed) refresh()
+            if (changed) refresh(true)
         } else if (summary) state = visibleState(summary)
         armScout()
     }
@@ -158,7 +174,7 @@ QtObject {
     onScheduleStateChanged: Qt.callLater(armScout)
     onStateChanged: Qt.callLater(armScout)
     onBusyChanged: if (!busy) {
-        if (refreshPending) Qt.callLater(refresh)
+        if (refreshPending) Qt.callLater(refresh, refreshPendingPreserveError)
         else Qt.callLater(armScout)
     }
     property WorkRpc transport: WorkRpc { id: rpc; binary: controller.binary }
@@ -166,8 +182,10 @@ QtObject {
     property Timer pollTimer: Timer {
         objectName: "work.poll"
         interval: 1200; repeat: true
-        running: controller.opened && (Work.active(controller.task) || !!(controller.state && controller.state.readiness.sleeping))
-        onTriggered: controller.refresh()
+        // Accept is synchronous in work-rpc. Persisted applying is recovery that
+        // needs a user action, not an independently running job to poll.
+        running: controller.opened && (Work.executing(controller.task) || !!(controller.state && controller.state.readiness.sleeping))
+        onTriggered: controller.refresh(true)
     }
     property Timer scoutTimer: Timer { id: deadline; objectName: "work.scoutDeadline"; repeat: false; onTriggered: controller.scout() }
 }

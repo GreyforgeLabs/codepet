@@ -137,6 +137,42 @@ pub(super) fn reader(mut r: impl Read + Send + 'static, stream: bool, tx: mpsc::
         }
     });
 }
+
+pub(super) fn drain_after_exit(
+    rx: &mpsc::Receiver<Event>,
+    pending: &mut Vec<u8>,
+    total: &mut usize,
+    failure: &mut Option<String>,
+    timeout: Duration,
+) {
+    let started = Instant::now();
+    loop {
+        let remaining = timeout.saturating_sub(started.elapsed());
+        let event = if remaining.is_zero() {
+            Err(mpsc::RecvTimeoutError::Timeout)
+        } else {
+            rx.recv_timeout(remaining)
+        };
+        match event {
+            Ok(e) => {
+                *total = total.saturating_add(e.bytes.len());
+                if *total > MAX_PROVIDER_OUTPUT {
+                    *failure = Some("The provider output limit was reached".into());
+                    return;
+                }
+                if e.stream {
+                    pending.extend_from_slice(&e.bytes);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                *failure = Some("The provider output streams did not close after the job exited; the incomplete result cannot be accepted".into());
+                return;
+            }
+        }
+    }
+}
+
 pub(super) fn append_bounded(s: &mut String, text: &str, limit: usize) {
     for ch in text.chars() {
         if s.len() + ch.len_utf8() > limit {
@@ -364,17 +400,15 @@ pub(super) fn execute(
         }
         if let Some(exit) = child.try_wait().map_err(io)? {
             // The bounded final export can arrive after turn.completed. Drain both
-            // streams until EOF; namespace teardown has already stopped descendants.
-            while let Ok(e) = rx.recv_timeout(Duration::from_millis(100)) {
-                total = total.saturating_add(e.bytes.len());
-                if total > MAX_PROVIDER_OUTPUT {
-                    failure = Some("The provider output limit was reached".into());
-                    break;
-                }
-                if e.stream {
-                    pending.extend_from_slice(&e.bytes);
-                }
-            }
+            // streams until EOF, not a scheduling gap. Refuse a stuck/inherited pipe
+            // after a bounded wait; the final cancellation merge still takes priority.
+            drain_after_exit(
+                &rx,
+                &mut pending,
+                &mut total,
+                &mut failure,
+                Duration::from_secs(5),
+            );
             for line in pending.split(|b| *b == b'\n') {
                 parse_event(line, t, &mut completed, &mut workspace, &mut failure);
             }

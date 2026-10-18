@@ -15,6 +15,12 @@ test('only bound review acknowledgement allows accept, including interrupted app
   assert.equal(M.canAccept({status:'review',review_digest:'hash'},false,false),false);
   assert.equal(M.canAccept({status:'review',review_digest:'hash'},true,true),false);
 });
+test('persisted application recovery remains active but is not executing', () => {
+  for (const status of ['preparing','running']) assert.equal(M.executing({status}),true);
+  assert.equal(M.active({status:'applying'}),true);
+  for (const task of [null,{status:'applying'},{status:'review'},{status:'accepted'},{status:'failed'}])
+    assert.equal(M.executing(task),false);
+});
 test('folder dialog accepts only local file URLs and preserves literal special characters', () => {
   assert.equal(M.filePath('file:///a%20b/%24%28literal%29'),' /a b/$(literal)'.trim());
   assert.equal(M.filePath('file://remote/path'),'');

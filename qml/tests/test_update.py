@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import unittest
 import time
 import uuid
@@ -26,6 +27,7 @@ from unittest import mock
 
 sys.dont_write_bytecode = True
 REPO = Path(__file__).resolve().parents[2]
+VERSION = tomllib.loads((REPO / "Cargo.toml").read_text())["workspace"]["package"]["version"]
 SCRIPT = REPO / "packaging/omarchy/codepet-update"
 loader = importlib.machinery.SourceFileLoader("codepet_update", str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -414,7 +416,7 @@ class InstallerIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix="codepet-update-archive-")
-        cls.tree = Path(cls.tmp.name) / "codepet-0.4.0-x86_64-linux"
+        cls.tree = Path(cls.tmp.name) / f"codepet-{VERSION}-x86_64-linux"
         cls.tree.mkdir()
         for relative in ("packaging/omarchy", "omarchy-plugin", "qml/shared", "qml/omarchy", "qml/assets"):
             target = cls.tree / relative
@@ -422,8 +424,8 @@ class InstallerIntegration(unittest.TestCase):
             shutil.copytree(REPO / relative, target, ignore=shutil.ignore_patterns("__pycache__"))
         for relative in ("qml/shell.qml", "qml/work.qml"):
             shutil.copy2(REPO / relative, cls.tree / relative)
-        (cls.tree / "VERSION").write_text("0.4.0\n")
-        executable(cls.tree / "bin/codepet", "#!/bin/sh\ncase \"$1\" in --version) echo 'codepet 0.4.0';; migrate) echo 'fixture migration preserves existing data';; clients-refresh) :;; *) exit 1;; esac\n")
+        (cls.tree / "VERSION").write_text(VERSION + "\n")
+        executable(cls.tree / "bin/codepet", f"#!/bin/sh\ncase \"$1\" in --version) echo 'codepet {VERSION}';; migrate) echo 'fixture migration preserves existing data';; clients-refresh) :;; *) exit 1;; esac\n")
         cls.archive = cls.make_archive()
 
     @classmethod
@@ -439,7 +441,7 @@ class InstallerIntegration(unittest.TestCase):
 
     def fixture(self, archive=None, sums=None):
         archive = self.archive if archive is None else archive
-        release, checksums = metadata(archive=archive, checksums=sums)
+        release, checksums = metadata(latest=VERSION, archive=archive, checksums=sums)
         network = FakeNetwork(release, archive, checksums)
         fixture = Fixture(network)
         self.addCleanup(fixture.close)
@@ -454,12 +456,12 @@ class InstallerIntegration(unittest.TestCase):
         job = f.updater.install()
         result = f.updater.worker(job["job"])
         self.assertEqual(result["state"], "succeeded")
-        self.assertEqual(result["current"], "0.4.0")
+        self.assertEqual(result["current"], VERSION)
         self.assertEqual(pet.read_bytes(), original)
         self.assertEqual((f.bin / "codepet-update").read_bytes(), SCRIPT.read_bytes())
-        self.assertEqual((f.updater.data / "current").readlink(), Path("releases/0.4.0"))
+        self.assertEqual((f.updater.data / "current").readlink(), Path(f"releases/{VERSION}"))
         self.assertTrue((f.home / ".config/omarchy/plugins/greyforge.codepet/manifest.json").exists())
-        self.assertIn("done: CodePet 0.4.0 is installed", (f.updater.root / "install.log").read_text())
+        self.assertIn(f"done: CodePet {VERSION} is installed", (f.updater.root / "install.log").read_text())
         self.assertFalse((f.updater.root / job["job"] / "extracted").exists())
         self.assertEqual(f.updater.status()["state"], "succeeded")
         self.assertEqual(f.updater.check()["state"], "current")
@@ -489,7 +491,7 @@ class InstallerIntegration(unittest.TestCase):
                 path.write_bytes(before)
 
     def test_checksum_mismatch_and_duplicate_never_invoke_installer(self):
-        name = "codepet-0.4.0-x86_64-linux.tar.gz"
+        name = f"codepet-{VERSION}-x86_64-linux.tar.gz"
         for sums in (("0" * 64 + "  " + name + "\n").encode(), ((hashlib.sha256(self.archive).hexdigest() + "  " + name + "\n") * 2).encode()):
             f = self.fixture(sums=sums)
             old = (f.bin / "codepet").read_bytes()
@@ -605,7 +607,7 @@ raise SystemExit(1)
     @unittest.skipUnless(os.environ.get("CODEPET_UPDATE_TEST_BINARY"), "optional qualified real backend not supplied")
     def test_real_backend_sqlite_preservation(self):
         binary = Path(os.environ["CODEPET_UPDATE_TEST_BINARY"])
-        self.assertEqual(subprocess.check_output([str(binary), "--version"]).decode().strip(), "codepet 0.4.0")
+        self.assertEqual(subprocess.check_output([str(binary), "--version"]).decode().strip(), f"codepet {VERSION}")
         old = (self.tree / "bin/codepet").read_bytes()
         try:
             shutil.copy2(binary, self.tree / "bin/codepet")
@@ -635,7 +637,7 @@ raise SystemExit(1)
             self.assertEqual(list(connection.iterdump()), before)
             self.assertEqual(connection.execute("SELECT adopted_at_ms FROM lives WHERE life_id = ?", (life_id,)).fetchone()[0], birth)
             self.assertEqual(connection.execute("SELECT SUM(amount) FROM activity_xp WHERE life_id = ?", (life_id,)).fetchone()[0], 5)
-        self.assertEqual(subprocess.check_output([str(f.bin / "codepet"), "--version"]).decode().strip(), "codepet 0.4.0")
+        self.assertEqual(subprocess.check_output([str(f.bin / "codepet"), "--version"]).decode().strip(), f"codepet {VERSION}")
 
 
 if __name__ == "__main__":

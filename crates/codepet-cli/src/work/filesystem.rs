@@ -58,8 +58,12 @@ pub(super) fn read_beneath(root: &Path, relative: &Path, limit: usize) -> Result
     )
     .map_err(io)?;
     let file = File::from(fd);
-    if !file.metadata().map_err(io)?.is_file() {
+    let metadata = file.metadata().map_err(io)?;
+    if !metadata.is_file() {
         return Err("Expected a regular project file".into());
+    }
+    if metadata.nlink() > 1 {
+        return Err("Choose a scope without hard-linked project files".into());
     }
     let mut bytes = Vec::new();
     file.take(limit as u64 + 1)
@@ -282,7 +286,8 @@ pub(super) fn walk_budgeted(
             if !matches!(
                 kind,
                 rustix::fs::FileType::RegularFile | rustix::fs::FileType::Directory
-            ) {
+            ) || (kind == rustix::fs::FileType::RegularFile && m.st_nlink > 1)
+            {
                 return Err(format!(
                     "Choose a scope without links or special files: {rel}"
                 ));
