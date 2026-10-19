@@ -2,7 +2,7 @@
 
 All notable changes to CodePet.
 
-## 0.5.0 — Unreleased local development
+## 0.5.0 — 2026-10-18
 
 - Adds an explicit Gentle care tempo: Lively uses a five-minute full hold and
   noticeable attended-time care needs. Existing lives keep Steady until changed;
@@ -33,8 +33,7 @@ All notable changes to CodePet.
   drain budget; a stuck stream fails explicitly instead of losing a late export.
 - Sprite decode size uses Qt's supported screen pixel ratio with a finite fallback,
   including fractional scaling.
-- This source version is not a published GitHub release. Local qualification is
-  separate from the v0.4.0 download; see [lifecycle rules](docs/lifecycle.md),
+- See [lifecycle rules](docs/lifecycle.md),
   [provider boundaries](docs/providers.md) and [candidate qualification](docs/validation.md).
 
 ## 0.4.0 — 2026-10-17

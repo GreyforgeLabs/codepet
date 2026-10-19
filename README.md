@@ -17,9 +17,7 @@ some attention, let it wander, or tuck it in for a nap.
 
 **Find → Fix → Review → Grow.** Fifteen companions. Three growth stages.
 
-**Source status: 0.5.0, unreleased local development.** The features below describe
-the 0.5 candidate. The published download remains 0.4.0; no 0.5 archive or release
-video is available yet. See the [0.5 qualification record](docs/validation.md#v050-candidate-qualification-2026-10-18)
+**Release 0.5.0.** The features below describe this release. See the [0.5 qualification record](docs/validation.md#v050-candidate-qualification-2026-10-18)
 for completed checks and remaining release gates.
 
 ## In the 0.5 candidate
@@ -42,7 +40,7 @@ This still shows a deliberately seeded cart-total bug, a real prepared repair, a
 three independent tests passing after Apply on the preceding development build.
 The saved review was replayed for the capture; Apply happened separately. It is
 historical demonstration evidence, not qualification of the 0.5 candidate. The
-release video will be linked after an approved release publishes it.
+release video will be linked once published.
 
 ## Meet your companion
 
@@ -79,9 +77,7 @@ packaging/omarchy/install.sh
 The archive includes the binary. Installation adds the bar plugin, desktop pet and
 review window, rescans plugins, and upgrades saved state with recovery backups.
 It does not restart your shell or start your pet's life. Use the installer to keep
-binary and UI versions together. The published archive reports `codepet 0.4.0`.
-For this unreleased source candidate, `codepet --version` prints `codepet 0.5.0`.
-The current source features below are not all present in the published archive.
+binary and UI versions together. The 0.5.0 archive reports `codepet 0.5.0`.
 
 ### First run
 
