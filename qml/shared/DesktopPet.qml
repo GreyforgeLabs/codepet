@@ -38,6 +38,11 @@ Item {
     property real wiggleAngle: 0
     readonly property rect cardHit: card.visible ? Qt.rect(card.x, card.y, card.width, card.height) : Qt.rect(0, 0, 0, 0)
     readonly property rect wheelHit: wheel.visible ? Qt.rect(wheel.x, wheel.y, wheel.width, wheel.height) : Qt.rect(0, 0, 0, 0)
+    readonly property rect hideHit: hideButton.visible ? Qt.rect(hideButton.x, hideButton.y, hideButton.width, hideButton.height) : Qt.rect(0, 0, 0, 0)
+    // The HIDE pill shows while the pet (or the pill) is hovered, and lingers briefly so
+    // the pointer can travel from the pet to it.
+    readonly property bool hideOffered: active && !dragging && !cardOpen && !wheelOpen
+        && (petMouse.containsMouse || hideButton.hovered || hideLinger.running)
     readonly property bool interactiveOpen: active && (card.visible || wheel.visible)
     property bool surfaceActive: true
     property bool reducedMotion: false
@@ -91,6 +96,7 @@ Item {
     signal reviewRequested()
     signal placementRequested(real x, real y, bool pinned)
     signal careRequested(string action)
+    signal hideRequested()
 
     // Set from `barState` by updateFace() (not bindings: a handler of barState must not
     // read values whose bindings have not caught up yet).
@@ -160,6 +166,7 @@ Item {
             wheelOpen = false
             careMessage = ""
             careFeedbackTimer.stop()
+            hideLinger.stop()
             stopMoving()
             clearTransients()
             heartMsLeft = 0
@@ -507,6 +514,12 @@ Item {
     }
     // A click on the pet: hop (bubble only in Calm mode), heart bubble, open Home. Never a
     // silent no-op while the pet is drawn (K5).
+    function requestHide() {
+        if (!active) return false
+        hideLinger.stop()
+        hideRequested()
+        return true
+    }
     function petClicked() {
         if (!active) return false
         wheelOpen = false
@@ -522,6 +535,12 @@ Item {
         return true
     }
 
+    Timer {
+        id: hideLinger
+        objectName: "desktopPet.hideLinger"
+        interval: 1500
+        repeat: false
+    }
     Timer {
         id: careFeedbackTimer
         objectName: "desktopPet.careFeedbackTimer"
@@ -581,6 +600,7 @@ Item {
             width: root.hitBox.width; height: root.hitBox.height
             hoverEnabled: true
             enabled: root.active
+            onContainsMouseChanged: if (!containsMouse && root.active) hideLinger.restart()
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: root.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
             onPressed: mouse => {
@@ -603,7 +623,7 @@ Item {
             }
         }
         Accessible.role: Accessible.Button
-        Accessible.name: root.petName + ". Click to open, drag to move, right-click for care"
+        Accessible.name: root.petName + ". Click to open, drag to move, right-click for care, hover to hide"
         Accessible.onPressAction: root.petClicked()
     }
     Rectangle {
@@ -702,6 +722,19 @@ Item {
         y: Math.max(0, pet.y + root.hitBox.y)
         width: 18; height: 18; radius: 9; color: "#eab276"; border.color: "#2b303a"; border.width: 2
         Text { anchors.centerIn: parent; text: "!"; font.bold: true; font.pixelSize: 12; color: "#302719" }
+    }
+    // HIDE: top-left of the hit box, overlapping its corner so the pointer never crosses a
+    // click-through gap on the way from the pet.
+    HideButton {
+        id: hideButton
+        objectName: "desktopPet.hide"
+        visible: root.hideOffered
+        width: Math.min(implicitWidth, root.width)
+        height: implicitHeight
+        x: Math.max(0, Math.min(root.width - width, pet.x + root.hitBox.x - 6))
+        y: Math.max(0, Math.min(root.height - height, pet.y + root.hitBox.y - height / 2))
+        onHoveredChanged: if (!hovered && root.active) hideLinger.restart()
+        onActivated: root.requestHide()
     }
     WorkCard {
         id: card

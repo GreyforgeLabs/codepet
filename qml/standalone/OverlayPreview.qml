@@ -82,6 +82,7 @@ ApplicationWindow {
         reducedMotion: root.reducedMotion
         surfaceActive: root.visible && root.visibility !== Window.Minimized && visible
         onHomeRequested: homeWindow.show()
+        onHideRequested: visible = false
     }
     ApplicationWindow {
         id: homeWindow

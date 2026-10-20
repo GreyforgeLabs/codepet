@@ -43,20 +43,23 @@ class HostContract(unittest.TestCase):
         self.assertIn('readonly property bool interactiveOpen: active && (card.visible || wheel.visible)', PET)
         self.assertNotIn('WlrKeyboardFocus.Exclusive', CODE)
 
-    def test_hit_mask_is_only_the_pet_visible_card_and_wheel(self):
+    def test_hit_mask_is_only_the_pet_visible_card_wheel_and_hide_pill(self):
         mask = block(CODE, 'mask: Region {')
-        self.assertEqual(mask.count('Region {'), 3)
-        self.assertEqual(mask.count('intersection: Intersection.Combine'), 2)
+        self.assertEqual(mask.count('Region {'), 4)
+        self.assertEqual(mask.count('intersection: Intersection.Combine'), 3)
         self.assertNotIn('item:', mask)
         self.assertNotIn('mask: null', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.cardHit, width, height, shell.surfaceActive)', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.wheelHit, width, height, shell.surfaceActive)', CODE)
+        self.assertIn('OverlayPolicy.clipHit(pet.hideHit, width, height, shell.surfaceActive)', CODE)
+        self.assertIn('hideButton.visible ? Qt.rect(hideButton.x, hideButton.y, hideButton.width, hideButton.height) : Qt.rect(0, 0, 0, 0)', PET)
         self.assertIn('card.visible ? Qt.rect(card.x, card.y, card.width, card.height) : Qt.rect(0, 0, 0, 0)', PET)
         for axis in ('x', 'y', 'width', 'height'):
             self.assertIn(f'{axis}: overlay.petInput.{axis}', mask)
             self.assertIn(f'{axis}: overlay.cardInput.{axis}', mask)
             self.assertIn(f'{axis}: overlay.wheelInput.{axis}', mask)
+            self.assertIn(f'{axis}: overlay.hideInput.{axis}', mask)
         # The thought bubble is decorative: no menu or prop region would be a dead click zone.
         for gone in ('menuHit', 'menuInput', 'propsHit', 'propsInput'):
             self.assertNotIn(gone, CODE)
@@ -132,6 +135,16 @@ class HostContract(unittest.TestCase):
         placement = block(CODE, 'function flushPlacement() {')
         self.assertIn('if (placementWriter.running || shell.pendingPlacement === "") return', placement)
         self.assertIn('placementWriter.command = OverlayFlow.placementArgv(Quickshell.env("OMARCHY_PATH"), next)', placement)
+
+    def test_hide_pill_hides_and_toasts_once(self):
+        self.assertIn('onHideRequested: shell.hideFromPet()', CODE)
+        hide = block(CODE, 'function hideFromPet() {')
+        self.assertIn('if (shell.explicitlyHidden || !shell.surfaceActive)', hide)
+        self.assertLess(hide.index('shell.hidePet()'), hide.index('execDetached'))
+        self.assertIn('Quickshell.execDetached(OverlayFlow.hiddenToastArgv())', hide)
+        offered = PET[PET.index('readonly property bool hideOffered'):PET.index('readonly property bool interactiveOpen')]
+        for token in ('active', '!dragging', '!cardOpen', '!wheelOpen', 'petMouse.containsMouse', 'hideLinger.running'):
+            self.assertIn(token, offered)
 
     def test_suppression_and_explicit_restore(self):
         for name in ('sessionLocked', 'sessionSuspended', 'selectedScreenFullscreen'):

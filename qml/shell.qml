@@ -217,6 +217,14 @@ ShellRoot {
     function hidePet() {
         shell.explicitlyHidden = true
     }
+    // The pet's HIDE pill: hide, then say once how to bring it back. The toast is a
+    // detached notify-send argv (no shell string); without notify-send it is skipped.
+    function hideFromPet() {
+        if (shell.explicitlyHidden || !shell.surfaceActive)
+            return
+        shell.hidePet()
+        Quickshell.execDetached(OverlayFlow.hiddenToastArgv())
+    }
     // Off, or "Pet on my desktop" switched off after it was on: exit now. An off read before
     // the switch was ever on here exits once it has held for the settle time.
     function checkExit() {
@@ -312,8 +320,9 @@ ShellRoot {
 
         readonly property var cardInput: OverlayPolicy.clipHit(pet.cardHit, width, height, shell.surfaceActive)
         readonly property var wheelInput: OverlayPolicy.clipHit(pet.wheelHit, width, height, shell.surfaceActive)
+        readonly property var hideInput: OverlayPolicy.clipHit(pet.hideHit, width, height, shell.surfaceActive)
 
-        // Pet, visible card and wheel are separate input islands; the thought bubble is decorative and
+        // Pet, visible card, wheel and HIDE pill are separate input islands; the thought bubble is decorative and
         // stays click-through. Never use the full scene Item as a mask, or a null mask
         // while hidden (an empty region is click-through everywhere).
         mask: Region {
@@ -331,6 +340,12 @@ ShellRoot {
                 width: overlay.wheelInput.width; height: overlay.wheelInput.height
                 radius: 24
             }
+            Region {
+                intersection: Intersection.Combine
+                x: overlay.hideInput.x; y: overlay.hideInput.y
+                width: overlay.hideInput.width; height: overlay.hideInput.height
+                radius: 13
+            }
         }
 
         DesktopPet {
@@ -346,6 +361,7 @@ ShellRoot {
             onUpdatesRequested: Quickshell.execDetached(OverlayFlow.openUpdatesArgv(Quickshell.env("OMARCHY_PATH")))
             onPlacementRequested: (x, y, pinned) => shell.savePlacement(x, y, pinned)
             onCareRequested: action => shell.careAction(action)
+            onHideRequested: shell.hideFromPet()
             onWidthChanged: if (shell.placement) Qt.callLater(() => pet.restorePlacement(shell.placement))
             onHeightChanged: if (shell.placement) Qt.callLater(() => pet.restorePlacement(shell.placement))
         }

@@ -80,5 +80,27 @@ home.setProperty('visible', False)
 # Mouse stays within the window but pushes the sprite beyond its top/left bounds.
 drag(-1000, -1000)
 assert scene.property('petX') >= 0 and scene.property('petY') >= 0, 'drag clamps on screen'
+# HIDE pill: absent until hover, offered on hover, survives the trip to the pill, hides.
+QTest.mouseMove(window, QPoint(5, window.height() - 5))
+QTest.qWait(1700)
+assert scene.property('hideHit').width() == 0, 'no HIDE pill (and no input island) without hover'
+window.setProperty('face', 'idle')
+scene.setProperty('pinned', True)
+app.processEvents()
+QTest.mouseMove(window, center())
+app.processEvents()
+pill = scene.property('hideHit')
+assert pill.width() > 0 and scene.property('hideOffered'), 'hovering the pet offers HIDE'
+pet_hit = scene.property('petHit')
+assert pill.intersects(pet_hit), 'the pill overlaps the hit box: no click-through gap on the way'
+target = QPoint(round(pill.x() + pill.width() / 2), round(pill.y() + pill.height() / 2))
+QTest.mouseMove(window, target)
+app.processEvents()
+assert scene.property('hideHit').width() > 0, 'pill stays while the pointer is on it'
+QTest.mouseClick(window, Qt.LeftButton, pos=target)
+app.processEvents()
+assert not scene.property('visible') and scene.property('petHit').width() == 0, 'HIDE hides the pet and drops its input'
+assert scene.property('hideHit').width() == 0, 'hidden pet has no HIDE island'
+assert not home.property('visible'), 'HIDE never opens Home'
 window.close()
-print('PASS: pointer drag, release vs click, pin/unpin, manual pinned move, working roam, edge clamp')
+print('PASS: pointer drag, release vs click, pin/unpin, manual pinned move, working roam, edge clamp, HIDE pill')
