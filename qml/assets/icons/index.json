@@ -8,12 +8,12 @@
   "care-floor/food": {
    "file": "care-floor/food.webp",
    "px": 256,
-   "sha256": "f17d9f32804b6c542301f73bc202c9d987c5c86fd80e6db1a76813b13241cde5"
+   "sha256": "755b5ea6b4885157a714cbca90a3ef3339f209f378cde626d1c32e59d4bb42c6"
   },
   "care-floor/water": {
    "file": "care-floor/water.webp",
    "px": 256,
-   "sha256": "04fe71a551c045ef35d7928ed23d358abbd1a9a2d8da7d816b564df5412a4248"
+   "sha256": "770d5991c6198a6bb5cb9f657bbbcc2e51af2a4e9dff5373c97b54ae37103aaf"
   },
   "care-floor/play": {
    "file": "care-floor/play.webp",
@@ -23,7 +23,7 @@
   "care-floor/wash": {
    "file": "care-floor/wash.webp",
    "px": 256,
-   "sha256": "dd22787c9e54b1ec32cf64aebd3c1a583ea33a1b09dd441e955d2c69ba12c841"
+   "sha256": "4131e703061d31f97a824ce0d01c082550cea0454e49192d236e66da88a93880"
   },
   "care-floor/treat_jar": {
    "file": "care-floor/treat_jar.webp",
@@ -65,15 +65,25 @@
    "px": 256,
    "sha256": "7bf771d35d5429140bdcde3f6d6ca4064d33ce11a2f184c28c8af463a30f220c"
   },
+  "care-floor/hand": {
+   "file": "care-floor/hand.webp",
+   "px": 256,
+   "sha256": "177b0fc2068ccb0a8405381ac650b7fc32c5c1b7f823c3584e1a62a1e9447ce0"
+  },
+  "care-floor/pin": {
+   "file": "care-floor/pin.webp",
+   "px": 256,
+   "sha256": "33d8f06c073e0e170305dbb1de3f43a80e7292537780badd676dae8ec36f8f8e"
+  },
   "care-aquatic/food": {
    "file": "care-aquatic/food.webp",
    "px": 256,
-   "sha256": "cd85a9618bd29e99ac8676271944ad52254b381750470487eebad8f570c1973b"
+   "sha256": "755b5ea6b4885157a714cbca90a3ef3339f209f378cde626d1c32e59d4bb42c6"
   },
   "care-aquatic/water": {
    "file": "care-aquatic/water.webp",
    "px": 256,
-   "sha256": "9d3f42b6bab753970d63084a3c5a7a474c6ca8a057f9ea2ebb9d74500240e7a7"
+   "sha256": "770d5991c6198a6bb5cb9f657bbbcc2e51af2a4e9dff5373c97b54ae37103aaf"
   },
   "care-aquatic/play": {
    "file": "care-aquatic/play.webp",
@@ -83,7 +93,7 @@
   "care-aquatic/wash": {
    "file": "care-aquatic/wash.webp",
    "px": 256,
-   "sha256": "afda436e80401912252a9972e9f3f05240f093768a5ee2df8e5733915cf03a9d"
+   "sha256": "4131e703061d31f97a824ce0d01c082550cea0454e49192d236e66da88a93880"
   },
   "care-robot/food": {
    "file": "care-robot/food.webp",
@@ -213,7 +223,7 @@
   "bar/badge_bowl": {
    "file": "bar/badge_bowl.webp",
    "px": 64,
-   "sha256": "75c247e426f5cb468d05057f51152db61c8d23fd9eb3be06758ab39118874649"
+   "sha256": "b8964241e31a9f8f7df7d18b42aceddfc2552a75f7f49f9d0652e5cc096f2225"
   },
   "bar/badge_ball": {
    "file": "bar/badge_ball.webp",
@@ -223,7 +233,7 @@
   "bar/badge_tub": {
    "file": "bar/badge_tub.webp",
    "px": 64,
-   "sha256": "5863c26adbef9e009f0806a0bd0d27471fed00b5ed5b0eb081250dfc7184a437"
+   "sha256": "48f89314503cc09e287f65d7f2d00e5d622cad09f5b6a68bfceb6fefd82899cf"
   },
   "bar/badge_star": {
    "file": "bar/badge_star.webp",

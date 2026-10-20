@@ -11,7 +11,9 @@ Dev-time tool only; nothing here runs inside the app. Python 3, Pillow, numpy, s
 chroma key (per sheet: green `#00FF00` by default, magenta `#FF00FF` when a subject is green),
 the grid and the icon ids in cell order. A sheet may carry `patches`: smaller source sheets
 (same fields) whose cells replace the named ids of the base sheet, so one icon can be
-regenerated without re-rolling the reviewed rest of its sheet. Source sheets are not in Git; the default
+regenerated without re-rolling the reviewed rest of its sheet. A patch may also supply ids
+listed in the sheet's `added_ids` (icons the base sheet never had), and a `null` id skips
+that cell, so several sheets can share one patch sheet. Source sheets are not in Git; the default
 source directory is `art-src/icons-v0.3` at the repository root (`$CODEPET_ICON_SRC` or `--src`
 for another location). Keying and cell segmentation reuse `keying.py` (the pet pipeline).
 
@@ -108,7 +110,7 @@ def build(src, spec, log=print):
             data = path.read_bytes()
             if sha256_bytes(data) != part["sha256"]:
                 raise SystemExit(f"{label}: {path} sha256 differs from icon_sheets.json")
-            if part is not sheet and not set(part["ids"]) <= set(sheet["ids"]):
+            if part is not sheet and not {i for i in part["ids"] if i} <= set(sheet["ids"]) | set(sheet.get("added_ids", [])):
                 raise SystemExit(f"{label}: patches ids that are not on the sheet")
             cols, rows = part["grid"]
             cells, warnings = cut_cells(path, part["key"], cols, rows, part.get("keying", {}))
@@ -118,8 +120,11 @@ def build(src, spec, log=print):
                 raise SystemExit(f"{label}: {len(cells)} cells for {len(part['ids'])} ids")
             pad = part.get("pad", sheet.get("pad", 0.06))
             for icon_id, rgba in zip(part["ids"], cells):
-                cut[icon_id] = (rgba, pad)
-        for icon_id in sheet["ids"]:
+                if icon_id:  # null skips a cell of a shared patch sheet
+                    cut[icon_id] = (rgba, pad)
+        for icon_id in sheet["ids"] + sheet.get("added_ids", []):
+            if icon_id not in cut:
+                raise SystemExit(f"{sheet['id']}: no cell for {icon_id}")
             rgba, pad = cut[icon_id]
             rel = f"{sheet['id']}/{icon_id}.webp"
             blob = encode(square(rgba, sheet["px"], pad))
@@ -161,7 +166,7 @@ def contact(files, spec, out):
         sizes = (20, 16) if sheet["id"] == "bar" else (64, 40, 20)
         rows.append((sheet, sizes))
     cell = 76
-    width = max(len(s["ids"]) for s, _ in rows) * cell * 2 + 16
+    width = max(len(s["ids"]) + len(s.get("added_ids", [])) for s, _ in rows) * cell * 2 + 16
     height = sum(sum(sz) + 8 * len(sz) + 8 for _, sz in rows) + 16
     sheet_im = Image.new("RGBA", (width, height), (0, 0, 0, 255))
     y = 8
@@ -171,7 +176,7 @@ def contact(files, spec, out):
                 x0 = 8 + half * (width // 2)
                 band = Image.new("RGBA", (width // 2 - 8, sz + 8), bg)
                 sheet_im.paste(band, (x0, y))
-                for i, icon_id in enumerate(sheet["ids"]):
+                for i, icon_id in enumerate(sheet["ids"] + sheet.get("added_ids", [])):
                     im = Image.open(io.BytesIO(files[f"{sheet['id']}/{icon_id}.webp"])).convert("RGBA")
                     im = im.convert("RGBa").resize((sz, sz), Image.LANCZOS).convert("RGBA")
                     sheet_im.alpha_composite(im, (x0 + 4 + i * cell, y + 4))

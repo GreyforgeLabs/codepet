@@ -1,0 +1,29 @@
+[package]
+name = "codepet-pet"
+description = "CodePet's native desktop pet: a small Wayland layer-shell overlay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "codepet-pet"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+calloop = "0.14"
+calloop-wayland-source = "0.4"
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
+fontdue = "0.9"
+image-webp = "0.2"
+rustix = { version = "1.1", default-features = false, features = ["std", "fs", "process", "net", "event"] }
+
+[lints]
+workspace = true

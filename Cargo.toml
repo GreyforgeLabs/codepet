@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/codepet-core", "crates/codepet-protocol", "crates/codepet-storage", "crates/codepet-cli"]
+members = ["crates/codepet-core", "crates/codepet-protocol", "crates/codepet-storage", "crates/codepet-cli", "crates/codepet-pet"]
 resolver = "2"
 
 [workspace.package]

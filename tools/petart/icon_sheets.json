@@ -1,28 +1,272 @@
 {
  "schema": "codepet.icon-sheets.v1",
- "note": "Selected GPT Image 2 source sheets for tools/petart/icons.py (SPEC-v0.3 §4). key: per sheet, #00FF00 by default, #FF00FF when a subject is green. patches: smaller sheets whose cells replace the named ids. Prompts, hashes and rejects: qml/assets/icons/PROVENANCE.md.",
+ "note": "Selected GPT Image 2 source sheets for tools/petart/icons.py (SPEC-v0.3 \u00a74). key: per sheet, #00FF00 by default, #FF00FF when a subject is green. patches: smaller sheets whose cells replace the named ids. Prompts, hashes and rejects: qml/assets/icons/PROVENANCE.md.",
  "sheets": [
-  {"id": "care-floor", "source": "raw/care-floor.a1.png", "sha256": "8460746af3d236b1d5a947b8c6ee119e96884c3dc71181334c79489e9a009cea", "key": "#00FF00", "grid": [4, 3], "px": 256, "pad": 0.06,
-   "ids": ["food", "water", "play", "wash", "treat_jar", "bed", "sun_wake", "wand_change", "gear_more", "star", "power", "heart"],
+  {
+   "id": "care-floor",
+   "source": "raw/care-floor.a1.png",
+   "sha256": "8460746af3d236b1d5a947b8c6ee119e96884c3dc71181334c79489e9a009cea",
+   "key": "#00FF00",
+   "grid": [
+    4,
+    3
+   ],
+   "px": 256,
+   "pad": 0.06,
+   "ids": [
+    "food",
+    "water",
+    "play",
+    "wash",
+    "treat_jar",
+    "bed",
+    "sun_wake",
+    "wand_change",
+    "gear_more",
+    "star",
+    "power",
+    "heart"
+   ],
    "patches": [
-    {"source": "raw/care-floor-play.a1.png", "sha256": "d2b787045c4b294eacfc7b259634d02668822192566557b63b6be35e20f522c0", "key": "#00FF00", "grid": [1, 1], "pad": 0.06,
-     "ids": ["play"], "why": "a generic red striped ball that matches bar/badge_ball, so every floor species shows one generic toy (the cat's play word is Ball, owner decision 2026-10-16); the base sheet's yarn ball is not shipped"}
-   ]},
-  {"id": "care-aquatic", "source": "raw/care-aquatic.a1.png", "sha256": "c5c40d910143297d5d5e46a42cb5e05e7a5762bfc636ca3107655347930d0269", "key": "#FF00FF", "grid": [2, 2], "px": 256, "pad": 0.06,
-   "ids": ["food", "water", "play", "wash"]},
-  {"id": "care-robot", "source": "raw/care-robot.a1.png", "sha256": "37e5bebcc4560c8e1e62dbf07bc78855ed2bdca0c3953c20f6c5b9a9cc16f785", "key": "#00FF00", "grid": [2, 2], "px": 256, "pad": 0.06,
-   "ids": ["food", "water", "play", "wash"]},
-  {"id": "status", "source": "raw/status.a1.png", "sha256": "9f6df0547c4bf3ee5f72514f4abcf05542cdfeb44c5c6384d8ab0c0fd0a74016", "key": "#FF00FF", "grid": [4, 3], "px": 256, "pad": 0.06,
-   "ids": ["laptop", "bubble_wait", "bandage", "moon", "screen", "leaf_calm", "flame_hardcore", "robot_helpers", "help", "memories", "wave_goodbye", "confetti"]},
-  {"id": "apps", "source": "raw/apps.a2.png", "sha256": "990361b6a2c9d9c3db0913fc4329b07b743c038f0f9fb385914ebad686e2a7c1", "key": "#00FF00", "grid": [5, 1], "px": 256, "pad": 0.04,
-   "ids": ["app_claude_code", "app_codex", "app_opencode", "app_hermes", "app_grok"],
+    {
+     "source": "raw/care-floor-play.a1.png",
+     "sha256": "d2b787045c4b294eacfc7b259634d02668822192566557b63b6be35e20f522c0",
+     "key": "#00FF00",
+     "grid": [
+      1,
+      1
+     ],
+     "pad": 0.06,
+     "ids": [
+      "play"
+     ],
+     "why": "a generic red striped ball that matches bar/badge_ball, so every floor species shows one generic toy (the cat's play word is Ball, owner decision 2026-10-16); the base sheet's yarn ball is not shipped"
+    },
+    {
+     "source": "raw-v06/care-v06.g1.key.png",
+     "sha256": "68798cb62d638f881b7359ef89ea089d2e52f4904dce36b170bab15830359a33",
+     "key": "#00FF00",
+     "grid": [
+      5,
+      1
+     ],
+     "pad": 0.06,
+     "ids": [
+      "food",
+      "water",
+      "wash",
+      "hand",
+      "pin"
+     ],
+     "why": "operator 2026-10-20: water is a single droplet, Bath is bubbles, Pet is a hand, Pin is a real push pin (Grok Imagine; ChatGPT image quota exhausted until Oct 24)"
+    },
+    {
+     "source": "raw-v06/food-v06.g1.key.png",
+     "sha256": "6f601a7cf03277898edce3f17f70d0424f364d6588d17b61382ede80b4ce26f4",
+     "key": "#00FF00",
+     "grid": [
+      1,
+      1
+     ],
+     "pad": 0.06,
+     "ids": [
+      "food"
+     ],
+     "why": "operator 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
+    }
+   ],
+   "added_ids": [
+    "hand",
+    "pin"
+   ]
+  },
+  {
+   "id": "care-aquatic",
+   "source": "raw/care-aquatic.a1.png",
+   "sha256": "c5c40d910143297d5d5e46a42cb5e05e7a5762bfc636ca3107655347930d0269",
+   "key": "#FF00FF",
+   "grid": [
+    2,
+    2
+   ],
+   "px": 256,
+   "pad": 0.06,
+   "ids": [
+    "food",
+    "water",
+    "play",
+    "wash"
+   ],
    "patches": [
-    {"source": "raw/apps-claude-code.a1.png", "sha256": "e86b67fc0e2d0943d1a4f9600423851c1d18454e7c66e85f7677a711ecb3562a", "key": "#00FF00", "grid": [1, 1], "pad": 0.04,
-     "ids": ["app_claude_code"], "why": "the base sheet's orange tile with a white four-point sparkle was too close to a vendor mark (owner review 2026-10-16); replaced by a rose-pink tile with a white light bulb, with no star, sparkle or asterisk shape and no orange"}
-   ]},
-  {"id": "ui", "source": "raw/ui.a1.png", "sha256": "da25c97564cdbbc0291aec00956b9b0fe7682aec7a133a5cf10815d4c31987fd", "key": "#00FF00", "grid": [2, 1], "px": 256, "pad": 0.06,
-   "ids": ["egg", "pencil"]},
-  {"id": "bar", "source": "raw/bar.a1.png", "sha256": "1eee87f79e2f2f438caf4a0d21a5507533e6bc34230401186316c8dbb9e8a45b", "key": "#00FF00", "grid": [5, 2], "px": 64, "pad": 0.03,
-   "ids": ["badge_hand", "badge_drop", "badge_bowl", "badge_ball", "badge_tub", "badge_star", "badge_bandage", "badge_moon", "badge_egg", "badge_sparkle"]}
+    {
+     "source": "raw-v06/care-v06.g1.key.png",
+     "sha256": "68798cb62d638f881b7359ef89ea089d2e52f4904dce36b170bab15830359a33",
+     "key": "#00FF00",
+     "grid": [
+      5,
+      1
+     ],
+     "pad": 0.06,
+     "ids": [
+      "food",
+      "water",
+      "wash",
+      null,
+      null
+     ],
+     "why": "operator 2026-10-20: the same universal droplet, bubbles and food icons for aquatic species"
+    },
+    {
+     "source": "raw-v06/food-v06.g1.key.png",
+     "sha256": "6f601a7cf03277898edce3f17f70d0424f364d6588d17b61382ede80b4ce26f4",
+     "key": "#00FF00",
+     "grid": [
+      1,
+      1
+     ],
+     "pad": 0.06,
+     "ids": [
+      "food"
+     ],
+     "why": "operator 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
+    }
+   ]
+  },
+  {
+   "id": "care-robot",
+   "source": "raw/care-robot.a1.png",
+   "sha256": "37e5bebcc4560c8e1e62dbf07bc78855ed2bdca0c3953c20f6c5b9a9cc16f785",
+   "key": "#00FF00",
+   "grid": [
+    2,
+    2
+   ],
+   "px": 256,
+   "pad": 0.06,
+   "ids": [
+    "food",
+    "water",
+    "play",
+    "wash"
+   ]
+  },
+  {
+   "id": "status",
+   "source": "raw/status.a1.png",
+   "sha256": "9f6df0547c4bf3ee5f72514f4abcf05542cdfeb44c5c6384d8ab0c0fd0a74016",
+   "key": "#FF00FF",
+   "grid": [
+    4,
+    3
+   ],
+   "px": 256,
+   "pad": 0.06,
+   "ids": [
+    "laptop",
+    "bubble_wait",
+    "bandage",
+    "moon",
+    "screen",
+    "leaf_calm",
+    "flame_hardcore",
+    "robot_helpers",
+    "help",
+    "memories",
+    "wave_goodbye",
+    "confetti"
+   ]
+  },
+  {
+   "id": "apps",
+   "source": "raw/apps.a2.png",
+   "sha256": "990361b6a2c9d9c3db0913fc4329b07b743c038f0f9fb385914ebad686e2a7c1",
+   "key": "#00FF00",
+   "grid": [
+    5,
+    1
+   ],
+   "px": 256,
+   "pad": 0.04,
+   "ids": [
+    "app_claude_code",
+    "app_codex",
+    "app_opencode",
+    "app_hermes",
+    "app_grok"
+   ],
+   "patches": [
+    {
+     "source": "raw/apps-claude-code.a1.png",
+     "sha256": "e86b67fc0e2d0943d1a4f9600423851c1d18454e7c66e85f7677a711ecb3562a",
+     "key": "#00FF00",
+     "grid": [
+      1,
+      1
+     ],
+     "pad": 0.04,
+     "ids": [
+      "app_claude_code"
+     ],
+     "why": "the base sheet's orange tile with a white four-point sparkle was too close to a vendor mark (owner review 2026-10-16); replaced by a rose-pink tile with a white light bulb, with no star, sparkle or asterisk shape and no orange"
+    }
+   ]
+  },
+  {
+   "id": "ui",
+   "source": "raw/ui.a1.png",
+   "sha256": "da25c97564cdbbc0291aec00956b9b0fe7682aec7a133a5cf10815d4c31987fd",
+   "key": "#00FF00",
+   "grid": [
+    2,
+    1
+   ],
+   "px": 256,
+   "pad": 0.06,
+   "ids": [
+    "egg",
+    "pencil"
+   ]
+  },
+  {
+   "id": "bar",
+   "source": "raw/bar.a1.png",
+   "sha256": "1eee87f79e2f2f438caf4a0d21a5507533e6bc34230401186316c8dbb9e8a45b",
+   "key": "#00FF00",
+   "grid": [
+    5,
+    2
+   ],
+   "px": 64,
+   "pad": 0.03,
+   "ids": [
+    "badge_hand",
+    "badge_drop",
+    "badge_bowl",
+    "badge_ball",
+    "badge_tub",
+    "badge_star",
+    "badge_bandage",
+    "badge_moon",
+    "badge_egg",
+    "badge_sparkle"
+   ],
+   "patches": [
+    {
+     "source": "raw-v06/bar-v06.g1.key.png",
+     "sha256": "127615429d16c492c3e75ecd11914da3cf744637a1e3be5100cefe51f8f2967e",
+     "key": "#00FF00",
+     "grid": [
+      2,
+      1
+     ],
+     "pad": 0.03,
+     "ids": [
+      "badge_bowl",
+      "badge_tub"
+     ],
+     "why": "operator 2026-10-20: the food badge is a meat on a bone and the bath badge is bubbles (ids kept for compatibility)"
+    }
+   ]
+  }
  ]
 }
