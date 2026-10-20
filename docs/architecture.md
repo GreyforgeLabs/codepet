@@ -21,7 +21,7 @@ separate pipelines with separate privacy and reward rules.
   the parsed `bar-state.json`, watches its inputs with inotify, keeps one timer, and sends
   only explicit care, scout and placement requests. Its face and scene rules are a Rust
   port of `qml/shared/*.js`, checked against them by a differential test. It is the
-  one resident CodePet process while the pet is shown (about 3 MB measured).
+  one resident CodePet process while the pet is shown (about 4 MB measured).
 - `qml/work.qml`: compact card window (opened by a click on the pet) and the explicit
   native task/review window.
 - `qml/shell.qml`: the previous Quickshell desktop pet, kept as the

@@ -18,8 +18,8 @@ some attention, let it wander, or tuck it in for a nap.
 **Find → Fix → Review → Grow.** Fifteen companions. Three growth stages.
 
 **CodePet 0.6: the pet goes native.** The desktop pet is now a small Rust program
-drawn straight through the Wayland layer shell. On our test machine it used **about
-3 MB** of memory and no measurable CPU over a minute, where the 0.5 Quickshell pet
+drawn straight through the Wayland layer shell. On our desktop it used **about 4 MB**
+of memory and under 0.1 % of one core while it roamed, where the 0.5 Quickshell pet
 used 38 to 168 MB. See the [changelog](CHANGELOG.md) and the
 [0.6 qualification record](docs/validation.md).
 
@@ -27,7 +27,7 @@ used 38 to 168 MB. See the [changelog](CHANGELOG.md) and the
 
 | A lighter companion | A friendlier companion |
 | --- | --- |
-| Native Rust desktop pet: about 3 MB, sleeps until something changes | **HIDE** pill on hover, and a show/hide key |
+| Native Rust desktop pet: about 4 MB, sleeps until something changes | **HIDE** pill on hover, and a show/hide key |
 | One timer at a time, no polling, only the current pet's pictures loaded | Clearer care icons: meat on a bone, a droplet, bubbles, a hand, a pin |
 | Same roaming, drag, Pin, care wheel and placement as before | Softer care sounds |
 

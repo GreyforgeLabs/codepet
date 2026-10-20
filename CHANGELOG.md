@@ -6,9 +6,10 @@ All notable changes to CodePet.
 
 - **A native desktop pet.** The pet on your desktop is now `codepet-pet`, a small Rust
   program drawn directly through the Wayland layer shell. Measured over one minute on
-  the development machine it used about 3 MB of memory (PSS), no measurable CPU and
-  under one wakeup a second, where the 0.5 Quickshell pet used 38 to 168 MB, 0.25 to
-  0.3 % of a core and 26 to 60 wakeups a second. It sleeps until something changes:
+  the development desktop while it roamed, it used 3.9 MB of memory (PSS), 0.08 % of
+  one core and about five wakeups a second (under one while resting), where the 0.5
+  Quickshell pet used 38 to 168 MB, 0.25 to 0.3 % of a core and 26 to 60 wakeups a
+  second. It sleeps until something changes:
   no polling, one timer at a time, and the pictures of only the current pet.
 - Same behaviour as before: roaming, drag, Pin/Roam, the care wheel, care feedback,
   celebrations, observed-client bubbles, the work badge, placement memory, Calm mode,
