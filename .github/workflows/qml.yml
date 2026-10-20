@@ -4,7 +4,7 @@ permissions:
   contents: read
 jobs:
   qml:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       QT_QPA_PLATFORM: offscreen
       QT_QUICK_CONTROLS_STYLE: Basic

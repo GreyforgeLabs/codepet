@@ -259,7 +259,7 @@ def unpack(archive, destination, latest):
     except (tarfile.TarError, OSError, EOFError, OverflowError, ValueError) as exc:
         raise UpdateError("The release archive could not be safely unpacked.") from exc
     tree = destination / root
-    required = ["VERSION", "bin/codepet", "packaging/omarchy/install.sh", "packaging/omarchy/codepet-update", "qml/work.qml", "omarchy-plugin/manifest.json"]
+    required = ["VERSION", "bin/codepet", "bin/codepet-pet", "packaging/omarchy/install.sh", "packaging/omarchy/codepet-update", "qml/work.qml", "omarchy-plugin/manifest.json"]
     if any(not (tree / name).is_file() for name in required) or read_file(tree / "VERSION", 64).decode().strip() != latest:
         raise UpdateError("The release archive is incomplete or has the wrong version.")
     return tree
