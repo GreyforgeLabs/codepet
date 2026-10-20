@@ -153,6 +153,12 @@ class Manifest(unittest.TestCase):
         links = [p for p in PLUGIN.rglob("*") if p.is_symlink()]
         self.assertEqual(links, [])
         self.assertFalse((PLUGIN / "LifeText.js").exists(), "LifeText.js is staged, never checked in here")
+        voices = re.search(r"var CARE_VOICES = (\[.*?\])", (PLUGIN / "CodePetBar.js").read_text()).group(1)
+        for species in json.loads(voices):
+            for take in range(3):
+                self.assertTrue((PLUGIN / "assets" / "sounds" / "voice" / species / f"{take}.wav").is_file(), species)
+        for action in ("food", "water", "play", "wash", "pet", "treat"):
+            self.assertTrue((PLUGIN / "assets" / "sounds" / "action" / f"{action}.wav").is_file(), action)
         self.assertEqual((PLUGIN / "LICENSE").read_text(), (REPO / "LICENSE").read_text())
 
     def test_retired_v02_ui_is_gone(self):

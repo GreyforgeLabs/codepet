@@ -2,6 +2,18 @@
 
 All notable changes to CodePet.
 
+## 0.5.1 — Unreleased local development
+
+- Home's care bubble is smaller and sits below the pet's head. Snack, drink, play,
+  bath, treats and petting play an original voice for that animal (three takes)
+  plus a short action sound. Calm stays quiet.
+- Helpers: a row that says Tap to connect does it on that tap and opens the sheet.
+  An empty Grok hook file is filled; a file that is not CodePet's is left alone.
+  A Grok dispatch wrapper reports the real binary's version.
+- Desktop pet: hovering it offers a **HIDE** pill. A click hides the pet and a toast
+  names the show/hide key. Super + Alt + P (unused by Omarchy's defaults) is the
+  suggested binding for `codepet-overlay toggle`; the README has the one line.
+
 ## 0.5.0 — 2026-10-18
 
 - Adds an explicit Gentle care tempo: Lively uses a five-minute full hold and

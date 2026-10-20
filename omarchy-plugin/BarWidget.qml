@@ -290,6 +290,20 @@ BarWidget {
         return true
     }
 
+    // Care sounds ship with the plugin and are copied into the installed runtime
+    // (current/qml/assets/sounds), next to the pet art. Playback uses that absolute
+    // path. The plugin must not resolve its own folder.
+    function playCue(rels) {
+        if (root.cfg.calm === true || !rels || !rels.length) return
+        var base = root.paths.runtime + "qml/"
+        for (var i = 0; i < rels.length && i < 2; i++) {
+            var rel = rels[i]
+            if (typeof rel !== "string" || !/^assets\/sounds\/(voice\/[a-z_]+\/[0-2]|action\/[a-z]+)\.wav$/.test(rel)) continue
+            var argv = ["/usr/bin/pw-play", "--volume", "0.4", base + rel]
+            Quickshell.execDetached(argv)
+        }
+    }
+
     function openWork(kind) {
         if (kind === "compact") { var opened = root.launch("card"); if (opened) root.close(); return opened }
         if (["bug", "research", "build"].indexOf(kind) < 0) return false

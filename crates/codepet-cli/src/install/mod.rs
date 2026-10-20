@@ -872,6 +872,37 @@ mod tests {
     }
 
     #[test]
+    fn grok_connect_fills_an_empty_hook_file_and_leaves_a_foreign_one() {
+        let t = tempfile::tempdir().unwrap();
+        let env = Env::resolve(|k| match k {
+            "HOME" => Some(t.path().as_os_str().to_owned()),
+            "PATH" => Some(OsString::from("/usr/bin")),
+            _ => None,
+        })
+        .unwrap();
+        let paths =
+            StatePaths::resolve(|k| (k == "HOME").then(|| t.path().as_os_str().to_owned()))
+                .unwrap();
+        let ctx = Ctx::new(env, paths, t.path().join("codepet")).unwrap();
+        let path = grok::file_path(&ctx);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "\n").unwrap();
+        assert!(grok::connect(&ctx).is_ok());
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("grok-cli"), "{text}");
+        assert_eq!(status(&ctx, ClientId::GrokCli), Artifact::Current);
+
+        let foreign =
+            "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"/bin/echo hi\"}]}]}}";
+        fs::write(&path, foreign).unwrap();
+        assert_eq!(
+            grok::connect(&ctx).unwrap_err().reason,
+            Reason::Blocked
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), foreign);
+    }
+
+    #[test]
     fn write_file_rewrites_only_on_change() {
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("codepet.json");

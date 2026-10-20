@@ -322,6 +322,21 @@ function careIcon(reg, id, need) {
     return "care-" + careSet(reg, id) + "/" + need
 }
 
+// Original care sounds (assets/sounds). `voice` plays the animal only. A care action
+// plays that animal plus one action sound. nonce picks one of three takes.
+var CARE_VOICES = ["cat", "dog", "capybara", "penguin", "robot", "iguana", "spider", "snake", "goldfish", "rabbit", "turtle", "frog", "owl", "red_panda", "axolotl"]
+var CARE_ACTIONS = ["food", "water", "play", "wash", "pet", "treat"]
+var CARE_VOICE_TAKES = 3
+function cuePaths(species, action, nonce) {
+    var out = []
+    var n = Math.abs(Math.floor(Number(nonce) || 0)) % CARE_VOICE_TAKES
+    if (typeof species === "string" && CARE_VOICES.indexOf(species) >= 0)
+        out.push("assets/sounds/voice/" + species + "/" + n + ".wav")
+    if (typeof action === "string" && CARE_ACTIONS.indexOf(action) >= 0)
+        out.push("assets/sounds/action/" + action + ".wav")
+    return out
+}
+
 function thumbPath(petId, stage) {
     if (typeof petId !== "string" || !/^[a-z_]{2,24}$/.test(petId)) return ""
     if (stage !== 1 && stage !== 2 && stage !== 3) return ""

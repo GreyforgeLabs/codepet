@@ -56,7 +56,8 @@ Item {
             home.carePending = false
             if (!resp.ok) { home.app.failed(resp); return }
             var changed = !!(resp.result && resp.result.changed === true)
-            home.app.say(Model.reactText(Strings.STRINGS, home.app.reg, home.appearance, need, !changed, name), (changed || need === "play") ? need : "")
+            var anim = (changed || need === "play") ? need : ""
+            home.app.say(Model.reactText(Strings.STRINGS, home.app.reg, home.appearance, need, !changed, name), anim, changed ? need : "voice")
         })
     }
     function giveTreat() {
@@ -73,7 +74,7 @@ Item {
                 else home.app.failed(resp)
                 return
             }
-            home.app.say(home.app.s("stats.treat_given"), "food")
+            home.app.say(home.app.s("stats.treat_given"), "food", "treat")
         })
     }
     function wake() {
@@ -157,10 +158,12 @@ Item {
                 id: speech
                 objectName: "cp.speech"
                 t: home.t
+                compact: true
                 text: home.app.bubbleText
                 statistic: home.app.bubbleText === home.app.s("stats.treat_given")
-                x: Math.max(0, pet.x - home.t.u(36))
-                y: 0
+                // Under the face. The sprite's head sits in the top of the 160 px frame.
+                x: pet.x
+                y: Math.max(0, stage.height - height - home.t.u(4))
                 z: 2
             }
             PetProgress {

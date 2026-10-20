@@ -1,3 +1,15 @@
+# v0.5.1 candidate qualification (2026-10-18)
+
+**Status: unreleased local development and not release-qualified.** 0.5.1 is the
+care-bubble, animal-sound and Grok-connect patch after the published
+[CodePet 0.5.0](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0)
+release. 0.5.1 itself is not published. No host security setting or production
+containment policy was weakened. Quickshell IPC-dependent host tests and the
+offscreen companion checks recorded for 0.5.0 still apply. See the
+[release decision and remaining checklist](release-0.5.md). The 0.5.0 record follows.
+
+---
+
 # v0.5.0 candidate qualification (2026-10-18)
 
 **Status: unreleased and not release-qualified.** This audit resumes the recovery

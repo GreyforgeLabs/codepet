@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — Unreleased local development
+
+- Home's care bubble is smaller and sits below the pet's head. Care, treats and
+  petting play an original animal voice and a short action sound. Calm stays quiet.
+- Tap to connect does it on that tap, then opens the sheet.
+
 ## 0.5.0 — Unreleased local development
 
 - Desktop card exposes Updates directly; right-click opens a compact care wheel.

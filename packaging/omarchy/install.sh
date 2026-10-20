@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh: install or update CodePet for the current user on Omarchy (v0.5.0, schema 6).
+# install.sh: install or update CodePet for the current user on Omarchy (v0.5.1, schema 6).
 #
 #   packaging/omarchy/install.sh [--dry-run] [--no-plugin]
 #
@@ -35,7 +35,9 @@
 #   8. upgrade only: start the desktop overlay again if it was running.
 #
 # The bar icons ship twice (omarchy-plugin/assets/icons for the bar, qml/assets/icons for
-# the overlay); the install refuses when the two copies differ.
+# the overlay); the install refuses when the two copies differ. Care sounds ship in the
+# bar plugin and are copied into the runtime at qml/assets/sounds, which is where the bar
+# plays them from.
 #
 # An update keeps the replaced binary, release tree and plugin under ~/.cache/codepet as
 # codepet-backup-<old version>-<ts>, release-backup-<version>-<ts> and plugin-backup-<ts>;
@@ -165,6 +167,9 @@ stage_runtime() {
     for d in shared omarchy assets; do
         cp -R -- "$REPO/qml/$d" "$1/qml/$d"
     done
+    # The bar plays these from the runtime copy. The plugin must not resolve its own folder.
+    mkdir -p -- "$1/qml/assets/sounds"
+    cp -R -- "$REPO/omarchy-plugin/assets/sounds/." "$1/qml/assets/sounds/"
     stage_build_info "$1/qml/shared/BuildInfo.js"
     local plugin=true
     [ "$NO_PLUGIN" -eq 0 ] || plugin=false

@@ -17,8 +17,10 @@ some attention, let it wander, or tuck it in for a nap.
 
 **Find → Fix → Review → Grow.** Fifteen companions. Three growth stages.
 
-**Release 0.5.0.** The features below describe this release. See the [0.5 qualification record](docs/validation.md#v050-candidate-qualification-2026-10-18)
-for completed checks and remaining release gates.
+**0.5.1, unreleased local development.** It follows the published
+[CodePet 0.5.0](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0)
+release. The features below are that release. See the [0.5 qualification record](docs/validation.md#v050-candidate-qualification-2026-10-18)
+for its checks and remaining gates.
 
 ## In the 0.5 candidate
 
@@ -77,7 +79,7 @@ packaging/omarchy/install.sh
 The archive includes the binary. Installation adds the bar plugin, desktop pet and
 review window, rescans plugins, and upgrades saved state with recovery backups.
 It does not restart your shell or start your pet's life. Use the installer to keep
-binary and UI versions together. The 0.5.0 archive reports `codepet 0.5.0`.
+binary and UI versions together. `codepet --version` prints `codepet 0.5.1`.
 
 ### First run
 
@@ -87,6 +89,20 @@ binary and UI versions together. The 0.5.0 archive reports `codepet 0.5.0`.
    explicit reviewed Apply changes your original project.
 4. Right-click for quick care. Drag to move; **Pin/Roam** controls wandering.
    **Care** opens full meters, and **Details** opens longer work status.
+5. Hover the pet and click **HIDE** to tuck it away. Bring it back with the
+   show/hide key below, or `codepet-overlay show`.
+
+**Show/hide key.** `codepet-overlay toggle` shows or hides the desktop pet (and starts
+it when it is not running). Omarchy's defaults leave **Super + Alt + P** free; add it
+to `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + ALT + P", "CodePet show/hide", os.getenv("HOME") .. "/.local/bin/codepet-overlay toggle")
+```
+
+Hiding lasts until you show the pet again or log in again. It is not **Off**: care
+and work continue as usual. To keep the pet off the desktop, turn off
+**Pet on my desktop** in the bar's right-click menu.
 
 **Automatic checks are enabled after Let's go!** Bounded scouts search conventional
 development folders such as `~/Projects`, `~/Code` and `~/Work/workspaces` when the
