@@ -46,7 +46,11 @@ pub fn number_string(n: f64) -> String {
         return "NaN".into();
     }
     if n.is_infinite() {
-        return if n > 0.0 { "Infinity".into() } else { "-Infinity".into() };
+        return if n > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        };
     }
     if n == n.trunc() && n.abs() < 1e21 {
         return format!("{}", n as i64);

@@ -28,7 +28,10 @@ pub fn client_name(id: &str) -> Option<&'static str> {
 }
 
 fn client_rank(id: &str) -> usize {
-    CLIENTS.iter().position(|c| *c == id).unwrap_or(CLIENTS.len())
+    CLIENTS
+        .iter()
+        .position(|c| *c == id)
+        .unwrap_or(CLIENTS.len())
 }
 
 pub fn need_level(state: &str) -> &'static str {
@@ -86,7 +89,8 @@ impl Face {
         self.state.as_deref().unwrap_or("")
     }
 
-    /// The face as the JavaScript object it mirrors (tests and the status verb).
+    /// The face as the JavaScript object it mirrors (the parity test).
+    #[cfg(test)]
     pub fn to_value(&self) -> Value {
         let mut m = Map::new();
         let opt = |v: &Option<String>| v.as_ref().map(|x| s(x)).unwrap_or(Value::Null);
@@ -98,7 +102,10 @@ impl Face {
         m.insert("pulse".into(), Value::Bool(self.pulse));
         m.insert("treats_visible".into(), Value::Bool(self.treats_visible));
         m.insert("bubble".into(), self.bubble.clone().unwrap_or(Value::Null));
-        m.insert("wake_at_ms".into(), self.wake_at_ms.map(|w| json!(w)).unwrap_or(Value::Null));
+        m.insert(
+            "wake_at_ms".into(),
+            self.wake_at_ms.map(|w| json!(w)).unwrap_or(Value::Null),
+        );
         m.insert(
             "celebrate".into(),
             self.celebrate
@@ -115,7 +122,15 @@ impl Face {
         Value::Object(m)
     }
 
-    fn set(&mut self, state: &str, bar: &str, line: &str, vars: Map<String, Value>, overlay: &str, bubble: Option<Value>) {
+    fn set(
+        &mut self,
+        state: &str,
+        bar: &str,
+        line: &str,
+        vars: Map<String, Value>,
+        overlay: &str,
+        bubble: Option<Value>,
+    ) {
         self.state = Some(state.into());
         self.bar = Some(bar.into());
         self.line = Some(line.into());
@@ -134,13 +149,18 @@ pub struct Seen {
 }
 
 fn vars(pairs: &[(&str, Value)]) -> Map<String, Value> {
-    pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.clone()))
+        .collect()
 }
 
 /// petstate.js `sharedPriority(doc, now, seen)`.
 pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
     let mut res = Face::default();
-    let Some(doc) = doc.as_object() else { return res };
+    let Some(doc) = doc.as_object() else {
+        return res;
+    };
     let life = obj(doc.get("life"));
     if doc.get("enabled") == Some(&Value::Bool(false)) {
         res.state = Some("off".into());
@@ -167,7 +187,11 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
     }
     let empty = Map::new();
     let ag = obj(doc.get("agent")).unwrap_or(&empty);
-    let apps: Vec<&Value> = ag.get("apps").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
+    let apps: Vec<&Value> = ag
+        .get("apps")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().collect())
+        .unwrap_or_default();
     let counting: Vec<&Map<String, Value>> = apps
         .iter()
         .filter_map(|a| a.as_object())
@@ -185,7 +209,10 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
         }
     }
     waiting.sort_by(|x, y| {
-        let (xs, ys) = (num(x.get("since_ms")).unwrap_or(0.0), num(y.get("since_ms")).unwrap_or(0.0));
+        let (xs, ys) = (
+            num(x.get("since_ms")).unwrap_or(0.0),
+            num(y.get("since_ms")).unwrap_or(0.0),
+        );
         if xs != ys {
             return ys.partial_cmp(&xs).unwrap_or(std::cmp::Ordering::Equal);
         }
@@ -199,7 +226,10 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
     let paused = is_true(life.get("paused"));
     let tv = jar > 0.0 && !fainted && !paused && !sleeping;
     res.treats_visible = tv;
-    let mut wakes: Vec<f64> = counting.iter().filter_map(|a| num(a.get("stale_at_ms"))).collect();
+    let mut wakes: Vec<f64> = counting
+        .iter()
+        .filter_map(|a| num(a.get("stale_at_ms")))
+        .collect();
     let t = obj(ag.get("test"));
     let mut testing = false;
     if let Some(t) = t {
@@ -231,7 +261,13 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
                     }
                 }
             }
-            cands.push(Cand { kind: "grew", line: "grew", vars: vars(&[("name", name.clone())]), seq: Some(top), at_ms: None });
+            cands.push(Cand {
+                kind: "grew",
+                line: "grew",
+                vars: vars(&[("name", name.clone())]),
+                seq: Some(top),
+                at_ms: None,
+            });
         }
     }
     if let Some(t) = t {
@@ -239,7 +275,13 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
             if let Some(at) = num(t.get("at_ms")) {
                 if at > seen.test_at_ms && now < at + CELEBRATE_WINDOW_MS {
                     wakes.push(at + CELEBRATE_WINDOW_MS);
-                    cands.push(Cand { kind: "test", line: "act.ready", vars: vars(&[("name", name.clone())]), seq: None, at_ms: Some(at) });
+                    cands.push(Cand {
+                        kind: "test",
+                        line: "act.ready",
+                        vars: vars(&[("name", name.clone())]),
+                        seq: None,
+                        at_ms: Some(at),
+                    });
                 }
             }
         }
@@ -252,7 +294,10 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
             cands.push(Cand {
                 kind: "hello",
                 line: "act.hello",
-                vars: vars(&[("name", name.clone()), ("app", or_null(ag.get("hello_app")))]),
+                vars: vars(&[
+                    ("name", name.clone()),
+                    ("app", or_null(ag.get("hello_app"))),
+                ]),
                 seq: Some(hello_seq),
                 at_ms: Some(ha),
             });
@@ -273,7 +318,13 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
                     } else {
                         ("act.done", Map::new())
                     };
-                    cands.push(Cand { kind: "finished", line, vars: v, seq: Some(finished_seq), at_ms: Some(fa) });
+                    cands.push(Cand {
+                        kind: "finished",
+                        line,
+                        vars: v,
+                        seq: Some(finished_seq),
+                        at_ms: Some(fa),
+                    });
                 }
             }
         }
@@ -311,14 +362,28 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
     let star = if tv { "star" } else { "none" };
     let named = || vars(&[("name", name.clone())]);
     if fainted {
-        res.set("fainted", "sleep_bandage", "mood.fainted", named(), "sleep", Some(json!({"bandage": true})));
+        res.set(
+            "fainted",
+            "sleep_bandage",
+            "mood.fainted",
+            named(),
+            "sleep",
+            Some(json!({"bandage": true})),
+        );
     } else if paused {
         res.set("paused", "sleep", "mood.asleep", named(), "sleep", None);
     } else if sleeping {
         res.set("asleep", "sleep", "mood.asleep", named(), "sleep", None);
     } else if let Some(w) = waiting.first() {
         let wid = js_string(w.get("id"));
-        res.set("waiting", "hand", "act.waiting", vars(&[("app", s(&wid))]), "waiting", Some(json!({"apps": [wid]})));
+        res.set(
+            "waiting",
+            "hand",
+            "act.waiting",
+            vars(&[("app", s(&wid))]),
+            "waiting",
+            Some(json!({"apps": [wid]})),
+        );
         res.pulse = true;
     } else if let Some((need, level)) = now_needs.first() {
         res.set(
@@ -331,12 +396,25 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
         );
     } else if !working.is_empty() {
         let (line, v) = match working.len() {
-            1 => ("act.working.one", vars(&[("name", name.clone()), ("app", s(&working[0]))])),
-            2 => ("act.working.two", vars(&[("app", s(&working[0])), ("app2", s(&working[1]))])),
+            1 => (
+                "act.working.one",
+                vars(&[("name", name.clone()), ("app", s(&working[0]))]),
+            ),
+            2 => (
+                "act.working.two",
+                vars(&[("app", s(&working[0])), ("app2", s(&working[1]))]),
+            ),
             _ => ("act.working.many", named()),
         };
         let apps: Vec<Value> = working.iter().take(3).map(|a| s(a)).collect();
-        res.set("working", "working", line, v, "working", Some(json!({"apps": apps})));
+        res.set(
+            "working",
+            "working",
+            line,
+            v,
+            "working",
+            Some(json!({"apps": apps})),
+        );
     } else if testing {
         let tc = or_null(t.and_then(|t| t.get("client")));
         res.set(
@@ -348,17 +426,54 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
             Some(json!({"apps": [tc]})),
         );
     } else if let Some(c) = cands.first() {
-        let bubble = if c.kind == "grew" { json!({"star": true, "confetti": true}) } else { json!({"star": true}) };
-        res.set("celebrate", "star", c.line, c.vars.clone(), "celebrate", Some(bubble));
-        res.celebrate = Some(Celebrate { kind: c.kind.into(), seq: c.seq, at_ms: c.at_ms });
+        let bubble = if c.kind == "grew" {
+            json!({"star": true, "confetti": true})
+        } else {
+            json!({"star": true})
+        };
+        res.set(
+            "celebrate",
+            "star",
+            c.line,
+            c.vars.clone(),
+            "celebrate",
+            Some(bubble),
+        );
+        res.celebrate = Some(Celebrate {
+            kind: c.kind.into(),
+            seq: c.seq,
+            at_ms: c.at_ms,
+        });
     } else if oops {
         let ea = ea.unwrap_or(0.0);
-        let overlay = if now < ea + ERROR_FRAME_MS { "error" } else { "idle" };
-        res.set("oops", star, "act.oops", vars(&[("app", or_null(ag.get("error_app")))]), overlay, None);
+        let overlay = if now < ea + ERROR_FRAME_MS {
+            "error"
+        } else {
+            "idle"
+        };
+        res.set(
+            "oops",
+            star,
+            "act.oops",
+            vars(&[("app", or_null(ag.get("error_app")))]),
+            overlay,
+            None,
+        );
     } else if let Some((need, _)) = soon_needs.first() {
-        res.set("need_soon", star, &format!("mood.{need}.soon"), named(), "needs_care_frame", Some(json!({"need": need})));
+        res.set(
+            "need_soon",
+            star,
+            &format!("mood.{need}.soon"),
+            named(),
+            "needs_care_frame",
+            Some(json!({"need": need})),
+        );
     } else {
-        let bubble = if is_true(ag.get("helpers_busy")) { Some(json!({"helpers": true})) } else { None };
+        let bubble = if is_true(ag.get("helpers_busy")) {
+            Some(json!({"helpers": true}))
+        } else {
+            None
+        };
         res.set("idle", star, "mood.happy", named(), "wander", bubble);
     }
     res
@@ -367,13 +482,19 @@ pub fn shared_priority(doc: &Value, now: f64, seen: Seen) -> Face {
 /// petstate.js `currentPriority`: care and growth stay legible while a coding app is active.
 pub fn current_priority(doc: &Value, now: f64, seen: Seen) -> Face {
     let mut activity = shared_priority(doc, now, seen);
-    let Some(map) = doc.as_object() else { return activity };
+    let Some(map) = doc.as_object() else {
+        return activity;
+    };
     if ["off", "no_pet", "welcome", "fainted", "paused", "asleep"].contains(&activity.state()) {
         return activity;
     }
     let mut care_doc = map.clone();
     care_doc.insert("agent".into(), Value::Object(Map::new()));
-    let mut needs: Vec<Value> = map.get("needs").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut needs: Vec<Value> = map
+        .get("needs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let empty = Map::new();
     let meters = obj(map.get("meters")).unwrap_or(&empty);
     let meter_of = |need: &str| match need {
@@ -383,7 +504,9 @@ pub fn current_priority(doc: &Value, now: f64, seen: Seen) -> Face {
         _ => "hygiene",
     };
     for need in NEED_PRIORITY {
-        let Some(value) = num(meters.get(meter_of(need))) else { continue };
+        let Some(value) = num(meters.get(meter_of(need))) else {
+            continue;
+        };
         if !(0.0..=6000.0).contains(&value) {
             continue;
         }
@@ -396,13 +519,18 @@ pub fn current_priority(doc: &Value, now: f64, seen: Seen) -> Face {
             })
         });
         if !recorded {
-            needs.push(json!({"action": need, "state": if value <= 3000.0 { "empty" } else { "low" }}));
+            needs.push(
+                json!({"action": need, "state": if value <= 3000.0 { "empty" } else { "low" }}),
+            );
         }
     }
     let mut levels = Map::new();
     for n in &needs {
         if let Some(n) = n.as_object() {
-            levels.insert(js_string(n.get("action")), s(need_level(&js_string(n.get("state")))));
+            levels.insert(
+                js_string(n.get("action")),
+                s(need_level(&js_string(n.get("state")))),
+            );
         }
     }
     care_doc.insert("needs".into(), Value::Array(needs));
@@ -413,7 +541,12 @@ pub fn current_priority(doc: &Value, now: f64, seen: Seen) -> Face {
     if care.state() == "need_now" || care.state() == "need_soon" || grew {
         care.wake_at_ms = activity.wake_at_ms;
         if care.state() == "need_soon" {
-            let need = care.bubble.as_ref().and_then(|b| b.get("need")).map(|n| js_string(Some(n))).unwrap_or_default();
+            let need = care
+                .bubble
+                .as_ref()
+                .and_then(|b| b.get("need"))
+                .map(|n| js_string(Some(n)))
+                .unwrap_or_default();
             care.bar = Some(format!("need_{need}"));
         }
         return care;
@@ -441,20 +574,33 @@ pub fn animation(overlay: &str) -> (&'static str, bool, bool) {
 /// Owned jobs have a care icon; observed coding clients keep their app icon.
 pub fn with_work(face: &Face, work: Option<&Value>) -> Face {
     if [
-        "off", "asleep", "fainted", "paused", "no_pet", "welcome", "need_now", "need_soon", "celebrate",
+        "off",
+        "asleep",
+        "fainted",
+        "paused",
+        "no_pet",
+        "welcome",
+        "need_now",
+        "need_soon",
+        "celebrate",
     ]
     .contains(&face.state())
     {
         return face.clone();
     }
-    let Some(task) = work.and_then(|w| w.get("task")).filter(|t| !t.is_null() && *t != &Value::Bool(false)) else {
+    let Some(task) = work
+        .and_then(|w| w.get("task"))
+        .filter(|t| !t.is_null() && *t != &Value::Bool(false))
+    else {
         return face.clone();
     };
     let status = js_string(task.get("status"));
     if !["preparing", "running", "review", "applying", "scouted"].contains(&status.as_str()) {
         return face.clone();
     }
-    let has_finding = task.get("has_finding").is_some_and(|f| !matches!(f, Value::Null | Value::Bool(false)));
+    let has_finding = task
+        .get("has_finding")
+        .is_some_and(|f| !matches!(f, Value::Null | Value::Bool(false)));
     if status == "scouted" && !has_finding {
         return face.clone();
     }
@@ -493,7 +639,12 @@ pub fn observer_label(face: &Face) -> String {
     if !["working", "waiting", "testing"].contains(&face.state()) {
         return String::new();
     }
-    let Some(apps) = face.bubble.as_ref().and_then(|b| b.get("apps")).and_then(Value::as_array) else {
+    let Some(apps) = face
+        .bubble
+        .as_ref()
+        .and_then(|b| b.get("apps"))
+        .and_then(Value::as_array)
+    else {
         return String::new();
     };
     let apps: Vec<&str> = apps
@@ -501,7 +652,9 @@ pub fn observer_label(face: &Face) -> String {
         .filter_map(Value::as_str)
         .filter(|id| app_tile(id).is_some() && client_name(id).is_some())
         .collect();
-    let Some(first) = apps.first() else { return String::new() };
+    let Some(first) = apps.first() else {
+        return String::new();
+    };
     let mut out = client_name(first).unwrap_or_default().to_string();
     if apps.len() > 1 {
         out.push_str(&format!(" +{}", apps.len() - 1));
@@ -517,7 +670,9 @@ pub fn observer_label(face: &Face) -> String {
 /// Icon paths (relative to assets/icons/) for a face bubble, at most four.
 pub fn bubble_icons(bubble: Option<&Value>, care_set: &str, waiting: bool) -> Vec<String> {
     let mut out = Vec::new();
-    let Some(b) = bubble.and_then(Value::as_object) else { return out };
+    let Some(b) = bubble.and_then(Value::as_object) else {
+        return out;
+    };
     if let Some(apps) = b.get("apps").and_then(Value::as_array) {
         if waiting {
             out.push("status/bubble_wait.webp".to_string());
@@ -530,7 +685,11 @@ pub fn bubble_icons(bubble: Option<&Value>, care_set: &str, waiting: bool) -> Ve
     }
     if let Some(need) = b.get("need").and_then(Value::as_str) {
         if NEED_PRIORITY.contains(&need) {
-            let set = if ["floor", "aquatic", "robot"].contains(&care_set) { care_set } else { "floor" };
+            let set = if ["floor", "aquatic", "robot"].contains(&care_set) {
+                care_set
+            } else {
+                "floor"
+            };
             out.push(format!("care-{set}/{need}.webp"));
         }
     }
@@ -551,7 +710,10 @@ pub fn bubble_icons(bubble: Option<&Value>, care_set: &str, waiting: bool) -> Ve
 /// A key that changes exactly when a new celebration should play once.
 pub fn celebration_key(c: Option<&Celebrate>) -> String {
     let Some(c) = c else { return String::new() };
-    let f = |v: Option<f64>| v.map(super::js::number_string).unwrap_or_else(|| "null".into());
+    let f = |v: Option<f64>| {
+        v.map(super::js::number_string)
+            .unwrap_or_else(|| "null".into())
+    };
     format!("{}:{}:{}", c.kind, f(c.seq), f(c.at_ms))
 }
 
@@ -614,11 +776,16 @@ pub fn seen_at_start(doc: &Value) -> (Seen, f64) {
 
 /// The document without its unseen growth once growth was celebrated here.
 pub fn without_growth(doc: &Value, grew_seq: f64) -> Value {
-    let Some(ev) = doc.get("unseen_events").and_then(Value::as_array) else { return doc.clone() };
+    let Some(ev) = doc.get("unseen_events").and_then(Value::as_array) else {
+        return doc.clone();
+    };
     if ev.is_empty() {
         return doc.clone();
     }
-    let top = ev.iter().filter_map(|e| num(e.get("seq"))).fold(0.0, f64::max);
+    let top = ev
+        .iter()
+        .filter_map(|e| num(e.get("seq")))
+        .fold(0.0, f64::max);
     if grew_seq < top {
         return doc.clone();
     }

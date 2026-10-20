@@ -383,10 +383,7 @@ mod tests {
     fn grok_dispatch_wrapper_reports_the_real_version() {
         let t = tempfile::tempdir().unwrap();
         let h = t.path();
-        exe(
-            &h.join(".grok/downloads/grok-1.0.62-linux-x86_64"),
-            "elf",
-        );
+        exe(&h.join(".grok/downloads/grok-1.0.62-linux-x86_64"), "elf");
         fs::create_dir_all(h.join(".grok/bin")).unwrap();
         symlink(
             "../downloads/grok-1.0.62-linux-x86_64",

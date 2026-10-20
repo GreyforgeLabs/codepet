@@ -26,7 +26,6 @@ pub const PILL_H: f64 = 26.0;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
     ToggleCard,
-    OpenHome,
     Care(String),
     SavePlacement { x: f64, y: f64, pinned: bool },
     Hide,
@@ -50,7 +49,12 @@ impl Rect {
         Rect { x, y, w, h }
     }
     pub fn contains(&self, px: f64, py: f64) -> bool {
-        self.w > 0.0 && self.h > 0.0 && px >= self.x && py >= self.y && px < self.x + self.w && py < self.y + self.h
+        self.w > 0.0
+            && self.h > 0.0
+            && px >= self.x
+            && py >= self.y
+            && px < self.x + self.w
+            && py < self.y + self.h
     }
     pub fn is_empty(&self) -> bool {
         self.w <= 0.0 || self.h <= 0.0
@@ -64,10 +68,12 @@ impl Rect {
         }
         let x = self.x.min(o.x);
         let y = self.y.min(o.y);
-        Rect::new(x, y, (self.x + self.w).max(o.x + o.w) - x, (self.y + self.h).max(o.y + o.h) - y)
-    }
-    pub fn intersects(&self, o: &Rect) -> bool {
-        !self.is_empty() && !o.is_empty() && self.x < o.x + o.w && o.x < self.x + self.w && self.y < o.y + o.h && o.y < self.y + self.h
+        Rect::new(
+            x,
+            y,
+            (self.x + self.w).max(o.x + o.w) - x,
+            (self.y + self.h).max(o.y + o.h) - y,
+        )
     }
 }
 
@@ -276,7 +282,11 @@ impl Scene {
         self.anim().0 == "sleep"
     }
     fn care_sleeping(&self) -> bool {
-        self.bar_state.as_ref().and_then(|b| b.get("care")).and_then(|c| c.get("sleeping")) == Some(&Value::Bool(true))
+        self.bar_state
+            .as_ref()
+            .and_then(|b| b.get("care"))
+            .and_then(|c| c.get("sleeping"))
+            == Some(&Value::Bool(true))
     }
     fn life_flag(&self, key: &str) -> bool {
         self.life.as_ref().and_then(|l| l.get(key)) == Some(&Value::Bool(true))
@@ -298,7 +308,11 @@ impl Scene {
             return "locomotion".into();
         }
         let a = self.anim().0;
-        if a.is_empty() { "idle".into() } else { a.into() }
+        if a.is_empty() {
+            "idle".into()
+        } else {
+            a.into()
+        }
     }
     fn display(&self) -> (StateMeta, bool) {
         let base = self.meta(&self.base_state());
@@ -309,21 +323,33 @@ impl Scene {
     }
     fn frame(&self) -> i64 {
         let (meta, is_transient) = self.display();
-        let elapsed = if is_transient { self.transient.as_ref().map(|t| t.1).unwrap_or(0) } else { self.base_elapsed_ms };
+        let elapsed = if is_transient {
+            self.transient.as_ref().map(|t| t.1).unwrap_or(0)
+        } else {
+            self.base_elapsed_ms
+        };
         catalog::frame_at(&meta, elapsed / 200, self.reduced_motion)
     }
     fn bob_offset(&self) -> f64 {
         let (meta, _) = self.display();
-        if self.anim().2 && !self.reduced_motion && meta.name == "waiting" && self.frame() % 2 == 1 { -3.0 } else { 0.0 }
+        if self.anim().2 && !self.reduced_motion && meta.name == "waiting" && self.frame() % 2 == 1
+        {
+            -3.0
+        } else {
+            0.0
+        }
     }
     fn motion_running(&self) -> bool {
         self.active() && !self.reduced_motion && !self.sleeping()
     }
     fn scheduler_running(&self) -> bool {
-        self.active() && (self.transient.is_some() || self.motion_running() || self.heart_ms_left > 0)
+        self.active()
+            && (self.transient.is_some() || self.motion_running() || self.heart_ms_left > 0)
     }
     fn hop_offset(&self) -> f64 {
-        let Some(start) = self.hop_start else { return 0.0 };
+        let Some(start) = self.hop_start else {
+            return 0.0;
+        };
         let t = self.now.saturating_sub(start);
         if t >= HOP_MS {
             return 0.0;
@@ -337,9 +363,17 @@ impl Scene {
         }
     }
     fn wiggle_angle(&self) -> f64 {
-        let Some(start) = self.wiggle_start else { return 0.0 };
+        let Some(start) = self.wiggle_start else {
+            return 0.0;
+        };
         let t = self.now.saturating_sub(start) as f64;
-        let keys = [(0.0, 0.0), (150.0, -6.0), (370.0, 6.0), (550.0, -3.0), (730.0, 0.0)];
+        let keys = [
+            (0.0, 0.0),
+            (150.0, -6.0),
+            (370.0, 6.0),
+            (550.0, -3.0),
+            (730.0, 0.0),
+        ];
         for w in keys.windows(2) {
             let ((t0, a0), (t1, a1)) = (w[0], w[1]);
             if t <= t1 {
@@ -351,7 +385,12 @@ impl Scene {
         0.0
     }
     fn pet_top(&self) -> f64 {
-        (if self.pet_y < 0.0 { self.floor_y() } else { self.pet_y }) + self.hop_offset() + self.bob_offset()
+        (if self.pet_y < 0.0 {
+            self.floor_y()
+        } else {
+            self.pet_y
+        }) + self.hop_offset()
+            + self.bob_offset()
     }
     fn mirrored(&self) -> bool {
         let (meta, _) = self.display();
@@ -375,7 +414,9 @@ impl Scene {
             && !self.dragging
             && !self.card_open
             && !self.wheel_open
-            && (self.hover == Target::Pet || self.hover == Target::Pill || self.hide_linger_until.is_some_and(|u| self.now < u))
+            && (self.hover == Target::Pet
+                || self.hover == Target::Pill
+                || self.hide_linger_until.is_some_and(|u| self.now < u))
     }
     pub fn pill_rect(&self) -> Rect {
         if !self.hide_offered() {
@@ -384,7 +425,9 @@ impl Scene {
         let h = self.hit_box();
         let w = self.pill_w.min(self.width);
         let x = (self.pet_x + h[0] - 6.0).min(self.width - w).max(0.0);
-        let y = (self.pet_top() + h[1] - PILL_H / 2.0).min(self.height - PILL_H).max(0.0);
+        let y = (self.pet_top() + h[1] - PILL_H / 2.0)
+            .min(self.height - PILL_H)
+            .max(0.0);
         Rect::new(x, y, w, PILL_H)
     }
     pub fn wheel_rect(&self) -> Rect {
@@ -395,8 +438,16 @@ impl Scene {
         let h = WHEEL_H.min(self.height);
         let top = self.pet_top();
         let size = self.pet_size();
-        let x = (self.pet_x + size / 2.0 - w / 2.0).min(self.width - w).max(0.0);
-        let y = (if top >= h + 8.0 { top - h - 8.0 } else { top + size + 8.0 }).min(self.height - h).max(0.0);
+        let x = (self.pet_x + size / 2.0 - w / 2.0)
+            .min(self.width - w)
+            .max(0.0);
+        let y = (if top >= h + 8.0 {
+            top - h - 8.0
+        } else {
+            top + size + 8.0
+        })
+        .min(self.height - h)
+        .max(0.0);
         Rect::new(x, y, w, h)
     }
 
@@ -405,22 +456,72 @@ impl Scene {
         let scale = (r.w / WHEEL_W).min(r.h / WHEEL_H);
         let ox = r.x + (r.w - WHEEL_W * scale) / 2.0;
         let oy = r.y + (r.h - WHEEL_H * scale) / 2.0;
-        let set = self.species.as_ref().map(|s| s.care_set().to_string()).unwrap_or_else(|| "floor".into());
-        let (sleeping, paused, fainted) = (self.care_sleeping(), self.life_flag("paused"), self.life_flag("fainted"));
+        let set = self
+            .species
+            .as_ref()
+            .map(|s| s.care_set().to_string())
+            .unwrap_or_else(|| "floor".into());
+        let (sleeping, paused, fainted) = (
+            self.care_sleeping(),
+            self.life_flag("paused"),
+            self.life_flag("fainted"),
+        );
         let defs: [(&'static str, String, String, f64, f64); 7] = [
             ("pet", "Pet".into(), "care-floor/hand".into(), 94.0, 8.0),
-            ("food", "Snack".into(), format!("care-{set}/food"), 176.0, 68.0),
-            ("water", "Drink".into(), format!("care-{set}/water"), 176.0, 154.0),
-            ("wash", "Bath".into(), format!("care-{set}/wash"), 132.0, 234.0),
-            ("play", "Play".into(), format!("care-{set}/play"), 56.0, 234.0),
+            (
+                "food",
+                "Snack".into(),
+                format!("care-{set}/food"),
+                176.0,
+                68.0,
+            ),
+            (
+                "water",
+                "Drink".into(),
+                format!("care-{set}/water"),
+                176.0,
+                154.0,
+            ),
+            (
+                "wash",
+                "Bath".into(),
+                format!("care-{set}/wash"),
+                132.0,
+                234.0,
+            ),
+            (
+                "play",
+                "Play".into(),
+                format!("care-{set}/play"),
+                56.0,
+                234.0,
+            ),
             (
                 "sleep",
-                if paused { "Resume" } else if sleeping { "Wake" } else { "Nap" }.into(),
-                if sleeping || paused { "care-floor/sun_wake" } else { "care-floor/bed" }.into(),
+                if paused {
+                    "Resume"
+                } else if sleeping {
+                    "Wake"
+                } else {
+                    "Nap"
+                }
+                .into(),
+                if sleeping || paused {
+                    "care-floor/sun_wake"
+                } else {
+                    "care-floor/bed"
+                }
+                .into(),
                 12.0,
                 154.0,
             ),
-            ("pin", if self.pinned { "Roam" } else { "Pin" }.into(), "care-floor/pin".into(), 12.0, 68.0),
+            (
+                "pin",
+                if self.pinned { "Roam" } else { "Pin" }.into(),
+                "care-floor/pin".into(),
+                12.0,
+                68.0,
+            ),
         ];
         defs.into_iter()
             .enumerate()
@@ -441,7 +542,12 @@ impl Scene {
         let scale = (r.w / WHEEL_W).min(r.h / WHEEL_H);
         let ox = r.x + (r.w - WHEEL_W * scale) / 2.0;
         let oy = r.y + (r.h - WHEEL_H * scale) / 2.0;
-        Rect::new(ox + 102.0 * scale, oy + 102.0 * scale, 48.0 * scale, 40.0 * scale)
+        Rect::new(
+            ox + 102.0 * scale,
+            oy + 102.0 * scale,
+            48.0 * scale,
+            40.0 * scale,
+        )
     }
     fn wheel_message(&self) -> String {
         if !self.care_message.is_empty() {
@@ -465,18 +571,32 @@ impl Scene {
         if !self.active() {
             return Vec::new();
         }
-        let set = self.species.as_ref().map(|s| s.care_set()).unwrap_or("floor");
+        let set = self
+            .species
+            .as_ref()
+            .map(|s| s.care_set())
+            .unwrap_or("floor");
         if self.heart_ms_left > 0 {
             return vec!["care-floor/heart.webp".into()];
         }
-        let celebrating = self.transient.as_ref().is_some_and(|t| t.0.name == "celebrate");
+        let celebrating = self
+            .transient
+            .as_ref()
+            .is_some_and(|t| t.0.name == "celebrate");
         if celebrating && self.celebration_bubble.is_some() {
             return face::bubble_icons(self.celebration_bubble.as_ref(), set, false);
         }
-        face::bubble_icons(self.face.bubble.as_ref(), set, self.face.state() == "waiting")
+        face::bubble_icons(
+            self.face.bubble.as_ref(),
+            set,
+            self.face.state() == "waiting",
+        )
     }
     fn observer_label(&self) -> String {
-        let celebrating = self.transient.as_ref().is_some_and(|t| t.0.name == "celebrate");
+        let celebrating = self
+            .transient
+            .as_ref()
+            .is_some_and(|t| t.0.name == "celebrate");
         if self.heart_ms_left > 0 || celebrating {
             return String::new();
         }
@@ -485,17 +605,28 @@ impl Scene {
 
     /// The full drawing for the current moment.
     pub fn view(&self, m: &dyn Measure) -> View {
-        let mut v = View { active: self.active(), ..View::default() };
+        let mut v = View {
+            active: self.active(),
+            ..View::default()
+        };
         if !v.active {
             return v;
         }
         let size = self.pet_size();
         let top = self.pet_top();
         let (meta, is_t) = self.display();
-        let frame = if self.cosmetic_expression && is_t && meta.name == "celebrate" { 1 } else { self.frame() };
+        let frame = if self.cosmetic_expression && is_t && meta.name == "celebrate" {
+            1
+        } else {
+            self.frame()
+        };
         if let Some(s) = &self.species {
             let (path, may_mirror) = s.resolve(self.stage, &meta.name, frame, self.reduced_motion);
-            let opacity = if self.face.state() == "paused" { 0.85 } else { 1.0 };
+            let opacity = if self.face.state() == "paused" {
+                0.85
+            } else {
+                1.0
+            };
             v.sprite = Some((
                 s.id.clone(),
                 path,
@@ -522,13 +653,21 @@ impl Scene {
             let label_w = if label.is_empty() {
                 0.0
             } else {
-                (m.width(&label, 12.0) as f64).min((260.0f64.min(self.width) - icons_w - 22.0).max(0.0)) + 6.0
+                (m.width(&label, 12.0) as f64)
+                    .min((260.0f64.min(self.width) - icons_w - 22.0).max(0.0))
+                    + 6.0
             };
             let w = (icons_w + label_w + 16.0).min(self.width);
             let h = icon + 12.0;
-            let x = (self.pet_x + hb[0] + hb[2] - w / 3.0).min(self.width - w).max(0.0);
+            let x = (self.pet_x + hb[0] + hb[2] - w / 3.0)
+                .min(self.width - w)
+                .max(0.0);
             let y = if !label.is_empty() {
-                if top >= h + 6.0 { top - h - 6.0 } else { (top + size + 6.0).min(self.height - h) }
+                if top >= h + 6.0 {
+                    top - h - 6.0
+                } else {
+                    (top + size + 6.0).min(self.height - h)
+                }
             } else {
                 (top + hb[1] - h - 6.0).max(0.0)
             };
@@ -536,19 +675,33 @@ impl Scene {
         }
         if feedback_visible {
             let w = self.width.min(230.0);
-            let lines = wrap(m, &self.care_message, 12.0, (w - 20.0) as f32).len().max(1) as f64;
+            let lines = wrap(m, &self.care_message, 12.0, (w - 20.0) as f32)
+                .len()
+                .max(1) as f64;
             let h = lines * 16.0 + 16.0;
             let x = (self.pet_x + (size - w) / 2.0).min(self.width - w).max(0.0);
-            let y = (if top >= h + 8.0 { top - h - 8.0 } else { top + size + 8.0 }).min(self.height - h).max(0.0);
+            let y = (if top >= h + 8.0 {
+                top - h - 8.0
+            } else {
+                top + size + 8.0
+            })
+            .min(self.height - h)
+            .max(0.0);
             v.feedback = Some((Rect::new(x, y, w, h), self.care_message.clone()));
         }
         if !self.card_open && work::badge(self.work_state.as_ref()) {
-            let x = (self.pet_x + hb[0] + hb[2] - 18.0).min(self.width - 18.0).max(0.0);
+            let x = (self.pet_x + hb[0] + hb[2] - 18.0)
+                .min(self.width - 18.0)
+                .max(0.0);
             v.badge = Some(Rect::new(x, (top + hb[1]).max(0.0), 18.0, 18.0));
         }
         let pill = self.pill_rect();
         if !pill.is_empty() {
-            v.hide_pill = Some((pill, self.hover == Target::Pill, self.pressed == Target::Pill));
+            v.hide_pill = Some((
+                pill,
+                self.hover == Target::Pill,
+                self.pressed == Target::Pill,
+            ));
         }
         if self.wheel_open {
             v.wheel = Some((
@@ -564,7 +717,10 @@ impl Scene {
 
     /// The input islands: pet, HIDE pill and wheel (decorations stay click-through).
     pub fn input_rects(&self) -> Vec<Rect> {
-        [self.pet_hit(), self.pill_rect(), self.wheel_rect()].into_iter().filter(|r| !r.is_empty()).collect()
+        [self.pet_hit(), self.pill_rect(), self.wheel_rect()]
+            .into_iter()
+            .filter(|r| !r.is_empty())
+            .collect()
     }
 
     // ---- inputs from the host ----
@@ -592,15 +748,6 @@ impl Scene {
     pub fn set_surface_active(&mut self, active: bool, now: u64) {
         self.surface_active = active;
         self.now = now;
-        self.after(now);
-    }
-
-    pub fn set_card_open(&mut self, open: bool, now: u64) {
-        self.card_open = open;
-        self.now = now;
-        if !self.can_roam() {
-            self.stop_moving();
-        }
         self.after(now);
     }
 
@@ -659,19 +806,19 @@ impl Scene {
 
     /// When the scene can next change on its own (None: only an input can change it).
     pub fn next_deadline(&self) -> Option<u64> {
-        let mut d: Vec<u64> = [self.tick_due, self.wake_due, self.feedback_until, self.hide_linger_until]
-            .into_iter()
-            .flatten()
-            .collect();
+        let mut d: Vec<u64> = [
+            self.tick_due,
+            self.wake_due,
+            self.feedback_until,
+            self.hide_linger_until,
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         if self.hop_start.is_some() || self.wiggle_start.is_some() {
             d.push(self.now + 16);
         }
         d.into_iter().min()
-    }
-
-    /// True while a short animation needs smooth frames (hop, wiggle) or a drag is live.
-    pub fn animating(&self) -> bool {
-        self.hop_start.is_some() || self.wiggle_start.is_some() || self.dragging
     }
 
     fn target_at(&self, x: f64, y: f64) -> Target {
@@ -708,7 +855,11 @@ impl Scene {
         if t != self.hover {
             let was = self.hover;
             self.hover = t;
-            if (was == Target::Pet || was == Target::Pill) && t != Target::Pet && t != Target::Pill && self.active() {
+            if (was == Target::Pet || was == Target::Pill)
+                && t != Target::Pet
+                && t != Target::Pill
+                && self.active()
+            {
                 self.hide_linger_until = Some(now + HIDE_LINGER_MS);
             }
         }
@@ -800,7 +951,14 @@ impl Scene {
     }
 
     /// The host's answer to an `Effect::Care` request.
-    pub fn care_answered(&mut self, action: &str, ok: bool, changed: bool, message: Option<String>, now: u64) {
+    pub fn care_answered(
+        &mut self,
+        action: &str,
+        ok: bool,
+        changed: bool,
+        message: Option<String>,
+        now: u64,
+    ) {
         self.now = now;
         self.care_busy = false;
         let resumed = std::mem::replace(&mut self.care_resuming, false);
@@ -810,7 +968,9 @@ impl Scene {
             return;
         }
         if !ok {
-            let msg = message.map(|m| m.chars().take(180).collect()).unwrap_or_else(|| "Try again from Care".into());
+            let msg = message
+                .map(|m| m.chars().take(180).collect())
+                .unwrap_or_else(|| "Try again from Care".into());
             self.set_message(msg);
             self.after(now);
             return;
@@ -834,7 +994,18 @@ impl Scene {
                 self.start_transient(action, 0);
             }
         } else {
-            self.set_message(if action == "wake" { if resumed { "Resumed" } else { "Awake" } } else { "Nap time" }.into());
+            self.set_message(
+                if action == "wake" {
+                    if resumed {
+                        "Resumed"
+                    } else {
+                        "Awake"
+                    }
+                } else {
+                    "Nap time"
+                }
+                .into(),
+            );
         }
         self.after(now);
     }
@@ -843,12 +1014,20 @@ impl Scene {
 
     fn set_message(&mut self, msg: String) {
         self.care_message = msg;
-        self.feedback_until = if self.care_message.is_empty() { None } else { Some(self.now + FEEDBACK_MS) };
+        self.feedback_until = if self.care_message.is_empty() {
+            None
+        } else {
+            Some(self.now + FEEDBACK_MS)
+        };
     }
 
     fn save_placement(&mut self) {
         let size = self.pet_size();
-        let y = if self.pet_y < 0.0 { self.floor_y() } else { self.pet_y };
+        let y = if self.pet_y < 0.0 {
+            self.floor_y()
+        } else {
+            self.pet_y
+        };
         self.effects.push(Effect::SavePlacement {
             x: self.pet_x / (self.width - size).max(1.0),
             y: y / (self.height - size).max(1.0),
@@ -941,7 +1120,11 @@ impl Scene {
         self.care_busy = true;
         self.care_resuming = action == "sleep" && paused;
         self.set_message("One moment…".into());
-        let sent = if action == "sleep" && (sleeping || paused) { "wake" } else { action };
+        let sent = if action == "sleep" && (sleeping || paused) {
+            "wake"
+        } else {
+            action
+        };
         self.effects.push(Effect::Care(sent.into()));
     }
 
@@ -961,7 +1144,14 @@ impl Scene {
         self.stop_moving();
         self.hop_start = None;
         self.press_point = (x, y);
-        self.press_position = (self.pet_x, if self.pet_y < 0.0 { self.floor_y() } else { self.pet_y });
+        self.press_position = (
+            self.pet_x,
+            if self.pet_y < 0.0 {
+                self.floor_y()
+            } else {
+                self.pet_y
+            },
+        );
     }
 
     fn move_drag(&mut self, x: f64, y: f64) {
@@ -1021,8 +1211,17 @@ impl Scene {
             self.seeded = true;
         }
         let life = bar.get("life").filter(|l| l.is_object()).cloned();
-        let pet_id = life.as_ref().and_then(|l| l.get("appearance")).and_then(Value::as_str).unwrap_or("").to_string();
-        self.stage = life.as_ref().and_then(|l| l.get("stage")).and_then(Value::as_f64).unwrap_or(1.0);
+        let pet_id = life
+            .as_ref()
+            .and_then(|l| l.get("appearance"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        self.stage = life
+            .as_ref()
+            .and_then(|l| l.get("stage"))
+            .and_then(Value::as_f64)
+            .unwrap_or(1.0);
         self.life = life;
         if pet_id != self.pet_id {
             self.pet_id = pet_id;
@@ -1045,7 +1244,14 @@ impl Scene {
         }
         let sleeping = self.sleeping();
         if self.sleep_observed && sleeping != self.last_sleeping && self.active() {
-            self.start_transient(if sleeping { "sleep_enter" } else { "sleep_exit" }, 0);
+            self.start_transient(
+                if sleeping {
+                    "sleep_enter"
+                } else {
+                    "sleep_exit"
+                },
+                0,
+            );
         }
         if sleeping {
             self.stop_moving();
@@ -1053,7 +1259,11 @@ impl Scene {
         self.last_sleeping = sleeping;
         self.sleep_observed = self.shown();
         let key = face::celebration_key(self.face.celebrate.as_ref());
-        if self.face.state() == "celebrate" && !key.is_empty() && key != self.played_celebration && self.active() {
+        if self.face.state() == "celebrate"
+            && !key.is_empty()
+            && key != self.played_celebration
+            && self.active()
+        {
             self.played_celebration = key;
             self.cosmetic_expression = false;
             self.celebration_bubble = self.face.bubble.clone();
@@ -1101,7 +1311,11 @@ impl Scene {
     }
 
     fn random_pause(&mut self) -> i64 {
-        let (lo, hi) = self.species.as_ref().map(|s| s.locomotion().1).unwrap_or((40, 110));
+        let (lo, hi) = self
+            .species
+            .as_ref()
+            .map(|s| s.locomotion().1)
+            .unwrap_or((40, 110));
         lo as i64 + (self.random() * (hi - lo + 1) as f64).floor() as i64
     }
 
@@ -1179,8 +1393,16 @@ impl Scene {
             }
             return;
         }
-        let (px, _, air) = self.species.as_ref().map(Species::locomotion).unwrap_or((5.0, (40, 110), Vec::new()));
-        let step = if !air.is_empty() && !air.contains(&f) { 0.0 } else { px.max(1.0) };
+        let (px, _, air) =
+            self.species
+                .as_ref()
+                .map(Species::locomotion)
+                .unwrap_or((5.0, (40, 110), Vec::new()));
+        let step = if !air.is_empty() && !air.contains(&f) {
+            0.0
+        } else {
+            px.max(1.0)
+        };
         let distance = self.destination - self.pet_x;
         self.pet_x += distance.clamp(-step, step);
         self.clamp_position();
@@ -1221,7 +1443,13 @@ impl Scene {
             self.base_elapsed_ms = 0;
             self.idle_ticks -= (dt as f64 / 200.0).round() as i64;
             if self.idle_ticks <= 0 {
-                if self.pinned && self.face.state() == "idle" && !self.dragging && !self.card_open && !self.wheel_open && !hovered {
+                if self.pinned
+                    && self.face.state() == "idle"
+                    && !self.dragging
+                    && !self.card_open
+                    && !self.wheel_open
+                    && !hovered
+                {
                     self.idle_ticks = self.random_pause();
                     self.express(false);
                     return;
@@ -1251,7 +1479,11 @@ impl Scene {
 
     fn update_interval(&mut self) {
         let ms = if let Some((meta, el, dur)) = &self.transient {
-            if self.reduced_motion { dur.saturating_sub(*el) } else { catalog::frame_ms_of(meta) }
+            if self.reduced_motion {
+                dur.saturating_sub(*el)
+            } else {
+                catalog::frame_ms_of(meta)
+            }
         } else if self.heart_ms_left > 0 && !self.motion_running() {
             self.heart_ms_left as u64
         } else if self.walking {
@@ -1350,7 +1582,11 @@ pub fn wrap(m: &dyn Measure, text: &str, size: f32, max_w: f32) -> Vec<String> {
     for para in text.split('\n') {
         let mut line = String::new();
         for word in para.split_whitespace() {
-            let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+            let candidate = if line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{line} {word}")
+            };
             if m.width(&candidate, size) <= max_w || line.is_empty() {
                 line = candidate;
             } else {

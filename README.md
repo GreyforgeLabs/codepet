@@ -4,7 +4,7 @@
 <h1 align="center">CodePet</h1>
 <p align="center"><strong>Good work. Better company.</strong><br>A little desktop companion that grows with the code you care for.</p>
 <p align="center">
-  <a href="https://github.com/GreyforgeLabs/codepet/releases/tag/v0.4.0"><strong>Download stable 0.4</strong></a> ·
+  <a href="https://github.com/GreyforgeLabs/codepet/releases/latest"><strong>Download CodePet 0.6</strong></a> ·
   <a href="#quick-start">Get started</a> ·
   <a href="#see-it-work">See a real repair</a> ·
   <a href="docs/work.md">How it works</a> · <a href="LICENSE">MIT</a>
@@ -17,22 +17,23 @@ some attention, let it wander, or tuck it in for a nap.
 
 **Find → Fix → Review → Grow.** Fifteen companions. Three growth stages.
 
-**0.5.1, unreleased local development.** It follows the published
-[CodePet 0.5.0](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0)
-release. The features below are that release. See the [0.5 qualification record](docs/validation.md#v050-candidate-qualification-2026-10-18)
-for its checks and remaining gates.
+**CodePet 0.6: the pet goes native.** The desktop pet is now a small Rust program
+drawn straight through the Wayland layer shell. On our test machine it used **about
+3 MB** of memory and no measurable CPU over a minute, where the 0.5 Quickshell pet
+used 38 to 168 MB. See the [changelog](CHANGELOG.md) and the
+[0.6 qualification record](docs/validation.md).
 
-## In the 0.5 candidate
+## New in 0.6
 
-| A better companion | A better workflow |
+| A lighter companion | A friendlier companion |
 | --- | --- |
-| Painted care wheel with Pet, Snack, Drink, Play, Bath and Nap/Wake | Pick your coding client directly on the pet |
-| Lively care pacing and playful pinned expressions | Keep each job tied to the client that started it |
-| Exact XP, age, needs and energy at a glance | See setup reasons and client capability limits |
-| Visible care feedback and keyboard navigation | Updates on the pet, with progress preserved |
+| Native Rust desktop pet: about 3 MB, sleeps until something changes | **HIDE** pill on hover, and a show/hide key |
+| One timer at a time, no polling, only the current pet's pictures loaded | Clearer care icons: meat on a bone, a droplet, bubbles, a hand, a pin |
+| Same roaming, drag, Pin, care wheel and placement as before | Softer care sounds |
 
-The core is **Rust**, the interface is **native Qt Quick/QML**, and there is no
-resident Rust daemon. See the [changelog](CHANGELOG.md) and [qualification](docs/validation.md).
+The core is **Rust**, the desktop pet is **native Rust (Wayland layer shell)**, and
+the bar plugin and Work window are **Qt Quick/QML**. There is no resident Rust daemon.
+See the [changelog](CHANGELOG.md) and [qualification](docs/validation.md).
 
 ## See it work
 
@@ -41,8 +42,7 @@ resident Rust daemon. See the [changelog](CHANGELOG.md) and [qualification](docs
 This still shows a deliberately seeded cart-total bug, a real prepared repair, and
 three independent tests passing after Apply on the preceding development build.
 The saved review was replayed for the capture; Apply happened separately. It is
-historical demonstration evidence, not qualification of the 0.5 candidate. The
-release video will be linked once published.
+historical demonstration evidence from an earlier development build.
 
 ## Meet your companion
 
@@ -64,22 +64,22 @@ Needs change with attended desktop time, without offline catch-up.
 
 ## Quick start
 
-Download the published **`codepet-0.4.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
-[the 0.4 release](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.4.0).
+Download **`codepet-0.6.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
+[the latest release](https://github.com/GreyforgeLabs/codepet/releases/latest).
 In the download directory:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-tar xzf codepet-0.4.0-x86_64-linux.tar.gz
-cd codepet-0.4.0-x86_64-linux
+tar xzf codepet-0.6.0-x86_64-linux.tar.gz
+cd codepet-0.6.0-x86_64-linux
 packaging/omarchy/install.sh --dry-run
 packaging/omarchy/install.sh
 ```
 
-The archive includes the binary. Installation adds the bar plugin, desktop pet and
+The archive includes both binaries. Installation adds the bar plugin, desktop pet and
 review window, rescans plugins, and upgrades saved state with recovery backups.
 It does not restart your shell or start your pet's life. Use the installer to keep
-binary and UI versions together. `codepet --version` prints `codepet 0.5.1`.
+binary and UI versions together. `codepet --version` prints `codepet 0.6.0`.
 
 ### First run
 
@@ -137,7 +137,11 @@ then close Work before upgrading. [Update and recovery details](docs/updates.md)
 ## Requirements
 
 - **Omarchy 4 + Hyprland**, developed against Omarchy 4.0.4's plugin API.
-- **Quickshell 0.3.1** (`qs`, or `CODEPET_QS`) and Qt WebP support (`qt6-imageformats` on Arch).
+- **Desktop pet:** a Wayland compositor with `wlr-layer-shell` and subsurfaces (Hyprland),
+  and fontconfig for its labels. `CODEPET_PET_ENGINE=quickshell` uses the previous
+  Quickshell pet instead.
+- **Quickshell 0.3.1 or later** (`qs`, or `CODEPET_QS`) for the bar and Work window, and
+  Qt WebP support (`qt6-imageformats` on Arch).
 - **Pet-owned jobs:** a supported coding client, Linux user systemd with enforced
   memory/process limits, Bubblewrap and `prlimit`.
 - Release archive: x86_64 Linux with **glibc 2.39 or later**.

@@ -23,7 +23,7 @@
   "care-floor/wash": {
    "file": "care-floor/wash.webp",
    "px": 256,
-   "sha256": "4131e703061d31f97a824ce0d01c082550cea0454e49192d236e66da88a93880"
+   "sha256": "35969550d5dd29d43e3fdb7f0b88d918098d045f3efe2b68122cb0da1b65f7d6"
   },
   "care-floor/treat_jar": {
    "file": "care-floor/treat_jar.webp",
@@ -93,7 +93,7 @@
   "care-aquatic/wash": {
    "file": "care-aquatic/wash.webp",
    "px": 256,
-   "sha256": "4131e703061d31f97a824ce0d01c082550cea0454e49192d236e66da88a93880"
+   "sha256": "35969550d5dd29d43e3fdb7f0b88d918098d045f3efe2b68122cb0da1b65f7d6"
   },
   "care-robot/food": {
    "file": "care-robot/food.webp",

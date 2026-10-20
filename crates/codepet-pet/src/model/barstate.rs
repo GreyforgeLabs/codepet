@@ -10,17 +10,20 @@ const METERS: [&str; 4] = ["hunger", "thirst", "mental_health", "hygiene"];
 const MAX_SAFE: f64 = 9007199254740991.0;
 
 fn is_count(v: Option<&Value>) -> bool {
-    v.and_then(Value::as_f64).is_some_and(|n| n.is_finite() && n.fract() == 0.0 && (0.0..=MAX_SAFE).contains(&n))
+    v.and_then(Value::as_f64)
+        .is_some_and(|n| n.is_finite() && n.fract() == 0.0 && (0.0..=MAX_SAFE).contains(&n))
 }
 fn is_ms(v: Option<&Value>) -> bool {
-    v.and_then(Value::as_f64).is_some_and(|n| n.is_finite() && n.fract() == 0.0 && n.abs() <= MAX_SAFE)
+    v.and_then(Value::as_f64)
+        .is_some_and(|n| n.is_finite() && n.fract() == 0.0 && n.abs() <= MAX_SAFE)
 }
 fn is_ms_or_null(v: Option<&Value>) -> bool {
     matches!(v, Some(Value::Null)) || is_count(v)
 }
 fn is_token(v: Option<&Value>) -> bool {
-    v.and_then(Value::as_str)
-        .is_some_and(|s| (1..=32).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+    v.and_then(Value::as_str).is_some_and(|s| {
+        (1..=32).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+    })
 }
 fn bounded(v: Option<&Value>, max: usize) -> bool {
     v.and_then(Value::as_str).is_some_and(|s| s.len() <= max)
@@ -29,15 +32,21 @@ fn is_bool(v: Option<&Value>) -> bool {
     matches!(v, Some(Value::Bool(_)))
 }
 fn client_or_null(v: Option<&Value>) -> bool {
-    matches!(v, Some(Value::Null)) || v.and_then(Value::as_str).is_some_and(|s| CLIENT_IDS.contains(&s))
+    matches!(v, Some(Value::Null))
+        || v.and_then(Value::as_str)
+            .is_some_and(|s| CLIENT_IDS.contains(&s))
 }
 fn absent(v: Option<&Value>) -> bool {
     v.is_none()
 }
 
 fn valid_meters(m: Option<&Value>) -> bool {
-    let Some(m) = m.and_then(Value::as_object) else { return false };
-    METERS.iter().all(|k| is_count(m.get(*k)) && m[*k].as_f64().unwrap_or(0.0) <= 10000.0)
+    let Some(m) = m.and_then(Value::as_object) else {
+        return false;
+    };
+    METERS
+        .iter()
+        .all(|k| is_count(m.get(*k)) && m[*k].as_f64().unwrap_or(0.0) <= 10000.0)
 }
 
 fn valid_life(l: Option<&Value>) -> bool {
@@ -49,9 +58,12 @@ fn valid_life(l: Option<&Value>) -> bool {
     if !bounded(l.get("life_id"), 128) || !bounded(l.get("name"), 96) {
         return false;
     }
-    let pet_ok = l.get("appearance").and_then(Value::as_str).is_some_and(|s| {
-        (2..=24).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
-    });
+    let pet_ok = l
+        .get("appearance")
+        .and_then(Value::as_str)
+        .is_some_and(|s| {
+            (2..=24).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+        });
     if !pet_ok {
         return false;
     }
@@ -67,12 +79,19 @@ fn valid_life(l: Option<&Value>) -> bool {
     {
         return false;
     }
-    ["armed", "paused", "fainted", "death_pending"].iter().all(|f| is_bool(l.get(*f)))
+    ["armed", "paused", "fainted", "death_pending"]
+        .iter()
+        .all(|f| is_bool(l.get(*f)))
 }
 
 fn valid_care(c: Option<&Value>) -> bool {
-    let Some(c) = c.and_then(Value::as_object) else { return false };
-    if !["sleeping", "sleep_due", "bathroom_due"].iter().all(|k| is_bool(c.get(*k))) {
+    let Some(c) = c.and_then(Value::as_object) else {
+        return false;
+    };
+    if !["sleeping", "sleep_due", "bathroom_due"]
+        .iter()
+        .all(|k| is_bool(c.get(*k)))
+    {
         return false;
     }
     if !is_ms(c.get("sleep_remaining_ms")) {
@@ -97,8 +116,14 @@ fn valid_task(t: Option<&Value>) -> bool {
     match t {
         None | Some(Value::Null) => true,
         Some(Value::Object(t)) => {
-            is_token(t.get("state")) && matches!(t.get("category"), None | Some(Value::Null) | Some(Value::String(_)))
-                && (t.get("category").is_none_or(|c| c.is_null() || is_token(Some(c))))
+            is_token(t.get("state"))
+                && matches!(
+                    t.get("category"),
+                    None | Some(Value::Null) | Some(Value::String(_))
+                )
+                && (t
+                    .get("category")
+                    .is_none_or(|c| c.is_null() || is_token(Some(c))))
         }
         _ => false,
     }
@@ -115,7 +140,10 @@ fn valid_needs(n: Option<&Value>) -> bool {
     }
     n.iter().all(|e| {
         let Some(e) = e.as_object() else { return false };
-        let need_ok = e.get("need").and_then(Value::as_str).is_some_and(|s| METERS.contains(&s));
+        let need_ok = e
+            .get("need")
+            .and_then(Value::as_str)
+            .is_some_and(|s| METERS.contains(&s));
         let opt_ms = |k: &str| matches!(e.get(k), None | Some(Value::Null)) || is_ms(e.get(k));
         need_ok
             && is_token(e.get("action"))
@@ -144,8 +172,12 @@ fn valid_events(ev: Option<&Value>) -> bool {
 
 fn valid_app(a: &Value) -> bool {
     a.as_object().is_some_and(|a| {
-        a.get("id").and_then(Value::as_str).is_some_and(|s| CLIENT_IDS.contains(&s))
-            && a.get("state").and_then(Value::as_str).is_some_and(|s| ["working", "waiting", "error"].contains(&s))
+        a.get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|s| CLIENT_IDS.contains(&s))
+            && a.get("state")
+                .and_then(Value::as_str)
+                .is_some_and(|s| ["working", "waiting", "error"].contains(&s))
             && is_count(a.get("since_ms"))
             && is_count(a.get("stale_at_ms"))
     })
@@ -155,7 +187,9 @@ fn valid_test(t: Option<&Value>) -> bool {
     match t {
         Some(Value::Null) => true,
         Some(Value::Object(t)) => {
-            t.get("state").and_then(Value::as_str).is_some_and(|s| ["running", "done", "failed"].contains(&s))
+            t.get("state")
+                .and_then(Value::as_str)
+                .is_some_and(|s| ["running", "done", "failed"].contains(&s))
                 && is_count(t.get("at_ms"))
                 && client_or_null(t.get("client"))
         }
@@ -164,9 +198,17 @@ fn valid_test(t: Option<&Value>) -> bool {
 }
 
 fn valid_agent(a: Option<&Value>) -> bool {
-    let Some(a) = a.and_then(Value::as_object) else { return false };
-    let state_ok = a.get("state").and_then(Value::as_str).is_some_and(|s| ["idle", "error", "working", "waiting"].contains(&s));
-    let apps_ok = a.get("apps").and_then(Value::as_array).is_some_and(|x| x.len() <= 5 && x.iter().all(valid_app));
+    let Some(a) = a.and_then(Value::as_object) else {
+        return false;
+    };
+    let state_ok = a
+        .get("state")
+        .and_then(Value::as_str)
+        .is_some_and(|s| ["idle", "error", "working", "waiting"].contains(&s));
+    let apps_ok = a
+        .get("apps")
+        .and_then(Value::as_array)
+        .is_some_and(|x| x.len() <= 5 && x.iter().all(valid_app));
     state_ok
         && apps_ok
         && is_ms_or_null(a.get("stale_at_ms"))
@@ -194,11 +236,14 @@ fn valid_v03(s: &Map<String, Value>) -> bool {
         return false;
     }
     let treats_ok = s["treats"].as_object().is_some_and(|t| {
-        is_count(t.get("jar")) && t["jar"].as_f64().unwrap_or(99.0) <= 10.0 && is_bool(t.get("full"))
+        is_count(t.get("jar"))
+            && t["jar"].as_f64().unwrap_or(99.0) <= 10.0
+            && is_bool(t.get("full"))
     });
-    let clients_ok = s["clients"]
-        .as_object()
-        .is_some_and(|c| c.iter().all(|(k, v)| CLIENT_IDS.contains(&k.as_str()) && v.is_object()));
+    let clients_ok = s["clients"].as_object().is_some_and(|c| {
+        c.iter()
+            .all(|(k, v)| CLIENT_IDS.contains(&k.as_str()) && v.is_object())
+    });
     is_bool(s.get("enabled")) && valid_agent(s.get("agent")) && treats_ok && clients_ok
 }
 
@@ -207,7 +252,8 @@ fn valid_memorial(m: Option<&Value>) -> bool {
         None => true,
         Some(Value::Object(m)) => {
             is_count(m.get("count"))
-                && (matches!(m.get("latest_name"), None | Some(Value::Null)) || bounded(m.get("latest_name"), 96))
+                && (matches!(m.get("latest_name"), None | Some(Value::Null))
+                    || bounded(m.get("latest_name"), 96))
         }
         _ => false,
     }
@@ -220,13 +266,20 @@ pub fn parse(text: &[u8]) -> Option<Value> {
     }
     let v: Value = serde_json::from_slice(text).ok()?;
     let s = v.as_object()?;
-    let schema_ok = s.get("schema").and_then(Value::as_str).is_some_and(|x| x == "codepet.bar.v1" || x == "codepet.bar.v2");
+    let schema_ok = s
+        .get("schema")
+        .and_then(Value::as_str)
+        .is_some_and(|x| x == "codepet.bar.v1" || x == "codepet.bar.v2");
     if !schema_ok || !is_count(s.get("state_version")) {
         return None;
     }
     if let Some(db) = s.get("db_id") {
         let ok = db.as_str().is_some_and(|d| {
-            d.len() == 27 && d.starts_with("db-") && d[3..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            d.len() == 27
+                && d.starts_with("db-")
+                && d[3..]
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         });
         if !ok {
             return None;
@@ -242,7 +295,10 @@ pub fn parse(text: &[u8]) -> Option<Value> {
     {
         return None;
     }
-    if !matches!(s.get("critical"), None | Some(Value::Null) | Some(Value::Object(_))) {
+    if !matches!(
+        s.get("critical"),
+        None | Some(Value::Null) | Some(Value::Object(_))
+    ) {
         return None;
     }
     if !valid_v03(s) {
@@ -261,8 +317,15 @@ pub struct Watcher {
 
 impl Watcher {
     pub fn accept(&mut self, doc: &Value) -> bool {
-        let db = doc.get("db_id").and_then(Value::as_str).unwrap_or("").to_string();
-        let version = doc.get("state_version").and_then(Value::as_f64).unwrap_or(0.0);
+        let db = doc
+            .get("db_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let version = doc
+            .get("state_version")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
         if self.started && db == self.last_db && version <= self.last_version {
             return false;
         }

@@ -254,7 +254,7 @@ def check_icons(icons: dict, vectors: dict) -> None:
                 if part.get("key") not in allowed:
                     fail(f"icons: {b['id']} source key {part.get('key')} not in {sorted(allowed)}")
             for patch in b.get("patches", []):
-                if not set(patch.get("ids", [])) <= set(b["ids"]):
+                if not {i for i in patch.get("ids", []) if i} <= set(b["ids"]) | set(b.get("added_ids", [])):
                     fail(f"icons: {b['id']} patch {patch.get('source')} names ids not on the sheet")
     bar_ids = next(s for s in icons["sheets"] if s["id"] == "bar")["ids"]
     for what, badge in icons["bar_badges"].items():

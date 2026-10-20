@@ -829,6 +829,8 @@ class QuickshellPluginLoad(unittest.TestCase):
             (sdir / "bar-state.json").write_text(json.dumps(state))
         self.env = {
             "PATH": "/usr/bin:/bin", "HOME": str(home), "XDG_RUNTIME_DIR": str(root / "run"),
+            # Qt 6.12 prints a locale warning on stdout (corrupting IPC replies) without one.
+            "LANG": "C.UTF-8",
             "XDG_CONFIG_HOME": str(home / ".config"), "XDG_CACHE_HOME": str(home / ".cache"),
             "XDG_DATA_HOME": str(home / ".local/share"), "XDG_STATE_HOME": str(home / ".local/state"),
             "QT_QPA_PLATFORM": "offscreen",

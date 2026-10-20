@@ -42,10 +42,15 @@ fn bind(paths: &paths::Paths) -> Result<Option<UnixListener>, String> {
             }
             let meta = std::fs::symlink_metadata(&paths.socket).map_err(|e| e.to_string())?;
             if !std::os::unix::fs::FileTypeExt::is_socket(&meta.file_type()) {
-                return Err(format!("{} exists and is not a socket", paths.socket.display()));
+                return Err(format!(
+                    "{} exists and is not a socket",
+                    paths.socket.display()
+                ));
             }
             std::fs::remove_file(&paths.socket).map_err(|e| e.to_string())?;
-            UnixListener::bind(&paths.socket).map(Some).map_err(|e| e.to_string())
+            UnixListener::bind(&paths.socket)
+                .map(Some)
+                .map_err(|e| e.to_string())
         }
         Err(e) => Err(format!("cannot bind {}: {e}", paths.socket.display())),
     }

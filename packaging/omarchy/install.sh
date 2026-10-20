@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh: install or update CodePet for the current user on Omarchy (v0.5.1, schema 6).
+# install.sh: install or update CodePet for the current user on Omarchy (v0.6.0, schema 6).
 #
 #   packaging/omarchy/install.sh [--dry-run] [--no-plugin]
 #
@@ -8,13 +8,16 @@
 # bin/codepet present, no Cargo.toml: the bundled binary is installed, nothing is built).
 #
 # Steps, all idempotent:
-#   1. build the `codepet` binary (memory-capped), unless CODEPET_BIN_SOURCE names a
-#      prebuilt one or this is a release archive (its bin/codepet); before anything is
-#      replaced, that binary must report exactly `codepet <version>` of this tree, and this
-#      tree's plugin needs a matching 0.5.x backend (an older binary refuses schema 6 data);
-#   2. upgrade only: stop a running desktop overlay and any CodePet 0.2 task supervisor,
+#   1. build the `codepet` and `codepet-pet` binaries (memory-capped), unless
+#      CODEPET_BIN_SOURCE names a prebuilt codepet (its sibling codepet-pet, or
+#      CODEPET_PET_SOURCE) or this is a release archive (its bin/); before anything is
+#      replaced, they must report exactly `codepet <version>` / `codepet-pet <version>`, and this
+#      tree's plugin needs a matching 0.6.x backend (an older binary refuses schema 6 data);
+#   2. upgrade only: stop a running desktop pet (the native codepet-pet, or the Quickshell
+#      overlay of CodePet 0.5 and earlier) and any CodePet 0.2 task supervisor,
 #      each by its exact PID (never a pattern kill);
-#   3. install `codepet`, `codepet-overlay` `codepet-work` and `codepet-update` into ~/.local/bin atomically (temporary
+#   3. install `codepet`, `codepet-pet`, `codepet-overlay`, `codepet-work` and `codepet-update`
+#      into ~/.local/bin atomically (temporary
 #      name, then rename);
 #   4. copy qml/{shell.qml,work.qml,shared,omarchy,assets} to ~/.local/share/codepet/releases/
 #      <version>/qml and atomically repoint the `current` symlink there;
@@ -69,7 +72,7 @@ PLUGIN_ID=greyforge.codepet
 OMARCHY=${CODEPET_OMARCHY:-omarchy}
 QS=${CODEPET_QS:-qs}
 # The release series this tree's plugin and overlay speak to (schema 6, protocol v1).
-SERIES=0.5
+SERIES=0.6
 
 usage() {
     echo "usage: $PROG [--dry-run] [--no-plugin]"
@@ -110,6 +113,7 @@ else
 fi
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "cannot read $VERSION_FROM"
 ARCHIVE_BIN="$REPO/bin/codepet"
+ARCHIVE_PET="$REPO/bin/codepet-pet"
 
 xdg() { # xdg <value> <default>: an absolute XDG value, else the default
     case "${1:-}" in /*) printf '%s\n' "$1" ;; *) printf '%s\n' "$2" ;; esac
@@ -202,9 +206,10 @@ if [ "$DRY" -eq 1 ]; then
     elif [ "$ARCHIVE" -eq 1 ]; then
         echo "would use prebuilt: $ARCHIVE_BIN"
     else
-        echo "would build: cargo build --release --locked -p codepet -j 2 (memory-capped scope)"
+        echo "would build: cargo build --release --locked -p codepet -p codepet-pet -j 2 (memory-capped scope)"
     fi
     echo "would install: $BIN_DIR/codepet"
+    echo "would install: $BIN_DIR/codepet-pet"
     echo "would install: $BIN_DIR/codepet-overlay"
     echo "would install: $BIN_DIR/codepet-work"
     echo "would install: $BIN_DIR/codepet-update"
@@ -254,11 +259,18 @@ else
     command -v cargo >/dev/null 2>&1 || die "cargo not found (or set CODEPET_BIN_SOURCE to a built codepet)"
     if command -v systemd-run >/dev/null 2>&1; then
         (cd "$REPO" && systemd-run --user --scope --quiet -p MemoryMax=4G -p MemorySwapMax=2G -- \
-            cargo build --release --locked -p codepet -j 2)
+            cargo build --release --locked -p codepet -p codepet-pet -j 2)
     else
-        (cd "$REPO" && cargo build --release --locked -p codepet -j 2)
+        (cd "$REPO" && cargo build --release --locked -p codepet -p codepet-pet -j 2)
     fi
     BIN_SRC="${CARGO_TARGET_DIR:-$REPO/target}/release/codepet"
+fi
+if [ -n "${CODEPET_PET_SOURCE:-}" ]; then
+    PET_SRC=$CODEPET_PET_SOURCE
+elif [ "$ARCHIVE" -eq 1 ] && [ -z "${CODEPET_BIN_SOURCE:-}" ]; then
+    PET_SRC=$ARCHIVE_PET
+else
+    PET_SRC="$(dirname -- "$BIN_SRC")/codepet-pet"
 fi
 if [ ! -f "$BIN_SRC" ] || [ -L "$BIN_SRC" ]; then
     die "no codepet binary at $BIN_SRC"
@@ -269,6 +281,11 @@ case "$got" in
     *) die "$BIN_SRC reports '$got': this plugin needs a codepet $SERIES.x (the bundled UI and backend must match); nothing was changed" ;;
 esac
 [ "$got" = "codepet $VERSION" ] || die "$BIN_SRC reports '$got', expected 'codepet $VERSION'; nothing was changed"
+if [ ! -f "$PET_SRC" ] || [ -L "$PET_SRC" ]; then
+    die "no codepet-pet binary at $PET_SRC"
+fi
+got_pet=$("$PET_SRC" --version 2>/dev/null || true)
+[ "$got_pet" = "codepet-pet $VERSION" ] || die "$PET_SRC reports '$got_pet', expected 'codepet-pet $VERSION'; nothing was changed"
 
 # prune_backups <prefix> <kept>: after a successful swap, remove this script's earlier
 # backups named $WORK/<prefix>* (trees, or the binary's single file), keeping only <kept>
@@ -284,8 +301,20 @@ prune_backups() {
     done
 }
 
-# overlay_pids: only the desktop shell.qml entry, never the separate Work window.
+# overlay_pids: the native pet (this user's processes whose executable is ~/.local/bin/
+# codepet-pet, matched on /proc/<pid>/exe, never by pattern), then a Quickshell overlay
+# of CodePet 0.5 or earlier (only the desktop shell.qml entry, never the Work window).
 overlay_pids() {
+    local d pid exe me
+    me=$(id -u)
+    for d in /proc/[0-9]*; do
+        pid=${d#/proc/}
+        [ "$(awk '/^Uid:/ { print $2 }' "$d/status" 2>/dev/null)" = "$me" ] || continue
+        exe=$(readlink -- "$d/exe" 2>/dev/null) || continue
+        case "$exe" in
+            "$BIN_DIR/codepet-pet" | "$BIN_DIR/codepet-pet (deleted)") echo "$pid" ;;
+        esac
+    done
     command -v "$QS" >/dev/null 2>&1 || return 0
     "$QS" list --all --json 2>/dev/null | CP_DATA="$RUNTIME" awk '
         BEGIN { cur = ENVIRON["CP_DATA"] "/current/qml/shell.qml"; rel = ENVIRON["CP_DATA"] "/releases/" }
@@ -355,12 +384,13 @@ if [ -f "$BIN_DIR/codepet" ] && [ ! -L "$BIN_DIR/codepet" ]; then
     echo "binary: previous codepet ($old) kept at $BIN_BACKUP"
 fi
 install_file "$BIN_SRC" "$BIN_DIR/codepet"
+install_file "$PET_SRC" "$BIN_DIR/codepet-pet"
 got=$("$BIN_DIR/codepet" --version 2>/dev/null || true)
 [ "$got" = "codepet $VERSION" ] || die "installed codepet reports '$got', expected 'codepet $VERSION'"
 install_file "$REPO/$LAUNCHER_SOURCE" "$BIN_DIR/codepet-overlay"
 install_file "$REPO/$WORK_LAUNCHER_SOURCE" "$BIN_DIR/codepet-work"
 install_file "$REPO/$UPDATER_SOURCE" "$BIN_DIR/codepet-update"
-echo "installed: $BIN_DIR/codepet ($got), $BIN_DIR/codepet-overlay, $BIN_DIR/codepet-work, $BIN_DIR/codepet-update"
+echo "installed: $BIN_DIR/codepet ($got), $BIN_DIR/codepet-pet, $BIN_DIR/codepet-overlay, $BIN_DIR/codepet-work, $BIN_DIR/codepet-update"
 
 # 4. overlay runtime
 PREVIOUS=$(readlink -- "$RUNTIME/current" 2>/dev/null || true)

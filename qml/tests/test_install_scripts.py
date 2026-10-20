@@ -143,6 +143,16 @@ case "$1" in
 esac
 """ % VERSION
 
+# The native desktop pet (0.6), installed beside codepet from the same build directory.
+FAKE_PET = STUB + """
+case "$1" in
+  --version) echo "codepet-pet %s" ;;
+  start) exit 0 ;;
+  ctl) exit 1 ;;
+  *) exit 9 ;;
+esac
+""" % VERSION
+
 
 def tree(root):
     """{relative path: (kind, size, mtime_ns)} for everything under root."""
@@ -173,6 +183,9 @@ class Env:
         self.fake = root / "codepet-built"
         self.fake.write_text(FAKE_CODEPET)
         self.fake.chmod(0o755)
+        self.fake_pet = root / "codepet-pet"
+        self.fake_pet.write_text(FAKE_PET)
+        self.fake_pet.chmod(0o755)
         self.config = self.home / ".config"
         self.data = self.home / ".local/share"
         self.cache = self.home / ".cache"
@@ -225,7 +238,9 @@ class InstallDryRun(unittest.TestCase):
         self.assertFalse(any(p.startswith(("qml/tests", "qml/standalone")) for p in runtime))
         # Every listed path is a regular file in the repository (none is a symlink).
         for rel in runtime:
-            p = REPO / rel
+            # Care sounds ship in the bar plugin and are copied into the runtime.
+            sounds = "qml/assets/sounds/"
+            p = REPO / ("omarchy-plugin/assets/sounds/" + rel[len(sounds):] if rel.startswith(sounds) else rel)
             self.assertTrue((p.is_file() and not p.is_symlink()) or rel == "build.json", rel)
         self.assertIn("staged files: %d, symlinks: 0" % (len(runtime) + len(plugin)), out)
         self.assertIn("would enable: omarchy plugin enable greyforge.codepet --section right --before omarchy.tray", out)
@@ -523,10 +538,12 @@ class InstallForReal(unittest.TestCase):
         self.assertIsNotNone(supervisor.wait(timeout=5))
         self.assertIsNone(bystander.poll(), "only exact pids are stopped")
         self.assertNotIn("stopped the desktop overlay (pid 1)", r.stdout)
-        # Swap, reload, migrate and refresh happen after the stop; the overlay comes back.
+        # Swap, reload, migrate and refresh happen after the stop; the pet comes back as
+        # the native codepet-pet (0.6), not as another Quickshell overlay.
         calls = e.calls()
         self.assertLess(calls.index("codepet migrate"), calls.index("codepet clients-refresh"))
-        launch = [c for c in calls if c.startswith("qs -n -d -p")]
+        self.assertFalse([c for c in calls if c.startswith("qs -n -d -p")], calls)
+        launch = [c for c in calls if c == "codepet-pet start"]
         self.assertEqual(len(launch), 1, calls)
         self.assertLess(calls.index("codepet clients-refresh"), calls.index(launch[0]))
         self.assertIn("overlay: started again", r.stdout)
@@ -737,6 +754,7 @@ class InstallFromArchive(unittest.TestCase):
             root = Path(tmp) / f"codepet-{VERSION}-x86_64-linux"
             archive_tree(root)
             shutil.copy2(e.fake, root / "bin/codepet")
+            shutil.copy2(e.fake_pet, root / "bin/codepet-pet")
             script = root / "packaging/omarchy/install.sh"
             r = e.run(script, "--dry-run")
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -745,6 +763,7 @@ class InstallFromArchive(unittest.TestCase):
             r = e.run(script)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertEqual((e.home / ".local/bin/codepet").read_bytes(), e.fake.read_bytes())
+            self.assertEqual((e.home / ".local/bin/codepet-pet").read_bytes(), e.fake_pet.read_bytes())
             self.assertEqual((e.home / ".local/bin/codepet-work").read_bytes(),
                              (root / "packaging/omarchy/codepet-work").read_bytes())
             self.assertEqual((e.data / "codepet/current/qml/work.qml").read_bytes(), (root / "qml/work.qml").read_bytes())

@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import qs.Commons
+import qs.Commons as Commons
 
 // Sizes, fonts and colours of the CodePet popup, all from the Omarchy theme (Color, Style).
 // SPEC-v0.3 §3 states every size in px at font base-size 16; u(px) turns that into
@@ -9,27 +9,27 @@ QtObject {
     id: theme
 
     // px at base-size 16 -> this shell's px.
-    function u(px) { return Style.space(px * 0.75) }
+    function u(px) { return Commons.Style.space(px * 0.75) }
     // The inverse, for tests: this shell's px -> px at base-size 16.
-    function px16(v) { return v / Math.max(0.01, Style.effectiveSpacingScale * 0.75) }
+    function px16(v) { return v / Math.max(0.01, Commons.Style.effectiveSpacingScale * 0.75) }
 
-    readonly property real scale: Style.effectiveSpacingScale * 0.75
+    readonly property real scale: Commons.Style.effectiveSpacingScale * 0.75
     // Style.font and Color.popups are untyped QtObjects to tooling; read them as var.
-    readonly property var styleFont: Style.font
-    readonly property var popupColors: Color.popups
+    readonly property var styleFont: Commons.Style.font
+    readonly property var popupColors: Commons.Color.popups
     readonly property string family: styleFont.family
     readonly property int fontBody: styleFont.body
     readonly property int fontTitle: styleFont.title
     readonly property int fontHeading: styleFont.heading
     readonly property int fontDisplay: styleFont.display
-    readonly property int radius: Math.max(Style.cornerRadius, Style.space(14))
-    readonly property int smallRadius: Math.max(Style.cornerRadius, Style.space(10))
+    readonly property int radius: Math.max(Commons.Style.cornerRadius, Commons.Style.space(14))
+    readonly property int smallRadius: Math.max(Commons.Style.cornerRadius, Commons.Style.space(10))
 
     readonly property color text: popupColors.text
     readonly property color background: popupColors.background
-    readonly property color accent: Color.accent
-    readonly property color urgent: Color.urgent
-    readonly property color muted: Color.muted
+    readonly property color accent: Commons.Color.accent
+    readonly property color urgent: Commons.Color.urgent
+    readonly property color muted: Commons.Color.muted
 
     // Soft fills derived from the theme's own text and accent colours.
     function mix(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }

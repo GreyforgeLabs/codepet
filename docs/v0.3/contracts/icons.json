@@ -54,7 +54,12 @@
           40,
           48
         ]
-      }
+      },
+      "added_ids": [
+        "hand",
+        "pin"
+      ],
+      "added_note": "0.6: supplied by patch sheets beyond the base grid (Pet = hand, Pin = push pin)"
     },
     {
       "id": "care-aquatic",

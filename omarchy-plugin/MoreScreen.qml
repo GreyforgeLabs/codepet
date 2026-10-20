@@ -50,7 +50,7 @@ Item {
             t: more.t
             width: parent.width
             height: more.t.u(52)
-            icon: "status/screen"
+            icon: "care-floor/pin"
             text: more.app.s("more.pin")
             kind: "switch"
             checked: !!(more.app.cfg.desktopPlacement && more.app.cfg.desktopPlacement.pinned)

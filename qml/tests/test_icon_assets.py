@@ -144,9 +144,11 @@ def main():
         px = sheet.get("ship_px") or sheet.get("source_px")
         if spec.get(sid, {}).get("ids") != sheet["ids"]:
             fail(f"{sid}: icon_sheets.json ids differ from the contract (order matters)")
+        if spec.get(sid, {}).get("added_ids", []) != sheet.get("added_ids", []):
+            fail(f"{sid}: icon_sheets.json added_ids differ from the contract")
         if spec.get(sid, {}).get("px") != px:
             fail(f"{sid}: icon_sheets.json px {spec.get(sid, {}).get('px')} != contract {px}")
-        for icon in sheet["ids"]:
+        for icon in sheet["ids"] + sheet.get("added_ids", []):
             expected[f"{sid}/{icon}.webp"] = (px, sid)
 
     trees = []

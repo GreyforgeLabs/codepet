@@ -26,7 +26,8 @@ use smithay_client_toolkit::seat::pointer::cursor_shape::CursorShapeManager;
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind, PointerHandler};
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
 use smithay_client_toolkit::shell::wlr_layer::{
-    Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
+    Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+    LayerSurfaceConfigure,
 };
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shm::slot::{Buffer, SlotPool};
@@ -38,9 +39,13 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use wayland_client::globals::registry_queue_init;
-use wayland_client::protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_subsurface, wl_surface};
+use wayland_client::protocol::{
+    wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_subsurface, wl_surface,
+};
 use wayland_client::{Connection, QueueHandle, WEnum};
-use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::{Shape, WpCursorShapeDeviceV1};
+use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::{
+    Shape, WpCursorShapeDeviceV1,
+};
 use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use wayland_protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 
@@ -50,7 +55,10 @@ const HOME_COOLDOWN_MS: u64 = 1000;
 const CARE_RETRY_MS: u64 = 120000;
 
 pub fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 struct Content {
@@ -131,17 +139,46 @@ pub struct ViewportData;
 pub struct KeyboardData;
 
 impl Dispatch2<WpViewporter, App> for ViewporterData {
-    fn event(&self, _: &mut App, _: &WpViewporter, _: <WpViewporter as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<App>) {}
+    fn event(
+        &self,
+        _: &mut App,
+        _: &WpViewporter,
+        _: <WpViewporter as wayland_client::Proxy>::Event,
+        _: &Connection,
+        _: &QueueHandle<App>,
+    ) {
+    }
 }
 impl Dispatch2<WpViewport, App> for ViewportData {
-    fn event(&self, _: &mut App, _: &WpViewport, _: <WpViewport as wayland_client::Proxy>::Event, _: &Connection, _: &QueueHandle<App>) {}
+    fn event(
+        &self,
+        _: &mut App,
+        _: &WpViewport,
+        _: <WpViewport as wayland_client::Proxy>::Event,
+        _: &Connection,
+        _: &QueueHandle<App>,
+    ) {
+    }
 }
 impl Dispatch2<wl_keyboard::WlKeyboard, App> for KeyboardData {
-    fn event(&self, app: &mut App, _: &wl_keyboard::WlKeyboard, event: wl_keyboard::Event, _: &Connection, _: &QueueHandle<App>) {
+    fn event(
+        &self,
+        app: &mut App,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &Connection,
+        _: &QueueHandle<App>,
+    ) {
         match event {
             wl_keyboard::Event::Keymap { fd, .. } => drop(fd),
-            wl_keyboard::Event::Modifiers { mods_depressed, .. } => app.shift = mods_depressed & 1 != 0,
-            wl_keyboard::Event::Key { key, state: WEnum::Value(wl_keyboard::KeyState::Pressed), .. } => {
+            wl_keyboard::Event::Modifiers { mods_depressed, .. } => {
+                app.shift = mods_depressed & 1 != 0
+            }
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+                ..
+            } => {
                 // evdev codes: Esc 1, Tab 15, Enter 28, Space 57, KP Enter 96, arrows 103/105/106/108.
                 let k = match key {
                     1 => Some(Key::Escape),
@@ -162,7 +199,12 @@ impl Dispatch2<wl_keyboard::WlKeyboard, App> for KeyboardData {
 
 impl App {
     pub fn surface_active(&self) -> bool {
-        !self.hidden && !self.locked && !self.suspended && !self.fullscreen && self.output.is_some() && self.exit_reason().is_empty()
+        !self.hidden
+            && !self.locked
+            && !self.suspended
+            && !self.fullscreen
+            && self.output.is_some()
+            && self.exit_reason().is_empty()
     }
 
     pub fn exit_reason(&self) -> &'static str {
@@ -170,7 +212,11 @@ impl App {
     }
 
     fn calm(&self) -> bool {
-        settings::reduced_motion(self.calm_override, self.calm_setting, std::env::var("CODEPET_REDUCED_MOTION").ok().as_deref())
+        settings::reduced_motion(
+            self.calm_override,
+            self.calm_setting,
+            std::env::var("CODEPET_REDUCED_MOTION").ok().as_deref(),
+        )
     }
 
     fn new_id(&mut self, tag: &str) -> String {
@@ -181,7 +227,9 @@ impl App {
     // ---- files ----
 
     pub fn read_bar_state(&mut self) {
-        let doc = std::fs::read(self.paths.bar_state()).ok().and_then(|t| barstate::parse(&t));
+        let doc = std::fs::read(self.paths.bar_state())
+            .ok()
+            .and_then(|t| barstate::parse(&t));
         match doc {
             Some(doc) => {
                 if self.watcher.accept(&doc) {
@@ -220,7 +268,11 @@ impl App {
                 self.placement = Some(next.clone());
                 // A pin switch from More keeps the current position (it may have wandered).
                 if let Some(p) = prev {
-                    if p.pinned != next.pinned && p.x == next.x && p.y == next.y && p.screen == next.screen {
+                    if p.pinned != next.pinned
+                        && p.x == next.x
+                        && p.y == next.y
+                        && p.screen == next.screen
+                    {
                         self.scene.pinned = next.pinned;
                         let (x, y) = self.placement_fraction();
                         self.save_placement(x, y, next.pinned);
@@ -230,7 +282,8 @@ impl App {
                 if !next.screen.is_empty() {
                     self.preferred_screen = next.screen.clone();
                 }
-                self.scene.restore_placement(next.x, next.y, next.pinned, now_ms());
+                self.scene
+                    .restore_placement(next.x, next.y, next.pinned, now_ms());
             }
         }
     }
@@ -238,8 +291,15 @@ impl App {
     fn placement_fraction(&self) -> (f64, f64) {
         let s = &self.scene;
         let size = s.pet_size();
-        let y = if s.pet_y < 0.0 { (s.height - size - 12.0).max(0.0) } else { s.pet_y };
-        (s.pet_x / (s.width - size).max(1.0), y / (s.height - size).max(1.0))
+        let y = if s.pet_y < 0.0 {
+            (s.height - size - 12.0).max(0.0)
+        } else {
+            s.pet_y
+        };
+        (
+            s.pet_x / (s.width - size).max(1.0),
+            y / (s.height - size).max(1.0),
+        )
     }
 
     fn startup_state_get(&mut self) {
@@ -256,7 +316,14 @@ impl App {
         }
         self.care_busy = true;
         let id = self.new_id("pet");
-        jobs::rpc(&self.paths.codepet_bin, &id, "state.get", serde_json::json!({}), "state.get".into(), self.jobs_tx.clone());
+        jobs::rpc(
+            &self.paths.codepet_bin,
+            &id,
+            "state.get",
+            serde_json::json!({}),
+            "state.get".into(),
+            self.jobs_tx.clone(),
+        );
     }
 
     // ---- effects from the scene ----
@@ -266,7 +333,6 @@ impl App {
             match e {
                 Effect::Care(action) => self.care(&action),
                 Effect::ToggleCard => self.toggle_card(),
-                Effect::OpenHome => self.open_home(),
                 Effect::Hide => {
                     if !self.hidden && self.surface_active() {
                         self.hidden = true;
@@ -279,14 +345,23 @@ impl App {
     }
 
     fn care(&mut self, action: &str) {
-        if !self.surface_active() || !["food", "water", "play", "wash", "sleep", "wake"].contains(&action) {
+        if !self.surface_active()
+            || !["food", "water", "play", "wash", "sleep", "wake"].contains(&action)
+        {
             return;
         }
         if self.care_busy {
-            self.scene.care_answered(action, false, false, Some("One moment…".into()), now_ms());
+            self.scene
+                .care_answered(action, false, false, Some("One moment…".into()), now_ms());
             return;
         }
-        let life = self.scene.bar_state.as_ref().and_then(|b| b.get("life")).cloned().unwrap_or(Value::Null);
+        let life = self
+            .scene
+            .bar_state
+            .as_ref()
+            .and_then(|b| b.get("life"))
+            .cloned()
+            .unwrap_or(Value::Null);
         let (mut method, mut params) = match action {
             "sleep" => ("pet.sleep", serde_json::json!({})),
             "wake" => ("pet.wake", serde_json::json!({})),
@@ -296,15 +371,26 @@ impl App {
             method = "pet.pause";
             params = serde_json::json!({"paused": false});
         }
-        let signature = format!("{}:{action}", life.get("life_id").and_then(Value::as_str).unwrap_or(""));
+        let signature = format!(
+            "{}:{action}",
+            life.get("life_id").and_then(Value::as_str).unwrap_or("")
+        );
         let now = now_ms();
         let id = match self.care_retries.get(&signature) {
             Some((id, until)) if *until > now => id.clone(),
             _ => self.new_id("pet"),
         };
-        self.care_retries.insert(signature.clone(), (id.clone(), now + CARE_RETRY_MS));
+        self.care_retries
+            .insert(signature.clone(), (id.clone(), now + CARE_RETRY_MS));
         self.care_busy = true;
-        jobs::rpc(&self.paths.codepet_bin, &id, method, params, format!("{action}|{signature}"), self.jobs_tx.clone());
+        jobs::rpc(
+            &self.paths.codepet_bin,
+            &id,
+            method,
+            params,
+            format!("{action}|{signature}"),
+            self.jobs_tx.clone(),
+        );
     }
 
     fn toggle_card(&mut self) {
@@ -313,10 +399,36 @@ impl App {
         let bin = self.paths.codepet_bin.clone();
         let tx = self.jobs_tx.clone();
         std::thread::spawn(move || {
-            let status = jobs::output(&["qs", "ipc", "-p", &qml, "call", "--", "codepet-work", "status"], Duration::from_secs(2));
-            let visible = status.as_deref().is_some_and(|s| s.contains("\"visible\":true") && s.contains("\"compact\":true"));
+            let status = jobs::output(
+                &[
+                    "qs",
+                    "ipc",
+                    "-p",
+                    &qml,
+                    "call",
+                    "--",
+                    "codepet-work",
+                    "status",
+                ],
+                Duration::from_secs(2),
+            );
+            let visible = status
+                .as_deref()
+                .is_some_and(|s| s.contains("\"visible\":true") && s.contains("\"compact\":true"));
             if visible {
-                let _ = jobs::output(&["qs", "ipc", "-p", &qml, "call", "--", "codepet-work", "close"], Duration::from_secs(2));
+                let _ = jobs::output(
+                    &[
+                        "qs",
+                        "ipc",
+                        "-p",
+                        &qml,
+                        "call",
+                        "--",
+                        "codepet-work",
+                        "close",
+                    ],
+                    Duration::from_secs(2),
+                );
             } else {
                 let _ = std::process::Command::new("/usr/bin/env")
                     .arg(format!("CODEPET_BIN={bin}"))
@@ -341,7 +453,11 @@ impl App {
         }
         self.last_home = now;
         self.home_requests += 1;
-        jobs::detached("home", settings::open_home_argv(&self.paths.omarchy_path), None);
+        jobs::detached(
+            "home",
+            settings::open_home_argv(&self.paths.omarchy_path),
+            None,
+        );
     }
 
     fn save_placement(&mut self, x: f64, y: f64, pinned: bool) {
@@ -349,10 +465,24 @@ impl App {
             self.placement_pending = Some((x, y, pinned));
             return;
         }
-        let screen = self.output.as_ref().and_then(|o| self.outputs.info(o)).and_then(|i| i.name).unwrap_or_default();
-        self.placement = Some(settings::Placement { x: Some(x), y: Some(y), pinned, screen: screen.clone() });
+        let screen = self
+            .output
+            .as_ref()
+            .and_then(|o| self.outputs.info(o))
+            .and_then(|i| i.name)
+            .unwrap_or_default();
+        self.placement = Some(settings::Placement {
+            x: Some(x),
+            y: Some(y),
+            pinned,
+            screen: screen.clone(),
+        });
         self.placement_busy = true;
-        jobs::detached("placement", settings::placement_argv(&self.paths.omarchy_path, x, y, pinned, &screen), Some(self.jobs_tx.clone()));
+        jobs::detached(
+            "placement",
+            settings::placement_argv(&self.paths.omarchy_path, x, y, pinned, &screen),
+            Some(self.jobs_tx.clone()),
+        );
     }
 
     fn on_job(&mut self, r: JobResult) {
@@ -369,12 +499,17 @@ impl App {
                 if ok {
                     self.care_retries.remove(signature);
                 }
-                let changed = resp.get("result").and_then(|r| r.get("changed")) == Some(&Value::Bool(true));
-                let msg = resp.get("error").and_then(|e| e.get("message")).and_then(Value::as_str).map(str::to_string);
+                let changed =
+                    resp.get("result").and_then(|r| r.get("changed")) == Some(&Value::Bool(true));
+                let msg = resp
+                    .get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
                 self.scene.care_answered(action, ok, changed, msg, now);
                 self.read_bar_state();
             }
-            JobResult::Work(_, _) => {
+            JobResult::Work => {
                 self.work_busy = false;
                 self.read_work_state();
             }
@@ -394,11 +529,17 @@ impl App {
         let bar = self.scene.bar_state.as_ref();
         self.surface_active()
             && bar.and_then(|b| b.get("enabled")) == Some(&Value::Bool(true))
-            && bar.and_then(|b| b.get("life")).and_then(|l| l.get("armed")) == Some(&Value::Bool(true))
+            && bar.and_then(|b| b.get("life")).and_then(|l| l.get("armed"))
+                == Some(&Value::Bool(true))
     }
 
     fn observe_client(&mut self, summary: &Value) {
-        let id = summary.get("provider").and_then(|p| p.get("id")).and_then(Value::as_str).unwrap_or("codex").to_string();
+        let id = summary
+            .get("provider")
+            .and_then(|p| p.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or("codex")
+            .to_string();
         if !self.client_seen.is_empty() && id != self.client_seen {
             // A client choice must not turn a due check into a launch.
             if work::next_due_ms(summary).is_some_and(|d| d <= now_ms() as f64) {
@@ -410,8 +551,14 @@ impl App {
 
     fn arm_scout(&mut self) {
         self.scout_due = None;
-        let Some(s) = self.scene.work_state.as_ref() else { return };
-        if !self.automatic() || self.work_busy || !work::scout_eligible(s) || work::scout_key(s) == self.attempted_scout {
+        let Some(s) = self.scene.work_state.as_ref() else {
+            return;
+        };
+        if !self.automatic()
+            || self.work_busy
+            || !work::scout_eligible(s)
+            || work::scout_key(s) == self.attempted_scout
+        {
             return;
         }
         let due = work::next_due_ms(s).unwrap_or(0.0).max(0.0) as u64;
@@ -419,13 +566,20 @@ impl App {
     }
 
     fn scout(&mut self) {
-        let Some(s) = self.scene.work_state.clone() else { return };
+        let Some(s) = self.scene.work_state.clone() else {
+            return;
+        };
         if !self.automatic() || self.work_busy || !work::scout_eligible(&s) {
             return;
         }
         self.attempted_scout = work::scout_key(&s);
         self.work_busy = true;
-        jobs::work_rpc(&self.paths.codepet_bin, "scout", serde_json::json!({}), self.jobs_tx.clone());
+        jobs::work_rpc(
+            &self.paths.codepet_bin,
+            "scout",
+            serde_json::json!({}),
+            self.jobs_tx.clone(),
+        );
     }
 
     // ---- surfaces ----
@@ -433,7 +587,12 @@ impl App {
     fn pick_output(&self) -> Option<wl_output::WlOutput> {
         let outs: Vec<_> = self.outputs.outputs().collect();
         outs.iter()
-            .find(|o| self.outputs.info(o).and_then(|i| i.name).is_some_and(|n| n == self.preferred_screen))
+            .find(|o| {
+                self.outputs
+                    .info(o)
+                    .and_then(|i| i.name)
+                    .is_some_and(|n| n == self.preferred_screen)
+            })
             .or(outs.first())
             .cloned()
     }
@@ -450,14 +609,28 @@ impl App {
         } else if !active && self.layer.is_some() {
             self.destroy_surfaces();
         }
-        self.scene.set_surface_active(active && self.configured, now_ms());
+        self.scene
+            .set_surface_active(active && self.configured, now_ms());
     }
 
     fn create_surfaces(&mut self) {
-        let Some(output) = self.output.clone() else { return };
-        self.scale = self.outputs.info(&output).map(|i| i.scale_factor).unwrap_or(1).max(1);
+        let Some(output) = self.output.clone() else {
+            return;
+        };
+        self.scale = self
+            .outputs
+            .info(&output)
+            .map(|i| i.scale_factor)
+            .unwrap_or(1)
+            .max(1);
         let surface = self.compositor.create_surface(&self.qh);
-        let layer = self.layer_shell.create_layer_surface(&self.qh, surface, Layer::Top, Some("codepet-overlay"), Some(&output));
+        let layer = self.layer_shell.create_layer_surface(
+            &self.qh,
+            surface,
+            Layer::Top,
+            Some("codepet-overlay"),
+            Some(&output),
+        );
         layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
         layer.set_size(0, 0);
         layer.set_exclusive_zone(0);
@@ -505,11 +678,20 @@ impl App {
         let first = !self.configured;
         self.configured = true;
         if first {
-            let Some(layer) = self.layer.clone() else { return };
+            let Some(layer) = self.layer.clone() else {
+                return;
+            };
             let parent = layer.wl_surface().clone();
             // The parent shows nothing: one transparent pixel stretched over the output.
-            let (bw, bh) = if self.viewporter.is_some() { (1, 1) } else { (w as i32, h as i32) };
-            let made = self.pool().and_then(|p| p.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888).ok());
+            let (bw, bh) = if self.viewporter.is_some() {
+                (1, 1)
+            } else {
+                (w as i32, h as i32)
+            };
+            let made = self.pool().and_then(|p| {
+                p.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888)
+                    .ok()
+            });
             if let Some((buf, canvas)) = made {
                 canvas.fill(0);
                 let _ = buf.attach_to(&parent);
@@ -521,13 +703,24 @@ impl App {
                 self.layer_viewport = Some(v);
             }
             parent.damage_buffer(0, 0, i32::MAX, i32::MAX);
-            let (sub, surface) = self.subcompositor.create_subsurface(parent.clone(), &self.qh);
+            let (sub, surface) = self
+                .subcompositor
+                .create_subsurface(parent.clone(), &self.qh);
             sub.set_desync();
             if let Ok(empty) = Region::new(&self.compositor) {
                 surface.set_input_region(Some(empty.wl_region()));
             }
-            let viewport = self.viewporter.as_ref().map(|vp| vp.get_viewport(&surface, &self.qh, ViewportData));
-            self.content = Some(Content { surface, sub, viewport, origin: (0.0, 0.0), mapped: false });
+            let viewport = self
+                .viewporter
+                .as_ref()
+                .map(|vp| vp.get_viewport(&surface, &self.qh, ViewportData));
+            self.content = Some(Content {
+                surface,
+                sub,
+                viewport,
+                origin: (0.0, 0.0),
+                mapped: false,
+            });
             layer.commit();
         } else if let Some(v) = &self.layer_viewport {
             v.set_destination(w as i32, h as i32);
@@ -537,7 +730,8 @@ impl App {
         }
         self.last_view = None;
         self.scene.set_size(w as f64, h as f64, now_ms());
-        self.scene.set_surface_active(self.surface_active(), now_ms());
+        self.scene
+            .set_surface_active(self.surface_active(), now_ms());
     }
 
     /// Draws the content surface when the view changed.
@@ -552,10 +746,24 @@ impl App {
         let mut area = Rect::default();
         if let Some(s) = &view.sprite {
             // Room for the wiggle rotation and the hop.
-            area = area.union(&Rect::new(s.3.x - 12.0, s.3.y - 20.0, s.3.w + 24.0, s.3.h + 28.0));
+            area = area.union(&Rect::new(
+                s.3.x - 12.0,
+                s.3.y - 20.0,
+                s.3.w + 24.0,
+                s.3.h + 28.0,
+            ));
         }
-        for r in [view.pinned_tag, view.badge, view.bubble.as_ref().map(|b| b.0), view.feedback.as_ref().map(|f| f.0),
-                  view.hide_pill.map(|p| p.0), view.wheel.as_ref().map(|w| w.0)].into_iter().flatten() {
+        for r in [
+            view.pinned_tag,
+            view.badge,
+            view.bubble.as_ref().map(|b| b.0),
+            view.feedback.as_ref().map(|f| f.0),
+            view.hide_pill.map(|p| p.0),
+            view.wheel.as_ref().map(|w| w.0),
+        ]
+        .into_iter()
+        .flatten()
+        {
             area = area.union(&r);
         }
         let (sw, sh) = (self.size.0 as f64, self.size.1 as f64);
@@ -566,7 +774,9 @@ impl App {
         let area = Rect::new(x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0));
         let scale = self.scale;
         let content_surface = self.content.as_ref().map(|c| c.surface.clone());
-        let Some(surface) = content_surface else { return };
+        let Some(surface) = content_surface else {
+            return;
+        };
         if !view.active || area.is_empty() {
             surface.attach(None, 0, 0);
             surface.commit();
@@ -576,9 +786,16 @@ impl App {
             self.last_view = Some(view);
             return;
         }
-        let Some(pm) = self.renderer.draw(&view, area, scale as f64) else { return };
+        let Some(pm) = self.renderer.draw(&view, area, scale as f64) else {
+            return;
+        };
         let (bw, bh) = (pm.width() as i32, pm.height() as i32);
-        let Some((buf, canvas)) = self.pool().and_then(|p| p.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888).ok()) else { return };
+        let Some((buf, canvas)) = self.pool().and_then(|p| {
+            p.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888)
+                .ok()
+        }) else {
+            return;
+        };
         render::to_argb8888(&pm, canvas);
         drop(pm);
         if let Some(c) = self.content.as_mut() {
@@ -611,7 +828,11 @@ impl App {
         let want = self.scene.wants_keyboard();
         if want != self.keyboard_on_demand {
             if let Some(l) = &self.layer {
-                l.set_keyboard_interactivity(if want { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
+                l.set_keyboard_interactivity(if want {
+                    KeyboardInteractivity::OnDemand
+                } else {
+                    KeyboardInteractivity::None
+                });
                 l.commit();
             }
             self.keyboard_on_demand = want;
@@ -619,7 +840,11 @@ impl App {
     }
 
     fn update_cursor(&mut self) {
-        let want = if self.scene.dragging { Shape::Grabbing } else { Shape::Grab };
+        let want = if self.scene.dragging {
+            Shape::Grabbing
+        } else {
+            Shape::Grab
+        };
         if self.cursor != Some(want) {
             if let Some(d) = &self.shape_device {
                 d.set_shape(self.enter_serial, want);
@@ -659,7 +884,14 @@ impl App {
     }
 
     fn reschedule(&mut self) {
-        let next = [self.scene.next_deadline(), self.scout_due, self.settle_until].into_iter().flatten().min();
+        let next = [
+            self.scene.next_deadline(),
+            self.scout_due,
+            self.settle_until,
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         if next == self.timer_at && self.timer.is_some() {
             return;
         }
@@ -669,17 +901,19 @@ impl App {
         self.timer_at = next;
         let Some(at) = next else { return };
         let delay = Duration::from_millis(at.saturating_sub(now_ms()));
-        let token = self.handle.insert_source(Timer::from_duration(delay), |_, _, app: &mut App| {
-            app.timer = None;
-            app.timer_at = None;
-            let now = now_ms();
-            if app.scout_due.is_some_and(|d| now >= d) {
-                app.scout_due = None;
-                app.scout();
-            }
-            app.scene.advance(now);
-            TimeoutAction::Drop
-        });
+        let token =
+            self.handle
+                .insert_source(Timer::from_duration(delay), |_, _, app: &mut App| {
+                    app.timer = None;
+                    app.timer_at = None;
+                    let now = now_ms();
+                    if app.scout_due.is_some_and(|d| now >= d) {
+                        app.scout_due = None;
+                        app.scout();
+                    }
+                    app.scene.advance(now);
+                    TimeoutAction::Drop
+                });
         self.timer = token.ok();
     }
 
@@ -692,7 +926,10 @@ impl App {
         let now = now_ms();
         let flag = |v: Option<&&str>| v.is_some_and(|s| *s == "true" || *s == "1");
         match verb {
-            "ping" => format!("codepet-overlay {}", if self.hidden { "hidden" } else { "shown" }),
+            "ping" => format!(
+                "codepet-overlay {}",
+                if self.hidden { "hidden" } else { "shown" }
+            ),
             "status" => self.status().to_string(),
             "show" => {
                 self.hidden = false;
@@ -774,18 +1011,20 @@ impl App {
             for (k, val) in sc {
                 m.insert(k.clone(), val.clone());
             }
-            m.insert("stage".into(), life.and_then(|l| l.get("stage")).cloned().unwrap_or(Value::Null));
+            m.insert(
+                "stage".into(),
+                life.and_then(|l| l.get("stage"))
+                    .cloned()
+                    .unwrap_or(Value::Null),
+            );
         }
         v
     }
 }
 
 fn serve(app: &mut App, listener: &UnixListener) {
-    loop {
-        match listener.accept() {
-            Ok((stream, _)) => answer(app, stream),
-            Err(_) => break,
-        }
+    while let Ok((stream, _)) = listener.accept() {
+        answer(app, stream);
     }
 }
 
@@ -807,16 +1046,43 @@ fn answer(app: &mut App, stream: UnixStream) {
 // ---- SCTK handlers ----
 
 impl CompositorHandler for App {
-    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, factor: i32) {
+    fn scale_factor_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        factor: i32,
+    ) {
         if factor.max(1) != self.scale {
             self.scale = factor.max(1);
             self.last_view = None;
         }
     }
-    fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
+    fn transform_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: wl_output::Transform,
+    ) {
+    }
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
-    fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
-    fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
+    fn surface_enter(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
+    fn surface_leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl OutputHandler for App {
@@ -824,16 +1090,31 @@ impl OutputHandler for App {
         &mut self.outputs
     }
     fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
-    fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
+    fn update_output(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
         if Some(&output) == self.output.as_ref() {
-            let scale = self.outputs.info(&output).map(|i| i.scale_factor).unwrap_or(1).max(1);
+            let scale = self
+                .outputs
+                .info(&output)
+                .map(|i| i.scale_factor)
+                .unwrap_or(1)
+                .max(1);
             if scale != self.scale {
                 self.scale = scale;
                 self.last_view = None;
             }
         }
     }
-    fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
+    fn output_destroyed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
         if Some(&output) == self.output.as_ref() {
             self.destroy_surfaces();
             self.output = None;
@@ -845,7 +1126,14 @@ impl LayerShellHandler for App {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {
         self.destroy_surfaces();
     }
-    fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface, c: LayerSurfaceConfigure, _: u32) {
+    fn configure(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &LayerSurface,
+        c: LayerSurfaceConfigure,
+        _: u32,
+    ) {
         self.on_configure(c.new_size.0, c.new_size.1);
     }
 }
@@ -855,10 +1143,19 @@ impl SeatHandler for App {
         &mut self.seat
     }
     fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
-    fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, cap: Capability) {
+    fn new_capability(
+        &mut self,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        cap: Capability,
+    ) {
         if cap == Capability::Pointer && self.pointer.is_none() {
             if let Ok(p) = self.seat.get_pointer(qh, &seat) {
-                self.shape_device = self.cursor_shapes.as_ref().map(|m| m.get_shape_device(&p, qh));
+                self.shape_device = self
+                    .cursor_shapes
+                    .as_ref()
+                    .map(|m| m.get_shape_device(&p, qh));
                 self.pointer = Some(p);
             }
         }
@@ -866,7 +1163,13 @@ impl SeatHandler for App {
             self.keyboard = Some(seat.get_keyboard(qh, KeyboardData));
         }
     }
-    fn remove_capability(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat, cap: Capability) {
+    fn remove_capability(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: wl_seat::WlSeat,
+        cap: Capability,
+    ) {
         if cap == Capability::Pointer {
             if let Some(d) = self.shape_device.take() {
                 d.destroy();
@@ -885,8 +1188,16 @@ impl SeatHandler for App {
 }
 
 impl PointerHandler for App {
-    fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
-        let Some(c) = self.content.as_ref() else { return };
+    fn pointer_frame(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_pointer::WlPointer,
+        events: &[PointerEvent],
+    ) {
+        let Some(c) = self.content.as_ref() else {
+            return;
+        };
         let (surface, origin) = (c.surface.clone(), c.origin);
         let now = now_ms();
         for e in events {
@@ -906,10 +1217,14 @@ impl PointerHandler for App {
                     }
                 }
                 PointerEventKind::Motion { .. } => self.scene.pointer_motion(x, y, now),
-                PointerEventKind::Press { button, .. } if button == BTN_LEFT || button == BTN_RIGHT => {
+                PointerEventKind::Press { button, .. }
+                    if button == BTN_LEFT || button == BTN_RIGHT =>
+                {
                     self.scene.pointer_press(x, y, button == BTN_LEFT, now)
                 }
-                PointerEventKind::Release { button, .. } if button == BTN_LEFT || button == BTN_RIGHT => {
+                PointerEventKind::Release { button, .. }
+                    if button == BTN_LEFT || button == BTN_RIGHT =>
+                {
                     self.scene.pointer_release(x, y, button == BTN_LEFT, now)
                 }
                 _ => {}
@@ -948,18 +1263,25 @@ fn watch(fd: &rustix::fd::OwnedFd, dir: &std::path::Path) -> Option<i32> {
 /// Runs the pet until it is told to quit or CodePet / "Pet on my desktop" turns off.
 pub fn run(paths: Paths, listener: UnixListener) -> Result<String, String> {
     let conn = Connection::connect_to_env().map_err(|e| format!("no Wayland display: {e}"))?;
-    let (globals, queue) = registry_queue_init::<App>(&conn).map_err(|e| format!("registry: {e}"))?;
+    let (globals, queue) =
+        registry_queue_init::<App>(&conn).map_err(|e| format!("registry: {e}"))?;
     let qh = queue.handle();
-    let mut event_loop: EventLoop<'static, App> = EventLoop::try_new().map_err(|e| e.to_string())?;
+    let mut event_loop: EventLoop<'static, App> =
+        EventLoop::try_new().map_err(|e| e.to_string())?;
     let handle = event_loop.handle();
-    WaylandSource::new(conn.clone(), queue).insert(handle.clone()).map_err(|e| e.to_string())?;
+    WaylandSource::new(conn.clone(), queue)
+        .insert(handle.clone())
+        .map_err(|e| e.to_string())?;
 
-    let compositor = CompositorState::bind(&globals, &qh).map_err(|e| format!("wl_compositor: {e}"))?;
+    let compositor =
+        CompositorState::bind(&globals, &qh).map_err(|e| format!("wl_compositor: {e}"))?;
     let subcompositor = SubcompositorState::bind(compositor.wl_compositor().clone(), &globals, &qh)
         .map_err(|e| format!("wl_subcompositor: {e}"))?;
     let layer_shell = LayerShell::bind(&globals, &qh).map_err(|e| format!("layer shell: {e}"))?;
     let shm = Shm::bind(&globals, &qh).map_err(|e| format!("wl_shm: {e}"))?;
-    let viewporter = globals.bind::<WpViewporter, _, _>(&qh, 1..=1, ViewporterData).ok();
+    let viewporter = globals
+        .bind::<WpViewporter, _, _>(&qh, 1..=1, ViewporterData)
+        .ok();
     let cursor_shapes = CursorShapeManager::bind(&globals, &qh).ok();
 
     let (jobs_tx, jobs_rx): (Sender<JobResult>, Channel<JobResult>) = channel::channel();
@@ -973,54 +1295,69 @@ pub fn run(paths: Paths, listener: UnixListener) -> Result<String, String> {
 
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     handle
-        .insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, l, app: &mut App| {
-            serve(app, l);
-            Ok(PostAction::Continue)
-        })
+        .insert_source(
+            Generic::new(listener, Interest::READ, Mode::Level),
+            |_, l, app: &mut App| {
+                serve(app, l);
+                Ok(PostAction::Continue)
+            },
+        )
         .map_err(|e| e.to_string())?;
 
     // File watching: the state dir (bar-state.json, work-state.json) and ~/.config/omarchy.
-    let inotify = rustix::fs::inotify::init(rustix::fs::inotify::CreateFlags::CLOEXEC | rustix::fs::inotify::CreateFlags::NONBLOCK)
-        .map_err(|e| format!("inotify: {e}"))?;
+    let inotify = rustix::fs::inotify::init(
+        rustix::fs::inotify::CreateFlags::CLOEXEC | rustix::fs::inotify::CreateFlags::NONBLOCK,
+    )
+    .map_err(|e| format!("inotify: {e}"))?;
     let state_wd = watch(&inotify, &paths.state);
     let config_wd = watch(&inotify, &paths.omarchy_config);
-    let parent_wd = if state_wd.is_none() { paths.state.parent().and_then(|p| watch(&inotify, p)) } else { None };
+    let parent_wd = if state_wd.is_none() {
+        paths.state.parent().and_then(|p| watch(&inotify, p))
+    } else {
+        None
+    };
     let state_dir = paths.state.clone();
     let mut state_wd_live = state_wd;
     handle
-        .insert_source(Generic::new(inotify, Interest::READ, Mode::Level), move |_, fd, app: &mut App| {
-            let mut buf = [std::mem::MaybeUninit::<u8>::uninit(); 4096];
-            let (mut bar, mut work, mut settings, mut created) = (false, false, false, false);
-            {
-                let mut reader = rustix::fs::inotify::Reader::new(&**fd, &mut buf);
-                while let Ok(ev) = reader.next() {
-                    let name = ev.file_name().map(|c| c.to_string_lossy().into_owned()).unwrap_or_default();
-                    if Some(ev.wd()) == state_wd_live {
-                        bar |= name == "bar-state.json";
-                        work |= name == "work-state.json";
-                    } else if Some(ev.wd()) == config_wd {
-                        settings |= name == "shell.json";
-                    } else if Some(ev.wd()) == parent_wd && name == "codepet" {
-                        created = true;
+        .insert_source(
+            Generic::new(inotify, Interest::READ, Mode::Level),
+            move |_, fd, app: &mut App| {
+                let mut buf = [std::mem::MaybeUninit::<u8>::uninit(); 4096];
+                let (mut bar, mut work, mut settings, mut created) = (false, false, false, false);
+                {
+                    let mut reader = rustix::fs::inotify::Reader::new(&**fd, &mut buf);
+                    while let Ok(ev) = reader.next() {
+                        let name = ev
+                            .file_name()
+                            .map(|c| c.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        if Some(ev.wd()) == state_wd_live {
+                            bar |= name == "bar-state.json";
+                            work |= name == "work-state.json";
+                        } else if Some(ev.wd()) == config_wd {
+                            settings |= name == "shell.json";
+                        } else if Some(ev.wd()) == parent_wd && name == "codepet" {
+                            created = true;
+                        }
                     }
                 }
-            }
-            if created && state_wd_live.is_none() {
-                state_wd_live = watch(&**fd, &state_dir);
-                bar = true;
-                work = true;
-            }
-            if bar {
-                app.read_bar_state();
-            }
-            if work {
-                app.read_work_state();
-            }
-            if settings {
-                app.read_settings();
-            }
-            Ok(PostAction::Continue)
-        })
+                if created && state_wd_live.is_none() {
+                    state_wd_live = watch(fd, &state_dir);
+                    bar = true;
+                    work = true;
+                }
+                if bar {
+                    app.read_bar_state();
+                }
+                if work {
+                    app.read_work_state();
+                }
+                if settings {
+                    app.read_settings();
+                }
+                Ok(PostAction::Continue)
+            },
+        )
         .map_err(|e| e.to_string())?;
 
     let seed = now_ms() ^ (std::process::id() as u64).rotate_left(32);
@@ -1091,7 +1428,9 @@ pub fn run(paths: Paths, listener: UnixListener) -> Result<String, String> {
         timer_at: None,
     };
     // Outputs arrive with the first roundtrips.
-    event_loop.dispatch(Duration::from_millis(50), &mut app).map_err(|e| e.to_string())?;
+    event_loop
+        .dispatch(Duration::from_millis(50), &mut app)
+        .map_err(|e| e.to_string())?;
     app.scene.start(now_ms());
     app.read_settings();
     app.read_bar_state();
@@ -1105,6 +1444,8 @@ pub fn run(paths: Paths, listener: UnixListener) -> Result<String, String> {
             let _ = started;
             return Ok(reason);
         }
-        event_loop.dispatch(None, &mut app).map_err(|e| e.to_string())?;
+        event_loop
+            .dispatch(None, &mut app)
+            .map_err(|e| e.to_string())?;
     }
 }

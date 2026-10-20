@@ -1,9 +1,11 @@
 # Changelog
 
-## 0.5.1 — Unreleased local development
+## 0.6.0 — 2026-10-20
 
-- Home's care bubble is smaller and sits below the pet's head. Care, treats and
-  petting play an original animal voice and a short action sound. Calm stays quiet.
+- Clearer care icons: meat on a bone, a water droplet, bubbles, a hand for Pet and a
+  push pin for Pin (also in More → Pin pet in place).
+- Care plays one soft sound per action; the synthesized animal voices are gone.
+- Home's care bubble is smaller and sits below the pet's head.
 - Tap to connect does it on that tap, then opens the sheet.
 
 ## 0.5.0 — Unreleased local development

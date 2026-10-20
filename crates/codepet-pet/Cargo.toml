@@ -21,7 +21,7 @@ wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 calloop = "0.14"
 calloop-wayland-source = "0.4"
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
-fontdue = "0.9"
+ab_glyph = "0.2"
 image-webp = "0.2"
 rustix = { version = "1.1", default-features = false, features = ["std", "fs", "process", "net", "event"] }
 

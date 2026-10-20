@@ -1,10 +1,17 @@
 #!/bin/sh
-# codepet-overlay: verb launcher for the CodePet desktop overlay (Quickshell).
+# codepet-overlay: verb launcher for the CodePet desktop pet.
 #
 #   codepet-overlay show|hide|toggle|refresh|status|card|quit [--force]
 #
-# The overlay is one separate, detached `qs` process. This script finds a running
-# instance and sends it an IPC verb; it never starts a second copy. `hide`,
+# 0.6: the desktop pet is the native `codepet-pet` (Wayland layer shell, a few MB, no
+# polling). This script finds a running pet through its control socket and sends it a
+# verb; it never starts a second copy. A Quickshell overlay left from CodePet 0.5 or
+# earlier is stopped (exact PID, only when it reports no running task) before the native
+# pet starts. CODEPET_PET_ENGINE=quickshell keeps the previous Quickshell overlay
+# (described below) as a fallback for compositors the native pet cannot use.
+#
+# Quickshell engine: the overlay is one separate, detached `qs` process. This script finds
+# a running instance and sends it an IPC verb; it never starts a second copy. `hide`,
 # `refresh`, `status` and `quit` never start the overlay. `hide` only hides the pet;
 # `quit` ends the overlay process (`qs kill`), for example before an uninstall.
 #
@@ -27,6 +34,8 @@
 #   CODEPET_OVERLAY_QML  entry file (default: the installed current release)
 #   CODEPET_BIN          codepet binary for the overlay (default ~/.local/bin/codepet)
 #   CODEPET_QS           Quickshell CLI (default: qs)
+#   CODEPET_PET          native pet binary (default: codepet-pet beside CODEPET_BIN)
+#   CODEPET_PET_ENGINE   native (default) or quickshell
 #   XDG_DATA_HOME, XDG_STATE_HOME are passed through unchanged (XDG_STATE_HOME also
 #   locates CodePet's off flag).
 #
@@ -84,10 +93,22 @@ case "$STATE_HOME" in
     *) STATE_HOME="$HOME/.local/state" ;;
 esac
 OFF_FLAG="$STATE_HOME/codepet/off"
-
-if ! command -v "$QS" >/dev/null 2>&1; then
-    echo "$PROG: Quickshell ($QS) is not installed" >&2
-    exit 1
+ENGINE=${CODEPET_PET_ENGINE:-native}
+PET=${CODEPET_PET:-}
+if [ -z "$PET" ]; then
+    case "$BIN" in
+        /*) PET="${BIN%/*}/codepet-pet" ;;
+        *) PET=codepet-pet ;;
+    esac
+fi
+case "$ENGINE" in
+    native|quickshell) ;;
+    *) echo "$PROG: unknown CODEPET_PET_ENGINE '$ENGINE' (native or quickshell)" >&2; exit 2 ;;
+esac
+# Without the native binary (an install older than 0.6, or a partial one), the
+# Quickshell overlay is the pet.
+if [ "$ENGINE" = native ] && ! command -v "$PET" >/dev/null 2>&1; then
+    ENGINE=quickshell
 fi
 
 # Instance addressing: `-p <entry>` when the entry answers ping, otherwise
@@ -219,6 +240,114 @@ start_overlay() {
     echo "$PROG: the overlay did not answer within 3 s; see: $QS log -p $QML" >&2
     return 1
 }
+
+# ---- native engine ----
+
+# pet_ctl <verb> [args]: one verb over the pet's control socket (stdout: its reply).
+pet_ctl() {
+    "$PET" ctl "$@" 2>/dev/null
+}
+
+# pet_running: true when a native pet answers ping with the launcher token.
+pet_running() {
+    reply=$(pet_ctl ping) || return 1
+    case "$reply" in
+        "$TOKEN"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# pet_leaving: the pet reports that it is about to exit: say why and exit 0.
+pet_leaving() {
+    st=$(pet_ctl status) || st=
+    case "$st" in
+        *'"exit_reason":"off"'*)
+            echo "$PROG: CodePet is off"
+            exit 0 ;;
+        *'"exit_reason":"desktop_pet_off"'*)
+            echo "$PROG: the desktop pet is off"
+            exit 0 ;;
+    esac
+}
+
+# legacy_stop: end a Quickshell overlay of CodePet 0.5 or earlier, so a native pet never
+# runs beside it. Only an overlay reporting "supervisor":false is ended (fail closed).
+legacy_stop() {
+    command -v "$QS" >/dev/null 2>&1 || return 0
+    running || return 0
+    st=$("$QS" ipc "$TARGET_FLAG" "$TARGET_VALUE" call -- codepet status 2>/dev/null) || st=
+    case "$st" in
+        *'"supervisor":false'*) "$QS" kill "$TARGET_FLAG" "$TARGET_VALUE" >/dev/null 2>&1 || true ;;
+    esac
+}
+
+if [ "$ENGINE" = native ]; then
+    case "$VERB" in
+        card)
+            if [ ! -e "$OFF_FLAG" ] && pet_running; then
+                st=$(pet_ctl status) || st=
+                case "$st" in
+                    *'"pet":"shown"'*) if pet_ctl openCard >/dev/null; then exit 0; fi ;;
+                esac
+            fi
+            export CODEPET_BIN="$BIN"
+            exec "$WORK_LAUNCHER" compact ;;
+        status)
+            if pet_running; then
+                echo "running"
+                pet_ctl status || true
+                exit 0
+            fi
+            echo "not running"
+            exit 1 ;;
+        quit)
+            if pet_running; then
+                pet_ctl quit >/dev/null || true
+                n=0
+                while [ "$n" -lt 30 ] && pet_running; do
+                    sleep 0.1
+                    n=$((n + 1))
+                done
+                if pet_running; then
+                    echo "$PROG: the desktop pet did not stop" >&2
+                    exit 1
+                fi
+                exit 0
+            fi
+            echo "$PROG: overlay is not running; nothing to quit" >&2
+            exit 0 ;;
+        hide|refresh)
+            if pet_running; then
+                pet_ctl "$VERB" >/dev/null
+                exit $?
+            fi
+            echo "$PROG: overlay is not running; nothing to $VERB" >&2
+            exit 0 ;;
+        *)
+            # show and toggle. A pet started while CodePet is Off would exit at once.
+            exit_if_off
+            if pet_running; then
+                pet_ctl "$VERB" >/dev/null || { exit_if_off; exit 1; }
+            else
+                legacy_stop
+                # A fresh pet is already shown: a toggle from "not running" means show.
+                CODEPET_BIN="$BIN" "$PET" start >/dev/null || {
+                    exit_if_off
+                    echo "$PROG: could not start the desktop pet ($PET)" >&2
+                    exit 1
+                }
+            fi
+            pet_leaving
+            exit 0 ;;
+    esac
+fi
+
+# ---- Quickshell engine (CODEPET_PET_ENGINE=quickshell) ----
+
+if ! command -v "$QS" >/dev/null 2>&1; then
+    echo "$PROG: Quickshell ($QS) is not installed" >&2
+    exit 1
+fi
 
 case "$VERB" in
     card)

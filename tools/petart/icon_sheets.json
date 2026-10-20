@@ -73,6 +73,20 @@
       "food"
      ],
      "why": "operator 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
+    },
+    {
+     "source": "raw-v06/wash-v06.g1.key.png",
+     "sha256": "e88038178dbe8973391967e881358a2e8137148245fdc5df9d3984f7dea6bc7a",
+     "key": "#00FF00",
+     "grid": [
+      1,
+      1
+     ],
+     "pad": 0.06,
+     "ids": [
+      "wash"
+     ],
+     "why": "operator 2026-10-20: Bath is bubbles; opaque bubbles replace the see-through ones, which keyed too faint"
     }
    ],
    "added_ids": [
@@ -129,6 +143,20 @@
       "food"
      ],
      "why": "operator 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
+    },
+    {
+     "source": "raw-v06/wash-v06.g1.key.png",
+     "sha256": "e88038178dbe8973391967e881358a2e8137148245fdc5df9d3984f7dea6bc7a",
+     "key": "#00FF00",
+     "grid": [
+      1,
+      1
+     ],
+     "pad": 0.06,
+     "ids": [
+      "wash"
+     ],
+     "why": "operator 2026-10-20: Bath is bubbles; opaque bubbles replace the see-through ones, which keyed too faint"
     }
    ]
   },

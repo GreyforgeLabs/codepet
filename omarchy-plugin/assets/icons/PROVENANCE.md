@@ -215,3 +215,74 @@ CELL CONTENTS (in exact order):
 (9) [row 2] an upright egg, cream with two orange spots.
 (10) [row 2] a four-point sparkle star, bright yellow.
 ```
+
+## 0.6 patches (2026-10-20)
+
+Care icon corrections for CodePet 0.6: Food is a meat on a bone, Drink a single water
+droplet, Bath a cluster of bubbles, Pet a hand (`care-floor/hand`) and Pin a push pin
+(`care-floor/pin`); the bar's food and bath badges became a meat on a bone and bubbles
+(their ids `badge_bowl` and `badge_tub` are kept). The floor and aquatic sets share the
+new food, water and bath art; the robot set keeps its own.
+
+- **Generation route:** xAI Grok Imagine (`image_edit` with the selected `care-floor.a1.png`
+  sheet as a style-only reference, or `image_gen` for the bar badges), through the Grok
+  CLI on the project owner's subscription. The OpenAI route was unavailable that day.
+- **Key normalisation:** Grok returned uneven green backgrounds. Each sheet's background
+  was flood-filled from the image border through green-dominant pixels to a flat
+  `#00FF00` (object pixels untouched; the icons contain no green). The extracted sources
+  are these normalised sheets; both hashes are listed. Extraction then follows the
+  pipeline above (`tools/petart/icons.py`, patches as listed in `icon_sheets.json`).
+- **Review:** by eye on dark and light backgrounds at 64, 40 and 20 px. The first Bath
+  bubbles were translucent and keyed too faint; the opaque `wash-v06` patch replaces them.
+
+| Patch sheet | Shipped ids | Generated sha256 | Normalised source sha256 |
+| --- | --- | --- | --- |
+| `raw-v06/care-v06.g1.key.png` (5×1) | care-floor: food, water, wash, hand, pin; care-aquatic: food, water, wash | `25b1b072666304c0def8708c261a84536b17b7a7fac9972ac0aaaeb91a59df34` | `68798cb62d638f881b7359ef89ea089d2e52f4904dce36b170bab15830359a33` |
+| `raw-v06/food-v06.g1.key.png` (1×1) | food (floor, aquatic) | `f6d373d07efc2ddb279bd3e57ca1cbcb496972e98bda4b95946643449e6ab122` | `6f601a7cf03277898edce3f17f70d0424f364d6588d17b61382ede80b4ce26f4` |
+| `raw-v06/wash-v06.g1.key.png` (1×1) | wash (floor, aquatic) | `e88038178dbe8973391967e881358a2e8137148245fdc5df9d3984f7dea6bc7a` | `e88038178dbe8973391967e881358a2e8137148245fdc5df9d3984f7dea6bc7a` |
+| `raw-v06/bar-v06.g1.key.png` (2×1) | bar: badge_bowl, badge_tub | `c523ec7c8c0935eac3b67e487b21e141fba6410fecf5a76875df0fad69445566` | `127615429d16c492c3e75ecd11914da3cf744637a1e3be5100cefe51f8f2967e` |
+
+Style reference for the painted patches: `care-floor.a1.png`, sha256
+`8460746af3d236b1d5a947b8c6ee119e96884c3dc71181334c79489e9a009cea`. Later patches win:
+`food-v06` and `wash-v06` replace those cells of `care-v06`.
+
+Prompts:
+
+```text
+Create a CodePet desktop pet care icon sheet.
+LAYOUT: a wide landscape 2:1 (2048x1024) image that is an icon sheet of exactly FIVE columns by ONE row (5 equal cells), read left to right. Exactly one object per cell, centred in its cell, with generous empty gutters so nothing crosses into another cell or touches the image edge. The same visual scale in every cell. Any small sparkle or bubble must touch its object.
+BACKGROUND: one perfectly flat, uniform, solid pure chroma green #00FF00 filling the entire image. No gradients, no floor, no ground line, no cast shadows, no drop shadows, no glow halos, no vignette, no text, no letters, no words, no numbers, no labels, no grid lines, no borders, no frames, no cards, tiles or panels behind the objects. Never use any green anywhere on the objects.
+STYLE: premium 2D hand-painted cute game art that matches the attached reference image exactly: the same soft painterly rendering, rich but restrained shading, soft glossy highlights, clean soft edges and a warm, friendly palette. Slightly chunky, rounded, toy-like proportions. Use the reference ONLY for painting style: do NOT draw the animal from the reference and do not copy its layout. Each icon is one single object (no animals), drawn large so it fills about 70 percent of its cell, in a gentle three-quarter front view. Every icon must read clearly at 40 px: a bold, simple silhouette, strong value contrast, few small details.
+CELL CONTENTS (in exact order):
+(1) the classic cartoon meat on a bone: a big juicy rounded brown roasted drumstick of meat with a clean white bone sticking out of both ends, chunky knobby bone ends, glossy highlight. No plate, no bowl.
+(2) one single plump glossy water droplet, bright clear blue, classic teardrop shape with a white highlight. Nothing else: no bowl, no puddle, no splash.
+(3) a cluster of five or six round soap bubbles of different sizes, translucent pale blue and lilac with rainbow sheen and white highlights, touching each other. No tub, no duck, no sponge, no water.
+(4) one friendly open cartoon hand, palm facing us, fingers together and thumb out, as if about to gently pet, warm light peach skin tone with soft shading, a short cuff at the wrist. Only the hand.
+(5) a classic push pin (thumbtack) seen at a slight angle: a glossy round red plastic head on a short wide collar, with a short silver metal needle pointing down and to the left.
+```
+
+```text
+Create a CodePet desktop pet care icon.
+LAYOUT: a square 1:1 (1024x1024) image holding exactly ONE object, centred, with generous empty space all around it so it never touches the image edge.
+BACKGROUND: one perfectly flat, uniform, solid pure chroma green #00FF00 filling the entire image, the same green everywhere. No gradients, no panels, no floor, no shadows, no glow, no text. Never use any green on the object.
+STYLE: premium 2D hand-painted cute game art matching the attached reference image's painting style only (soft painterly rendering, soft glossy highlights, warm friendly palette, chunky rounded toy-like proportions). Do not copy the reference layout.
+OBJECT: the classic cartoon "meat on a bone" food icon: ONE big oval chunk of juicy roasted brown meat with ONE single straight white bone running straight through it diagonally, so exactly TWO rounded double-knob bone ends stick out, one at the upper right and one at the lower left. Only two bone ends in total. Glossy highlight on the meat. No plate, no bowl, no second bone, no crossed bones.
+```
+
+```text
+Create a CodePet desktop pet care icon.
+LAYOUT: a square 1:1 (1024x1024) image holding exactly ONE object group, centred, with generous empty space all around it.
+BACKGROUND: one perfectly flat, uniform, solid pure chroma green #00FF00 filling the entire image, the same green everywhere. No gradients, no panels, no shadows, no glow, no text. Never use any green on the object.
+STYLE: premium 2D hand-painted cute game art matching the attached reference image's painting style only (soft painterly rendering, glossy highlights, chunky rounded toy-like shapes).
+OBJECT: a tight cluster of four round soap bubbles of different sizes overlapping each other. The bubbles are OPAQUE (not see-through): solid pale sky-blue fills with a soft lilac-pink rim sheen, a darker blue outline edge, and a bold curved white highlight on each. The background must not show through any bubble. Nothing else: no tub, no water, no sponge.
+```
+
+```text
+Create a CodePet status-bar badge sheet.
+LAYOUT: a landscape 2:1 (2048x1024) image that is an icon sheet of exactly TWO columns by ONE row (2 equal cells), read left to right. Exactly one object per cell, centred in its cell, with generous empty gutters so nothing crosses into another cell or touches the image edge. The same visual scale in every cell. Any small sparkle or bubble must touch its object.
+BACKGROUND: one perfectly flat, uniform, solid pure chroma green #00FF00 filling the entire image. No gradients, no floor, no ground line, no cast shadows, no drop shadows, no glow halos, no vignette, no text, no letters, no words, no numbers, no labels, no grid lines, no borders, no frames, no cards, tiles or panels behind the objects. Never use any green anywhere on the objects.
+STYLE: bold, simplified sticker-like badge icons for a tiny 16 to 20 pixel status bar. Each icon is a chunky, very simple shape with a THICK dark navy outline (about 6 percent of the icon width), flat bright fills, at most one small white highlight, no painted texture, no gradients, no fine details, no thin lines. Shapes must stay recognisable when shrunk to 16 pixels. Each icon fills about 75 percent of its cell, seen straight from the front.
+CELL CONTENTS (in exact order):
+(1) the classic cartoon meat on a bone: a brown rounded meat drumstick with a white bone poking out of both ends, chunky bone knobs.
+(2) a cluster of three round soap bubbles of different sizes touching each other, pale blue fills with one white highlight each.
+```

@@ -880,9 +880,8 @@ mod tests {
             _ => None,
         })
         .unwrap();
-        let paths =
-            StatePaths::resolve(|k| (k == "HOME").then(|| t.path().as_os_str().to_owned()))
-                .unwrap();
+        let paths = StatePaths::resolve(|k| (k == "HOME").then(|| t.path().as_os_str().to_owned()))
+            .unwrap();
         let ctx = Ctx::new(env, paths, t.path().join("codepet")).unwrap();
         let path = grok::file_path(&ctx);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -895,10 +894,7 @@ mod tests {
         let foreign =
             "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"/bin/echo hi\"}]}]}}";
         fs::write(&path, foreign).unwrap();
-        assert_eq!(
-            grok::connect(&ctx).unwrap_err().reason,
-            Reason::Blocked
-        );
+        assert_eq!(grok::connect(&ctx).unwrap_err().reason, Reason::Blocked);
         assert_eq!(fs::read_to_string(&path).unwrap(), foreign);
     }
 

@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Ui
-import qs.Commons
+import qs.Commons as Commons
 import "CodePetBar.js" as Model
 import "DesktopPetFlow.js" as DesktopFlow
 import "petstate.js" as PetState
@@ -403,14 +403,14 @@ BarWidget {
     }
 
     // ------------------------------------------------------------- cell
-    readonly property color fg: bar ? bar.barForeground : Color.foreground
-    readonly property string fam: bar ? bar.fontFamily : Style.font.family
+    readonly property color fg: bar ? bar.barForeground : Commons.Color.foreground
+    readonly property string fam: bar ? bar.fontFamily : Commons.Style.font.family
     readonly property real thumbSize: Math.round(root.barSize * 0.76)
     readonly property real badgeSize: Math.max(16, Math.min(20, Math.round(root.barSize * 0.66)))
     readonly property string labelText: root.cell.hi ? Model.t(Strings.STRINGS, "bar.hi", "floor", {}) : root.cell.label
 
-    implicitWidth: vertical ? barSize : cellRow.implicitWidth + Style.spaceReal(12)
-    implicitHeight: vertical ? cellRow.implicitHeight + Style.spaceReal(8) : barSize
+    implicitWidth: vertical ? barSize : cellRow.implicitWidth + Commons.Style.spaceReal(12)
+    implicitHeight: vertical ? cellRow.implicitHeight + Commons.Style.spaceReal(8) : barSize
 
     Accessible.role: Accessible.Button
     Accessible.name: {
@@ -423,7 +423,7 @@ BarWidget {
     component Label: Text {
         color: root.fg
         font.family: root.fam
-        font.pixelSize: Style.font.body
+        font.pixelSize: Commons.Style.font.body
         renderType: Text.NativeRendering
         textFormat: Text.PlainText
     }
@@ -432,8 +432,8 @@ BarWidget {
         id: cellRow
         anchors.centerIn: parent
         columns: root.vertical ? 1 : 3
-        columnSpacing: Style.space(4)
-        rowSpacing: Style.space(2)
+        columnSpacing: Commons.Style.space(4)
+        rowSpacing: Commons.Style.space(2)
         horizontalItemAlignment: Grid.AlignHCenter
         verticalItemAlignment: Grid.AlignVCenter
 

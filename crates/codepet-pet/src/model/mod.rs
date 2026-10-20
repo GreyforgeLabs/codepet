@@ -3,7 +3,7 @@ pub mod barstate;
 pub mod catalog;
 pub mod face;
 pub mod js;
-pub mod settings;
-pub mod work;
 #[cfg(test)]
 mod parity;
+pub mod settings;
+pub mod work;

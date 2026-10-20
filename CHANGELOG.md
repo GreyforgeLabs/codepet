@@ -2,17 +2,35 @@
 
 All notable changes to CodePet.
 
-## 0.5.1 — Unreleased local development
+## 0.6.0 — 2026-10-20
 
-- Home's care bubble is smaller and sits below the pet's head. Snack, drink, play,
-  bath, treats and petting play an original voice for that animal (three takes)
-  plus a short action sound. Calm stays quiet.
+- **A native desktop pet.** The pet on your desktop is now `codepet-pet`, a small Rust
+  program drawn directly through the Wayland layer shell. Measured over one minute on
+  the development machine it used about 3 MB of memory (PSS), no measurable CPU and
+  under one wakeup a second, where the 0.5 Quickshell pet used 38 to 168 MB, 0.25 to
+  0.3 % of a core and 26 to 60 wakeups a second. It sleeps until something changes:
+  no polling, one timer at a time, and the pictures of only the current pet.
+- Same behaviour as before: roaming, drag, Pin/Roam, the care wheel, care feedback,
+  celebrations, observed-client bubbles, the work badge, placement memory, Calm mode,
+  Off and "Pet on my desktop". Its rules are a Rust port of the QML ones, checked
+  against them on 1,920 cases. A click opens the compact card window. See
+  [desktop controls](docs/desktop-overlay.md).
+- **HIDE.** Hovering the pet offers a **HIDE** pill. A click hides it and a toast names
+  the show/hide key. Super + Alt + P (unused by Omarchy's defaults) is the suggested
+  binding for `codepet-overlay toggle`; the README has the one line.
+- **Clearer care icons.** Food is a meat on a bone, Drink a water droplet, Bath a cluster
+  of bubbles, Pet a hand and Pin a push pin, in the wheel, Home and the bar badges.
+- **Softer sounds.** Care plays one short, gentle sound per action (mallet notes, a
+  water drop, bubble pops); the synthesized animal voices are gone.
+- Home's care bubble is smaller and sits below the pet's head.
 - Helpers: a row that says Tap to connect does it on that tap and opens the sheet.
   An empty Grok hook file is filled; a file that is not CodePet's is left alone.
   A Grok dispatch wrapper reports the real binary's version.
-- Desktop pet: hovering it offers a **HIDE** pill. A click hides the pet and a toast
-  names the show/hide key. Super + Alt + P (unused by Omarchy's defaults) is the
-  suggested binding for `codepet-overlay toggle`; the README has the one line.
+- `CODEPET_PET_ENGINE=quickshell` keeps the previous Quickshell desktop pet as a
+  fallback. The bar plugin and Work window remain Qt Quick.
+- The bar plugin reads Omarchy's theme through a qualified `qs.Commons` import, so its
+  popup keeps its colours and sizes under Quickshell 0.3.2 / Omarchy 4.0.6, where a
+  plain import resolves `Color` to another type.
 
 ## 0.5.0 — 2026-10-18
 

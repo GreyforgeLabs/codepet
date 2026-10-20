@@ -1,6 +1,6 @@
 import QtQuick
 import qs.Ui
-import qs.Commons
+import qs.Commons as Commons
 
 // The CodePet popup card (SPEC-v0.3 §3): an Omarchy KeyboardPanel (the PopupCard API with
 // keyboard focus on demand, so the name field and the typed-name confirmations can be
@@ -15,10 +15,10 @@ KeyboardPanel {
     property string startPage: ""
     readonly property Item app: content
 
-    padding: Style.space(12)
-    readonly property real sideInset: padding * 2 + Border.left(borderSpec) + Border.right(borderSpec)
+    padding: Commons.Style.space(12)
+    readonly property real sideInset: padding * 2 + Commons.Border.left(borderSpec) + Commons.Border.right(borderSpec)
     contentWidth: fittedContentWidth(content.implicitWidth + sideInset)
-    contentHeight: fittedContentHeight(content.implicitHeight, Math.min(Style.space(480), Math.floor(screenH * 0.9)))
+    contentHeight: fittedContentHeight(content.implicitHeight, Math.min(Commons.Style.space(480), Math.floor(screenH * 0.9)))
 
     // Opens a page of an already open popup ("" = Home).
     function show(page) {

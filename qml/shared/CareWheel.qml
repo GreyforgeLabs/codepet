@@ -29,13 +29,13 @@ Rectangle {
         Repeater {
             id: actions
             model: [
-                { action: "pet", label: "Pet", icon: "care-floor/heart", x: 94, y: 8 },
+                { action: "pet", label: "Pet", icon: "care-floor/hand", x: 94, y: 8 },
                 { action: "food", label: "Snack", icon: "care-" + wheel.careSet + "/food", x: 176, y: 68 },
                 { action: "water", label: "Drink", icon: "care-" + wheel.careSet + "/water", x: 176, y: 154 },
                 { action: "wash", label: "Bath", icon: "care-" + wheel.careSet + "/wash", x: 132, y: 234 },
                 { action: "play", label: "Play", icon: "care-" + wheel.careSet + "/play", x: 56, y: 234 },
                 { action: "sleep", label: wheel.paused ? "Resume" : wheel.sleeping ? "Wake" : "Nap", icon: "care-floor/" + (wheel.sleeping || wheel.paused ? "sun_wake" : "bed"), x: 12, y: 154 },
-                { action: "pin", label: wheel.pinned ? "Roam" : "Pin", icon: "status/screen", x: 12, y: 68 }
+                { action: "pin", label: wheel.pinned ? "Roam" : "Pin", icon: "care-floor/pin", x: 12, y: 68 }
             ]
             Rectangle {
                 required property var modelData

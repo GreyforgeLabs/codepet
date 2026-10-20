@@ -20,28 +20,84 @@ pub struct StateMeta {
 }
 
 const STATE_NAMES: [&str; 15] = [
-    "idle", "locomotion", "food", "water", "play", "wash", "bathroom", "sleep_enter", "sleep", "sleep_exit",
-    "celebrate", "working", "waiting", "needs_care", "error",
+    "idle",
+    "locomotion",
+    "food",
+    "water",
+    "play",
+    "wash",
+    "bathroom",
+    "sleep_enter",
+    "sleep",
+    "sleep_exit",
+    "celebrate",
+    "working",
+    "waiting",
+    "needs_care",
+    "error",
 ];
 
 fn default_meta(name: &str) -> StateMeta {
-    let (frames, ms, looping, reduced, prio, intr): (&[&str], f64, bool, f64, f64, &str) = match name {
-        "locomotion" => (&["b08", "b09", "b10", "b11"], 200.0, true, 0.0, 20.0, "any"),
-        "food" => (&["b03", "c00", "c01", "c00", "c01", "b04"], 400.0, false, 1.0, 70.0, "higher"),
-        "water" => (&["b03", "c02", "c03", "c02", "c03", "b04"], 400.0, false, 1.0, 70.0, "higher"),
-        "play" => (&["b03", "c04", "c05", "c04", "c05", "b04"], 400.0, false, 1.0, 70.0, "higher"),
-        "wash" => (&["b00", "c06", "c07", "c06", "c07", "b04"], 400.0, false, 1.0, 70.0, "higher"),
-        "bathroom" => (&["b03", "c08", "c08", "b00"], 600.0, false, 1.0, 70.0, "higher"),
-        "sleep_enter" => (&["c09", "b07"], 600.0, false, 1.0, 90.0, "none"),
-        "sleep" => (&["b07"], 1000.0, true, 0.0, 85.0, "higher"),
-        "sleep_exit" => (&["c10", "b00"], 600.0, false, 1.0, 90.0, "none"),
-        "celebrate" => (&["c11", "b04", "c11", "b04"], 400.0, false, 0.0, 60.0, "higher"),
-        "working" => (&["b04", "b00"], 800.0, true, 0.0, 40.0, "any"),
-        "waiting" => (&["b02", "b00"], 800.0, true, 0.0, 35.0, "any"),
-        "needs_care" => (&["b05"], 800.0, true, 0.0, 50.0, "any"),
-        "error" => (&["b06"], 1000.0, true, 0.0, 100.0, "higher"),
-        _ => (&["b00", "b00", "b01", "b00"], 600.0, true, 0.0, 0.0, "any"),
-    };
+    let (frames, ms, looping, reduced, prio, intr): (&[&str], f64, bool, f64, f64, &str) =
+        match name {
+            "locomotion" => (&["b08", "b09", "b10", "b11"], 200.0, true, 0.0, 20.0, "any"),
+            "food" => (
+                &["b03", "c00", "c01", "c00", "c01", "b04"],
+                400.0,
+                false,
+                1.0,
+                70.0,
+                "higher",
+            ),
+            "water" => (
+                &["b03", "c02", "c03", "c02", "c03", "b04"],
+                400.0,
+                false,
+                1.0,
+                70.0,
+                "higher",
+            ),
+            "play" => (
+                &["b03", "c04", "c05", "c04", "c05", "b04"],
+                400.0,
+                false,
+                1.0,
+                70.0,
+                "higher",
+            ),
+            "wash" => (
+                &["b00", "c06", "c07", "c06", "c07", "b04"],
+                400.0,
+                false,
+                1.0,
+                70.0,
+                "higher",
+            ),
+            "bathroom" => (
+                &["b03", "c08", "c08", "b00"],
+                600.0,
+                false,
+                1.0,
+                70.0,
+                "higher",
+            ),
+            "sleep_enter" => (&["c09", "b07"], 600.0, false, 1.0, 90.0, "none"),
+            "sleep" => (&["b07"], 1000.0, true, 0.0, 85.0, "higher"),
+            "sleep_exit" => (&["c10", "b00"], 600.0, false, 1.0, 90.0, "none"),
+            "celebrate" => (
+                &["c11", "b04", "c11", "b04"],
+                400.0,
+                false,
+                0.0,
+                60.0,
+                "higher",
+            ),
+            "working" => (&["b04", "b00"], 800.0, true, 0.0, 40.0, "any"),
+            "waiting" => (&["b02", "b00"], 800.0, true, 0.0, 35.0, "any"),
+            "needs_care" => (&["b05"], 800.0, true, 0.0, 50.0, "any"),
+            "error" => (&["b06"], 1000.0, true, 0.0, 100.0, "higher"),
+            _ => (&["b00", "b00", "b01", "b00"], 600.0, true, 0.0, 0.0, "any"),
+        };
     StateMeta {
         name: name.into(),
         frames: frames.iter().map(|f| f.to_string()).collect(),
@@ -59,7 +115,11 @@ pub fn normalize_state(state: &str) -> &str {
     if state == "walk" {
         return "locomotion";
     }
-    STATE_NAMES.iter().find(|s| **s == state).copied().unwrap_or("idle")
+    STATE_NAMES
+        .iter()
+        .find(|s| **s == state)
+        .copied()
+        .unwrap_or("idle")
 }
 
 #[derive(Clone, Debug, Default)]
@@ -74,7 +134,9 @@ impl Species {
         let ok = !id.is_empty()
             && id.len() <= 32
             && id.as_bytes()[0].is_ascii_lowercase()
-            && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
         if !ok {
             return None;
         }
@@ -83,7 +145,10 @@ impl Species {
             return None;
         }
         let manifest: Value = serde_json::from_slice(&text).ok()?;
-        manifest.is_object().then(|| Species { id: id.into(), manifest })
+        manifest.is_object().then(|| Species {
+            id: id.into(),
+            manifest,
+        })
     }
 
     pub fn aquatic(&self) -> bool {
@@ -105,7 +170,11 @@ impl Species {
         let states = self.manifest.get("states");
         let own = states.and_then(|s| s.get(name)).filter(|v| v.is_object());
         if own.is_none() {
-            if let Some(idle) = states.and_then(|s| s.get("idle")).and_then(|i| i.get("frames")).and_then(Value::as_array) {
+            if let Some(idle) = states
+                .and_then(|s| s.get("idle"))
+                .and_then(|i| i.get("frames"))
+                .and_then(Value::as_array)
+            {
                 meta.frames = idle.iter().map(frame_name).collect();
             }
         }
@@ -140,7 +209,12 @@ impl Species {
     }
 
     pub fn stage_count(&self) -> u32 {
-        self.manifest.get("stages").and_then(Value::as_array).map(|a| a.len() as u32).filter(|n| *n > 0).unwrap_or(3)
+        self.manifest
+            .get("stages")
+            .and_then(Value::as_array)
+            .map(|a| a.len() as u32)
+            .filter(|n| *n > 0)
+            .unwrap_or(3)
     }
 
     pub fn clamp_stage(&self, stage: f64) -> u32 {
@@ -155,8 +229,17 @@ impl Species {
         if entry.contains('/') {
             return entry.replace("{stage}", &stage.to_string());
         }
-        let has_ext = entry.rsplit_once('.').is_some_and(|(_, e)| !e.is_empty() && e.bytes().all(|b| b.is_ascii_alphanumeric()));
-        format!("s{stage}/{}", if has_ext { entry.to_string() } else { format!("{entry}.webp") })
+        let has_ext = entry
+            .rsplit_once('.')
+            .is_some_and(|(_, e)| !e.is_empty() && e.bytes().all(|b| b.is_ascii_alphanumeric()));
+        format!(
+            "s{stage}/{}",
+            if has_ext {
+                entry.to_string()
+            } else {
+                format!("{entry}.webp")
+            }
+        )
     }
 
     /// The frame to show: (relative path, may mirror).
@@ -165,11 +248,18 @@ impl Species {
         let n = meta.frames.len() as i64;
         let r = meta.reduced_frame;
         let f = if reduced {
-            if r.is_finite() && r >= 0.0 && (r as i64) < n { r.floor() as i64 } else { 0 }
+            if r.is_finite() && r >= 0.0 && (r as i64) < n {
+                r.floor() as i64
+            } else {
+                0
+            }
         } else {
             frame.rem_euclid(n)
         };
-        (self.frame_path(&meta.frames[f as usize], self.clamp_stage(stage)), meta.mirror)
+        (
+            self.frame_path(&meta.frames[f as usize], self.clamp_stage(stage)),
+            meta.mirror,
+        )
     }
 
     fn geometry(&self) -> Option<&Value> {
@@ -188,7 +278,12 @@ impl Species {
             .and_then(|g| box4(g.get("viewBox")))
             .filter(|b| b[2] > 0.0 && b[3] > 0.0)
             .unwrap_or([0.0, 0.0, 192.0, 192.0]);
-        let water = if self.aquatic() { g.and_then(|g| g.get("water")).and_then(|w| valid_box(w.get("outer"))) } else { None };
+        let water = if self.aquatic() {
+            g.and_then(|g| g.get("water"))
+                .and_then(|w| valid_box(w.get("outer")))
+        } else {
+            None
+        };
         let own = g
             .and_then(|g| g.get("stageHitBoxes"))
             .and_then(|s| s.get(self.clamp_stage(stage).to_string()))
@@ -202,7 +297,12 @@ impl Species {
         }
         let left = (x * sx).clamp(0.0, px);
         let top = ((b[1] - vb[1]) * sy).clamp(0.0, px);
-        [left, top, (b[2] * sx).min(px - left).max(0.0), (b[3] * sy).min(px - top).max(0.0)]
+        [
+            left,
+            top,
+            (b[2] * sx).min(px - left).max(0.0),
+            (b[3] * sy).min(px - top).max(0.0),
+        ]
     }
 
     /// (px per 200 ms tick, pause range in ticks, airborne frames).
@@ -218,10 +318,21 @@ impl Species {
             .unwrap_or((40, 110));
         let frames = |v: Option<&Value>| -> Vec<i64> {
             v.and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_f64).filter(|n| *n >= 0.0 && n.fract() == 0.0).map(|n| n as i64).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_f64)
+                        .filter(|n| *n >= 0.0 && n.fract() == 0.0)
+                        .map(|n| n as i64)
+                        .collect()
+                })
                 .unwrap_or_default()
         };
-        let mut air = frames(self.manifest.get("states").and_then(|s| s.get("locomotion")).and_then(|s| s.get("airborneFrames")));
+        let mut air = frames(
+            self.manifest
+                .get("states")
+                .and_then(|s| s.get("locomotion"))
+                .and_then(|s| s.get("airborneFrames")),
+        );
         if air.is_empty() {
             air = frames(l.and_then(|l| l.get("airborneFrames")));
         }
@@ -229,7 +340,13 @@ impl Species {
             air = frames(l.and_then(|l| l.get("pxFrames")));
         }
         let px = l.and_then(|l| l.get("pxPerTick")).and_then(Value::as_f64);
-        let px = if self.aquatic() { 0.0 } else { px.filter(|p| p.is_finite() && *p >= 0.0).map(|p| p.min(16.0)).unwrap_or(5.0) };
+        let px = if self.aquatic() {
+            0.0
+        } else {
+            px.filter(|p| p.is_finite() && *p >= 0.0)
+                .map(|p| p.min(16.0))
+                .unwrap_or(5.0)
+        };
         (px, pause, air)
     }
 }
@@ -291,7 +408,9 @@ pub fn interrupt_of(meta: &StateMeta) -> &str {
     match meta.interrupt.as_str() {
         s @ ("any" | "higher" | "none") => s,
         _ => match meta.name.as_str() {
-            "food" | "water" | "play" | "wash" | "bathroom" | "sleep" | "celebrate" | "error" => "higher",
+            "food" | "water" | "play" | "wash" | "bathroom" | "sleep" | "celebrate" | "error" => {
+                "higher"
+            }
             "sleep_enter" | "sleep_exit" => "none",
             _ => "any",
         },
@@ -341,7 +460,11 @@ pub fn duration_ms(meta: &StateMeta) -> Option<u64> {
     if meta.looping {
         return None;
     }
-    let r = if meta.repeats.is_finite() && meta.repeats >= 1.0 { meta.repeats.floor() as u64 } else { 1 };
+    let r = if meta.repeats.is_finite() && meta.repeats >= 1.0 {
+        meta.repeats.floor() as u64
+    } else {
+        1
+    };
     Some(cycle_ms(meta) * r)
 }
 
@@ -399,7 +522,10 @@ mod tests {
     #[test]
     fn missing_states_fall_back_to_idle_pictures_with_their_own_timing() {
         let m = cat().state_meta("food");
-        assert_eq!(m.frames, vec!["b00.webp", "b00.webp", "b01.webp", "b00.webp"]);
+        assert_eq!(
+            m.frames,
+            vec!["b00.webp", "b00.webp", "b01.webp", "b00.webp"]
+        );
         assert_eq!(m.frame_ms, 400.0);
         assert!(!m.looping);
         assert_eq!(cat().state_meta("walk").name, "locomotion");
@@ -409,7 +535,10 @@ mod tests {
     #[test]
     fn frame_paths_and_hit_boxes() {
         let c = cat();
-        assert_eq!(c.resolve(2.0, "idle", 2, false), ("s2/b01.webp".to_string(), true));
+        assert_eq!(
+            c.resolve(2.0, "idle", 2, false),
+            ("s2/b01.webp".to_string(), true)
+        );
         assert_eq!(c.resolve(9.0, "idle", 6, false).0, "s3/b01.webp");
         let s = 112.0 / 192.0;
         let r = c.hit_rect(112.0, false, 3.0);
@@ -417,7 +546,10 @@ mod tests {
         let r1 = c.hit_rect(112.0, false, 1.0);
         assert!((r1[1] - 45.0 * s).abs() < 1e-9, "stage box");
         let m = c.hit_rect(112.0, true, 3.0);
-        assert!((m[0] - (192.0 - 186.0) * s).abs() < 1e-9, "mirrored about the centre");
+        assert!(
+            (m[0] - (192.0 - 186.0) * s).abs() < 1e-9,
+            "mirrored about the centre"
+        );
     }
 
     #[test]
@@ -426,10 +558,17 @@ mod tests {
         let food = c.state_meta("food");
         let idle = c.state_meta("idle");
         assert!(display_transient(&idle, Some(&food)));
-        assert!(!admit_replace(Some(&c.state_meta("sleep_enter")), &c.state_meta("error")));
+        assert!(!admit_replace(
+            Some(&c.state_meta("sleep_enter")),
+            &c.state_meta("error")
+        ));
         assert_eq!(duration_ms(&food), Some(1600), "idle pictures, food timing");
         assert_eq!(duration_ms(&idle), None);
-        assert_eq!(frame_at(&food, 100, false), 3, "one-shot holds its last frame");
+        assert_eq!(
+            frame_at(&food, 100, false),
+            3,
+            "one-shot holds its last frame"
+        );
         assert_eq!(frame_at(&idle, 2, false), 0);
         assert_eq!(frame_at(&idle, 6, false), 2);
         assert_eq!(frame_at(&food, 0, true), 1);

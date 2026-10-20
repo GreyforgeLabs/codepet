@@ -3,10 +3,10 @@
 //! Each runs on a short-lived thread that reports back through a channel; a request that
 //! does not answer in time is ended. Nothing here polls or runs while idle.
 
+use calloop::channel::Sender;
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Stdio};
-use calloop::channel::Sender;
 use std::time::Duration;
 
 const MAX_FRAME: usize = 1 << 20;
@@ -15,8 +15,8 @@ const MAX_FRAME: usize = 1 << 20;
 pub enum JobResult {
     /// A care request's answer: (action, response envelope).
     Care(String, Value),
-    /// A work-rpc answer: (method, response).
-    Work(String, Value),
+    /// A work-rpc request finished (the pet re-reads work-state.json).
+    Work,
     /// A detached helper finished.
     Done(&'static str),
 }
@@ -27,7 +27,9 @@ fn fail(code: &str, message: &str) -> Value {
 
 /// Runs `argv` with one request line on stdin and reads one response line (bounded time).
 fn request_line(argv: &[String], frame: &str, timeout: Duration) -> Value {
-    let Some((cmd, args)) = argv.split_first() else { return fail("CLIENT_ERROR", "No command.") };
+    let Some((cmd, args)) = argv.split_first() else {
+        return fail("CLIENT_ERROR", "No command.");
+    };
     let child = Command::new(cmd)
         .args(args)
         .stdin(Stdio::piped())
@@ -66,18 +68,33 @@ fn request_line(argv: &[String], frame: &str, timeout: Duration) -> Value {
         Some(l) => serde_json::from_str::<Value>(l.trim())
             .ok()
             .filter(|v| v.get("ok").is_some_and(Value::is_boolean))
-            .unwrap_or_else(|| fail("PROTOCOL_MISMATCH", "CodePet returned an unreadable answer.")),
+            .unwrap_or_else(|| {
+                fail(
+                    "PROTOCOL_MISMATCH",
+                    "CodePet returned an unreadable answer.",
+                )
+            }),
     }
 }
 
 /// One `codepet rpc` request (v1 envelope) on a worker thread.
-pub fn rpc(bin: &str, id: &str, method: &str, params: Value, action: String, tx: Sender<JobResult>) {
-    let frame = serde_json::json!({"v": 1, "id": id, "method": method, "params": params}).to_string();
+pub fn rpc(
+    bin: &str,
+    id: &str,
+    method: &str,
+    params: Value,
+    action: String,
+    tx: Sender<JobResult>,
+) {
+    let frame =
+        serde_json::json!({"v": 1, "id": id, "method": method, "params": params}).to_string();
     let argv = vec![bin.to_string(), "rpc".to_string()];
     let id = id.to_string();
     std::thread::spawn(move || {
         let mut resp = request_line(&argv, &frame, Duration::from_secs(15));
-        if resp.get("ok") == Some(&Value::Bool(true)) && resp.get("id").and_then(Value::as_str) != Some(id.as_str()) {
+        if resp.get("ok") == Some(&Value::Bool(true))
+            && resp.get("id").and_then(Value::as_str) != Some(id.as_str())
+        {
             resp = fail("PROTOCOL_MISMATCH", "Unexpected response envelope.");
         }
         let _ = tx.send(JobResult::Care(action, resp));
@@ -88,10 +105,9 @@ pub fn rpc(bin: &str, id: &str, method: &str, params: Value, action: String, tx:
 pub fn work_rpc(bin: &str, method: &str, params: Value, tx: Sender<JobResult>) {
     let frame = serde_json::json!({"method": method, "params": params}).to_string();
     let argv = vec![bin.to_string(), "work-rpc".to_string()];
-    let method = method.to_string();
     std::thread::spawn(move || {
-        let resp = request_line(&argv, &frame, Duration::from_secs(30));
-        let _ = tx.send(JobResult::Work(method, resp));
+        let _ = request_line(&argv, &frame, Duration::from_secs(30));
+        let _ = tx.send(JobResult::Work);
     });
 }
 
@@ -115,7 +131,13 @@ pub fn detached(label: &'static str, argv: Vec<String>, tx: Option<Sender<JobRes
 /// Runs a helper and returns its trimmed stdout (bounded), for the work-window check.
 pub fn output(argv: &[&str], timeout: Duration) -> Option<String> {
     let (cmd, args) = argv.split_first()?;
-    let mut child = Command::new(cmd).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    let mut child = Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
     let mut out = child.stdout.take()?;
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
