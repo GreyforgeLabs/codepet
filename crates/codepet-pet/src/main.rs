@@ -20,6 +20,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::Duration;
 
+/// sh -c script for `start`: closes inherited descriptors above 2 (only numeric names
+/// from /proc/self/fd reach `exec N>&-`), then runs `setsid -f <exe> run`.
+const DETACH: &str = r#"for f in /proc/self/fd/*; do n=${f##*/}; case "$n" in *[!0-9]*|'') continue ;; esac; [ "$n" -gt 2 ] && eval "exec $n>&-"; done; exec setsid -f "$0" run"#;
+
 const USAGE: &str = "usage: codepet-pet run | start | ctl VERB [ARGS...] | --version";
 
 fn ctl(paths: &paths::Paths, line: &str, timeout: Duration) -> Option<String> {
@@ -92,10 +96,12 @@ fn main() {
                 return;
             }
             let exe = std::env::current_exe().unwrap_or_else(|_| "codepet-pet".into());
-            let spawned = std::process::Command::new("setsid")
-                .arg("-f")
+            // A long-lived pet must not keep its starter's open files (a lock, a pipe):
+            // close every inherited descriptor above stderr, then detach with setsid.
+            let spawned = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(DETACH)
                 .arg(exe)
-                .arg("run")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())

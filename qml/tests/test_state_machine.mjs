@@ -53,7 +53,11 @@ test('shared QML never imports Quickshell', () => {
 
 test('DesktopPet: one cosmetic scheduler, single-shot wake and explicit care feedback, no transport', () => {
     const src = read('../shared/DesktopPet.qml').replace(/\/\/[^\n]*/g, '');
-    assert.equal(src.match(/Timer \{/g).length, 3);
+    assert.equal(src.match(/Timer \{/g).length, 4);
+    // The HIDE pill's linger: single-shot, armed only when the pointer leaves the pet.
+    const linger = src.slice(src.indexOf('id: hideLinger'), src.indexOf('id: careFeedbackTimer'));
+    assert.match(linger, /repeat: false/);
+    assert.doesNotMatch(linger, /running:/, 'the linger never polls while idle');
     assert.match(src, /objectName: "desktopPet\.cosmeticTimer"/);
     const wake = src.slice(src.indexOf('objectName: "desktopPet.wakeTimer"'));
     assert.match(wake.slice(0, 200), /repeat: false/, 'the wake timer is single-shot');

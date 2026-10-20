@@ -71,7 +71,7 @@ if command[0]=='restart-bar':
 print(json.dumps(s),flush=True)
 ''')
             helper.chmod(0o700)
-            env = {"HOME": str(root / "home"), "PATH": "/usr/bin:/bin", "XDG_RUNTIME_DIR": ipcdir,
+            env = {"LANG": "C.UTF-8", "HOME": str(root / "home"), "PATH": "/usr/bin:/bin", "XDG_RUNTIME_DIR": ipcdir,
                    "XDG_STATE_HOME": str(root / "state"), "XDG_CACHE_HOME": str(root / "cache"),
                    "QT_QPA_PLATFORM": "offscreen", "QT_FORCE_STDERR_LOGGING": "1",
                    "FIXTURE_ROOT": str(root), "FIXTURE_HELPER": str(helper)}

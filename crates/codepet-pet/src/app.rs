@@ -730,6 +730,11 @@ impl App {
         }
         self.last_view = None;
         self.scene.set_size(w as f64, h as f64, now_ms());
+        // Placement is stored as fractions of the free area: apply it once the size is known
+        // (the QML pet re-applied it on every resize as well).
+        if let Some(p) = self.placement.clone() {
+            self.scene.restore_placement(p.x, p.y, p.pinned, now_ms());
+        }
         self.scene
             .set_surface_active(self.surface_active(), now_ms());
     }
