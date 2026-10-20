@@ -109,7 +109,7 @@ class ReleaseDocs(unittest.TestCase):
     def test_archive_libc_requirement_is_separate_from_source_msrv(self):
         readme = read("README.md")
         self.assertIn("Release archive: x86_64 Linux with **glibc 2.39 or later**", readme)
-        self.assertIn("Source build: Rust 1.85 or later", readme)
+        self.assertIn("Source build: Rust 1.86 or later", readme)
         self.assertNotIn("glibc 2.34", readme)
 
     def test_pets_doc_covers_every_species(self):

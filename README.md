@@ -146,7 +146,7 @@ then close Work before upgrading. [Update and recovery details](docs/updates.md)
   memory/process limits, Bubblewrap and `prlimit`.
 - Release archive: x86_64 Linux with **glibc 2.39 or later**.
 - **Updates and Work launcher:** Python 3.11 or later; updates need user systemd.
-- Source build: Rust 1.85 or later, Cargo and a C compiler for bundled SQLite.
+- Source build: Rust 1.86 or later, Cargo and a C compiler for bundled SQLite.
 
 <details>
 <summary>Build and install from source</summary>

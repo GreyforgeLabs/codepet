@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 version = "0.6.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.86"
 license = "MIT"
 description = "A desktop coding pet for Omarchy: a Rust core with a QML bar widget and desktop overlay"
 repository = "https://github.com/GreyforgeLabs/codepet"
