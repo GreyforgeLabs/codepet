@@ -58,7 +58,7 @@
       "hand",
       "pin"
      ],
-     "why": "operator 2026-10-20: water is a single droplet, Bath is bubbles, Pet is a hand, Pin is a real push pin (Grok Imagine; ChatGPT image quota exhausted until Oct 24)"
+     "why": "owner review 2026-10-20: water is a single droplet, Bath is bubbles, Pet is a hand, Pin is a real push pin (Grok Imagine)"
     },
     {
      "source": "raw-v06/food-v06.g1.key.png",
@@ -72,7 +72,7 @@
      "ids": [
       "food"
      ],
-     "why": "operator 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
+     "why": "owner review 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
     },
     {
      "source": "raw-v06/wash-v06.g1.key.png",
@@ -86,7 +86,7 @@
      "ids": [
       "wash"
      ],
-     "why": "operator 2026-10-20: Bath is bubbles; opaque bubbles replace the see-through ones, which keyed too faint"
+     "why": "owner review 2026-10-20: Bath is bubbles; opaque bubbles replace the see-through ones, which keyed too faint"
     }
    ],
    "added_ids": [
@@ -128,7 +128,7 @@
       null,
       null
      ],
-     "why": "operator 2026-10-20: the same universal droplet, bubbles and food icons for aquatic species"
+     "why": "owner review 2026-10-20: the same universal droplet, bubbles and food icons for aquatic species"
     },
     {
      "source": "raw-v06/food-v06.g1.key.png",
@@ -142,7 +142,7 @@
      "ids": [
       "food"
      ],
-     "why": "operator 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
+     "why": "owner review 2026-10-20: food is the classic meat on a bone (one straight bone, two knobs), not a dog bowl; replaces the care-v06 sheet's four-knob drumstick"
     },
     {
      "source": "raw-v06/wash-v06.g1.key.png",
@@ -156,7 +156,7 @@
      "ids": [
       "wash"
      ],
-     "why": "operator 2026-10-20: Bath is bubbles; opaque bubbles replace the see-through ones, which keyed too faint"
+     "why": "owner review 2026-10-20: Bath is bubbles; opaque bubbles replace the see-through ones, which keyed too faint"
     }
    ]
   },
@@ -292,7 +292,7 @@
       "badge_bowl",
       "badge_tub"
      ],
-     "why": "operator 2026-10-20: the food badge is a meat on a bone and the bath badge is bubbles (ids kept for compatibility)"
+     "why": "owner review 2026-10-20: the food badge is a meat on a bone and the bath badge is bubbles (ids kept for compatibility)"
     }
    ]
   }

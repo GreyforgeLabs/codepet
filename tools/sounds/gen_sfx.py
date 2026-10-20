@@ -4,7 +4,7 @@
 Synthesized in this file. No recordings, sample packs or third-party audio.
 Writes omarchy-plugin/assets/sounds/action/{food,water,play,wash,pet,treat}.wav.
 
-0.6 redesign (operator: the 0.5.1 clicks sounded weird): the square-wave and noise
+0.6 redesign (owner review: the 0.5.1 clicks sounded odd): the square-wave and noise
 "animal voices" are gone. Every cue is one short, soft, musical sound: mallet notes
 (marimba-like partials with exponential decay), a water-drop bloop and bubble pops.
 Each cue stays under half a second and well below full scale.
