@@ -211,11 +211,33 @@ fn script_paths(text: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+/// `$HOME/.grok/bin/grok`, `${HOME}/...` or `~/...` inside a wrapper, plus absolute paths.
+fn script_targets(text: &str, home: &Path) -> Vec<PathBuf> {
+    let mut out = script_paths(text);
+    for raw in text.split(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '`') {
+        let Some(rest) = raw
+            .strip_prefix("$HOME/")
+            .or_else(|| raw.strip_prefix("${HOME}/"))
+            .or_else(|| raw.strip_prefix("~/"))
+        else {
+            continue;
+        };
+        if rest.is_empty() || rest.contains("..") || rest.starts_with('/') {
+            continue;
+        }
+        let path = home.join(rest);
+        if !out.iter().any(|p| p == &path) {
+            out.push(path);
+        }
+    }
+    out
+}
+
 /// The version of the binary at `bin` (file-only).
 pub fn version_of(env: &Env, client: ClientId, bin: &Path) -> Option<String> {
     if client == ClientId::Hermes {
         if let Some(text) = wrapper_text(bin) {
-            for p in script_paths(&text) {
+            for p in script_targets(&text, &env.home) {
                 for dir in p.ancestors().skip(1).take(4) {
                     if let Some(v) = pyproject_version(&dir.join("pyproject.toml")) {
                         return Some(v);
@@ -234,7 +256,7 @@ pub fn version_of(env: &Env, client: ClientId, bin: &Path) -> Option<String> {
                 return Some(v);
             }
         }
-        for p in script_paths(&text) {
+        for p in script_targets(&text, &env.home) {
             if p.file_name().and_then(|n| n.to_str()) == Some(tool) {
                 if let Some(v) = fs::canonicalize(&p)
                     .ok()
@@ -355,5 +377,32 @@ mod tests {
         assert_eq!(parse_version("v0.163.0-alpha"), Some((0, 163, 0)));
         assert_eq!(parse_version("1.2"), None);
         assert!(parse_version("0.161.9").unwrap() < tested_version(ClientId::Codex));
+    }
+
+    #[test]
+    fn grok_dispatch_wrapper_reports_the_real_version() {
+        let t = tempfile::tempdir().unwrap();
+        let h = t.path();
+        exe(&h.join(".grok/downloads/grok-1.0.62-linux-x86_64"), "elf");
+        fs::create_dir_all(h.join(".grok/bin")).unwrap();
+        symlink(
+            "../downloads/grok-1.0.62-linux-x86_64",
+            h.join(".grok/bin/grok"),
+        )
+        .unwrap();
+        exe(
+            &h.join(".local/bin/grok"),
+            "#!/bin/bash\nif [[ ${1-} == bot ]]; then\n  exec \"$HOME/.local/bin/grok-bot\" \"$@\"\nfi\nexec \"$HOME/.grok/bin/grok\" \"$@\"\n",
+        );
+        let env = Env::resolve(|k| match k {
+            "HOME" => Some(h.to_path_buf().into_os_string()),
+            "PATH" => Some(OsString::from(format!("{}/.local/bin", h.display()))),
+            _ => None,
+        })
+        .unwrap();
+        let g = detect(&env, ClientId::GrokCli);
+        assert_eq!(g.binary, Some(h.join(".local/bin/grok")));
+        assert_eq!(g.version.as_deref(), Some("1.0.62"));
+        assert!(g.installed());
     }
 }

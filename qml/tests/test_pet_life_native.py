@@ -262,7 +262,15 @@ try:
     accent, portrait = find('cp.confetti'), find('cp.pet')
     check(accent.property('visible') and accent.width() <= 32 and accent.x() + accent.width() < portrait.x(), 'growth accent is small and fully outside the pet')
     speech = find('cp.speech')
-    check(accent.y() >= speech.y() + speech.height(), 'growth accent is not obscured by the reward toast')
+    accent_at = accent.mapToScene(QPointF(0, 0))
+    speech_at = speech.mapToScene(QPointF(0, 0))
+    clear = (accent_at.y() + accent.height() <= speech_at.y() + 0.5
+             or speech_at.y() + speech.height() <= accent_at.y() + 0.5
+             or accent_at.x() + accent.width() <= speech_at.x() + 0.5
+             or speech_at.x() + speech.width() <= accent_at.x() + 0.5)
+    check(clear, 'growth accent is not obscured by the reward toast')
+    speech_on_pet = speech.mapToItem(portrait, QPointF(0, 0))
+    check(speech_on_pet.y() >= portrait.height() * 0.4, 'reward bubble stays below the pet head')
     QTest.qWait(900)
     window.setSnapshot(json.dumps(value(window, 'doc'))); app.processEvents()
     QTest.qWait(850)

@@ -122,7 +122,7 @@ if s.get('scout',{}).get('last_error_acknowledged'): s['scout'].update(last_erro
 print(json.dumps({'ok':True,'result':s}))
 ''')
             fake.chmod(0o700)
-            env = {"HOME": str(root / "home"), "PATH": "/usr/bin:/bin", "XDG_RUNTIME_DIR": runtime,
+            env = {"LANG": "C.UTF-8", "HOME": str(root / "home"), "PATH": "/usr/bin:/bin", "XDG_RUNTIME_DIR": runtime,
                    "XDG_CACHE_HOME": str(root / "cache"), "QT_QPA_PLATFORM": "offscreen",
                    "QT_QUICK_CONTROLS_STYLE": "Basic", "QT_FORCE_STDERR_LOGGING": "1",
                    "CODEPET_BIN": str(fake), "CODEPET_WORK_KIND": "bug", "FIXTURE_ROOT": str(root)}

@@ -8,12 +8,12 @@
 #   SHA256SUMS                              the archive, plus --art-tar when given
 #   release-notes.md                        the CHANGELOG section, links pinned to the tag
 #
-# Archive layout (an explicit allowlist): bin/codepet, VERSION, LICENSE, README.md,
+# Archive layout (an explicit allowlist): bin/codepet, bin/codepet-pet, VERSION, LICENSE, README.md,
 # CHANGELOG.md, THIRD-PARTY-LICENSES.md, docs/ (without the art-library source sheets),
 # packaging/omarchy/, omarchy-plugin/, qml/{README.md,shell.qml,shared,omarchy,assets}
-# and tools/measure-overlay.sh. packaging/omarchy/install.sh installs bin/codepet from it.
+# and tools/measure-overlay.sh. packaging/omarchy/install.sh installs bin/ from it.
 #
-# The binary is built with `cargo build --release --locked -p codepet -j 2` and
+# The binaries are built with `cargo build --release --locked -p codepet -p codepet-pet -j 2` and
 # --remap-path-prefix for the Cargo registry and the checkout, so no build-machine path
 # is embedded; release builds strip symbols (Cargo.toml). Run this script inside a
 # memory-capped scope (for example systemd-run --user --scope -p MemoryMax=4G); it
@@ -89,9 +89,10 @@ if [ -n "${CODEPET_RELEASE_BIN:-}" ]; then
 else
     CARGO_HOME_DIR=${CARGO_HOME:-$HOME/.cargo}
     (cd "$REPO" && RUSTFLAGS="--remap-path-prefix=$CARGO_HOME_DIR/registry/src=/cargo/registry/src --remap-path-prefix=$CARGO_HOME_DIR/git/checkouts=/cargo/git --remap-path-prefix=$REPO=/codepet" \
-        cargo build --release --locked -p codepet -j 2 "${OFFLINE[@]}")
+        cargo build --release --locked -p codepet -p codepet-pet -j 2 "${OFFLINE[@]}")
     BIN="${CARGO_TARGET_DIR:-$REPO/target}/release/codepet"
 fi
+PET=${CODEPET_RELEASE_PET:-$(dirname -- "$BIN")/codepet-pet}
 [ -f "$BIN" ] && [ ! -L "$BIN" ] || die "no codepet binary at $BIN"
 got=$("$BIN" --version)
 [ "$got" = "codepet $VERSION" ] || die "binary reports '$got', expected 'codepet $VERSION'"
@@ -104,12 +105,25 @@ if command -v file >/dev/null 2>&1; then
     esac
 fi
 echo "binary: $got, stripped, no home paths"
+[ -f "$PET" ] && [ ! -L "$PET" ] || die "no codepet-pet binary at $PET"
+got_pet=$("$PET" --version)
+[ "$got_pet" = "codepet-pet $VERSION" ] || die "pet binary reports '$got_pet', expected 'codepet-pet $VERSION'"
+if LC_ALL=C grep -a -q -e /home/ -e "$HOME" -- "$PET"; then
+    die "the pet binary embeds a home-directory path (build with --remap-path-prefix)"
+fi
+if command -v file >/dev/null 2>&1; then
+    case "$(file -b -- "$PET")" in
+        *"not stripped"*) die "the pet binary is not stripped" ;;
+    esac
+fi
+echo "pet binary: $got_pet, stripped, no home paths"
 
 # 3. stage the allowlist
 rm -rf -- "$OUT/stage"
 STAGE="$OUT/stage/$NAME"
 mkdir -p -- "$STAGE/bin" "$STAGE/packaging" "$STAGE/qml" "$STAGE/tools"
 install -m 0755 -- "$BIN" "$STAGE/bin/codepet"
+install -m 0755 -- "$PET" "$STAGE/bin/codepet-pet"
 printf '%s\n' "$VERSION" > "$STAGE/VERSION"
 for f in LICENSE README.md CHANGELOG.md THIRD-PARTY-LICENSES.md; do
     cp -- "$REPO/$f" "$STAGE/$f"
@@ -178,6 +192,7 @@ grep -q "would use prebuilt: $X/bin/codepet" "$GATE/dry.log" || die "the dry run
 gate "$X/packaging/omarchy/install.sh" > "$GATE/install.log" 2>&1 ||
     die "archive install failed: $(cat "$GATE/install.log")"
 [ "$(gate "$H/.local/bin/codepet" --version)" = "codepet $VERSION" ] || die "installed binary has the wrong version"
+[ "$(gate "$H/.local/bin/codepet-pet" --version)" = "codepet-pet $VERSION" ] || die "installed pet binary has the wrong version"
 [ -f "$H/.config/omarchy/plugins/greyforge.codepet/manifest.json" ] || die "the bar plugin was not installed"
 [ -f "$H/.local/state/codepet/codepet.sqlite3" ] || die "the install did not migrate the pet's data"
 gate "$H/.local/bin/codepet" doctor --json | grep -q '"schema":"codepet.doctor.v1"' ||

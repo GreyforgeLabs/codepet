@@ -82,32 +82,34 @@ class ReleaseDocs(unittest.TestCase):
         self.assertIn("SERIES=" + ".".join(version.split(".")[:2]), read("packaging/omarchy/install.sh"))
         self.assertIn(f"## {version}", read("omarchy-plugin/CHANGELOG.md"))
         readme = read("README.md")
-        for required in ("releases/tag/v0.4.0", "Codex 0.163.0", "Bubblewrap", "prlimit",
+        for required in ("releases/latest", "Codex 0.163.0", "Bubblewrap", "prlimit",
                          "source context", "Checks off", "explicit reviewed Apply", "synthetic data"):
             self.assertIn(required, " ".join(readme.split()), required)
-        self.assertIn(f"{version}, unreleased local development", readme)
-        self.assertNotIn(f"releases/tag/v{version}", readme)
+        # A release names itself in the README and dates its changelog section; download
+        # links go through releases/latest, never a guessed per-version asset URL.
+        self.assertIn(f"CodePet {'.'.join(version.split('.')[:2])}", readme)
         self.assertNotIn(f"releases/download/v{version}/", readme)
-        self.assertIn(f"## {version} — Unreleased local development", read("CHANGELOG.md"))
+        self.assertRegex(read("CHANGELOG.md"), rf"(?m)^## {re.escape(version)} — \d{{4}}-\d{{2}}-\d{{2}}$")
         self.assertNotIn("for v0.3.0 only", readme)
         self.assertTrue((DOCS / "screenshots/codepet-v0.4-cards.png").is_file())
 
     def test_candidate_qualification_is_separate_from_historical_passes(self):
         version = tomllib.loads(read("Cargo.toml"))["workspace"]["package"]["version"]
         validation = read("docs/validation.md")
-        self.assertTrue(validation.startswith(f"# v{version} candidate qualification"))
+        self.assertTrue(validation.startswith(f"# v{version} qualification"))
         current = validation.split("\n---\n", 1)[0]
-        for phrase in ("not release-qualified", "Quickshell", "containment", "offscreen"):
+        for phrase in ("Not covered", "Quickshell", "containment", "offscreen", "PSS"):
             self.assertIn(phrase, current)
-        self.assertIn("release-0.5.md", current)
-        checklist = read("docs/release-0.5.md")
-        for phrase in ("No tag", "exact commit", "existing companion", "announcement"):
+        series = ".".join(version.split(".")[:2])
+        self.assertIn(f"release-{series}.md", current)
+        checklist = read(f"docs/release-{series}.md")
+        for phrase in ("exact commit", "existing companion", "announcement"):
             self.assertIn(phrase, checklist)
 
     def test_archive_libc_requirement_is_separate_from_source_msrv(self):
         readme = read("README.md")
         self.assertIn("Release archive: x86_64 Linux with **glibc 2.39 or later**", readme)
-        self.assertIn("Source build: Rust 1.85 or later", readme)
+        self.assertIn("Source build: Rust 1.86 or later", readme)
         self.assertNotIn("glibc 2.34", readme)
 
     def test_pets_doc_covers_every_species(self):
@@ -135,8 +137,8 @@ class ReleaseDocs(unittest.TestCase):
         version = tomllib.loads(read("Cargo.toml"))["workspace"]["package"]["version"]
         self.assertIn("](docs/screenshots/codepet-v0.2-roster.webp)", readme)
         self.assertIn(f"`codepet --version` prints `codepet {version}`", readme)
-        self.assertIn("codepet-0.4.0-x86_64-linux.tar.gz", readme)
-        self.assertNotIn(f"codepet-{version}-x86_64-linux.tar.gz", readme)
+        self.assertIn(f"codepet-{version}-x86_64-linux.tar.gz", readme)
+        self.assertIn("releases/latest", readme)
         for section in ("## Requirements", "## Quick start", "### First run", "### Uninstall"):
             self.assertIn(section, readme)
         for stale in ("private testing prerelease", "operator", "v0.1"):

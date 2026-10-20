@@ -31,6 +31,11 @@ ADAPTER = re.sub(r"//[^\n]*", "", (QML / "omarchy/HostAdapter.qml").read_text())
 PET = re.sub(r"//[^\n]*", "", (QML / "shared/DesktopPet.qml").read_text())
 LAUNCHER_PATH = REPO / "packaging/omarchy/codepet-overlay"
 LAUNCHER = LAUNCHER_PATH.read_text()
+# The Quickshell engine (CODEPET_PET_ENGINE=quickshell): everything from its section header,
+# plus the shared helpers above the native engine's section.
+QS_LAUNCHER = (LAUNCHER[:LAUNCHER.index('# ---- native engine ----')]
+               + LAUNCHER[LAUNCHER.index('# ---- Quickshell engine'):])
+NATIVE_LAUNCHER = LAUNCHER[LAUNCHER.index('# ---- native engine ----'):LAUNCHER.index('# ---- Quickshell engine')]
 
 
 class HostContract(unittest.TestCase):
@@ -43,20 +48,23 @@ class HostContract(unittest.TestCase):
         self.assertIn('readonly property bool interactiveOpen: active && (card.visible || wheel.visible)', PET)
         self.assertNotIn('WlrKeyboardFocus.Exclusive', CODE)
 
-    def test_hit_mask_is_only_the_pet_visible_card_and_wheel(self):
+    def test_hit_mask_is_only_the_pet_visible_card_wheel_and_hide_pill(self):
         mask = block(CODE, 'mask: Region {')
-        self.assertEqual(mask.count('Region {'), 3)
-        self.assertEqual(mask.count('intersection: Intersection.Combine'), 2)
+        self.assertEqual(mask.count('Region {'), 4)
+        self.assertEqual(mask.count('intersection: Intersection.Combine'), 3)
         self.assertNotIn('item:', mask)
         self.assertNotIn('mask: null', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.petHit, width, height, shell.surfaceActive)', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.cardHit, width, height, shell.surfaceActive)', CODE)
         self.assertIn('OverlayPolicy.clipHit(pet.wheelHit, width, height, shell.surfaceActive)', CODE)
+        self.assertIn('OverlayPolicy.clipHit(pet.hideHit, width, height, shell.surfaceActive)', CODE)
+        self.assertIn('hideButton.visible ? Qt.rect(hideButton.x, hideButton.y, hideButton.width, hideButton.height) : Qt.rect(0, 0, 0, 0)', PET)
         self.assertIn('card.visible ? Qt.rect(card.x, card.y, card.width, card.height) : Qt.rect(0, 0, 0, 0)', PET)
         for axis in ('x', 'y', 'width', 'height'):
             self.assertIn(f'{axis}: overlay.petInput.{axis}', mask)
             self.assertIn(f'{axis}: overlay.cardInput.{axis}', mask)
             self.assertIn(f'{axis}: overlay.wheelInput.{axis}', mask)
+            self.assertIn(f'{axis}: overlay.hideInput.{axis}', mask)
         # The thought bubble is decorative: no menu or prop region would be a dead click zone.
         for gone in ('menuHit', 'menuInput', 'propsHit', 'propsInput'):
             self.assertNotIn(gone, CODE)
@@ -132,6 +140,16 @@ class HostContract(unittest.TestCase):
         placement = block(CODE, 'function flushPlacement() {')
         self.assertIn('if (placementWriter.running || shell.pendingPlacement === "") return', placement)
         self.assertIn('placementWriter.command = OverlayFlow.placementArgv(Quickshell.env("OMARCHY_PATH"), next)', placement)
+
+    def test_hide_pill_hides_and_toasts_once(self):
+        self.assertIn('onHideRequested: shell.hideFromPet()', CODE)
+        hide = block(CODE, 'function hideFromPet() {')
+        self.assertIn('if (shell.explicitlyHidden || !shell.surfaceActive)', hide)
+        self.assertLess(hide.index('shell.hidePet()'), hide.index('execDetached'))
+        self.assertIn('Quickshell.execDetached(OverlayFlow.hiddenToastArgv())', hide)
+        offered = PET[PET.index('readonly property bool hideOffered'):PET.index('readonly property bool interactiveOpen')]
+        for token in ('active', '!dragging', '!cardOpen', '!wheelOpen', 'petMouse.containsMouse', 'hideLinger.running'):
+            self.assertIn(token, offered)
 
     def test_suppression_and_explicit_restore(self):
         for name in ('sessionLocked', 'sessionSuspended', 'selectedScreenFullscreen'):
@@ -211,6 +229,10 @@ def isolated_env(root):
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(home),
         "XDG_RUNTIME_DIR": str(run),
+        # These runtime tests drive the Quickshell overlay (the 0.6 fallback engine).
+        "CODEPET_PET_ENGINE": "quickshell",
+        # Qt 6.12 prints a locale warning on stdout (corrupting IPC replies) without one.
+        "LANG": "C.UTF-8",
         # Elsewhere on purpose: the Omarchy shell (and so the overlay) reads
         # $HOME/.config/omarchy/shell.json whatever XDG_CONFIG_HOME says.
         "XDG_CONFIG_HOME": str(root / "xdg-config"),
@@ -638,6 +660,7 @@ class LauncherStatic(unittest.TestCase):
         self.assertEqual(unquoted_expansions("awk '{ print $0 }'\n"), [])
 
     def test_bounded_wait_and_single_instance_launch(self):
+        LAUNCHER = QS_LAUNCHER  # the Quickshell engine's own section (0.6 fallback)
         self.assertIn('while [ "$n" -lt 30 ]; do', LAUNCHER)
         self.assertIn('sleep 0.1', LAUNCHER)
         self.assertEqual(LAUNCHER.count('" -n -d -p "$QML"'), 1)
@@ -670,6 +693,28 @@ class LauncherStatic(unittest.TestCase):
         self.assertLess(quit_branch.index('"supervisor":false'), quit_branch.index('"$QS" kill'))
         self.assertLess(quit_branch.index('"$FORCE" -ne 1'), quit_branch.index('"$QS" kill'))
         self.assertIn('if [ "$1" = quit ] && [ "$2" = --force ]; then FORCE=1', LAUNCHER)
+
+    def test_native_engine_is_default_and_bounded(self):
+        self.assertIn('ENGINE=${CODEPET_PET_ENGINE:-native}', LAUNCHER)
+        self.assertLess(LAUNCHER.index('if [ "$ENGINE" = native ]; then'),
+                        LAUNCHER.index('# ---- Quickshell engine'))
+        n = NATIVE_LAUNCHER
+        # The pet is reached only through its own control socket, never a pattern kill.
+        self.assertIn('"$PET" ctl "$@"', n)
+        self.assertNotIn('pkill', n)
+        self.assertNotIn('killall', n)
+        # One bounded wait after quit; one start command, never inside hide/refresh/status/card.
+        self.assertIn('while [ "$n" -lt 30 ] && pet_running; do', n)
+        self.assertEqual(n.count('"$PET" start'), 1)
+        dispatch = n[n.index('    case "$VERB" in'):]
+        for verb in ('card)', 'status)', 'quit)', 'hide|refresh)'):
+            branch = dispatch[dispatch.index(verb):]
+            branch = branch[:branch.index(';;')]
+            self.assertNotIn('"$PET" start', branch, verb)
+        # A 0.5 Quickshell overlay is ended only when it reports no running task.
+        legacy = n[n.index('legacy_stop() {'):]
+        legacy = legacy[:legacy.index('\n}\n')]
+        self.assertLess(legacy.index('"supervisor":false'), legacy.index('"$QS" kill'))
 
     @unittest.skipUnless(shutil.which('shellcheck'), 'shellcheck unavailable')
     def test_shellcheck(self):
@@ -740,6 +785,175 @@ sys.exit(99)
 ALL_FUNCTIONS = ["ping", "status", "show", "hide", "toggle", "openHome", "openCard", "refresh"]
 
 
+FAKE_PET = r"""#!{python} -I
+# Test double for the native pet binary (codepet-pet), driven by a JSON state file.
+import json, os, sys
+state_path = os.environ["FAKEPET_STATE"]
+with open(state_path) as f:
+    st = json.load(f)
+args = sys.argv[1:]
+with open(os.environ["FAKEPET_LOG"], "a") as f:
+    f.write(json.dumps({{"argv": args, "bin": os.environ.get("CODEPET_BIN")}}) + "\n")
+def save():
+    with open(state_path, "w") as f:
+        json.dump(st, f)
+if args == ["start"]:
+    st["starts"] += 1
+    st["running"] = st["start_ok"]
+    save()
+    sys.exit(0 if st["start_ok"] else 1)
+if args[:1] == ["ctl"]:
+    if not st["running"]:
+        sys.exit(1)
+    verb = args[1]
+    if verb == "ping":
+        print("codepet-overlay shown")
+    elif verb == "status":
+        print(json.dumps({{"engine": "native", "pet": st["pet"], "exit_reason": st["exit_reason"]}},
+                         separators=(",", ":")))  # compact, like serde_json
+    elif verb == "quit":
+        st["running"] = st.get("quits_ok", True) is False
+        save()
+        print("ok")
+    else:
+        st.setdefault("verbs", []).append(verb)
+        save()
+        print("ok")
+    sys.exit(0)
+sys.exit(2)
+"""
+
+
+class NativeLauncherBehaviour(unittest.TestCase):
+    """The real launcher against a fake codepet-pet (the 0.6 default engine)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.home = root / "home"
+        (self.home / ".local/bin").mkdir(parents=True)
+        self.pet = self.home / ".local/bin/codepet-pet"
+        self.pet.write_text(FAKE_PET.format(python=sys.executable))
+        self.pet.chmod(0o700)
+        self.state = root / "pet-state.json"
+        self.log = root / "pet-log.jsonl"
+        self.off_flag = root / "state/codepet/off"
+        self.off_flag.parent.mkdir(parents=True)
+        self.env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home), "LANG": "C.UTF-8",
+                    "XDG_STATE_HOME": str(root / "state"), "XDG_DATA_HOME": str(root / "share"),
+                    "CODEPET_QS": str(root / "no-qs"),
+                    "FAKEPET_STATE": str(self.state), "FAKEPET_LOG": str(self.log)}
+        self.set_state()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def set_state(self, **over):
+        st = {"running": False, "start_ok": True, "starts": 0, "pet": "shown", "exit_reason": ""}
+        st.update(over)
+        self.state.write_text(json.dumps(st))
+
+    def st(self):
+        return json.loads(self.state.read_text())
+
+    def run_launcher(self, *args):
+        if self.log.exists():
+            self.log.unlink()
+        r = subprocess.run([str(LAUNCHER_PATH), *args], env=self.env, capture_output=True, text=True, timeout=20)
+        calls = [json.loads(l)["argv"] for l in self.log.read_text().splitlines()] if self.log.exists() else []
+        return r, calls
+
+    def test_show_starts_once_then_reuses(self):
+        r, calls = self.run_launcher("show")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.st()["starts"], 1)
+        self.assertIn(["start"], calls)
+        r, calls = self.run_launcher("show")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.st()["starts"], 1, "a running pet is never started again")
+        self.assertIn(["ctl", "show"], calls)
+
+    def test_start_passes_the_configured_codepet(self):
+        self.env["CODEPET_BIN"] = "/opt/cp/codepet"
+        self.env["CODEPET_PET"] = str(self.pet)
+        r, _ = self.run_launcher("toggle")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        line = [json.loads(l) for l in self.log.read_text().splitlines() if '"start"' in l][0]
+        self.assertEqual(line["bin"], "/opt/cp/codepet")
+
+    def test_toggle_hide_refresh_reach_a_running_pet(self):
+        self.set_state(running=True)
+        for verb in ("toggle", "hide", "refresh"):
+            r, _ = self.run_launcher(verb)
+            self.assertEqual(r.returncode, 0, (verb, r.stderr))
+        self.assertEqual(self.st()["verbs"], ["toggle", "hide", "refresh"])
+        self.assertEqual(self.st()["starts"], 0)
+
+    def test_not_running_hide_refresh_status_quit_never_start(self):
+        for verb, code in (("hide", 0), ("refresh", 0), ("status", 1), ("quit", 0)):
+            r, calls = self.run_launcher(verb)
+            self.assertEqual(r.returncode, code, verb)
+            self.assertNotIn(["start"], calls, verb)
+        self.assertEqual(self.st()["starts"], 0)
+
+    def test_off_starts_nothing(self):
+        self.off_flag.write_text("")
+        for verb in ("show", "toggle"):
+            r, calls = self.run_launcher(verb)
+            self.assertEqual((r.returncode, r.stdout), (0, "codepet-overlay: CodePet is off\n"), verb)
+            self.assertNotIn(["start"], calls)
+
+    def test_leaving_pet_is_reported(self):
+        self.set_state(running=True, exit_reason="desktop_pet_off")
+        r, _ = self.run_launcher("show")
+        self.assertEqual((r.returncode, r.stdout), (0, "codepet-overlay: the desktop pet is off\n"))
+
+    def test_status_and_quit(self):
+        self.set_state(running=True)
+        r, _ = self.run_launcher("status")
+        self.assertEqual(r.returncode, 0)
+        self.assertTrue(r.stdout.startswith("running\n"))
+        self.assertIn('"engine":"native"', r.stdout)
+        r, calls = self.run_launcher("quit")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(["ctl", "quit"], calls)
+        self.assertFalse(self.st()["running"])
+
+    def test_card_uses_a_shown_pet_else_the_work_window(self):
+        work = Path(self.tmp.name) / "work"
+        receipt = Path(self.tmp.name) / "work-args"
+        work.write_text("#!/usr/bin/python3\nimport sys\nfrom pathlib import Path\nPath(" + repr(str(receipt)) + ").write_text(repr(sys.argv[1:]))\n")
+        work.chmod(0o700)
+        self.env["CODEPET_WORK_LAUNCHER"] = str(work)
+        self.set_state(running=True)
+        r, calls = self.run_launcher("card")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.st()["verbs"], ["openCard"])
+        self.assertFalse(receipt.exists())
+        self.set_state(running=True, pet="hidden")
+        r, calls = self.run_launcher("card")
+        self.assertEqual(receipt.read_text(), "['compact']")
+        self.assertNotIn(["start"], calls)
+
+    def test_failed_start_is_an_error(self):
+        self.set_state(start_ok=False)
+        r, _ = self.run_launcher("show")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("could not start the desktop pet", r.stderr)
+
+    def test_without_the_native_binary_the_quickshell_engine_is_used(self):
+        self.pet.unlink()
+        r, calls = self.run_launcher("show")
+        self.assertEqual(calls, [])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Quickshell", r.stderr, "it fell through to the Quickshell engine")
+
+    def test_unknown_engine_is_a_usage_error(self):
+        self.env["CODEPET_PET_ENGINE"] = "gtk"
+        r, _ = self.run_launcher("show")
+        self.assertEqual(r.returncode, 2)
+
+
 class LauncherBehaviour(unittest.TestCase):
     """The real launcher against a fake `qs`: never a second copy, verbs routed."""
 
@@ -758,7 +972,7 @@ class LauncherBehaviour(unittest.TestCase):
         fake.chmod(0o700)
         self.off_flag = root / "state/codepet/off"
         self.off_flag.parent.mkdir(parents=True)
-        self.env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home),
+        self.env = {"PATH": "/usr/bin:/bin", "HOME": str(self.home), "CODEPET_PET_ENGINE": "quickshell",
                     "XDG_DATA_HOME": str(self.data), "XDG_STATE_HOME": str(root / "state"),
                     "CODEPET_QS": str(fake),
                     "FAKEQS_STATE": str(self.state), "FAKEQS_LOG": str(self.log)}

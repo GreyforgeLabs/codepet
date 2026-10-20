@@ -4,7 +4,7 @@ permissions:
   contents: read
 jobs:
   qml:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       QT_QPA_PLATFORM: offscreen
       QT_QUICK_CONTROLS_STYLE: Basic
@@ -15,6 +15,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libgl1 libxkbcommon0
+      # PySide6 6.8.3 has no wheels for the runner's newer default Python: pin 3.12.
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
       - name: Install pinned test-only Qt and image runtime
         run: python3 -m pip install PySide6==6.8.3 Pillow==11.1.0
       # Every offscreen smoke in qml/tests (spec §17.1); a smoke exits non-zero on any FAIL.

@@ -81,7 +81,7 @@ class InvalidIcons(unittest.TestCase):
     def test_unmodified_copy_passes(self):
         code, out = self.validate()
         self.assertEqual(code, 0, out)
-        self.assertIn("PASS: 49 icons in 7 sheets", out)
+        self.assertIn("PASS: 51 icons in 7 sheets", out)
 
     def test_trees_differ(self):
         (self.root / TREES[1] / "care-floor/food.webp").write_bytes(

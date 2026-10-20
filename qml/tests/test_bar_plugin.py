@@ -153,6 +153,9 @@ class Manifest(unittest.TestCase):
         links = [p for p in PLUGIN.rglob("*") if p.is_symlink()]
         self.assertEqual(links, [])
         self.assertFalse((PLUGIN / "LifeText.js").exists(), "LifeText.js is staged, never checked in here")
+        self.assertFalse((PLUGIN / "assets" / "sounds" / "voice").exists(), "0.6 removed the animal voices")
+        for action in ("food", "water", "play", "wash", "pet", "treat"):
+            self.assertTrue((PLUGIN / "assets" / "sounds" / "action" / f"{action}.wav").is_file(), action)
         self.assertEqual((PLUGIN / "LICENSE").read_text(), (REPO / "LICENSE").read_text())
 
     def test_retired_v02_ui_is_gone(self):
@@ -826,6 +829,8 @@ class QuickshellPluginLoad(unittest.TestCase):
             (sdir / "bar-state.json").write_text(json.dumps(state))
         self.env = {
             "PATH": "/usr/bin:/bin", "HOME": str(home), "XDG_RUNTIME_DIR": str(root / "run"),
+            # Qt 6.12 prints a locale warning on stdout (corrupting IPC replies) without one.
+            "LANG": "C.UTF-8",
             "XDG_CONFIG_HOME": str(home / ".config"), "XDG_CACHE_HOME": str(home / ".cache"),
             "XDG_DATA_HOME": str(home / ".local/share"), "XDG_STATE_HOME": str(home / ".local/state"),
             "QT_QPA_PLATFORM": "offscreen",

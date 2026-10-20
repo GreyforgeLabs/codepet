@@ -1,11 +1,11 @@
 [workspace]
-members = ["crates/codepet-core", "crates/codepet-protocol", "crates/codepet-storage", "crates/codepet-cli"]
+members = ["crates/codepet-core", "crates/codepet-protocol", "crates/codepet-storage", "crates/codepet-cli", "crates/codepet-pet"]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.86"
 license = "MIT"
 description = "A desktop coding pet for Omarchy: a Rust core with a QML bar widget and desktop overlay"
 repository = "https://github.com/GreyforgeLabs/codepet"

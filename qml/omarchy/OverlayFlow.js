@@ -191,3 +191,13 @@ function openUpdatesArgv(omarchyPath) {
         return [base + "/bin/omarchy-shell"].concat(call)
     return ["/usr/bin/env", "OMARCHY_PATH=" + DEFAULT_OMARCHY_PATH, "omarchy-shell"].concat(call)
 }
+
+// The suggested show/hide hotkey (README "Desktop pet"): bind it to `codepet-overlay toggle`.
+var TOGGLE_KEY_HINT = "Super + Alt + P"
+
+// The one toast after the pet's HIDE pill: how to bring the pet back. A plain argv for
+// Quickshell.execDetached; notify-send never sees a shell.
+function hiddenToastArgv() {
+    return ["notify-send", "--app-name=CodePet", "--expire-time=5000",
+            "Your pet is hiding", "Press " + TOGGLE_KEY_HINT + " to bring it back."]
+}

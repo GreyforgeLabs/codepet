@@ -1,3 +1,78 @@
+# v0.6.0 qualification (2026-10-20)
+
+**Status: release candidate for 0.6.0.** 0.6 replaces the Quickshell desktop pet with
+the native `codepet-pet` and ships the HIDE pill, clearer care icons, softer sounds and
+the 0.5.1 fixes. Schema 6 and the work loop are unchanged; no containment policy or host
+security setting was weakened. See the [release record](release-0.6.md).
+
+## Resource use (`tools/measure-overlay.sh`, 60 s windows, Ryzen 5 3600, Linux 7.2)
+
+| Process | PSS | CPU (% of one core) | Wakeups/s |
+| --- | --- | --- | --- |
+| 0.5.1 Quickshell pet, live on DP-2, idle (two samples) | 37.9 MB / 168.1 MB | 0.30 / 0.25 | 60.3 / 25.8 |
+| 0.6.0 `codepet-pet`, fontdue build, nested Hyprland, roaming | 16.9 MB | 0.03 | 3.3 |
+| 0.6.0 `codepet-pet` (shipped, lazy fonts), nested Hyprland, roaming | 2.9 MB | 0.00 | 0.5 |
+| 0.6.0 `codepet-pet` (shipped), live on DP-2, snake roaming | 3.9 MB | 0.08 | 5.0 |
+
+PSS is the process's proportional share of resident memory. Wakeups count voluntary and
+involuntary context switches; a walking pet steps five times a second, a resting one
+sleeps until its next deadline. Reproducible: `tools/measure-overlay.sh --seconds 60 PID`.
+
+## Executed checks
+
+- `cargo fmt --all --check`; `cargo test --workspace --locked` and strict Clippy, default
+  and `--features legacy-tasks`; `python3 docs/v0.3/contracts/check_contracts.py`.
+- Native pet parity: `crates/codepet-pet/src/model/parity.rs` replays 1,920 corpus cases
+  (37 bar fixtures × meters × times × seen states) through the JavaScript reference under
+  Node and compares shared/current priority, the work overlay, bubble icons for all three
+  care sets, observer labels, celebration keys and seen/growth tracking: all equal.
+- Native pet unit tests: catalog/state machine, settings, work eligibility.
+- Nested Hyprland 0.56.2 on a headless output, virtual pointer: right-click wheel, Pin
+  (saves placement through the Omarchy shell mutator), Snack (`pet.care food`), drag
+  (exact 300 px), click (compact card), hover HIDE (hides, toast), `show`; rendering of
+  sprite, wheel icons and labels, feedback and HIDE pill inspected in screenshots.
+- Launcher: native engine behaviour (start once, verbs, Off, leaving, quit, card, failed
+  start, missing binary falls back), Quickshell engine suite unchanged.
+- Offscreen QML suites under PySide6 and Quickshell 0.3.2 / Qt 6.12 (all smokes, overlay,
+  drag, windows, work and update hosts, bar plugin with the real Omarchy 4.0.6 shell),
+  Node model tests, icon assets (51 icons, both trees, provenance), installer and
+  archive tests, release-docs tests.
+- Installed on the development workstation as an upgrade from 0.5.1: the Quickshell pet
+  stopped by exact PID, the native pet started at the saved placement, data at schema 6.
+
+## Fixed during qualification
+
+- Placement was applied before the surface had a size; it is now re-applied on configure.
+- A pet started under a caller holding a file lock inherited the lock; `codepet-pet start`
+  closes inherited descriptors above stderr before detaching.
+- Quickshell 0.3.2 resolves a plain `Color` to its own type: the bar plugin now imports
+  `qs.Commons as Commons` (its popup lost theme colours under Omarchy 4.0.6 otherwise).
+- Qt 6.12 prints a locale warning on stdout without `LANG`; isolated test environments
+  set `C.UTF-8` (affects only tests, not installed sessions).
+
+## Not covered
+
+- Physical multi-monitor hotplug and fractional-scale outputs (integer scale only); no
+  automatic lock/suspend/fullscreen detection (explicit integration inputs, as before).
+- Keyboard navigation of the native wheel was exercised in code review and unit paths,
+  not with a physical keyboard; the Quickshell fallback keeps its offscreen coverage.
+- The QML/offscreen and containment gates listed for 0.5 that need a capable cloud host
+  or isolated-network Bubblewrap remain as recorded below.
+
+---
+
+# v0.5.1 candidate qualification (2026-10-18)
+
+**Status: unreleased local development and not release-qualified.** 0.5.1 is the
+care-bubble, animal-sound and Grok-connect patch after the published
+[CodePet 0.5.0](https://github.com/GreyforgeLabs/codepet/releases/tag/v0.5.0)
+release. 0.5.1 itself is not published. No host security setting or production
+containment policy was weakened. Quickshell IPC-dependent host tests and the
+offscreen companion checks recorded for 0.5.0 still apply. See the
+[release decision and remaining checklist](release-0.5.md). The 0.5.0 record follows.
+
+---
+
 # v0.5.0 candidate qualification (2026-10-18)
 
 **Status: unreleased and not release-qualified.** This audit resumes the recovery

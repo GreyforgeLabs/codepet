@@ -55,6 +55,8 @@ ShellRoot {
             window.minimized = false; window.visible = true; work.refresh()
         }
         function status(): string { return JSON.stringify({ visible: window.visible, compact: work.compact, busy: work.busy, task: work.task ? work.task.status : null, error: work.error }) }
+        // A second click on the native desktop pet closes the compact card it opened.
+        function close(): void { Qt.quit() }
     }
     FloatingWindow {
         id: window

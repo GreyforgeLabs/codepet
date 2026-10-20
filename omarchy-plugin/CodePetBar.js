@@ -322,6 +322,16 @@ function careIcon(reg, id, need) {
     return "care-" + careSet(reg, id) + "/" + need
 }
 
+// Original care sounds (assets/sounds/action). Each care action plays one soft sound;
+// `voice` (a need that did not change) plays the gentle pet sound. The 0.5.1 synthesized
+// animal voices were removed in 0.6. `species` and `nonce` are kept for callers.
+var CARE_ACTIONS = ["food", "water", "play", "wash", "pet", "treat"]
+function cuePaths(species, action, nonce) {
+    if (action === "voice") return ["assets/sounds/action/pet.wav"]
+    return typeof action === "string" && CARE_ACTIONS.indexOf(action) >= 0
+        ? ["assets/sounds/action/" + action + ".wav"] : []
+}
+
 function thumbPath(petId, stage) {
     if (typeof petId !== "string" || !/^[a-z_]{2,24}$/.test(petId)) return ""
     if (stage !== 1 && stage !== 2 && stage !== 3) return ""

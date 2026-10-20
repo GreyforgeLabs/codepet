@@ -42,6 +42,13 @@ Item {
         return true
     }
     function openSheet(id) { helpers.current = id; helpers.view = "sheet" }
+    // "Tap to connect" and "Try again" do that on the tap, then open the sheet so the
+    // result is visible. Codex's grown-up row still opens its sheet first.
+    function activateRow(row) {
+        if (!row) return
+        if (row.row === "row.connect" || row.step === "btn.retry") helpers.step(row)
+        helpers.openSheet(row.id)
+    }
     function step(row) {
         if (!row || !row.step) return
         if (row.step === "btn.showme") { helpers.guide = row.guide; helpers.guidePage = 0; helpers.view = "guide"; return }
@@ -85,9 +92,9 @@ Item {
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
                     Accessible.name: Model.appName(rowItem.modelData.id) + ". " + helpers.rowText(rowItem.modelData)
-                    Accessible.onPressAction: helpers.openSheet(rowItem.modelData.id)
-                    Keys.onReturnPressed: helpers.openSheet(rowItem.modelData.id)
-                    Keys.onSpacePressed: helpers.openSheet(rowItem.modelData.id)
+                    Accessible.onPressAction: helpers.activateRow(rowItem.modelData)
+                    Keys.onReturnPressed: helpers.activateRow(rowItem.modelData)
+                    Keys.onSpacePressed: helpers.activateRow(rowItem.modelData)
                     Icon {
                         id: rowIcon
                         x: helpers.t.u(8)
@@ -160,7 +167,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: helpers.openSheet(rowItem.modelData.id)
+                        onClicked: helpers.activateRow(rowItem.modelData)
                     }
                 }
             }

@@ -1,12 +1,23 @@
-# Desktop pet (v0.4)
+# Desktop pet (v0.6)
 
-The desktop pet is a small transparent Quickshell surface. Clicking it opens a
-compact card with work status, level, exact XP and age. A suspected bug offers
+The desktop pet is `codepet-pet`, a small native Rust program (CodePet 0.6). It draws
+on a transparent, click-through Wayland layer surface (layer `top`, namespace
+`codepet-overlay`): a one-pixel buffer stretched over the output, plus one small
+subsurface around the pet that is the only part taking pointer input, and only over
+the pet, the HIDE pill and the care wheel. It is single-threaded and event-driven: it
+reads `bar-state.json`, `work-state.json` and the bar entry's settings through
+inotify, keeps one timer for the next moment anything can change, and loads only the
+current pet's frames. Hidden or suppressed, it gives its buffers and images back.
+
+Clicking the pet opens the compact card window with work status, level, exact XP and
+age; a second click closes it. A suspected bug offers
 **Fix**; a candidate repair offers **Review**. **Care** opens Home on the bar.
 Research/custom tasks and full before/after review use a separate native QML window.
 
 Drag the pet in either direction to move it. Right-click for a small care wheel: **Pet, Snack, Drink, Play, Bath, Nap/Wake,
-Pin/Roam**. Pinning stops wandering while retaining occasional awake expressions
+Pin/Roam**. Hover the pet for a **HIDE** pill; a click hides the pet and a toast names the
+show/hide key (`codepet-overlay toggle`, suggested binding Super + Alt + P).
+Pinning stops wandering while retaining occasional awake expressions
 and deliberate dragging. **More → Pin pet in place** offers the same switch. Position and monitor are saved across restarts.
 The resting artwork does not determine care actions: actual naps offer **Wake**,
 paused pets offer **Resume**, and fainted pets show **Snack + Drink to recover**
@@ -52,8 +63,12 @@ The visible card, care wheel and pet form separate input regions; decorative fee
 remains click-through and never takes focus. Care status is exposed to accessibility
 and announced politely; each message expires after six seconds, including pending
 feedback. A late reply can show a fresh message without reopening the wheel.
-Text entry uses the bar popup or native work window. Isolated Qt/Quickshell tests
-cover component keyboard navigation, drag, geometry and input regions. Actual compositor pointer/focus
+Text entry uses the bar popup or native work window. The native pet's rules are a
+Rust port of the QML scene (`qml/shared/*.js`), checked against the JavaScript on 1,920
+corpus cases (`crates/codepet-pet/src/model/parity.rs`). Pointer scenarios (hover,
+HIDE, right-click wheel, Pin, Snack, drag, click) were exercised in a nested Hyprland
+on a headless output with a virtual pointer. Isolated Qt/Quickshell tests still cover
+the QML components used by the fallback engine and the bar. Actual compositor pointer/focus
 behavior for the card and wheel remains unqualified; installed hide/show and placement preservation were
 checked separately. See [validation](validation.md).
 
@@ -69,7 +84,9 @@ once after each successful attended-minute write; file notifications never start
 a refresh loop. Automatic lock/suspend/
 fullscreen detection is not implemented; those are explicit integration inputs.
 
-The launcher uses `~/.local/share/codepet/current`, `qs` (or `CODEPET_QS`) and
-`codepet` (or `CODEPET_BIN`). Its status is scoped to that runtime. No compositor
+The launcher runs `codepet-pet` beside `codepet` (or `CODEPET_PET`) and talks to it
+over `$XDG_RUNTIME_DIR/codepet-pet.sock`; `codepet-pet ctl status` prints the same
+status JSON. `CODEPET_PET_ENGINE=quickshell` uses the previous Quickshell overlay
+(`~/.local/share/codepet/current/qml/shell.qml`, `qs` or `CODEPET_QS`) instead. No compositor
 rules or screen-lock hooks are installed. See [host details](../qml/omarchy/README.md)
 and [work scope](work.md).

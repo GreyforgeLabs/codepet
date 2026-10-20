@@ -215,6 +215,12 @@ test('copy resolution: habitat overrides, careWords and plain verbs', () => {
     assert.equal(M.reactText(S, REG, 'robot', 'play', true, 'Bolt'), 'Bolt played already!', 'base when the set has no override');
     assert.equal(M.reactText(S, null, 'cat', 'food', false, 'Ginger'), 'Yum!', 'no careWords -> the plain verb');
     assert.equal(M.reactText(S, null, 'cat', 'play', false, 'Ginger'), 'Wheee!');
+    assert.deepEqual(plain(M.cuePaths('snake', 'food', 1)), ['assets/sounds/action/food.wav']);
+    assert.deepEqual(plain(M.cuePaths('snake', 'voice', 4)), ['assets/sounds/action/pet.wav'], 'unchanged need: the soft pet sound');
+    assert.deepEqual(plain(M.cuePaths('robot', 'treat', 2)), ['assets/sounds/action/treat.wav']);
+    assert.deepEqual(plain(M.cuePaths('nope', 'pet', 0)), ['assets/sounds/action/pet.wav']);
+    assert.deepEqual(plain(M.cuePaths('cat', '', 0)), []);
+    assert.equal(M.CARE_VOICES, undefined, 'the synthesized animal voices are gone (0.6)');
 });
 
 test('every face line renders filled, short and jargon-free (K1, K2, K8)', () => {

@@ -127,6 +127,21 @@ Window {
             kit.find(app, "cp.header").back()
         },
         function () { kit.check(app.screen === "home", "‹ Back from the list returns Home") },
+        // ---- Grok: the row that says Tap to connect does it, then opens the sheet
+        function () {
+            var doc = kit.fixture("clients-mixed")
+            doc.clients["grok-cli"] = { installed: true, connected: false, version: null, needs_step: null,
+                last_seen_ms: null, first_seen_ms: null, failed_reason: null, job: null }
+            ctl.calls = []
+            win.load("clients-mixed", doc)
+        },
+        function () {
+            kit.check(win.hasText("Tap to connect"), "an unconnected Grok says to tap")
+            win.find("cp.helperRow.grok-cli").Accessible.pressAction()
+            var c = ctl.last("clients.connect")
+            kit.check(c && JSON.stringify(c.params.clients) === '["grok-cli"]', "tapping Grok connects it: " + JSON.stringify(c ? c.params : null))
+            kit.check(win.helpers().view === "sheet", "the same tap opens Grok's sheet")
+        },
         // ---- failed Hermes: Try again
         function () { win.load("clients-mixed") },
         function () { win.helpers().openSheet("hermes") },

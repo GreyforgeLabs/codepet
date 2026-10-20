@@ -1,4 +1,4 @@
-# Architecture (v0.5)
+# Architecture (v0.6)
 
 CodePet combines a desktop companion, bounded pet-owned coding work, and optional
 metadata-only observation of coding sessions started outside CodePet. These are
@@ -16,8 +16,16 @@ separate pipelines with separate privacy and reward rules.
   and contained provider supervision. RPC orchestration builds one status snapshot
   and derives its private-data-free export from the same result.
 - `omarchy-plugin/`: bar cell, care/stats popup and attended-presence recorder.
-- `qml/shell.qml`: desktop pet and compact work card.
-- `qml/work.qml`: compact fallback and explicit native task/review window.
+- `codepet-pet` (`crates/codepet-pet`): the native desktop pet. A single-threaded Wayland
+  layer-shell client (smithay-client-toolkit, tiny-skia, ab_glyph, image-webp) that draws
+  the parsed `bar-state.json`, watches its inputs with inotify, keeps one timer, and sends
+  only explicit care, scout and placement requests. Its face and scene rules are a Rust
+  port of `qml/shared/*.js`, checked against them by a differential test. It is the
+  one resident CodePet process while the pet is shown (about 3 MB measured).
+- `qml/work.qml`: compact card window (opened by a click on the pet) and the explicit
+  native task/review window.
+- `qml/shell.qml`: the previous Quickshell desktop pet, kept as the
+  `CODEPET_PET_ENGINE=quickshell` fallback.
 
 ## Pet-owned work
 

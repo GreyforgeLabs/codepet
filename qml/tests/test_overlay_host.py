@@ -122,7 +122,7 @@ assert sys.argv[1:]==['-q','greyforge.codepet','openUpdates']
 (Path(os.environ['FIXTURE_ROOT'])/'updates-launch.json').write_text(json.dumps(sys.argv[1:]))
 ''')
     shell_stub.chmod(0o700)
-    env = {"HOME": str(home), "PATH": str(root / 'bin') + ':/usr/bin:/bin',
+    env = {"LANG": "C.UTF-8", "HOME": str(home), "PATH": str(root / 'bin') + ':/usr/bin:/bin',
            "XDG_RUNTIME_DIR": str(root / 'run'), "XDG_CONFIG_HOME": str(home / '.config'),
            "XDG_STATE_HOME": str(home / '.local/state'), "XDG_CACHE_HOME": str(home / '.cache'),
            "XDG_DATA_HOME": str(home / '.local/share'),

@@ -41,6 +41,15 @@ fn ours(text: &str) -> bool {
     })
 }
 
+/// An empty slot CodePet may fill. A file with someone else's commands is not one.
+fn blank_slot(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return true;
+    }
+    matches!(commands(text), Some(c) if c.is_empty())
+}
+
 pub fn status(ctx: &Ctx) -> Artifact {
     let Ok(text) = super::read_artifact(&file_path(ctx)) else {
         return Artifact::Missing;
@@ -59,7 +68,7 @@ pub fn connect(ctx: &Ctx) -> Result<Connected, Failed> {
     super::ensure_dir(dir, 0o755)?;
     super::sweep_temps(dir);
     match super::read_artifact(&path) {
-        Ok(old) if old == body || ours(&old) => {}
+        Ok(old) if old == body || ours(&old) || blank_slot(&old) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         _ => {
             return Err(Failed::new(

@@ -436,6 +436,7 @@ class InstallerIntegration(unittest.TestCase):
             shutil.copy2(REPO / relative, cls.tree / relative)
         (cls.tree / "VERSION").write_text(VERSION + "\n")
         executable(cls.tree / "bin/codepet", f"#!/bin/sh\ncase \"$1\" in --version) echo 'codepet {VERSION}';; migrate) echo 'fixture migration preserves existing data';; clients-refresh) :;; *) exit 1;; esac\n")
+        executable(cls.tree / "bin/codepet-pet", f"#!/bin/sh\ncase \"$1\" in --version) echo 'codepet-pet {VERSION}';; *) exit 1;; esac\n")
         cls.archive = cls.make_archive()
 
     @classmethod

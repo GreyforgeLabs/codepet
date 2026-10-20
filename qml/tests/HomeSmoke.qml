@@ -48,6 +48,14 @@ Window {
     }
     function tile(need) { return kit.find(app, "cp.tile." + need) }
     function text(name) { var o = kit.find(app, name); return o ? String(o.text) : "" }
+    function bubbleClearsHead(label) {
+        var pet = kit.find(app, "cp.pet")
+        var speech = kit.find(app, "cp.speech")
+        kit.check(speech && speech.visible, label + ": bubble visible")
+        var top = speech.mapToItem(pet, 0, 0).y
+        kit.check(top >= pet.height * 0.4, label + ": bubble stays below the head (" + Math.round(top) + "/" + Math.round(pet.height) + ")")
+        kit.check(kit.px16(speech.height) < 72 && kit.px16(speech.width) <= 160, label + ": bubble is small (" + Math.round(kit.px16(speech.width)) + "x" + Math.round(kit.px16(speech.height)) + ")")
+    }
 
     Component.onCompleted: kit.run(kit.each([12, 16, 20], win.homeFixtures, function (size, name) {
         win.load(name)
@@ -182,6 +190,7 @@ Window {
         },
         function () {
             kit.check(app.bubbleText === "Ginger played already!", "changed:false swaps to the full line: " + app.bubbleText)
+            win.bubbleClearsHead("full play")
             ctl.responses = { "pet.care": { ok: false, error: { code: "INVALID_STATE" } } }
             tile("wash").tapped()
         },
@@ -226,6 +235,7 @@ Window {
             var c = ctl.last("treats.give")
             kit.check(c && c.params.life_id === ctl.barState.life.life_id, "Treats sends treats.give for the life")
             kit.check(app.bubbleText === "Yum! +5 XP", "Treats bubble: " + app.bubbleText)
+            win.bubbleClearsHead("treat")
         },
         function () { win.load("jar-full") },
         function () { kit.check(kit.find(app, "cp.treats").visible, "a full jar still offers Treats") },

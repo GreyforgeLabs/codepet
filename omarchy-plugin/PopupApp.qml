@@ -236,7 +236,8 @@ Item {
             popupRoot.actionState = ""
         }
     }
-    function say(text, action) {
+    property int cueNonce: 0
+    function say(text, action, soundAction) {
         popupRoot.bubbleText = text
         popupRoot.notice = ""
         if (action !== undefined && action !== "") {
@@ -247,6 +248,17 @@ Item {
             popupRoot.actionState = ""
         }
         bubbleTimer.restart()
+        popupRoot.cue(soundAction === undefined ? action : soundAction)
+    }
+    // Care, treats and petting. `voice` is the animal only (a need that did not change).
+    // Calm stays quiet. The bar widget owns playback; tests have no playCue.
+    function cue(action) {
+        if (!action || popupRoot.calm) return
+        var species = popupRoot.life ? String(popupRoot.life.appearance || "") : ""
+        popupRoot.cueNonce += 1
+        var paths = Model.cuePaths(species, action, popupRoot.cueNonce)
+        if (popupRoot.ctl && typeof popupRoot.ctl.playCue === "function")
+            popupRoot.ctl.playCue(paths)
     }
 
     // ---------------------------------------------------------------- layout

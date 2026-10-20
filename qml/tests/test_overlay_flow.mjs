@@ -111,6 +111,16 @@ test('the process exits on Off or when the desktop pet is switched off, and only
     assert.ok(F.SETTLE_MS >= 1000 && F.SETTLE_MS <= 3000, 'well inside the launcher\'s 3 s wait');
 });
 
+test('HIDE toast is a plain notify-send argv naming the show/hide key', () => {
+    const argv = plain(F.hiddenToastArgv());
+    assert.equal(argv[0], 'notify-send');
+    assert.ok(argv.includes('--app-name=CodePet'));
+    assert.equal(argv[argv.length - 2], 'Your pet is hiding');
+    assert.equal(argv[argv.length - 1], 'Press ' + F.TOGGLE_KEY_HINT + ' to bring it back.');
+    assert.equal(F.TOGGLE_KEY_HINT, 'Super + Alt + P');
+    for (const word of argv) assert.ok(!/[;&|`$]/.test(word), 'no shell syntax: ' + word);
+});
+
 test('Home opens through the Omarchy shell, silently', () => {
     assert.deepEqual(plain(F.openHomeArgv('/usr/share/omarchy')),
                      ['/usr/share/omarchy/bin/omarchy-shell', '-q', 'shell', 'summon', 'greyforge.codepet']);
