@@ -140,6 +140,81 @@ fn strip_comment(line: &str) -> &str {
     line
 }
 
+/// A multi-line string still open at the end of a line inside a skipped array.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenString {
+    None,
+    Basic,
+    Literal,
+}
+
+/// The net count of structural `[` minus `]` on one line of an array value, ignoring
+/// brackets inside strings and comments. `open` carries a multi-line string across lines;
+/// single-line strings cannot span lines, so they close at the line's end.
+fn bracket_depth(line: &str, open: &mut OpenString) -> i32 {
+    let b = line.as_bytes();
+    let (mut i, mut depth) = (0, 0);
+    while i < b.len() {
+        match *open {
+            OpenString::Basic => {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i..].starts_with(b"\"\"\"") {
+                    *open = OpenString::None;
+                    i += 3;
+                    continue;
+                }
+                i += 1;
+            }
+            OpenString::Literal => {
+                if b[i..].starts_with(b"'''") {
+                    *open = OpenString::None;
+                    i += 3;
+                    continue;
+                }
+                i += 1;
+            }
+            OpenString::None => match b[i] {
+                b'#' => break,
+                b'[' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b']' => {
+                    depth -= 1;
+                    i += 1;
+                }
+                b'"' if b[i..].starts_with(b"\"\"\"") => {
+                    *open = OpenString::Basic;
+                    i += 3;
+                }
+                b'\'' if b[i..].starts_with(b"'''") => {
+                    *open = OpenString::Literal;
+                    i += 3;
+                }
+                b'"' => {
+                    i += 1;
+                    while i < b.len() && b[i] != b'"' {
+                        i += if b[i] == b'\\' { 2 } else { 1 };
+                    }
+                    i += 1;
+                }
+                b'\'' => {
+                    i += 1;
+                    while i < b.len() && b[i] != b'\'' {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                _ => i += 1,
+            },
+        }
+    }
+    depth
+}
+
 /// A scalar this reader understands.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Scalar {
@@ -308,13 +383,12 @@ pub fn read(text: &str) -> CodexConfig {
             continue;
         }
         if v.starts_with('[') {
-            let mut depth: i32 = v.matches('[').count() as i32 - v.matches(']').count() as i32;
-            while depth > 0 {
+            // Brackets inside quoted items are text: only structural ones are counted.
+            let mut open = OpenString::None;
+            let mut depth = bracket_depth(v, &mut open);
+            while depth > 0 || open != OpenString::None {
                 match lines.next() {
-                    Some(more) => {
-                        let m = strip_comment(more);
-                        depth += m.matches('[').count() as i32 - m.matches(']').count() as i32;
-                    }
+                    Some(more) => depth += bracket_depth(more, &mut open),
                     None => break,
                 }
             }
@@ -378,6 +452,42 @@ hooks = true
         let s = c.trust_for("/h/.codex/hooks.json:session_end:0:0").unwrap();
         assert_eq!(s.trusted_hash.as_deref(), Some("sha256:cc"));
         assert!(c.trust_for("fake").is_none());
+    }
+
+    #[test]
+    fn brackets_inside_array_strings_do_not_hide_later_tables() {
+        // An unbalanced bracket inside a quoted array item is text, not structure: the
+        // array must end at its real closing bracket and the tables after it still count.
+        let tail = r#"
+[features]
+hooks = false
+[hooks.state."/h/.codex/hooks.json:stop:0:0"]
+trusted_hash = "sha256:aa"
+enabled = true
+"#;
+        for array in [
+            r#"args = ["--exclude=[tmp"]"#,
+            r#"args = ['--exclude=[tmp']"#,
+            r#"args = ["a\"[b"]"#,
+            "args = [\n  \"a]b\",\n  \"[c\",\n]",
+            "args = [\n  \"--x\", # a [comment\n]",
+            "args = [\n  \"\"\"multi\n[line\n\"\"\",\n]",
+            "args = [\n  '''multi\n]line\n''',\n  \"[\",\n]",
+        ] {
+            let c = read(&format!("[mcp_servers.files]\n{array}\n{tail}"));
+            assert!(c.hooks_off, "{array}");
+            let t = c
+                .trust_for("/h/.codex/hooks.json:stop:0:0")
+                .unwrap_or_else(|| panic!("{array}"));
+            assert_eq!(t.trusted_hash.as_deref(), Some("sha256:aa"), "{array}");
+            assert_eq!(t.enabled, Some(true), "{array}");
+        }
+
+        // A string-aware skip still swallows a genuine multi-line array whole.
+        let c = read("notify = [\n  \"x\",\n  # [features]\n]\n[features]\nhooks = false\n");
+        assert!(c.hooks_off);
+        let c = read("notify = [\n\"x\",\nhooks = false\n]\n");
+        assert!(!c.hooks_off, "array items are never read as keys");
     }
 
     #[test]
