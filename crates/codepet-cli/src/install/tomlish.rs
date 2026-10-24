@@ -148,6 +148,12 @@ enum OpenString {
     Literal,
 }
 
+/// The length of a closing multi-line fence at the start of `b`: three quotes plus up to two
+/// more, since TOML lets one or two quotes sit just inside the closing delimiter.
+fn fence_run(b: &[u8], quote: u8) -> usize {
+    b.iter().take(5).take_while(|&&c| c == quote).count()
+}
+
 /// The net count of structural `[` minus `]` on one line of an array value, ignoring
 /// brackets inside strings and comments. `open` carries a multi-line string across lines;
 /// single-line strings cannot span lines, so they close at the line's end.
@@ -163,7 +169,7 @@ fn bracket_depth(line: &str, open: &mut OpenString) -> i32 {
                 }
                 if b[i..].starts_with(b"\"\"\"") {
                     *open = OpenString::None;
-                    i += 3;
+                    i += fence_run(&b[i..], b'"');
                     continue;
                 }
                 i += 1;
@@ -171,7 +177,7 @@ fn bracket_depth(line: &str, open: &mut OpenString) -> i32 {
             OpenString::Literal => {
                 if b[i..].starts_with(b"'''") {
                     *open = OpenString::None;
-                    i += 3;
+                    i += fence_run(&b[i..], b'\'');
                     continue;
                 }
                 i += 1;
@@ -473,6 +479,12 @@ enabled = true
             "args = [\n  \"--x\", # a [comment\n]",
             "args = [\n  \"\"\"multi\n[line\n\"\"\",\n]",
             "args = [\n  '''multi\n]line\n''',\n  \"[\",\n]",
+            // Up to two quotes may sit just inside a multi-line string's closing fence.
+            r#"args = ["""x""""]"#,
+            r#"args = ["""x"""""]"#,
+            "args = ['''x'''']",
+            "args = ['''x''''']",
+            "args = [\n  \"\"\"multi\n[line\"\"\"\",\n]",
         ] {
             let c = read(&format!("[mcp_servers.files]\n{array}\n{tail}"));
             assert!(c.hooks_off, "{array}");
