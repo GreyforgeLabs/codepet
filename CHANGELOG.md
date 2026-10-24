@@ -2,6 +2,17 @@
 
 All notable changes to CodePet.
 
+## Unreleased
+
+- Helpers: Codex's hook status is read correctly when an array in `config.toml` (for
+  example an MCP server's arguments) has a quoted item with an unbalanced bracket.
+  Such an item no longer hides the `[features]` and `/hooks` trust entries that follow it.
+- The desktop pet ends a helper that hangs. A placement write, toast or Home request
+  gets ten seconds, so one stuck `qs ipc` call can no longer stop later moves and pins
+  from being saved. A care request that times out is always ended, and an answered
+  request shows its result without waiting for its process to exit.
+- `codepet-pet --help` lists its control verbs and exits 0.
+
 ## 0.6.0 — 2026-10-20
 
 - **A native desktop pet.** The pet on your desktop is now `codepet-pet`, a small Rust
