@@ -26,6 +26,16 @@ const DETACH: &str = r#"for f in /proc/self/fd/*; do n=${f##*/}; case "$n" in *[
 
 const USAGE: &str = "usage: codepet-pet run | start | ctl VERB [ARGS...] | --version";
 
+const HELP: &str = "\
+  run           run in the foreground (one instance per user session)
+  start         start detached and wait until it answers (up to 3 s)
+  ctl VERB      send one control verb: show, hide, toggle, status, ping, refresh,
+                openHome, openCard, setReducedMotion BOOL, selectScreen NAME,
+                setSessionState LOCKED SUSPENDED, setFullscreen BOOL, quit
+  --version     print the version
+Exit status: 0 success, 1 failure (ctl: not running), 2 usage error.
+Most people use codepet-overlay show|hide|toggle instead.";
+
 fn ctl(paths: &paths::Paths, line: &str, timeout: Duration) -> Option<String> {
     let stream = UnixStream::connect(&paths.socket).ok()?;
     stream.set_read_timeout(Some(timeout)).ok()?;
@@ -68,6 +78,7 @@ fn main() {
     };
     match args.first().map(String::as_str) {
         Some("--version") => println!("codepet-pet {}", env!("CARGO_PKG_VERSION")),
+        Some("--help" | "-h") => println!("{USAGE}\n{HELP}"),
         Some("run") => {
             let listener = match bind(&paths) {
                 Ok(Some(l)) => l,
