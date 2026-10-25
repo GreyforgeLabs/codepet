@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1 — 2026-10-25
+
+- Ships with CodePet 0.6.1 (steadier desktop pet helpers, Codex hook status read
+  correctly). The bar plugin itself is unchanged.
+
 ## 0.6.0 — 2026-10-20
 
 - Clearer care icons: meat on a bone, a water droplet, bubbles, a hand for Pet and a

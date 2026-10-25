@@ -1,3 +1,31 @@
+# v0.6.1 qualification (2026-10-25)
+
+**Status: patch release on the 0.6 series.** 0.6.1 bounds the native pet's helper
+processes, gives `codepet-pet --help` its verb list and reads Codex `config.toml` arrays
+with quoted brackets correctly. No QML, Quickshell, schema or containment code changed;
+see the [0.6 release record](release-0.6.md).
+
+## Executed checks
+
+- `cargo fmt --all --check`; `cargo test --workspace --locked` and strict Clippy, default
+  and `--features legacy-tasks`; `python3 docs/v0.3/contracts/check_contracts.py`;
+  `cargo +1.86.0 test -p codepet -p codepet-pet --locked` (minimum Rust).
+- New display-free tests: the pet's process runner (answer, silent exit, garbage output,
+  missing binary, answer while the child keeps running, a child that ignores TERM, a
+  helper over its limit), the `codepet-pet` command line, and 12 Codex array shapes with
+  brackets and quotes inside strings.
+- Release archive built from the exact commit with `tools/release/package.sh` (install,
+  doctor and uninstall in a throwaway HOME); release-docs tests.
+- The offscreen QML suites run in CI (`qml.yml`) on the release commit.
+
+## Not covered
+
+- No live compositor run: the pet's drawing and Quickshell fallback are unchanged, so
+  the 0.6.0 nested-Hyprland scenarios and PSS measurements below still describe them.
+- The containment gates are unchanged from 0.6.0 and recorded below.
+
+---
+
 # v0.6.0 qualification (2026-10-20)
 
 **Status: release candidate for 0.6.0.** 0.6 replaces the Quickshell desktop pet with

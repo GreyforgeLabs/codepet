@@ -33,3 +33,9 @@ The exact commit, tag and archive checksum are recorded on the GitHub release.
 
 The release is published from the tagged commit with the archive and `SHA256SUMS`.
 The announcement is drafted separately and posted only after explicit approval.
+
+## 0.6.1 (2026-10-25)
+
+A patch release: bounded helper processes for the native pet, `codepet-pet --help`, and
+Codex hook status read correctly past quoted brackets in `config.toml` arrays. See the
+[qualification record](validation.md).

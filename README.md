@@ -64,14 +64,14 @@ Needs change with attended desktop time, without offline catch-up.
 
 ## Quick start
 
-Download **`codepet-0.6.0-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
+Download **`codepet-0.6.1-x86_64-linux.tar.gz`** and **`SHA256SUMS`** from
 [the latest release](https://github.com/GreyforgeLabs/codepet/releases/latest).
 In the download directory:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-tar xzf codepet-0.6.0-x86_64-linux.tar.gz
-cd codepet-0.6.0-x86_64-linux
+tar xzf codepet-0.6.1-x86_64-linux.tar.gz
+cd codepet-0.6.1-x86_64-linux
 packaging/omarchy/install.sh --dry-run
 packaging/omarchy/install.sh
 ```
@@ -79,7 +79,7 @@ packaging/omarchy/install.sh
 The archive includes both binaries. Installation adds the bar plugin, desktop pet and
 review window, rescans plugins, and upgrades saved state with recovery backups.
 It does not restart your shell or start your pet's life. Use the installer to keep
-binary and UI versions together. `codepet --version` prints `codepet 0.6.0`.
+binary and UI versions together. `codepet --version` prints `codepet 0.6.1`.
 
 ### First run
 

@@ -2,7 +2,7 @@
 
 All notable changes to CodePet.
 
-## Unreleased
+## 0.6.1 — 2026-10-25
 
 - Helpers: Codex's hook status is read correctly when an array in `config.toml` (for
   example an MCP server's arguments) has a quoted item with an unbalanced bracket.
@@ -12,6 +12,7 @@ All notable changes to CodePet.
   from being saved. A care request that times out is always ended, and an answered
   request shows its result without waiting for its process to exit.
 - `codepet-pet --help` lists its control verbs and exits 0.
+- Checks for this release are in the [qualification record](docs/validation.md).
 
 ## 0.6.0 — 2026-10-20
 

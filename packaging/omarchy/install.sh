@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh: install or update CodePet for the current user on Omarchy (v0.6.0, schema 6).
+# install.sh: install or update CodePet for the current user on Omarchy (v0.6.1, schema 6).
 #
 #   packaging/omarchy/install.sh [--dry-run] [--no-plugin]
 #
